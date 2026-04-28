@@ -31,7 +31,7 @@ function AdminCoupons() {
   const loadCoupons = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get("http://localhost:5000/api/coupons");
+      const res = await axios.get("/api/coupons");
       setCoupons(Array.isArray(res.data) ? res.data : []);
     } catch {
       setCoupons([]);
@@ -58,7 +58,7 @@ function AdminCoupons() {
     setIsSaving(true);
     setMessage("");
     try {
-      await axios.post("http://localhost:5000/api/coupons", {
+      await axios.post("/api/coupons", {
         code: normalizedCode,
         type,
         value: couponValue,
@@ -81,7 +81,7 @@ function AdminCoupons() {
 
     setMessage("");
     try {
-      await axios.delete(`http://localhost:5000/api/coupons/${id}`);
+      await axios.delete(`/api/coupons/${id}`);
       setMessage("Coupon deleted.");
       await loadCoupons();
     } catch {
@@ -190,3 +190,4 @@ function AdminCoupons() {
 }
 
 export default AdminCoupons;
+

@@ -6,6 +6,71 @@ import { useAuth } from "../hooks/useAuth";
 import "./Product.css";
 import { formatCurrencyForUser } from "../utils/currency";
 
+const PRODUCT_EXTRA_DETAILS = {
+  soundaryalahari: {
+    detailItems: [
+      { label: "Publisher", value: "Giri Trading Agency Private Limited" },
+      { label: "Publication date", value: "1 January 2013" },
+      { label: "Language", value: "Sanskrit" },
+      { label: "Print length", value: "848 pages" },
+      { label: "ISBN-10", value: "8179503410" },
+      { label: "ISBN-13", value: "978-8179503416" },
+      { label: "Item Weight", value: "199 g" },
+      { label: "Dimensions", value: "21.5 x 14 x 2 cm" },
+      { label: "Country of Origin", value: "India" },
+      {
+        label: "Importer",
+        value: "Giri Trading Agency Pvt Ltd 372/1, Pattur Koot Road, Mangadu, Chennai, Tamil Nadu 600122 IN"
+      },
+      {
+        label: "Packer",
+        value: "Giri Trading Agency Pvt Ltd 372/1, Pattur Koot Road, Mangadu, Chennai, Tamil Nadu 600122 IN"
+      },
+      { label: "Generic Name", value: "Book" }
+    ],
+    extraMeta: [
+      { label: "Best Sellers Rank", value: "#80,868 in Books" },
+      { label: "Category Rank", value: "#3,405 in Hinduism (Books)" },
+      { label: "Customer Reviews", value: "4.4 out of 5 stars (142)" }
+    ]
+  }
+};
+
+function getExtraProductDetails(productName) {
+  const normalizedName = String(productName || "").toLowerCase();
+  if (normalizedName.includes("soundaryalahari")) {
+    return PRODUCT_EXTRA_DETAILS.soundaryalahari;
+  }
+
+  return null;
+}
+
+function buildAboutProductPoints(product, extraProductDetails) {
+  if (Array.isArray(product?.aboutProduct) && product.aboutProduct.length > 0) {
+    return product.aboutProduct
+      .map((point) => String(point || "").trim())
+      .filter(Boolean);
+  }
+
+  const points = [
+    `${product.category || "General"} title for readers looking for ${String(product.category || "traditional learning").toLowerCase()} material.`,
+    product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.",
+    `${Number(product.rating || 0).toFixed(1)} / 5 rating from ${Array.isArray(product.reviews) ? product.reviews.length : 0} customer reviews.`
+  ];
+
+  if (extraProductDetails?.detailItems) {
+    const language = extraProductDetails.detailItems.find((item) => item.label === "Language");
+    const publisher = extraProductDetails.detailItems.find((item) => item.label === "Publisher");
+    const printLength = extraProductDetails.detailItems.find((item) => item.label === "Print length");
+
+    if (language) points.unshift(`Published in ${language.value}.`);
+    if (publisher) points.push(`Published by ${publisher.value}.`);
+    if (printLength) points.push(`${printLength.value} edition for extended reading or parayana use.`);
+  }
+
+  return points;
+}
+
 function Product() {
   const { id } = useParams();
   const { addToCart } = useCart();
@@ -26,21 +91,37 @@ function Product() {
     return `${"\u2605".repeat(rounded)}${"\u2606".repeat(5 - rounded)}`;
   };
 
+  const getGalleryImages = (item) => {
+    const images = Array.isArray(item?.images)
+      ? item.images.map((image) => String(image || "").trim()).filter(Boolean)
+      : [];
+
+    if (images.length > 0) return images;
+
+    const fallback = String(item?.image || "").trim();
+    return fallback ? [fallback] : [];
+  };
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [res, recRes] = await Promise.all([
-        axios.get("http://localhost:5000/api/products"),
+      const [productRes, allProductsRes, recRes] = await Promise.all([
+        axios.get(`/api/products/${id}`).catch(() => ({ data: null })),
+        axios.get("/api/products").catch(() => ({ data: [] })),
         axios
-          .get(`http://localhost:5000/api/products/recommend/${id}`)
+          .get(`/api/products/recommend/${id}`)
           .catch(() => ({ data: [] }))
       ]);
-      const allProducts = Array.isArray(res.data) ? res.data : [];
+      const allProducts = Array.isArray(allProductsRes.data) ? allProductsRes.data : [];
       const recommended = Array.isArray(recRes.data) ? recRes.data : [];
-      const found = allProducts.find((p) => p._id === id) || null;
+      const found =
+        productRes?.data && productRes.data?._id
+          ? productRes.data
+          : allProducts.find((p) => String(p?._id) === String(id)) || null;
+      const galleryImages = getGalleryImages(found);
 
       setProduct(found);
-      setMainImage(found?.image || "");
+      setMainImage(galleryImages[0] || "");
       setQty(1);
       setRelatedProducts(
         recommended.length > 0
@@ -82,7 +163,7 @@ function Product() {
 
     try {
       await axios.post(
-        `http://localhost:5000/api/products/${id}/reviews`,
+        `/api/products/${id}/reviews`,
         {
           rating: Number(rating),
           comment
@@ -121,26 +202,42 @@ function Product() {
     );
   }
 
+  const galleryImages = getGalleryImages(product);
+  const extraProductDetails = getExtraProductDetails(product.name);
+  const aboutProductPoints = buildAboutProductPoints(product, extraProductDetails);
+  const reviewCount = Array.isArray(product.reviews) ? product.reviews.length : 0;
+  const listPrice = Number(product.price || 0) + 500;
+  const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - Number(product.price || 0)) / listPrice) * 100)) : 0;
+
   return (
     <>
+      <div className="product-breadcrumb">
+        <Link to="/">Home</Link>
+        <span>/</span>
+        <span>{product.category || "General"}</span>
+        <span>/</span>
+        <strong>{product.name}</strong>
+      </div>
+
       <div className="product-container">
         <div className="product-left">
           <div className="image-gallery">
             <div className="thumbnail-column">
-              {[product.image].map((img, i) => (
+              {galleryImages.map((img, i) => (
                 <img
                   key={i}
                   src={img || "https://picsum.photos/200"}
                   className={`thumbnail ${mainImage === img ? "active" : ""}`}
                   onClick={() => setMainImage(img)}
-                  alt=""
+                  alt={`${product.name} thumbnail ${i + 1}`}
+                  loading="lazy"
                 />
               ))}
             </div>
 
             <div className="main-image-container">
               <img
-                src={mainImage || product.image || "https://picsum.photos/500"}
+                src={mainImage || galleryImages[0] || product.image || "https://picsum.photos/500"}
                 alt={product.name}
                 className="product-main-image"
               />
@@ -150,11 +247,19 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title">{product.name}</h1>
-          <p className="rating">
-            {renderStars(product.rating)} ({Number(product.rating || 0).toFixed(1)})
-          </p>
+          <p className="product-store-link">Visit the Digital Sanskrit Guru Store</p>
+          <p className="rating">{renderStars(product.rating)} <span>{Number(product.rating || 0).toFixed(1)} | {reviewCount} ratings</span></p>
           <hr />
-          <p className="price">{formatCurrencyForUser(product.price)}</p>
+          <div className="price-block">
+            <p className="price">
+              <span className="price-symbol">₹</span>
+              <strong>{Number(product.price || 0).toLocaleString("en-IN")}</strong>
+            </p>
+            <p className="price-meta">
+              M.R.P.: <span>{formatCurrencyForUser(listPrice)}</span> ({discountPercent}% off)
+            </p>
+            <p className="tax-note">Inclusive of all taxes</p>
+          </div>
           <p className="stock">
             {product.stock > 0 ? (
               <span className="in-stock">In Stock</span>
@@ -169,6 +274,7 @@ function Product() {
           <div className="buy-box">
             <p className="buy-price">{formatCurrencyForUser(product.price)}</p>
             <p className="delivery">FREE Delivery</p>
+            <p className="buy-box-note">Fastest delivery available at your selected location.</p>
 
             <div className="qty-box">
               <button className="qty-btn" onClick={() => setQty(qty > 1 ? qty - 1 : 1)}>
@@ -203,8 +309,55 @@ function Product() {
             >
               {product.stock === 0 ? "Out of Stock" : "Buy Now"}
             </button>
+            <p className="secure-line">Secure transaction</p>
           </div>
         </div>
+      </div>
+
+      <div className="product-details-section">
+        <div className="product-details-head">
+          <h3>Product Details</h3>
+          <p>Key information about this item before you place your order.</p>
+        </div>
+
+        <div className="product-details-grid">
+          <div className="product-detail-card">
+            <span>Product Name</span>
+            <strong>{product.name}</strong>
+          </div>
+          <div className="product-detail-card">
+            <span>Availability</span>
+            <strong>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</strong>
+          </div>
+          <div className="product-detail-card">
+            <span>Rating</span>
+            <strong>{Number(product.rating || 0).toFixed(1)} / 5</strong>
+          </div>
+          <div className="product-detail-card">
+            <span>Reviews</span>
+            <strong>{Array.isArray(product.reviews) ? product.reviews.length : 0} customer reviews</strong>
+          </div>
+        </div>
+
+        <div className="product-details-description">
+          <h4>About this product</h4>
+          <ul className="product-about-list">
+            {aboutProductPoints.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        </div>
+
+        {extraProductDetails?.extraMeta?.length > 0 && (
+          <div className="product-extra-meta">
+            {extraProductDetails.extraMeta.map((item) => (
+              <div key={item.label} className="product-extra-meta-row">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="reviews-section">
@@ -269,3 +422,4 @@ function Product() {
 }
 
 export default Product;
+

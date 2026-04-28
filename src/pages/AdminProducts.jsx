@@ -15,13 +15,13 @@ function AdminProducts() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/api/products")
+      .get("/api/products")
       .then((res) => setProducts(res.data))
       .catch(() => setProducts([]));
   }, []);
 
   const loadProducts = async () => {
-    const res = await axios.get("http://localhost:5000/api/products");
+    const res = await axios.get("/api/products");
     setProducts(res.data);
   };
 
@@ -118,7 +118,7 @@ function AdminProducts() {
     setWarehouseMessage("");
     try {
       await axios.put(
-        `http://localhost:5000/api/products/${product._id}`,
+        `/api/products/${product._id}`,
         { stock: safeStock },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -154,7 +154,7 @@ function AdminProducts() {
       await Promise.all(
         critical.map((product) =>
           axios.put(
-            `http://localhost:5000/api/products/${product._id}`,
+            `/api/products/${product._id}`,
             { stock: 10 },
             { headers: { Authorization: `Bearer ${token}` } }
           )
@@ -416,3 +416,4 @@ function AdminProducts() {
 }
 
 export default AdminProducts;
+

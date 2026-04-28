@@ -46,7 +46,7 @@ function AdminThemeSettings() {
     let active = true;
 
     axios
-      .get("http://localhost:5000/api/settings")
+      .get("/api/settings")
       .then((res) => {
         if (!active) return;
         const nextCustomThemes = Array.isArray(res.data?.customThemes) ? res.data.customThemes : [];
@@ -76,7 +76,7 @@ function AdminThemeSettings() {
 
     try {
       const res = await axios.put(
-        "http://localhost:5000/api/settings",
+        "/api/settings",
         { siteTheme },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -131,7 +131,7 @@ function AdminThemeSettings() {
 
     try {
       const res = await axios.put(
-        "http://localhost:5000/api/settings",
+        "/api/settings",
         {
           siteTheme: nextThemeId,
           customThemes: [...customThemes, nextCustomTheme]
@@ -331,3 +331,4 @@ function AdminThemeSettings() {
 }
 
 export default AdminThemeSettings;
+

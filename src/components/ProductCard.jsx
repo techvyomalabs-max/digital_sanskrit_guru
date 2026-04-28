@@ -3,7 +3,7 @@ import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyForUser } from "../utils/currency";
 import "./ProductCard.css";
 
-function ProductCard({ product }) {
+function ProductCard({ product, showDescription = true, variant = "default" }) {
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
 
   const reviews = Array.isArray(product?.reviews) ? product.reviews : [];
@@ -25,8 +25,12 @@ function ProductCard({ product }) {
     }
   };
 
+  const cardClassName = `product-card${variant === "home" ? " product-card-home" : ""}${
+    variant === "search" ? " product-card-search" : ""
+  }`;
+
   return (
-    <div className="product-card">
+    <div className={cardClassName}>
       {reviewCount > 5 && <span className="product-badge">Best Seller</span>}
       <button
         type="button"
@@ -38,7 +42,7 @@ function ProductCard({ product }) {
       </button>
 
       <Link to={`/product/${product._id}`} className="product-image-wrap">
-        <img src={product.image || "https://picsum.photos/300"} alt={product.name} />
+        <img src={product.image || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=="} alt={product.name} loading="lazy" />
       </Link>
 
       <div className="product-info">
@@ -48,9 +52,11 @@ function ProductCard({ product }) {
           <h3 className="product-title">{product.name}</h3>
         </Link>
 
-        <p className="product-description">
-          {product.description || "Authentic learning material from Digital Sanskrit Guru."}
-        </p>
+        {showDescription && (
+          <p className="product-description">
+            {product.description || "Authentic learning material from Digital Sanskrit Guru."}
+          </p>
+        )}
 
         <div className="price-box">
           <span className="discount-price">{formatCurrencyForUser(product.price)}</span>

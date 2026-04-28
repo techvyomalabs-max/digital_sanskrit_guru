@@ -6,6 +6,19 @@ const admin = require("../middleware/adminMiddleware");
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
 const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
+const LEGACY_DEFAULT_PRODUCT_CATEGORIES = [
+  "Audio Device",
+  "Book - Paperback",
+  "Combo",
+  "Course Products",
+  "E-Book - Kindle",
+  "Festival Offer",
+  "Flipbook",
+  "Learning path",
+  "USB Stick",
+  "Web Version",
+  "General"
+];
 
 function sanitizeThemeId(value, fallback = "custom-theme") {
   return String(value || "")
@@ -57,12 +70,74 @@ function normalizeCustomThemes(input) {
   }, []);
 }
 
+function normalizeProductCategories(input) {
+  const values = Array.isArray(input) ? input : StoreSettings.DEFAULT_PRODUCT_CATEGORIES;
+  const seen = new Set();
+
+  const normalized = values.reduce((acc, item) => {
+    const value = String(item || "").trim();
+    const key = value.toLowerCase();
+
+    if (!value || seen.has(key)) {
+      return acc;
+    }
+
+    seen.add(key);
+    acc.push(value);
+    return acc;
+  }, []);
+
+  if (!seen.has("general")) {
+    normalized.push("General");
+  }
+
+  const isLegacyDefault =
+    normalized.length === LEGACY_DEFAULT_PRODUCT_CATEGORIES.length &&
+    normalized.every((item, index) => item.toLowerCase() === LEGACY_DEFAULT_PRODUCT_CATEGORIES[index].toLowerCase());
+
+  if (isLegacyDefault) {
+    return [...StoreSettings.DEFAULT_PRODUCT_CATEGORIES];
+  }
+
+  return normalized;
+}
+
+function normalizeCoordinate(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeWarehouseLocation(input) {
+  return {
+    name: String(input?.name || "").trim(),
+    address: String(input?.address || "").trim(),
+    mapUrl: String(input?.mapUrl || "").trim(),
+    latitude: normalizeCoordinate(input?.latitude),
+    longitude: normalizeCoordinate(input?.longitude)
+  };
+}
+
+function normalizeDistancePricing(input, fallbackDeliveryCharge = 0) {
+  const rawMax = normalizeCoordinate(input?.maxCharge);
+  return {
+    enabled: input?.enabled !== false,
+    baseFee: Math.max(0, Number(input?.baseFee ?? fallbackDeliveryCharge ?? 0)),
+    perKmCharge: Math.max(0, Number(input?.perKmCharge || 0)),
+    freeRadiusKm: Math.max(0, Number(input?.freeRadiusKm || 0)),
+    maxCharge: rawMax === null ? null : Math.max(0, rawMax)
+  };
+}
+
 function normalizeSettings(settings) {
   return {
     gstPercent: Number(settings?.gstPercent || 0),
     deliveryCharge: Number(settings?.deliveryCharge || 0),
+    warehouseLocation: normalizeWarehouseLocation(settings?.warehouseLocation || {}),
+    distancePricing: normalizeDistancePricing(settings?.distancePricing || {}, settings?.deliveryCharge || 0),
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
-    customThemes: normalizeCustomThemes(settings?.customThemes || [])
+    customThemes: normalizeCustomThemes(settings?.customThemes || []),
+    productCategories: normalizeProductCategories(settings?.productCategories || [])
   };
 }
 
@@ -85,14 +160,27 @@ router.put("/", protect, admin, async (req, res) => {
   const rawTheme = String(req.body?.siteTheme || "").trim().toLowerCase();
   const hasSiteTheme = Boolean(String(req.body?.siteTheme || "").trim());
   const hasCustomThemes = Array.isArray(req.body?.customThemes);
+  const hasProductCategories = Array.isArray(req.body?.productCategories);
+  const hasWarehouseLocation = Boolean(req.body?.warehouseLocation && typeof req.body.warehouseLocation === "object");
+  const hasDistancePricing = Boolean(req.body?.distancePricing && typeof req.body.distancePricing === "object");
 
   const gstPercent = Number.isNaN(rawGst) ? 0 : Math.min(50, Math.max(0, rawGst));
   const deliveryCharge = Number.isNaN(rawDelivery) ? 0 : Math.max(0, rawDelivery);
 
   const settings = await getOrCreateSettings();
+  const nextDeliveryCharge = Number.isNaN(rawDelivery) ? Number(settings.deliveryCharge || 0) : deliveryCharge;
+  const warehouseLocation = hasWarehouseLocation
+    ? normalizeWarehouseLocation(req.body?.warehouseLocation)
+    : normalizeWarehouseLocation(settings.warehouseLocation || {});
+  const distancePricing = hasDistancePricing
+    ? normalizeDistancePricing(req.body?.distancePricing, nextDeliveryCharge)
+    : normalizeDistancePricing(settings.distancePricing || {}, nextDeliveryCharge);
   const customThemes = hasCustomThemes
     ? normalizeCustomThemes(req.body?.customThemes)
     : normalizeCustomThemes(settings.customThemes || []);
+  const productCategories = hasProductCategories
+    ? normalizeProductCategories(req.body?.productCategories)
+    : normalizeProductCategories(settings.productCategories || []);
   const allowedThemeIds = new Set([
     ...StoreSettings.SITE_THEMES,
     ...customThemes.map((theme) => theme.id)
@@ -100,7 +188,10 @@ router.put("/", protect, admin, async (req, res) => {
 
   settings.gstPercent = Number.isNaN(rawGst) ? settings.gstPercent : gstPercent;
   settings.deliveryCharge = Number.isNaN(rawDelivery) ? settings.deliveryCharge : deliveryCharge;
+  settings.warehouseLocation = warehouseLocation;
+  settings.distancePricing = distancePricing;
   settings.customThemes = customThemes;
+  settings.productCategories = productCategories;
   settings.siteTheme = hasSiteTheme && allowedThemeIds.has(rawTheme)
     ? rawTheme
     : allowedThemeIds.has(settings.siteTheme)

@@ -27,7 +27,7 @@ export function AuthProvider({ children }) {
     let active = true;
 
     axios
-      .get("http://localhost:5000/api/auth/me", {
+      .get("/api/auth/me", {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then((res) => {
@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
       if (!isMounted) return;
       try {
         await axios.post(
-          "http://localhost:5000/api/auth/activity",
+          "/api/auth/activity",
           { timeSpentSec },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -100,7 +100,7 @@ export function AuthProvider({ children }) {
 
   const register = async (name, email, password) => {
     const res = await axios.post(
-      "http://localhost:5000/api/auth/register",
+      "/api/auth/register",
       { name, email, password }
     );
     const nextUser = normalizeUser(res.data);
@@ -114,7 +114,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await axios.post(
-      "http://localhost:5000/api/auth/login",
+      "/api/auth/login",
       { email, password }
     );
     const nextUser = normalizeUser(res.data);
@@ -143,3 +143,4 @@ export function AuthProvider({ children }) {
 }
 
 export { AuthContext };
+

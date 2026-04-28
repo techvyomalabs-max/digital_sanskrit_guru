@@ -23,7 +23,7 @@ export function CartProvider({ children }) {
     }
 
     try {
-      const res = await axios.get("http://localhost:5000/api/cart", getCartHeaders());
+      const res = await axios.get("/api/cart", getCartHeaders());
       setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
     } catch (err) {
       const status = Number(err?.response?.status || 0);
@@ -50,7 +50,7 @@ export function CartProvider({ children }) {
       if (!productId) return;
 
       const res = await axios.post(
-        "http://localhost:5000/api/cart",
+        "/api/cart",
         { productId, qty: nextQty },
         getCartHeaders()
       );
@@ -72,7 +72,7 @@ export function CartProvider({ children }) {
     try {
       const targetId = String(id || "");
       if (!targetId) return;
-      const res = await axios.delete(`http://localhost:5000/api/cart/${targetId}`, getCartHeaders());
+      const res = await axios.delete(`/api/cart/${targetId}`, getCartHeaders());
       setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
     } catch (err) {
       const status = Number(err?.response?.status || 0);
@@ -91,7 +91,7 @@ export function CartProvider({ children }) {
       const nextQty = Math.max(1, Number(qty) || 1);
       if (!targetId) return;
       const res = await axios.put(
-        `http://localhost:5000/api/cart/${targetId}`,
+        `/api/cart/${targetId}`,
         { qty: nextQty },
         getCartHeaders()
       );
@@ -112,7 +112,7 @@ export function CartProvider({ children }) {
     }
 
     try {
-      await axios.delete("http://localhost:5000/api/cart", getCartHeaders());
+      await axios.delete("/api/cart", getCartHeaders());
       setCartItems([]);
     } catch (err) {
       const status = Number(err?.response?.status || 0);
@@ -146,3 +146,4 @@ export function CartProvider({ children }) {
 }
 
 export { CartContext };
+

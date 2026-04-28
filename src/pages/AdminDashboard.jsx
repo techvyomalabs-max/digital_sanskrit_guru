@@ -5,6 +5,11 @@ import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import SalesChart from "../components/SalesChart";
 import { formatDate, formatTime } from "../utils/date";
+import {
+  normalizeDistancePricing,
+  normalizeWarehouseLocation,
+  parseGoogleMapsCoordinates
+} from "../utils/deliveryPricing";
 import "./AdminDashboard.css";
 
 const LOW_STOCK_THRESHOLD = 5;
@@ -31,8 +36,26 @@ function AdminDashboard() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [pricingSettings, setPricingSettings] = useState({ gstPercent: 0, deliveryCharge: 0 });
+  const [pricingSettings, setPricingSettings] = useState({
+    gstPercent: 0,
+    deliveryCharge: 0,
+    warehouseLocation: {
+      name: "",
+      address: "",
+      mapUrl: "",
+      latitude: "",
+      longitude: ""
+    },
+    distancePricing: {
+      enabled: true,
+      baseFee: 0,
+      perKmCharge: 0,
+      freeRadiusKm: 0,
+      maxCharge: ""
+    }
+  });
   const [isSavingPricing, setIsSavingPricing] = useState(false);
+  const [isGettingWarehouseLocation, setIsGettingWarehouseLocation] = useState(false);
   const [pricingMessage, setPricingMessage] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [isMakingAdmin, setIsMakingAdmin] = useState(false);
@@ -48,8 +71,8 @@ function AdminDashboard() {
 
       try {
         const [productRes, orderRes] = await Promise.all([
-          axios.get("http://localhost:5000/api/products"),
-          axios.get("http://localhost:5000/api/orders", {
+          axios.get("/api/products"),
+          axios.get("/api/orders", {
             headers: { Authorization: `Bearer ${token}` }
           })
         ]);
@@ -87,19 +110,44 @@ function AdminDashboard() {
   useEffect(() => {
     let active = true;
     axios
-      .get("http://localhost:5000/api/settings")
+      .get("/api/settings")
       .then((res) => {
         if (!active) return;
         setPricingSettings({
           gstPercent: String(Number(res.data?.gstPercent || 0)),
-          deliveryCharge: String(Number(res.data?.deliveryCharge || 0))
+          deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
+          warehouseLocation: {
+            name: String(res.data?.warehouseLocation?.name || ""),
+            address: String(res.data?.warehouseLocation?.address || ""),
+            mapUrl: String(res.data?.warehouseLocation?.mapUrl || ""),
+            latitude:
+              res.data?.warehouseLocation?.latitude === null || res.data?.warehouseLocation?.latitude === undefined
+                ? ""
+                : String(res.data.warehouseLocation.latitude),
+            longitude:
+              res.data?.warehouseLocation?.longitude === null || res.data?.warehouseLocation?.longitude === undefined
+                ? ""
+                : String(res.data.warehouseLocation.longitude)
+          },
+          distancePricing: {
+            enabled: res.data?.distancePricing?.enabled !== false,
+            baseFee: String(Number(res.data?.distancePricing?.baseFee ?? res.data?.deliveryCharge ?? 0)),
+            perKmCharge: String(Number(res.data?.distancePricing?.perKmCharge || 0)),
+            freeRadiusKm: String(Number(res.data?.distancePricing?.freeRadiusKm || 0)),
+            maxCharge:
+              res.data?.distancePricing?.maxCharge === null || res.data?.distancePricing?.maxCharge === undefined
+                ? ""
+                : String(Number(res.data.distancePricing.maxCharge))
+          }
         });
       })
       .catch(() => {
         if (!active) return;
         setPricingSettings({
           gstPercent: "0",
-          deliveryCharge: "0"
+          deliveryCharge: "0",
+          warehouseLocation: { name: "", address: "", mapUrl: "", latitude: "", longitude: "" },
+          distancePricing: { enabled: true, baseFee: "0", perKmCharge: "0", freeRadiusKm: "0", maxCharge: "" }
         });
       });
 
@@ -114,16 +162,41 @@ function AdminDashboard() {
     try {
       const payload = {
         gstPercent: Math.max(0, Number(pricingSettings.gstPercent || 0)),
-        deliveryCharge: Math.max(0, Number(pricingSettings.deliveryCharge || 0))
+        deliveryCharge: Math.max(0, Number(pricingSettings.deliveryCharge || 0)),
+        warehouseLocation: normalizeWarehouseLocation(pricingSettings.warehouseLocation),
+        distancePricing: normalizeDistancePricing(pricingSettings.distancePricing, pricingSettings.deliveryCharge)
       };
 
-      const res = await axios.put("http://localhost:5000/api/settings", payload, {
+      const res = await axios.put("/api/settings", payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       setPricingSettings({
         gstPercent: String(Number(res.data?.gstPercent || 0)),
-        deliveryCharge: String(Number(res.data?.deliveryCharge || 0))
+        deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
+        warehouseLocation: {
+          name: String(res.data?.warehouseLocation?.name || ""),
+          address: String(res.data?.warehouseLocation?.address || ""),
+          mapUrl: String(res.data?.warehouseLocation?.mapUrl || ""),
+          latitude:
+            res.data?.warehouseLocation?.latitude === null || res.data?.warehouseLocation?.latitude === undefined
+              ? ""
+              : String(res.data.warehouseLocation.latitude),
+          longitude:
+            res.data?.warehouseLocation?.longitude === null || res.data?.warehouseLocation?.longitude === undefined
+              ? ""
+              : String(res.data.warehouseLocation.longitude)
+        },
+        distancePricing: {
+          enabled: res.data?.distancePricing?.enabled !== false,
+          baseFee: String(Number(res.data?.distancePricing?.baseFee ?? res.data?.deliveryCharge ?? 0)),
+          perKmCharge: String(Number(res.data?.distancePricing?.perKmCharge || 0)),
+          freeRadiusKm: String(Number(res.data?.distancePricing?.freeRadiusKm || 0)),
+          maxCharge:
+            res.data?.distancePricing?.maxCharge === null || res.data?.distancePricing?.maxCharge === undefined
+              ? ""
+              : String(Number(res.data.distancePricing.maxCharge))
+        }
       });
       setPricingMessage("Pricing settings updated.");
     } catch (err) {
@@ -131,6 +204,69 @@ function AdminDashboard() {
     } finally {
       setIsSavingPricing(false);
     }
+  };
+
+  const updateWarehouseField = (field, value) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      warehouseLocation: { ...prev.warehouseLocation, [field]: value }
+    }));
+  };
+
+  const updateDistancePricingField = (field, value) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      distancePricing: { ...prev.distancePricing, [field]: value }
+    }));
+  };
+
+  const applyGoogleMapsLocation = () => {
+    const parsed = parseGoogleMapsCoordinates(pricingSettings.warehouseLocation.mapUrl);
+
+    if (!parsed) {
+      setPricingMessage("Could not read coordinates from the Google Maps link.");
+      return;
+    }
+
+    setPricingSettings((prev) => ({
+      ...prev,
+      warehouseLocation: {
+        ...prev.warehouseLocation,
+        latitude: String(parsed.latitude),
+        longitude: String(parsed.longitude)
+      }
+    }));
+    setPricingMessage("Warehouse coordinates extracted from Google Maps link.");
+  };
+
+  const useCurrentWarehouseLocation = () => {
+    if (!navigator.geolocation) {
+      setPricingMessage("Geolocation is not supported on this device.");
+      return;
+    }
+
+    setIsGettingWarehouseLocation(true);
+    setPricingMessage("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPricingSettings((prev) => ({
+          ...prev,
+          warehouseLocation: {
+            ...prev.warehouseLocation,
+            latitude: String(position?.coords?.latitude ?? ""),
+            longitude: String(position?.coords?.longitude ?? "")
+          }
+        }));
+        setPricingMessage("Warehouse coordinates updated from current location.");
+        setIsGettingWarehouseLocation(false);
+      },
+      () => {
+        setPricingMessage("Could not get the current location for the warehouse.");
+        setIsGettingWarehouseLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const makeUserAdmin = async () => {
@@ -144,7 +280,7 @@ function AdminDashboard() {
     setMakeAdminMessage("");
     try {
       const res = await axios.put(
-        "http://localhost:5000/api/auth/make-admin",
+        "/api/auth/make-admin",
         { email },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -399,8 +535,12 @@ function AdminDashboard() {
               <strong>{Number(pricingSettings.gstPercent || 0)}%</strong>
             </div>
             <div className="pricing-preview-chip">
-              <span>Delivery Charge</span>
+              <span>Fallback Delivery</span>
               <strong>{formatCurrency(Number(pricingSettings.deliveryCharge || 0))}</strong>
+            </div>
+            <div className="pricing-preview-chip">
+              <span>Rate / KM</span>
+              <strong>{formatCurrency(Number(pricingSettings.distancePricing.perKmCharge || 0))}</strong>
             </div>
           </div>
 
@@ -423,8 +563,8 @@ function AdminDashboard() {
               </div>
             </label>
             <label className="pricing-field">
-              <span className="pricing-label">Delivery Fee</span>
-              <span className="pricing-hint">Flat charge added to each order</span>
+              <span className="pricing-label">Fallback Delivery Fee</span>
+              <span className="pricing-hint">Used when warehouse or customer coordinates are missing</span>
               <div className="pricing-input-wrap">
               <input
                 type="number"
@@ -438,6 +578,149 @@ function AdminDashboard() {
                 <em>Flat</em>
               </div>
             </label>
+          </div>
+
+          <div className="distance-pricing-section">
+            <div className="distance-pricing-header">
+              <div>
+                <h4>Warehouse Location</h4>
+                <p>Distance-based delivery uses the warehouse coordinates and customer coordinates.</p>
+              </div>
+              <button
+                type="button"
+                className="pricing-link-btn"
+                onClick={useCurrentWarehouseLocation}
+                disabled={isGettingWarehouseLocation}
+              >
+                {isGettingWarehouseLocation ? "Getting Location..." : "Use Current Location"}
+              </button>
+            </div>
+
+            <div className="distance-pricing-grid">
+              <label className="pricing-field">
+                <span className="pricing-label">Warehouse Name</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Digital Sanskrit Guru Warehouse"
+                  value={pricingSettings.warehouseLocation.name}
+                  onChange={(e) => updateWarehouseField("name", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field pricing-field-wide">
+                <span className="pricing-label">Warehouse Address</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Noida, Uttar Pradesh"
+                  value={pricingSettings.warehouseLocation.address}
+                  onChange={(e) => updateWarehouseField("address", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field pricing-field-wide">
+                <span className="pricing-label">Google Maps Link</span>
+                <div className="warehouse-map-url-row">
+                  <input
+                    type="text"
+                    placeholder="Paste Google Maps location link"
+                    value={pricingSettings.warehouseLocation.mapUrl}
+                    onChange={(e) => updateWarehouseField("mapUrl", e.target.value)}
+                  />
+                  <button type="button" className="pricing-link-btn" onClick={applyGoogleMapsLocation}>
+                    Use Maps Link
+                  </button>
+                </div>
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Warehouse Latitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="28.6139"
+                  value={pricingSettings.warehouseLocation.latitude}
+                  onChange={(e) => updateWarehouseField("latitude", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Warehouse Longitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="77.2090"
+                  value={pricingSettings.warehouseLocation.longitude}
+                  onChange={(e) => updateWarehouseField("longitude", e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="distance-pricing-section">
+            <div className="distance-pricing-header">
+              <div>
+                <h4>Distance Pricing Formula</h4>
+                <p>Final delivery fee = base fee + ((distance - free radius) x rate per km).</p>
+              </div>
+            </div>
+
+            <div className="distance-pricing-grid">
+              <label className="pricing-field">
+                <span className="pricing-label">Distance Pricing</span>
+                <select
+                  value={pricingSettings.distancePricing.enabled ? "enabled" : "disabled"}
+                  onChange={(e) => updateDistancePricingField("enabled", e.target.value === "enabled")}
+                >
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Base Fee</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={pricingSettings.distancePricing.baseFee}
+                  onChange={(e) => updateDistancePricingField("baseFee", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Per KM Charge</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={pricingSettings.distancePricing.perKmCharge}
+                  onChange={(e) => updateDistancePricingField("perKmCharge", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Free Radius (KM)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={pricingSettings.distancePricing.freeRadiusKm}
+                  onChange={(e) => updateDistancePricingField("freeRadiusKm", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Maximum Charge</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                  value={pricingSettings.distancePricing.maxCharge}
+                  onChange={(e) => updateDistancePricingField("maxCharge", e.target.value)}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="pricing-actions-row">
@@ -755,3 +1038,4 @@ function AdminDashboard() {
 }
 
 export default AdminDashboard;
+

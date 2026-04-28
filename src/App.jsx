@@ -4,6 +4,8 @@ import axios from "axios";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import Home from "./pages/Home";
+import Collection from "./pages/Collection";
+import SearchResults from "./pages/SearchResults";
 import Product from "./pages/Product";
 import Cart from "./pages/Cart";
 import Register from "./pages/Register";
@@ -14,6 +16,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminRoute from "./components/AdminRoute";
 import AdminOrders from "./pages/AdminOrders";
 import MyOrders from "./pages/MyOrders";
+import MyAccount from "./pages/MyAccount";
 import Wishlist from "./pages/Wishlist";
 import AdminProducts from "./pages/AdminProducts";
 import AdminAddProducts from "./pages/AdminAddProducts";
@@ -54,6 +57,8 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/collection" element={<Collection />} />
+        <Route path="/search" element={<SearchResults />} />
         <Route path="/product/:id" element={<Product />} />
         <Route path="/wishlist" element={<Wishlist />} />
         {/* <Route path="/cart" element={<Cart />} /> */}
@@ -70,6 +75,14 @@ function App() {
   element={
     <ProtectedRoute>
       <Checkout />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/account"
+  element={
+    <ProtectedRoute>
+      <MyAccount />
     </ProtectedRoute>
   }
 />

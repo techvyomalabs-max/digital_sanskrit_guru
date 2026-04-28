@@ -57,12 +57,59 @@ const orderSchema = new mongoose.Schema(
       address: {
         type: String,
         default: ""
+      },
+      city: {
+        type: String,
+        default: ""
+      },
+      state: {
+        type: String,
+        default: ""
+      },
+      pincode: {
+        type: String,
+        default: ""
+      },
+      country: {
+        type: String,
+        default: ""
+      },
+      latitude: {
+        type: Number,
+        default: null
+      },
+      longitude: {
+        type: Number,
+        default: null
       }
     },
     status: {
       type: String,
       default: "Pending",
       enum: ["Pending", "Shipped", "Delivered"]
+    },
+    paymentStatus: {
+      type: String,
+      default: "Pending",
+      enum: ["Pending", "Paid", "Failed"]
+    },
+    paymentMethod: {
+      type: String,
+      default: "Razorpay"
+    },
+    paymentMeta: {
+      razorpayOrderId: {
+        type: String,
+        default: ""
+      },
+      razorpayPaymentId: {
+        type: String,
+        default: ""
+      },
+      paidAt: {
+        type: Date,
+        default: null
+      }
     }
   },
   { timestamps: true }

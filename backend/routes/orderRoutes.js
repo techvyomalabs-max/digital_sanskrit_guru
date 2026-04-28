@@ -2,12 +2,14 @@ const express = require("express");
 const Order = require("../models/Order");
 const StoreSettings = require("../models/StoreSettings");
 const Coupon = require("../models/Coupon");
+const { resolveDeliveryCharge } = require("../utils/deliveryPricing");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 
 const router = express.Router();
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
+const allowedPaymentStatuses = new Set(["Pending", "Paid", "Failed"]);
 
 // Create order (logged-in user)
 router.post("/", protect, async (req, res) => {
@@ -25,7 +27,7 @@ router.post("/", protect, async (req, res) => {
 
   const settings = (await StoreSettings.findOne()) || { gstPercent: 0, deliveryCharge: 0 };
   const gstPercent = Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
-  const deliveryCharge = Math.max(0, Number(settings.deliveryCharge || 0));
+  const deliveryCharge = resolveDeliveryCharge(settings, shipping);
   const gstAmount = roundMoney((subtotal * gstPercent) / 100);
   const grossTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
 
@@ -48,6 +50,16 @@ router.post("/", protect, async (req, res) => {
   }
 
   const total = roundMoney(Math.max(0, grossTotal - discount));
+  const rawPaymentStatus = String(req.body?.paymentStatus || "").trim();
+  if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
+    return res.status(400).json({ message: "Invalid payment status." });
+  }
+
+  const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+  const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+  if (rawPaymentStatus === "Paid" && (!razorpayOrderId || !razorpayPaymentId)) {
+    return res.status(400).json({ message: "Payment reference is required to place paid order." });
+  }
 
   const order = await Order.create({
     user: req.user,
@@ -59,10 +71,22 @@ router.post("/", protect, async (req, res) => {
     discount,
     deliveryCharge,
     total,
+    paymentStatus: rawPaymentStatus,
+    paymentMeta: {
+      razorpayOrderId,
+      razorpayPaymentId,
+      paidAt: rawPaymentStatus === "Paid" ? new Date() : null
+    },
     shipping: {
       name: shipping.name || "",
       phone: shipping.phone || "",
-      address: shipping.address || ""
+      address: shipping.address || "",
+      city: shipping.city || "",
+      state: shipping.state || "",
+      pincode: shipping.pincode || "",
+      country: shipping.country || "",
+      latitude: shipping.latitude === null || shipping.latitude === undefined ? null : Number(shipping.latitude),
+      longitude: shipping.longitude === null || shipping.longitude === undefined ? null : Number(shipping.longitude)
     }
   });
 
@@ -97,11 +121,46 @@ router.put("/:id/status", protect, admin, async (req, res) => {
     return res.status(404).json({ message: "Order not found" });
   }
 
+  if (String(order.paymentStatus || "").trim() !== "Paid") {
+    return res.status(400).json({ message: "Order status can be updated only after payment is completed." });
+  }
+
   order.status = normalizedStatus;
   const updated = await order.save();
 
   res.json(updated);
 });
+
+router.put("/:id/payment-status", protect, async (req, res) => {
+  const rawPaymentStatus = String(req.body?.paymentStatus || "").trim();
+  const mutablePaymentStatuses = new Set(["Pending", "Paid", "Failed"]);
+  if (!mutablePaymentStatuses.has(rawPaymentStatus)) {
+    return res.status(400).json({ message: "Invalid payment status" });
+  }
+
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const isOwner = String(order.user) === String(req.user);
+  if (!isOwner) {
+    return res.status(403).json({ message: "You can only update your own orders." });
+  }
+
+  order.paymentStatus = rawPaymentStatus;
+  if (rawPaymentStatus === "Paid") {
+    order.paymentMeta = {
+      razorpayOrderId: String(req.body?.razorpayOrderId || ""),
+      razorpayPaymentId: String(req.body?.razorpayPaymentId || ""),
+      paidAt: new Date()
+    };
+  }
+
+  const updated = await order.save();
+  res.json(updated);
+});
+
 // GET logged-in user's orders
 router.get("/my", protect, async (req, res) => {
   const orders = await Order.find({ user: req.user }).sort({ createdAt: -1 });

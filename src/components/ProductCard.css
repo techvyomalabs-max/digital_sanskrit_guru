@@ -120,6 +120,23 @@ display:-webkit-box;
 overflow:hidden;
 }
 
+.product-card-home .product-title{
+font-size:18px;
+font-weight:800;
+line-height:1.2;
+letter-spacing:-0.02em;
+color:color-mix(in srgb, var(--site-text) 92%, #2f1f12);
+text-wrap:balance;
+}
+
+.product-card-home .product-title-link{
+transition:color 0.2s ease;
+}
+
+.product-card-home .product-title-link:hover .product-title{
+color:var(--site-link);
+}
+
 .product-title-link{
 text-decoration:none;
 color:inherit;
@@ -203,4 +220,104 @@ background:var(--site-button-bg);
 display:flex;
 flex-direction:column;
 gap:8px;
+}
+
+.product-card-search .product-image-wrap{
+  aspect-ratio:4/2.6;
+}
+
+.product-card-search .wishlist-heart-btn{
+  width:28px;
+  height:28px;
+  font-size:16px;
+}
+
+.product-card-search .product-info{
+  padding:10px;
+  gap:6px;
+}
+
+.product-card-search .product-title{
+  font-size:14px;
+}
+
+.product-card-search .product-description{
+  -webkit-line-clamp:1;
+  min-height:auto;
+  font-size:12px;
+}
+
+.product-card-search .discount-price{
+  font-size:16px;
+}
+
+.product-card-search .product-rating{
+  margin-top:2px;
+  font-size:13px;
+}
+
+.product-card-search .product-rating-meta{
+  font-size:11px;
+}
+
+.product-card-search .product-cta{
+  padding:8px 10px;
+  font-size:13px;
+}
+
+@media(max-width:768px){
+  .product-info{
+    padding:12px;
+    gap:7px;
+  }
+
+  .product-title{
+    font-size:15px;
+  }
+
+  .product-card-home .product-title{
+    font-size:16px;
+  }
+
+  .discount-price{
+    font-size:16px;
+  }
+
+  .product-rating{
+    font-size:13px;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 768px){
+  .product-title{
+    font-size:14px;
+  }
+
+  .product-card-home .product-title{
+    font-size:15px;
+    line-height:1.25;
+  }
+
+  .product-description{
+    font-size:12px;
+    min-height:auto;
+  }
+}
+
+@media(max-width:480px){
+  .product-card{
+    border-radius:14px;
+  }
+
+  .product-image-wrap{
+    aspect-ratio:16/11;
+  }
+
+  .product-description{
+    min-height:auto;
+  }
+
+  .product-cta{
+    padding:11px 12px;
+  }
 }

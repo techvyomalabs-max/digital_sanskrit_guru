@@ -13,10 +13,14 @@ const cartRoutes = require("./routes/cartRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
 const couponRoutes = require("./routes/couponRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const mapsRoutes = require("./routes/mapsRoutes");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 let dbConnected = false;
+let isConnecting = false;
+
+const isValidMongoUri = (uri) => /^mongodb(\+srv)?:\/\//.test(String(uri || "").trim());
 
 app.use(cors());
 app.use(express.json());
@@ -26,48 +30,58 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({ api: "ok", db: dbConnected ? "connected" : "disconnected" });
+  res.json({
+    api: "ok",
+    db: dbConnected ? "connected" : "disconnected",
+    dbName: mongoose.connection?.name || null,
+    readyState: mongoose.connection?.readyState ?? null
+  });
 });
 
-app.use("/api/auth", (req, res, next) => {
+const requireDatabase = (req, res, next) => {
   if (!dbConnected) {
     return res.status(503).json({
       message: "Database is not connected. Start MongoDB or update MONGO_URI."
     });
   }
   next();
-});
+};
 
-app.use("/api/auth", authRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/cart", cartRoutes);
-app.use("/api/settings", settingsRoutes);
-app.use("/api/coupons", couponRoutes);
-app.use("/api/payment", paymentRoutes);
+app.use("/api/auth", requireDatabase, authRoutes);
+app.use("/api/orders", requireDatabase, orderRoutes);
+app.use("/api/products", requireDatabase, productRoutes);
+app.use("/api/cart", requireDatabase, cartRoutes);
+app.use("/api/settings", requireDatabase, settingsRoutes);
+app.use("/api/coupons", requireDatabase, couponRoutes);
+app.use("/api/payment", requireDatabase, paymentRoutes);
+app.use("/api/maps", mapsRoutes);
 
-if (
-  !process.env.MONGO_URI ||
-  !/^mongodb(\+srv)?:\/\//.test(process.env.MONGO_URI)
-) {
+if (!isValidMongoUri(process.env.MONGO_URI)) {
   console.error(
     "Invalid MONGO_URI in backend/.env. Use a full URI starting with mongodb:// or mongodb+srv://"
   );
 }
 
 async function connectToDatabase() {
-  if (!process.env.MONGO_URI || !/^mongodb(\+srv)?:\/\//.test(process.env.MONGO_URI)) {
+  if (!isValidMongoUri(process.env.MONGO_URI)) {
     dbConnected = false;
     return;
   }
 
+  if (isConnecting || dbConnected) return;
+  isConnecting = true;
+
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 8000
+    });
     dbConnected = true;
-    console.log("MongoDB connected");
+    console.log(`MongoDB connected (${mongoose.connection?.name || "unknown-db"})`);
   } catch (error) {
     dbConnected = false;
     console.error("MongoDB connection failed:", error.message);
+  } finally {
+    isConnecting = false;
   }
 }
 
@@ -81,8 +95,27 @@ setInterval(() => {
 
 mongoose.connection.on("disconnected", () => {
   dbConnected = false;
+  console.warn("MongoDB disconnected");
+});
+
+mongoose.connection.on("reconnected", () => {
+  dbConnected = true;
+  console.log("MongoDB reconnected");
+});
+
+mongoose.connection.on("error", (error) => {
+  dbConnected = false;
+  console.error("MongoDB runtime error:", error.message);
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+process.on("SIGINT", async () => {
+  try {
+    await mongoose.connection.close();
+  } finally {
+    process.exit(0);
+  }
 });

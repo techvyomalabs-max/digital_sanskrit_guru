@@ -7,6 +7,53 @@ const admin = require("../middleware/adminMiddleware");
 
 const router = express.Router();
 
+const normalizeAddress = (item = {}, index = 0) => {
+  const normalizedLabel = ["Home", "Work", "Other"].includes(String(item?.label || "").trim())
+    ? String(item.label).trim()
+    : "Home";
+
+  const latitudeRaw = item?.latitude;
+  const longitudeRaw = item?.longitude;
+  const latitude =
+    latitudeRaw === null || latitudeRaw === undefined || latitudeRaw === "" ? null : Number(latitudeRaw);
+  const longitude =
+    longitudeRaw === null || longitudeRaw === undefined || longitudeRaw === "" ? null : Number(longitudeRaw);
+
+  return {
+    label: normalizedLabel,
+    name: String(item?.name || "").trim(),
+    phone: String(item?.phone || "").trim(),
+    address: String(item?.address || "").trim(),
+    landmark: String(item?.landmark || "").trim(),
+    city: String(item?.city || "").trim(),
+    state: String(item?.state || "").trim(),
+    pincode: String(item?.pincode || "").trim(),
+    country: String(item?.country || "").trim() || "India",
+    latitude: Number.isNaN(latitude) ? null : latitude,
+    longitude: Number.isNaN(longitude) ? null : longitude,
+    isDefault: Boolean(item?.isDefault && index >= 0)
+  };
+};
+
+const normalizeAddressList = (rawAddresses = []) => {
+  const list = Array.isArray(rawAddresses) ? rawAddresses : [];
+  const normalized = list.map((item, index) => normalizeAddress(item, index));
+
+  if (normalized.length > 0 && !normalized.some((item) => item.isDefault)) {
+    normalized[0].isDefault = true;
+  }
+
+  let defaultSeen = false;
+  return normalized.map((item) => {
+    if (!item.isDefault) return item;
+    if (!defaultSeen) {
+      defaultSeen = true;
+      return item;
+    }
+    return { ...item, isDefault: false };
+  });
+};
+
 router.get("/register", (req, res) => {
   res.status(405).json({
     message: "Use POST /api/auth/register with name, email, and password."
@@ -150,7 +197,7 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
 });
 
 router.get("/me", protect, async (req, res) => {
-  const user = await User.findById(req.user).select("_id name email isAdmin");
+  const user = await User.findById(req.user).select("_id name email isAdmin addresses");
   if (!user) {
     return res.status(404).json({ message: "User not found" });
   }
@@ -159,7 +206,34 @@ router.get("/me", protect, async (req, res) => {
     _id: user._id,
     name: user.name,
     email: user.email,
-    isAdmin: Boolean(user.isAdmin)
+    isAdmin: Boolean(user.isAdmin),
+    addresses: normalizeAddressList(user.addresses || [])
+  });
+});
+
+router.get("/addresses", protect, async (req, res) => {
+  const user = await User.findById(req.user).select("addresses");
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  res.json({
+    addresses: normalizeAddressList(user.addresses || [])
+  });
+});
+
+router.put("/addresses", protect, async (req, res) => {
+  const user = await User.findById(req.user).select("addresses");
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const normalized = normalizeAddressList(req.body?.addresses || []);
+  user.addresses = normalized.slice(0, 20);
+  await user.save();
+
+  res.json({
+    addresses: normalizeAddressList(user.addresses || [])
   });
 });
 

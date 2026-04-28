@@ -125,9 +125,16 @@ font-weight:600;
 background:var(--site-bg);
 }
 
-@media(max-width:768px){
+@media (min-width: 769px) and (max-width: 1024px){
+  .recent-card{
+    flex-basis:200px;
+    min-width:200px;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 768px){
   .recent-section{
-    padding:18px 14px 20px;
+    padding:18px 16px 20px;
   }
 
   .recent-header{
@@ -142,5 +149,29 @@ background:var(--site-bg);
   .recent-card{
     flex-basis:170px;
     min-width:170px;
+  }
+}
+
+@media (min-width: 320px) and (max-width: 480px){
+  .recent-section{
+    padding:16px 14px 18px;
+    border-radius:18px;
+  }
+
+  .recent-section h2{
+    font-size:22px;
+  }
+
+  .recent-grid{
+    gap:10px;
+  }
+
+  .recent-card{
+    flex-basis:78%;
+    min-width:78%;
+  }
+
+  .recent-card img{
+    height:130px;
   }
 }

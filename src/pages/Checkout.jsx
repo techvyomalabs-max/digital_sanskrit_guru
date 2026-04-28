@@ -3,46 +3,43 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
+import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyForUser } from "../utils/currency";
+import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import "./Checkout.css";
 
-const getInitialAddresses = () => {
-  try {
-    const saved = localStorage.getItem("addresses");
-    const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+const getAddressLocationText = (item) => {
+  return [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
 };
 
 function Checkout() {
   const { cartItems, clearCart } = useCart();
   const { token } = useAuth();
+  const {
+    addresses,
+    selectedIndex,
+    selectedAddress,
+    selectAddress
+  } = useDeliveryLocation();
   const navigate = useNavigate();
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
+  const isDummyPaymentEnabled =
+    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
 
-  const [addresses, setAddresses] = useState(() => getInitialAddresses());
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    const initial = getInitialAddresses();
-    if (initial.length === 0) return null;
-    const defaultIndex = initial.findIndex((a) => a?.isDefault);
-    return defaultIndex >= 0 ? defaultIndex : 0;
+  const [charges, setCharges] = useState({
+    gstPercent: 0,
+    deliveryCharge: 0,
+    warehouseLocation: {},
+    distancePricing: {}
   });
-
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [charges, setCharges] = useState({ gstPercent: 0, deliveryCharge: 0 });
   const [coupons, setCoupons] = useState([]);
   const [isLoadingCoupons, setIsLoadingCoupons] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [discount, setDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
-  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
-  const [showAddressForm, setShowAddressForm] = useState(addresses.length === 0);
+  const [checkoutMessage, setCheckoutMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -53,12 +50,14 @@ function Checkout() {
         if (!active) return;
         setCharges({
           gstPercent: Number(res.data?.gstPercent || 0),
-          deliveryCharge: Number(res.data?.deliveryCharge || 0)
+          deliveryCharge: Number(res.data?.deliveryCharge || 0),
+          warehouseLocation: res.data?.warehouseLocation || {},
+          distancePricing: res.data?.distancePricing || {}
         });
       })
       .catch(() => {
         if (!active) return;
-        setCharges({ gstPercent: 0, deliveryCharge: 0 });
+        setCharges({ gstPercent: 0, deliveryCharge: 0, warehouseLocation: {}, distancePricing: {} });
       });
 
     return () => {
@@ -90,16 +89,20 @@ function Checkout() {
     };
   }, []);
 
+  const deliveryDetails = useMemo(() => {
+    return getDeliveryPricingDetails(charges, selectedAddress);
+  }, [charges, selectedAddress]);
+
   const totals = useMemo(() => {
     const subtotal = cartItems.reduce(
       (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
       0
     );
     const gstAmount = (subtotal * Number(charges.gstPercent || 0)) / 100;
-    const deliveryCharge = Number(charges.deliveryCharge || 0);
+    const deliveryCharge = Number(deliveryDetails.deliveryCharge || 0);
     const grandTotal = subtotal + gstAmount + deliveryCharge;
     return { subtotal, gstAmount, deliveryCharge, grandTotal };
-  }, [cartItems, charges.deliveryCharge, charges.gstPercent]);
+  }, [cartItems, charges.gstPercent, deliveryDetails.deliveryCharge]);
 
   const finalTotal = useMemo(
     () => Math.max(0, Number(totals.grandTotal || 0) - Number(discount || 0)),
@@ -148,100 +151,52 @@ function Checkout() {
     }
   };
 
-  const saveAddress = () => {
-    if (!name || !phone || !address) {
-      alert("Please fill all fields");
-      return;
-    }
 
-    const newAddress = {
-      name,
-      phone,
-      address,
-      isDefault: addresses.length === 0
-    };
-
-    const updated = [...addresses, newAddress];
-    setAddresses(updated);
-    localStorage.setItem("addresses", JSON.stringify(updated));
-    if (selectedIndex === null) setSelectedIndex(0);
-
-    setName("");
-    setPhone("");
-    setAddress("");
-    setShowAddressForm(false);
-  };
-
-  const editAddress = (index) => {
-    const current = addresses[index];
-    setName(current.name);
-    setPhone(current.phone);
-    setAddress(current.address);
-    setShowAddressForm(true);
-
-    const updated = addresses.filter((_, i) => i !== index);
-    setAddresses(updated);
-    localStorage.setItem("addresses", JSON.stringify(updated));
-  };
-
-  const deleteAddress = (index) => {
-    const updated = addresses.filter((_, i) => i !== index);
-    setAddresses(updated);
-    localStorage.setItem("addresses", JSON.stringify(updated));
-
-    if (selectedIndex === index) {
-      setSelectedIndex(updated.length ? 0 : null);
-    } else if (selectedIndex !== null && selectedIndex > index) {
-      setSelectedIndex(selectedIndex - 1);
-    }
-  };
-
-  const setDefaultAddress = (index) => {
-    const updated = addresses.map((item, i) => ({
-      ...item,
-      isDefault: i === index
-    }));
-    setAddresses(updated);
-    setSelectedIndex(index);
-    localStorage.setItem("addresses", JSON.stringify(updated));
-  };
-
-  const submitOrder = async (selected) => {
-    await axios.post(
+  const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
+    const { data } = await axios.post(
       "/api/orders",
       {
         items: cartItems,
         total: finalTotal,
         shipping: selected,
         couponCode: couponCode || "",
-        discount
+        discount,
+        paymentStatus,
+        razorpayOrderId: paymentInfo?.razorpayOrderId || "",
+        razorpayPaymentId: paymentInfo?.razorpayPaymentId || ""
       },
       getOrderHeaders()
     );
 
-    await clearCart();
-    navigate("/");
+    return data;
+  };
+
+  const createFailedOrderAttempt = async (selected, message) => {
+    await createOrderWithPaymentStatus(selected, "Failed");
+    navigate("/my-orders", {
+      state: {
+        message: message || "Payment failed. The order is saved in My Orders. You can retry payment there."
+      }
+    });
   };
 
   const validateCheckout = () => {
-    const selected = addresses[selectedIndex];
-
-    if (!selected) {
-      alert("Please select or add an address.");
+    if (!selectedAddress) {
+      setCheckoutMessage("Please select or add an address before starting payment.");
       return null;
     }
 
     if (!token) {
-      alert("Please login to continue.");
+      setCheckoutMessage("Please login to continue.");
       return null;
     }
 
     if (!cartItems.length) {
-      alert("Your cart is empty.");
+      setCheckoutMessage("Your cart is empty.");
       return null;
     }
 
-    return selected;
+    return selectedAddress;
   };
 
   const processCheckout = async () => {
@@ -250,23 +205,70 @@ function Checkout() {
       return;
     }
 
-    if (!razorpayKey) {
-      alert("Razorpay key is missing. Set VITE_RAZORPAY_KEY_ID.");
+    if (!isDummyPaymentEnabled && !razorpayKey) {
+      setCheckoutMessage("Payment gateway key is missing. Please contact support.");
       return;
     }
 
-    if (!window.Razorpay) {
-      alert("Razorpay checkout failed to load.");
+    if (!isDummyPaymentEnabled && !window.Razorpay) {
+      setCheckoutMessage("Payment gateway failed to load. Please refresh and try again.");
       return;
     }
 
+    setCheckoutMessage("");
     setIsPaying(true);
     let checkoutOpened = false;
+    let hasRecordedFailedAttempt = false;
+
+    const recordFailedAttempt = async (message) => {
+      if (hasRecordedFailedAttempt) return;
+      hasRecordedFailedAttempt = true;
+      await createFailedOrderAttempt(selected, message);
+    };
 
     try {
       const { data } = await axios.post("/api/payment/create-order", {
         amount: finalTotal
       });
+
+      if (isDummyPaymentEnabled) {
+        const wantsToProceed = window.confirm(
+          "Dummy payment mode is enabled. Click OK to simulate a successful payment."
+        );
+
+        if (!wantsToProceed) {
+          setIsPaying(false);
+          await recordFailedAttempt(
+            "Payment was cancelled. Failed order saved in My Orders. You can retry payment there."
+          );
+          return;
+        }
+
+        const response = {
+          razorpay_order_id: data.id || `dummy_order_${Date.now()}`,
+          razorpay_payment_id: `dummy_pay_${Date.now()}`,
+          razorpay_signature: "dummy_signature",
+          dummy: true
+        };
+
+        const verify = await axios.post("/api/payment/verify", response);
+        if (!verify.data?.success) {
+          setIsPaying(false);
+          await recordFailedAttempt("Payment verification failed. Retry from My Orders.");
+          return;
+        }
+
+        await createOrderWithPaymentStatus(selected, "Paid", {
+          razorpayOrderId: response.razorpay_order_id,
+          razorpayPaymentId: response.razorpay_payment_id
+        });
+        await clearCart();
+        navigate("/my-orders", {
+          state: { message: "Payment successful. Your order has been placed." }
+        });
+        setIsPaying(false);
+        return;
+      }
 
       const rzp = new window.Razorpay({
         key: razorpayKey,
@@ -283,8 +285,11 @@ function Checkout() {
           address: selected.address
         },
         modal: {
-          ondismiss: () => {
+          ondismiss: async () => {
             setIsPaying(false);
+            await recordFailedAttempt(
+              "Payment was cancelled. Failed order saved in My Orders. You can retry payment there."
+            );
           }
         },
         handler: async (response) => {
@@ -292,14 +297,20 @@ function Checkout() {
             const verify = await axios.post("/api/payment/verify", response);
 
             if (!verify.data?.success) {
-              alert("Payment verification failed");
+              await recordFailedAttempt("Payment verification failed. Retry from My Orders.");
               return;
             }
 
-            await submitOrder(selected);
-            alert("Payment successful");
+            await createOrderWithPaymentStatus(selected, "Paid", {
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id
+            });
+            await clearCart();
+            navigate("/my-orders", {
+              state: { message: "Payment successful. Your order has been placed." }
+            });
           } catch {
-            alert("Payment succeeded, but order creation failed");
+            setCheckoutMessage("Payment succeeded, but the order could not be saved. Please contact support.");
           } finally {
             setIsPaying(false);
           }
@@ -309,16 +320,16 @@ function Checkout() {
         }
       });
 
-      rzp.on("payment.failed", () => {
-        alert("Payment failed");
+      rzp.on("payment.failed", async () => {
         setIsPaying(false);
+        await recordFailedAttempt("Payment failed. Failed order saved in My Orders.");
       });
 
       checkoutOpened = true;
       rzp.open();
     } catch (err) {
       setIsPaying(false);
-      alert(err?.response?.data?.message || "Unable to start payment");
+      setCheckoutMessage(err?.response?.data?.message || "Unable to start payment.");
     } finally {
       if (!checkoutOpened) {
         setIsPaying(false);
@@ -326,30 +337,27 @@ function Checkout() {
     }
   };
 
-  const placeOrder = async () => {
-    const selected = validateCheckout();
-    if (!selected) {
-      return;
-    }
-
-    setIsPlacingOrder(true);
-    try {
-      await submitOrder(selected);
-      alert("Order placed successfully");
-    } catch (err) {
-      alert(err?.response?.data?.message || "Unable to place order");
-    } finally {
-      setIsPlacingOrder(false);
-    }
-  };
-
   return (
     <div className="checkout-page">
-      <h1>Checkout</h1>
+      <h1 className="checkout-title">
+        Checkout <span>({cartItems.length} items)</span>
+      </h1>
+      <p className="checkout-lead">Select a delivery address and review your order before payment.</p>
+      {isDummyPaymentEnabled ? (
+        <p className="checkout-mode-badge">Test mode enabled: payments are simulated.</p>
+      ) : (
+        <p className="checkout-mode-badge live">Secure live payment mode.</p>
+      )}
+      {checkoutMessage ? <p className="checkout-feedback">{checkoutMessage}</p> : null}
 
       <div className="checkout-container">
-        <div>
-          <h2>Select Shipping Address</h2>
+        <section className="checkout-main">
+          <div className="checkout-section-head">
+            <h2>Select a delivery address</h2>
+          </div>
+          <p className="coupon-selector-empty">
+            Add or manage addresses from <a href="/account">My Account</a>.
+          </p>
 
           <div className="address-list">
             {addresses.map((item, index) => (
@@ -360,83 +368,26 @@ function Checkout() {
                 <input
                   type="radio"
                   checked={selectedIndex === index}
-                  onChange={() => setSelectedIndex(index)}
+                  onChange={() => selectAddress(index)}
                 />
 
                 <div className="address-info">
                   <strong>{item.name}</strong>
+                  {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
                   <p>{item.phone}</p>
                   <p>{item.address}</p>
+                  {item.landmark && <p>Landmark: {item.landmark}</p>}
+                  {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
 
                   {item.isDefault && <span className="default-badge">Default</span>}
 
-                  <div className="address-actions">
-                    <button onClick={() => editAddress(index)}>Edit</button>
-                    <button onClick={() => deleteAddress(index)}>Delete</button>
-                    {!item.isDefault && (
-                      <button onClick={() => setDefaultAddress(index)}>Set Default</button>
-                    )}
-                  </div>
                 </div>
               </div>
             ))}
           </div>
+        </section>
 
-          <div className="add-address">
-            <div className="add-address-header add-address-header-row">
-              <div>
-                <h3>Add New Address</h3>
-                <p>Save another delivery address for faster checkout.</p>
-              </div>
-              <button
-                type="button"
-                className="toggle-address-btn"
-                onClick={() => setShowAddressForm((current) => !current)}
-              >
-                {showAddressForm ? "Close" : "Add New Address"}
-              </button>
-            </div>
-
-            {showAddressForm && (
-              <>
-                <div className="add-address-fields">
-                  <label>
-                    <span>Full Name</span>
-                    <input
-                      placeholder="e.g. Rohan Sharma"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                  </label>
-
-                  <label>
-                    <span>Phone Number</span>
-                    <input
-                      placeholder="e.g. 9876543210"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                    />
-                  </label>
-
-                  <label>
-                    <span>Complete Address</span>
-                    <textarea
-                      placeholder="House no, street, city, state, pincode"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                    />
-                  </label>
-                </div>
-
-                <button className="add-address-save-btn" onClick={saveAddress}>
-                  Save Address
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="order-summary">
+        <aside className="order-summary">
           <h2>Order Summary</h2>
 
           <div className="coupon-box">
@@ -485,14 +436,16 @@ function Checkout() {
 
           {couponMessage && <p className="coupon-message">{couponMessage}</p>}
 
-          {cartItems.map((item, index) => (
-            <div key={index} className="summary-item">
-              <span>{item.name}</span>
-              <span>
-                {formatCurrencyForUser(item.price)} x {item.quantity || 1}
-              </span>
-            </div>
-          ))}
+          <div className="summary-products">
+            {cartItems.map((item, index) => (
+              <div key={index} className="summary-item">
+                <span>{item.name}</span>
+                <span>
+                  {formatCurrencyForUser(item.price)} x {item.quantity || 1}
+                </span>
+              </div>
+            ))}
+          </div>
 
           <hr />
 
@@ -508,21 +461,22 @@ function Checkout() {
             <span>Delivery</span>
             <span>{formatCurrencyForUser(totals.deliveryCharge)}</span>
           </div>
-          <div className="summary-item">
+          {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
+            <p className="coupon-selector-empty">Estimated distance: {deliveryDetails.distanceKm.toFixed(1)} km</p>
+          )}
+          <div className="summary-item summary-total">
             <span>Total</span>
             <span>{formatCurrencyForUser(totals.grandTotal)}</span>
           </div>
 
           {discount > 0 && <p className="discount">Discount: -{formatCurrencyForUser(discount)}</p>}
 
-          <h2>Final Total: {formatCurrencyForUser(finalTotal)}</h2>
-          <button className="place-order-btn" onClick={placeOrder} disabled={isPlacingOrder || isPaying}>
-            {isPlacingOrder ? "Placing Order..." : "Place Order"}
-          </button>
+          <h3 className="final-total">Final Total: {formatCurrencyForUser(finalTotal)}</h3>
+          <p className="checkout-policy-note">Order is placed only after successful payment.</p>
           <button className="pay-now-btn" onClick={processCheckout} disabled={isPaying}>
             {isPaying ? "Processing..." : "Pay Now"}
           </button>
-        </div>
+        </aside>
       </div>
     </div>
   );

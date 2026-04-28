@@ -15,34 +15,97 @@ const getItemProductId = (item) => {
   return "";
 };
 
+const normalizeImages = (rawImages, fallbackImage = "") => {
+  const list = Array.isArray(rawImages)
+    ? rawImages
+    : String(rawImages || "")
+        .split(/\r?\n|,/)
+        .map((image) => image.trim())
+        .filter(Boolean);
+
+  if (list.length > 0) {
+    return list;
+  }
+
+  const normalizedFallback = String(fallbackImage || "").trim();
+  return normalizedFallback ? [normalizedFallback] : [];
+};
+
+const normalizeAboutProduct = (rawAboutProduct = []) => {
+  if (Array.isArray(rawAboutProduct)) {
+    return rawAboutProduct.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  return String(rawAboutProduct || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 // Create product (ADMIN)
 router.post("/", protect, admin, async (req, res) => {
-  const product = await Product.create(req.body);
-  res.json(product);
+  try {
+    const images = normalizeImages(req.body.images, req.body.image);
+    const product = await Product.create({
+      ...req.body,
+      aboutProduct: normalizeAboutProduct(req.body.aboutProduct),
+      image: images[0] || String(req.body.image || "").trim(),
+      images
+    });
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to create product", error: error.message });
+  }
 });
 
 // UPDATE product (ADMIN)
 router.put("/:id", protect, admin, async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  try {
+    const product = await Product.findById(req.params.id);
 
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    product.name = req.body.name ?? product.name;
+    product.price = req.body.price ?? product.price;
+    product.description = req.body.description ?? product.description;
+    product.aboutProduct = req.body.aboutProduct !== undefined
+      ? normalizeAboutProduct(req.body.aboutProduct)
+      : product.aboutProduct;
+    product.stock = req.body.stock ?? product.stock;
+    product.category = req.body.category ?? product.category;
+    const nextImageValue = req.body.image ?? product.image;
+    const nextImages = normalizeImages(req.body.images ?? product.images, nextImageValue);
+    product.image = nextImages[0] || String(nextImageValue || "").trim();
+    product.images = nextImages;
+
+    const updatedProduct = await product.save();
+    res.json(updatedProduct);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update product", error: error.message });
   }
-
-  product.name = req.body.name ?? product.name;
-  product.price = req.body.price ?? product.price;
-  product.image = req.body.image ?? product.image;
-  product.description = req.body.description ?? product.description;
-  product.stock = req.body.stock ?? product.stock;
-
-  const updatedProduct = await product.save();
-  res.json(updatedProduct);
 });
 
 // Get all products
 router.get("/", async (req, res) => {
-  const products = await Product.find();
-  res.json(products);
+  try {
+    const products = await Product.find();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load products", error: error.message });
+  }
+});
+
+// Quick DB diagnostic for products
+router.get("/debug/summary", async (req, res) => {
+  try {
+    const count = await Product.countDocuments();
+    const sample = await Product.findOne().select("_id name category").lean();
+    res.json({ count, sample: sample || null });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load product summary", error: error.message });
+  }
 });
 // Get recommended products based on co-purchase history
 router.get("/recommend/:productId", async (req, res) => {
@@ -119,46 +182,54 @@ router.get("/:id", async (req, res) => {
 
 // Add product review (logged-in user)
 router.post("/:id/reviews", protect, async (req, res) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const rating = Number(req.body.rating);
+    const comment = (req.body.comment || "").trim();
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: "Rating must be between 1 and 5" });
+    }
+
+    const user = await User.findById(req.user).select("name");
+    const userName = user?.name || "User";
+
+    const review = {
+      user: userName,
+      rating,
+      comment
+    };
+
+    product.reviews.push(review);
+    product.rating =
+      product.reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
+      product.reviews.length;
+
+    await product.save();
+    res.status(201).json(product);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to submit review", error: error.message });
   }
-
-  const rating = Number(req.body.rating);
-  const comment = (req.body.comment || "").trim();
-
-  if (!rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ message: "Rating must be between 1 and 5" });
-  }
-
-  const user = await User.findById(req.user).select("name");
-  const userName = user?.name || "User";
-
-  const review = {
-    user: userName,
-    rating,
-    comment
-  };
-
-  product.reviews.push(review);
-  product.rating =
-    product.reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
-    product.reviews.length;
-
-  await product.save();
-  res.status(201).json(product);
 });
 
 // DELETE product (ADMIN)
 router.delete("/:id", protect, admin, async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  try {
+    const product = await Product.findById(req.params.id);
 
-  if (!product) {
-    return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    await product.deleteOne();
+    res.json({ message: "Product deleted" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete product", error: error.message });
   }
-
-  await product.deleteOne();
-  res.json({ message: "Product deleted" });
 });
 
 module.exports = router;

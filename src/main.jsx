@@ -20,6 +20,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import { WishlistProvider } from "./context/WishlistContext";
 import { ToastProvider } from "./context/ToastContext";
+import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
 import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
 
 const storedThemeSettings = readStoredSiteTheme();
@@ -33,9 +34,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <AuthProvider>
       <ToastProvider>
         <CartProvider>
-          <WishlistProvider>
-            <App />
-          </WishlistProvider>
+          <DeliveryLocationProvider>
+            <WishlistProvider>
+              <App />
+            </WishlistProvider>
+          </DeliveryLocationProvider>
         </CartProvider>
       </ToastProvider>
     </AuthProvider>

@@ -32,7 +32,7 @@ function AdminUsers() {
     const loadMetrics = async () => {
       if (active) setIsLoading(true);
       try {
-        const res = await axios.get("http://localhost:5000/api/auth/admin/users-metrics", {
+        const res = await axios.get("/api/auth/admin/users-metrics", {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!active) return;
@@ -141,3 +141,4 @@ function AdminUsers() {
 }
 
 export default AdminUsers;
+

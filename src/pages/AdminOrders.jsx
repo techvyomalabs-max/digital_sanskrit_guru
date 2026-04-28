@@ -13,8 +13,10 @@ function AdminOrders() {
   const [toDateTime, setToDateTime] = useState("");
   const [activeQuickFilter, setActiveQuickFilter] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All");
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState("All");
   const [updatingOrderId, setUpdatingOrderId] = useState("");
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [pageMessage, setPageMessage] = useState("");
   const allowedStatuses = ["Pending", "Shipped", "Delivered"];
   const statusStep = {
     Pending: 0,
@@ -37,10 +39,14 @@ function AdminOrders() {
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
-      const res = await axios.get("http://localhost:5000/api/orders", {
+      const res = await axios.get("/api/orders", {
         headers: { Authorization: `Bearer ${token}` }
       });
       setOrders(res.data);
+      setPageMessage("");
+    } catch {
+      setOrders([]);
+      setPageMessage("Unable to load orders right now.");
     } finally {
       setIsLoadingOrders(false);
     }
@@ -50,14 +56,7 @@ function AdminOrders() {
     if (!token) {
       return;
     }
-    setIsLoadingOrders(true);
-    axios
-      .get("http://localhost:5000/api/orders", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then((res) => setOrders(res.data))
-      .catch(() => setOrders([]))
-      .finally(() => setIsLoadingOrders(false));
+    loadOrders();
   }, [token]);
 
   const updateStatus = async (orderId, status) => {
@@ -65,7 +64,7 @@ function AdminOrders() {
     setUpdatingOrderId(orderId);
     try {
       await axios.put(
-        `http://localhost:5000/api/orders/${orderId}/status`,
+        `/api/orders/${orderId}/status`,
         { status: safeStatus },
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -73,6 +72,9 @@ function AdminOrders() {
       );
 
       await loadOrders();
+      setPageMessage("Order status updated successfully.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Unable to update order status.");
     } finally {
       setUpdatingOrderId("");
     }
@@ -120,24 +122,50 @@ function AdminOrders() {
     );
   }, [filteredOrders]);
 
+  const paymentSummary = useMemo(() => {
+    return filteredOrders.reduce(
+      (acc, order) => {
+        const paymentStatus = String(order?.paymentStatus || "").trim() || "Paid";
+        if (paymentStatus === "Paid") acc.Paid += 1;
+        else if (paymentStatus === "Failed") acc.Failed += 1;
+        else acc.Pending += 1;
+        return acc;
+      },
+      { Paid: 0, Failed: 0, Pending: 0 }
+    );
+  }, [filteredOrders]);
+
   const visibleOrders = useMemo(() => {
-    if (selectedStatus === "All") return filteredOrders;
     return filteredOrders.filter((order) => {
+      const paymentStatus = String(order?.paymentStatus || "").trim() || "Paid";
       const safeStatus = allowedStatuses.includes(order?.status) ? order.status : "Pending";
-      return safeStatus === selectedStatus;
+      const statusMatch = selectedStatus === "All" ? true : safeStatus === selectedStatus;
+      const paymentMatch = selectedPaymentStatus === "All" ? true : paymentStatus === selectedPaymentStatus;
+      return statusMatch && paymentMatch;
     });
-  }, [filteredOrders, selectedStatus]);
+  }, [filteredOrders, selectedStatus, selectedPaymentStatus]);
 
   const exportOrdersCsv = () => {
-    const headers = ["Order ID", "Customer", "Email", "Items", "Total", "Status", "Created At"];
+    const headers = [
+      "Order ID",
+      "Customer",
+      "Email",
+      "Items",
+      "Total",
+      "Payment Status",
+      "Status",
+      "Created At"
+    ];
     const rows = filteredOrders.map((order) => {
       const itemCount = (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+      const paymentStatus = String(order.paymentStatus || "").trim() || "Paid";
       return [
         order._id,
         order.user?.name || "Unknown",
         order.user?.email || "",
         itemCount,
         Math.round(order.total || 0),
+        paymentStatus,
         order.status || "Pending",
         new Date(order.createdAt).toISOString()
       ];
@@ -226,6 +254,35 @@ function AdminOrders() {
           </button>
         </section>
 
+        <section className="status-management-panel payment-panel">
+          <button
+            className={selectedPaymentStatus === "All" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedPaymentStatus("All")}
+          >
+            All Payments ({filteredOrders.length})
+          </button>
+          <button
+            className={selectedPaymentStatus === "Paid" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedPaymentStatus("Paid")}
+          >
+            Paid ({paymentSummary.Paid})
+          </button>
+          <button
+            className={selectedPaymentStatus === "Pending" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedPaymentStatus("Pending")}
+          >
+            Pending ({paymentSummary.Pending})
+          </button>
+          <button
+            className={selectedPaymentStatus === "Failed" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedPaymentStatus("Failed")}
+          >
+            Failed ({paymentSummary.Failed})
+          </button>
+        </section>
+
+        {pageMessage ? <p className="admin-orders-feedback">{pageMessage}</p> : null}
+
         <div className="orders-filter-bar">
           <div className="quick-filter-buttons">
             <button
@@ -295,6 +352,7 @@ function AdminOrders() {
                   <th>Email</th>
                   <th>Items</th>
                   <th>Total</th>
+                  <th>Payment</th>
                   <th>Date</th>
                   <th>Status</th>
                   <th>Invoice</th>
@@ -303,6 +361,7 @@ function AdminOrders() {
               <tbody>
                 {Array.from({ length: 5 }).map((_, idx) => (
                   <tr key={`orders-skeleton-${idx}`}>
+                    <td><span className="skeleton-block" /></td>
                     <td><span className="skeleton-block" /></td>
                     <td><span className="skeleton-block" /></td>
                     <td><span className="skeleton-block" /></td>
@@ -328,6 +387,7 @@ function AdminOrders() {
                   <th>Email</th>
                   <th>Items</th>
                   <th>Total</th>
+                  <th>Payment</th>
                   <th>Date</th>
                   <th>Status</th>
                   <th>Invoice</th>
@@ -336,6 +396,8 @@ function AdminOrders() {
               <tbody>
                 {visibleOrders.map((order) => {
                   const displayStatus = allowedStatuses.includes(order.status) ? order.status : "Pending";
+                  const displayPaymentStatus = String(order.paymentStatus || "").trim() || "Paid";
+                  const isPaymentCompleted = displayPaymentStatus === "Paid";
                   const itemCount = (order.items || []).reduce(
                     (sum, item) => sum + Number(item.quantity || 1),
                     0
@@ -347,6 +409,13 @@ function AdminOrders() {
                       <td>{order.user?.email || "-"}</td>
                       <td>{itemCount}</td>
                       <td>Rs {Math.round(order.total || 0)}</td>
+                      <td>
+                        <span
+                          className={`admin-payment-status payment-${displayPaymentStatus.toLowerCase()}`}
+                        >
+                          {displayPaymentStatus}
+                        </span>
+                      </td>
                       <td>{formatDateTime(order.createdAt)}</td>
                       <td>
                         <div className="admin-status-update">
@@ -371,31 +440,42 @@ function AdminOrders() {
                             {displayStatus === "Pending" && (
                               <button
                                 className="status-action-btn"
-                                disabled={updatingOrderId === order._id}
+                                disabled={updatingOrderId === order._id || !isPaymentCompleted}
                                 onClick={() => updateStatus(order._id, "Shipped")}
                               >
-                                {updatingOrderId === order._id ? "Updating..." : "Mark Shipped"}
+                                {!isPaymentCompleted
+                                  ? "Payment Required"
+                                  : updatingOrderId === order._id
+                                    ? "Updating..."
+                                    : "Mark Shipped"}
                               </button>
                             )}
                             {displayStatus === "Shipped" && (
                               <button
                                 className="status-action-btn"
-                                disabled={updatingOrderId === order._id}
+                                disabled={updatingOrderId === order._id || !isPaymentCompleted}
                                 onClick={() => updateStatus(order._id, "Delivered")}
                               >
-                                {updatingOrderId === order._id ? "Updating..." : "Mark Delivered"}
+                                {!isPaymentCompleted
+                                  ? "Payment Required"
+                                  : updatingOrderId === order._id
+                                    ? "Updating..."
+                                    : "Mark Delivered"}
                               </button>
                             )}
                             <select
                               id={`status-${order._id}`}
                               value={displayStatus}
-                              disabled={updatingOrderId === order._id}
+                              disabled={updatingOrderId === order._id || !isPaymentCompleted}
                               onChange={(e) => updateStatus(order._id, e.target.value)}
                             >
                               <option value="Pending">Pending</option>
                               <option value="Shipped">Shipped</option>
                               <option value="Delivered">Delivered</option>
                             </select>
+                            {!isPaymentCompleted ? (
+                              <span className="payment-guard-note">Complete payment before moving order status.</span>
+                            ) : null}
                           </div>
                         </div>
                       </td>
@@ -417,3 +497,4 @@ function AdminOrders() {
 }
 
 export default AdminOrders;
+
