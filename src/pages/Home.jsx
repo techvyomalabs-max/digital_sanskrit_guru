@@ -4,6 +4,7 @@ import axios from "axios";
 import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
 import { formatCurrencyForUser } from "../utils/currency";
+import { getProductPriceDetails } from "../utils/productPricing";
 import "./Home.css";
 
 const CATALOG_PREVIEW_LIMIT = 4;
@@ -33,6 +34,10 @@ function formatPrice(value) {
   return formatCurrencyForUser(value, {
     maximumFractionDigits: 0
   });
+}
+
+function getDisplayPrice(product) {
+  return Number(getProductPriceDetails(product).price || 0);
 }
 
 function Home() {
@@ -89,7 +94,7 @@ function Home() {
 
   const budgetPicks = useMemo(() => {
     return [...products]
-      .sort((a, b) => Number(a?.price || 0) - Number(b?.price || 0))
+      .sort((a, b) => getDisplayPrice(a) - getDisplayPrice(b))
       .slice(0, 4);
   }, [products]);
 
@@ -277,7 +282,7 @@ function Home() {
                     <img src={product.image || "https://picsum.photos/220"} alt={product.name} />
                     <div className="home-mini-card-meta">
                       <span>{getCategoryLabel(product)}</span>
-                      <span>{formatPrice(product.price)}</span>
+                      <span>{formatPrice(getDisplayPrice(product))}</span>
                     </div>
                     <strong>{product.name}</strong>
                     <span>{getAverageRating(product).toFixed(1)} rated by readers</span>
@@ -321,7 +326,7 @@ function Home() {
                     <img src={product.image || "https://picsum.photos/220"} alt={product.name} />
                     <div className="home-mini-card-meta">
                       <span>{getCategoryLabel(product)}</span>
-                      <span>{formatPrice(product.price)}</span>
+                      <span>{formatPrice(getDisplayPrice(product))}</span>
                     </div>
                     <strong>{product.name}</strong>
                     <span>{Number(product?.stock || 0) > 0 ? "In stock now" : "Currently unavailable"}</span>

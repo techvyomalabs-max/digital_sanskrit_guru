@@ -6,6 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { convertCurrencyAmount, formatCurrencyForUser, getUserCurrency } from "../utils/currency";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
+import { getProductPriceDetails } from "../utils/productPricing";
 import "./Checkout.css";
 
 const getAddressLocationText = (item) => {
@@ -108,15 +109,16 @@ function Checkout() {
   }, [charges, selectedAddress]);
 
   const totals = useMemo(() => {
+    const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
     const subtotal = roundMoney(cartItems.reduce(
-      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
+      (sum, item) => sum + getItemUnitPrice(item) * Number(item.quantity || 1),
       0
     ));
     const gstAmount = roundMoney((subtotal * Number(charges.gstPercent || 0)) / 100);
     const deliveryCharge = roundMoney(Number(deliveryDetails.deliveryCharge || 0));
     const grandTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
     return { subtotal, gstAmount, deliveryCharge, grandTotal };
-  }, [cartItems, charges.gstPercent, deliveryDetails.deliveryCharge]);
+  }, [cartItems, charges.gstPercent, deliveryDetails.deliveryCharge, selectedAddress?.country]);
 
   const finalTotal = useMemo(
     () => roundMoney(Math.max(0, Number(totals.grandTotal || 0) - Number(discount || 0))),
@@ -464,9 +466,12 @@ function Checkout() {
               <div key={index} className="summary-item">
                 <span>{item.name}</span>
                 <span>
-                  {Math.max(1, Number(item.quantity || 1))} x {formatCurrencyForUser(item.price)} = {" "}
+                  {Math.max(1, Number(item.quantity || 1))} x {formatCurrencyForUser(getProductPriceDetails(item, selectedAddress?.country).price)} = {" "}
                   {formatCurrencyForUser(
-                    roundMoney(Number(item.price || 0) * Math.max(1, Number(item.quantity || 1)))
+                    roundMoney(
+                      Number(getProductPriceDetails(item, selectedAddress?.country).price || 0) *
+                        Math.max(1, Number(item.quantity || 1))
+                    )
                   )}
                 </span>
               </div>
@@ -493,6 +498,11 @@ function Checkout() {
           {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
             <p className="coupon-selector-empty">
               International delivery applied for {deliveryDetails.matchedCountry}.
+            </p>
+          )}
+          {selectedAddress?.country && cartItems.some((item) => getProductPriceDetails(item, selectedAddress.country).priceType === "international-country") && (
+            <p className="coupon-selector-empty">
+              Country-specific product pricing applied for {selectedAddress.country}.
             </p>
           )}
           <div className="summary-item summary-total">

@@ -1,4 +1,4 @@
-﻿.my-orders-page {
+.my-orders-page {
   max-width: 1220px;
   margin: 0 auto;
   padding: 18px 14px 28px;
@@ -70,7 +70,7 @@
 
 .my-order-card-head {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(180px, 1.3fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(180px, 1.2fr);
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid #e7e7e7;
@@ -94,12 +94,13 @@
   font-weight: 700;
 }
 
-.my-order-paid-at {
+.my-order-total-note {
   display: block;
-  margin-top: 4px;
-  color: #067d62;
+  margin-top: 3px;
+  color: #565959;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .my-order-id-wrap strong {
@@ -135,16 +136,22 @@
   color: #067d62;
 }
 
-.my-order-status.status-cancelled {
-  background: #ffe7e7;
-  border-color: #ffbaba;
-  color: #b42318;
-}
-
 .my-order-status.status-on-hold {
   background: #fff7d6;
   border-color: #f4d77c;
   color: #8a5f00;
+}
+
+.my-order-status.status-cancelled {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.my-order-status.status-payment-paid {
+  background: #e8f5e9;
+  border-color: #b7e0bc;
+  color: #067d62;
 }
 
 .my-order-status.status-payment-pending {
@@ -154,121 +161,32 @@
 }
 
 .my-order-status.status-payment-failed {
-  background: #ffe7e7;
-  border-color: #ffbaba;
-  color: #b42318;
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
 }
 
-.my-payment-status {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 3px 10px;
+.my-order-status.status-payment-refunded {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+.my-order-cancelled-panel {
+  background: #f8fafc;
+}
+
+.my-order-refund-note {
+  margin: 0;
   font-size: 12px;
-  font-weight: 700;
-  border: 1px solid transparent;
-  width: fit-content;
+  color: #334155;
 }
 
-.my-payment-status.payment-paid {
-  background: #e8f5e9;
-  border-color: #b7e0bc;
-  color: #067d62;
-}
-
-.my-payment-status.payment-pending {
-  background: #fff7d6;
-  border-color: #f4d77c;
-  color: #8a5f00;
-}
-
-.my-payment-status.payment-failed {
-  background: #ffe7e7;
-  border-color: #ffbaba;
-  color: #b42318;
-}
-
-.my-refund-status {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 3px 10px;
+.my-order-return-note {
+  margin: 0;
   font-size: 12px;
-  font-weight: 700;
-  border: 1px solid transparent;
-  width: fit-content;
-}
-
-.my-refund-status.refund-pending,
-.my-refund-status.refund-processing {
-  background: #fff7d6;
-  border-color: #f4d77c;
-  color: #8a5f00;
-}
-
-.my-refund-status.refund-refunded {
-  background: #e8f5e9;
-  border-color: #b7e0bc;
-  color: #067d62;
-}
-
-.my-refund-status.refund-rejected {
-  background: #ffe7e7;
-  border-color: #ffbaba;
-  color: #b42318;
-}
-
-.my-order-progress-wrap {
-  border-top: 1px solid #e7e7e7;
-  border-bottom: 1px solid #e7e7e7;
-  background: #fbfcfc;
-  padding: 12px 14px;
-}
-
-.my-order-progress-wrap h3 {
-  margin: 0 0 10px;
-  color: #0f1111;
-  font-size: 20px;
-}
-
-.my-order-progress {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.my-order-progress-step {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-}
-
-.my-order-progress-dot {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid #c7d2de;
-  background: #ffffff;
-}
-
-.my-order-progress-dot.active {
-  border-color: #1f6feb;
-  background: #cfe3ff;
-}
-
-.my-order-progress-dot.current {
-  border-color: #1f6feb;
-  background: #1f6feb;
-}
-
-.my-order-progress-step small {
-  font-size: 12px;
-  color: #6b7280;
-  font-weight: 600;
-}
-
-.my-order-progress-step small.active {
-  color: #1f6feb;
+  color: #334155;
+  line-height: 1.4;
 }
 
 .my-order-card-body {
@@ -282,6 +200,16 @@
   margin: 0 0 10px;
   font-size: 18px;
   color: #0f1111;
+}
+
+.my-order-bundle-config {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #334155;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 8px;
+  padding: 7px 9px;
 }
 
 .my-order-item {
@@ -299,14 +227,50 @@
   margin-top: 8px;
 }
 
+.my-order-item-content {
+  min-width: 0;
+}
+
 .my-order-item strong {
   color: #0f1111;
   font-size: 14px;
 }
 
+.my-order-item-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.my-order-item-link:hover strong {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.my-order-item small {
+  display: block;
+  margin-top: 4px;
+  color: #334155;
+  font-size: 12px;
+}
+
 .my-order-item span {
+  display: block;
   color: #565959;
   font-size: 13px;
+  text-align: right;
+}
+
+.my-order-item-side {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.my-order-item-return-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.4;
 }
 
 .my-order-items-empty {
@@ -337,45 +301,6 @@
   cursor: pointer;
 }
 
-.my-order-pay-btn {
-  border: 1px solid #0b57d0;
-  background: #1f6feb;
-  color: #ffffff;
-  border-radius: 999px;
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.my-order-pay-btn:hover {
-  background: #0f5bd0;
-}
-
-.my-order-cancel-btn {
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #b42318;
-  border-radius: 999px;
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.my-order-cancel-btn:hover {
-  background: #ffe4e6;
-}
-
-.my-order-pay-btn:disabled {
-  background: #f0f2f2;
-  border-color: #d5d9d9;
-  color: #565959;
-  cursor: not-allowed;
-}
-
 .my-order-invoice-btn:hover {
   background: #f7ca00;
 }
@@ -394,6 +319,73 @@
   line-height: 1.4;
 }
 
+.my-order-continue-btn {
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.my-order-continue-btn:hover {
+  background: #1d4ed8;
+}
+
+.my-order-continue-btn:disabled {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #1e3a8a;
+  cursor: not-allowed;
+}
+
+.my-order-return-btn {
+  border: 1px solid #d5d9d9;
+  background: #fff;
+  color: #7c2d12;
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.my-order-return-btn:hover {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.my-order-return-btn:disabled {
+  opacity: .7;
+  cursor: not-allowed;
+}
+
+.my-order-cancel-btn {
+  border: 1px solid #d5d9d9;
+  background: #fff;
+  color: #b91c1c;
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.my-order-cancel-btn:hover {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.my-order-cancel-btn:disabled {
+  opacity: .7;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .my-order-card-head {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -401,11 +393,6 @@
 
   .my-order-card-body {
     grid-template-columns: 1fr;
-  }
-
-  .my-order-progress {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 10px;
   }
 }
 
@@ -418,12 +405,16 @@
     font-size: 24px;
   }
 
-  .my-order-card-head {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .my-order-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .my-order-item span {
+    text-align: left;
+  }
+
+  .my-order-card-head {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

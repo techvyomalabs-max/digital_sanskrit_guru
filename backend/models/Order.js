@@ -130,6 +130,33 @@ const orderSchema = new mongoose.Schema(
       default: "Not Applicable",
       enum: ["Not Applicable", "Pending", "Processing", "Refunded", "Rejected"]
     },
+    deliveredAt: {
+      type: Date,
+      default: null
+    },
+    returnRequest: {
+      status: {
+        type: String,
+        default: "Not Requested",
+        enum: ["Not Requested", "Requested", "Approved", "Rejected", "Refunded"]
+      },
+      requestedAt: {
+        type: Date,
+        default: null
+      },
+      resolvedAt: {
+        type: Date,
+        default: null
+      },
+      reason: {
+        type: String,
+        default: ""
+      },
+      adminReason: {
+        type: String,
+        default: ""
+      }
+    },
     cancelledAt: {
       type: Date,
       default: null

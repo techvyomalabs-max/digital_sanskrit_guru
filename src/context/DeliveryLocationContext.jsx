@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 const DeliveryLocationContext = createContext(null);
 const GUEST_STORAGE_KEY = "addresses:guest";
 const SELECTED_DELIVERY_COUNTRY_KEY = "selectedDeliveryCountry";
+const SELECTED_ADDRESS_KEY_PREFIX = "selectedAddress:";
 
 function normalizeStoredAddress(item) {
   return {
@@ -31,6 +32,39 @@ function normalizeStoredAddress(item) {
 
 function getUserStorageKey(userId) {
   return `addresses:${String(userId || "").trim()}`;
+}
+
+function getSelectedAddressStorageKey(userId) {
+  const suffix = String(userId || "").trim() || "guest";
+  return `${SELECTED_ADDRESS_KEY_PREFIX}${suffix}`;
+}
+
+function buildAddressSelectionKey(address) {
+  if (!address) return "";
+  return [
+    String(address?.name || "").trim().toLowerCase(),
+    String(address?.phone || "").trim().toLowerCase(),
+    String(address?.address || "").trim().toLowerCase(),
+    String(address?.city || "").trim().toLowerCase(),
+    String(address?.state || "").trim().toLowerCase(),
+    String(address?.pincode || "").trim().toLowerCase(),
+    String(address?.country || "").trim().toLowerCase()
+  ].join("|");
+}
+
+function readSelectedAddressKey(storageKey) {
+  if (typeof localStorage === "undefined") return "";
+  return String(localStorage.getItem(storageKey) || "").trim();
+}
+
+function writeSelectedAddressKey(storageKey, address) {
+  if (typeof localStorage === "undefined") return;
+  const selectionKey = buildAddressSelectionKey(address);
+  if (selectionKey) {
+    localStorage.setItem(storageKey, selectionKey);
+    return;
+  }
+  localStorage.removeItem(storageKey);
 }
 
 function readStoredAddresses(storageKey) {
@@ -62,10 +96,15 @@ function syncSelectedDeliveryCountry(address) {
 
 export function DeliveryLocationProvider({ children }) {
   const { token, user } = useAuth();
+  const selectedAddressStorageKey = getSelectedAddressStorageKey(user?._id);
   const [addresses, setAddresses] = useState(() => readStoredAddresses(GUEST_STORAGE_KEY));
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(() => {
     const initial = readStoredAddresses(GUEST_STORAGE_KEY);
     if (initial.length === 0) return null;
+    const selectedKey = readSelectedAddressKey(getSelectedAddressStorageKey(""));
+    const selectedMatchIndex = initial.findIndex((item) => buildAddressSelectionKey(item) === selectedKey);
+    if (selectedMatchIndex >= 0) return selectedMatchIndex;
     const defaultIndex = initial.findIndex((item) => item?.isDefault);
     return defaultIndex >= 0 ? defaultIndex : 0;
   });
@@ -73,22 +112,28 @@ export function DeliveryLocationProvider({ children }) {
   useEffect(() => {
     let active = true;
 
-    const getDefaultIndex = (list) => {
+    const getDefaultIndex = (list, storageKey) => {
       if (!Array.isArray(list) || list.length === 0) return null;
+      const selectedKey = readSelectedAddressKey(storageKey);
+      const selectedMatchIndex = list.findIndex((item) => buildAddressSelectionKey(item) === selectedKey);
+      if (selectedMatchIndex >= 0) return selectedMatchIndex;
       const index = list.findIndex((item) => item?.isDefault);
       return index >= 0 ? index : 0;
     };
 
     const loadAddresses = async () => {
+      setIsLoadingAddresses(true);
       if (!token || !user?._id) {
         const localAddresses = readStoredAddresses(GUEST_STORAGE_KEY);
         if (!active) return;
         setAddresses(localAddresses);
-        setSelectedIndex(getDefaultIndex(localAddresses));
+        setSelectedIndex(getDefaultIndex(localAddresses, getSelectedAddressStorageKey("")));
+        setIsLoadingAddresses(false);
         return;
       }
 
       const userStorageKey = getUserStorageKey(user._id);
+      const selectedStorageKey = getSelectedAddressStorageKey(user._id);
 
       try {
         const res = await axios.get("/api/auth/addresses", {
@@ -100,12 +145,15 @@ export function DeliveryLocationProvider({ children }) {
         writeStoredAddresses(userStorageKey, nextAddresses);
         if (!active) return;
         setAddresses(nextAddresses);
-        setSelectedIndex(getDefaultIndex(nextAddresses));
+        setSelectedIndex(getDefaultIndex(nextAddresses, selectedStorageKey));
       } catch {
         const localAddresses = readStoredAddresses(userStorageKey);
         if (!active) return;
         setAddresses(localAddresses);
-        setSelectedIndex(getDefaultIndex(localAddresses));
+        setSelectedIndex(getDefaultIndex(localAddresses, selectedStorageKey));
+      } finally {
+        if (!active) return;
+        setIsLoadingAddresses(false);
       }
     };
 
@@ -160,6 +208,7 @@ export function DeliveryLocationProvider({ children }) {
     setAddresses(nextAddresses);
     setSelectedIndex(nextAddresses.length - 1);
     syncSelectedDeliveryCountry(nextAddress);
+    writeSelectedAddressKey(selectedAddressStorageKey, nextAddress);
     void persistAddresses(nextAddresses);
   };
 
@@ -179,7 +228,9 @@ export function DeliveryLocationProvider({ children }) {
         if (nextAddress.isDefault) return { ...item, isDefault: false };
         return item;
       });
-      syncSelectedDeliveryCountry((selectedIndex === index ? nextAddress : next[selectedIndex]) || null);
+      const nextSelectedAddress = (selectedIndex === index ? nextAddress : next[selectedIndex]) || nextAddress;
+      syncSelectedDeliveryCountry(nextSelectedAddress || null);
+      writeSelectedAddressKey(selectedAddressStorageKey, nextSelectedAddress || null);
       void persistAddresses(next);
       return next;
     });
@@ -194,7 +245,9 @@ export function DeliveryLocationProvider({ children }) {
       }
       const nextSelectedIndex =
         selectedIndex === null ? null : selectedIndex === index ? 0 : selectedIndex > index ? selectedIndex - 1 : selectedIndex;
-      syncSelectedDeliveryCountry(nextSelectedIndex === null ? null : next[nextSelectedIndex] || null);
+      const nextSelectedAddress = nextSelectedIndex === null ? null : next[nextSelectedIndex] || null;
+      syncSelectedDeliveryCountry(nextSelectedAddress);
+      writeSelectedAddressKey(selectedAddressStorageKey, nextSelectedAddress);
       void persistAddresses(next);
       return next;
     });
@@ -209,7 +262,9 @@ export function DeliveryLocationProvider({ children }) {
 
   const selectAddress = (index) => {
     setSelectedIndex(index);
-    syncSelectedDeliveryCountry(addresses[index] || null);
+    const nextSelectedAddress = addresses[index] || null;
+    syncSelectedDeliveryCountry(nextSelectedAddress);
+    writeSelectedAddressKey(selectedAddressStorageKey, nextSelectedAddress);
   };
 
   const setDefaultAddress = (index) => {
@@ -219,6 +274,7 @@ export function DeliveryLocationProvider({ children }) {
         isDefault: itemIndex === index
       }));
       syncSelectedDeliveryCountry(next[index] || null);
+      writeSelectedAddressKey(selectedAddressStorageKey, next[index] || null);
       void persistAddresses(next);
       return next;
     });
@@ -231,15 +287,18 @@ export function DeliveryLocationProvider({ children }) {
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
+    if (isLoadingAddresses) return;
 
     const country = String(selectedAddress?.country || "").trim();
     if (country) {
       localStorage.setItem(SELECTED_DELIVERY_COUNTRY_KEY, country);
+      writeSelectedAddressKey(selectedAddressStorageKey, selectedAddress);
       return;
     }
 
     localStorage.removeItem(SELECTED_DELIVERY_COUNTRY_KEY);
-  }, [selectedAddress]);
+    writeSelectedAddressKey(selectedAddressStorageKey, null);
+  }, [isLoadingAddresses, selectedAddress, selectedAddressStorageKey]);
 
   return (
     <DeliveryLocationContext.Provider

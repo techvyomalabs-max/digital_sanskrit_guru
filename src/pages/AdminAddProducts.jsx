@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
+import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import "./AdminDashboard.css";
 
 const DEFAULT_CATEGORY_OPTIONS = [
@@ -21,6 +22,14 @@ function createEmptyHeroBanner() {
 
 function createEmptyBundleItem() {
   return { productId: "", quantity: "1" };
+}
+
+function createEmptyCountryPrice() {
+  return { country: "", price: "" };
+}
+
+function createEmptyRelatedProduct() {
+  return { productId: "" };
 }
 
 function readFileAsDataUrl(file) {
@@ -70,6 +79,8 @@ function AdminAddProducts() {
   const [products, setProducts] = useState([]);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [internationalPrice, setInternationalPrice] = useState("");
+  const [internationalCountryPrices, setInternationalCountryPrices] = useState([createEmptyCountryPrice()]);
   const [image, setImage] = useState("");
   const [imagesInput, setImagesInput] = useState("");
   const [description, setDescription] = useState("");
@@ -78,6 +89,7 @@ function AdminAddProducts() {
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
   const [productType, setProductType] = useState("single");
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
+  const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
   const [newCategory, setNewCategory] = useState("");
@@ -209,6 +221,14 @@ function AdminAddProducts() {
       .filter(Boolean);
   }, [availableBundleProducts, bundleItems]);
 
+  const selectedRelatedProducts = useMemo(() => {
+    return relatedProductItems
+      .map((item) =>
+        availableBundleProducts.find((product) => String(product?._id || "") === String(item.productId || "")) || null
+      )
+      .filter(Boolean);
+  }, [availableBundleProducts, relatedProductItems]);
+
   const calculatedBundlePrice = useMemo(() => {
     return selectedBundleProducts.reduce(
       (sum, product) => sum + Number(product?.price || 0) * Math.max(1, Number(product?.quantity || 1)),
@@ -261,9 +281,36 @@ function AdminAddProducts() {
     };
   }, [calculatedBundlePrice, image, name, price, productType, stock]);
 
+  const productComposerStats = useMemo(() => {
+    const extraImageCount = imagesInput
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean).length;
+
+    const aboutPointCount = aboutProduct
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean).length;
+
+    const countryOverrideCount = internationalCountryPrices.filter(
+      (item) => String(item?.country || "").trim() && String(item?.price || "").trim()
+    ).length;
+
+    const relatedCount = relatedProductItems.filter((item) => String(item?.productId || "").trim()).length;
+
+    return {
+      extraImageCount,
+      aboutPointCount,
+      countryOverrideCount,
+      relatedCount
+    };
+  }, [aboutProduct, imagesInput, internationalCountryPrices, relatedProductItems]);
+
   const resetForm = () => {
     setName("");
     setPrice("");
+    setInternationalPrice("");
+    setInternationalCountryPrices([createEmptyCountryPrice()]);
     setImage("");
     setImagesInput("");
     setDescription("");
@@ -272,10 +319,10 @@ function AdminAddProducts() {
     setFestiveDiscountPercent("0");
     setProductType("single");
     setBundleItems([createEmptyBundleItem()]);
+    setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
     setEditingProduct(null);
-    setFormMessage("");
   };
 
   const saveHeroBanner = async () => {
@@ -455,6 +502,13 @@ function AdminAddProducts() {
     const payload = {
       name: formSummary.normalizedName,
       price: formSummary.numericPrice,
+      internationalPrice: internationalPrice.trim() === "" ? null : Math.max(0, Number(internationalPrice || 0)),
+      internationalCountryPrices: internationalCountryPrices
+        .map((item) => ({
+          country: String(item?.country || "").trim(),
+          price: Math.max(0, Number(item?.price || 0))
+        }))
+        .filter((item) => item.country && !Number.isNaN(item.price)),
       image: image.trim(),
       images: imagesInput,
       description: description.trim(),
@@ -471,6 +525,11 @@ function AdminAddProducts() {
               }))
               .filter((item) => item.productId)
           : [],
+      relatedProducts: relatedProductItems
+        .map((item) => ({
+          productId: String(item.productId || "").trim()
+        }))
+        .filter((item) => item.productId),
       category: category.trim() || "General",
       stock: formSummary.numericStock
     };
@@ -479,16 +538,27 @@ function AdminAddProducts() {
     setFormMessage("");
 
     try {
+      let savedProduct;
       if (editingProduct?._id) {
-        await axios.put(`/api/products/${editingProduct._id}`, payload, {
+        const { data } = await axios.put(`/api/products/${editingProduct._id}`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setFormMessage("Product updated successfully.");
+        savedProduct = data;
+        setFormMessage(
+          `Product updated successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
+            ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
+            : ""}`
+        );
       } else {
-        await axios.post("/api/products", payload, {
+        const { data } = await axios.post("/api/products", payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setFormMessage("Product added successfully.");
+        savedProduct = data;
+        setFormMessage(
+          `Product added successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
+            ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
+            : ""}`
+        );
       }
 
       await loadProducts();
@@ -504,6 +574,17 @@ function AdminAddProducts() {
     setEditingProduct(product);
     setName(product.name || "");
     setPrice(String(product.price ?? ""));
+    setInternationalPrice(
+      product.internationalPrice === null || product.internationalPrice === undefined ? "" : String(product.internationalPrice)
+    );
+    setInternationalCountryPrices(
+      Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
+        ? product.internationalCountryPrices.map((item) => ({
+            country: String(item?.country || ""),
+            price: String(item?.price ?? "")
+          }))
+        : [createEmptyCountryPrice()]
+    );
     setImage(product.image || "");
     setImagesInput(Array.isArray(product.images) && product.images.length > 0 ? product.images.join("\n") : product.image || "");
     setDescription(product.description || "");
@@ -518,6 +599,13 @@ function AdminAddProducts() {
             quantity: String(Math.max(1, Number(item?.quantity || 1)))
           }))
         : [createEmptyBundleItem()]
+    );
+    setRelatedProductItems(
+      Array.isArray(product.relatedProducts) && product.relatedProducts.length > 0
+        ? product.relatedProducts.map((item) => ({
+            productId: String(item?._id || item?.productId || item?.id || item || "")
+          }))
+        : [createEmptyRelatedProduct()]
     );
     setCategory(product.category || "General");
     setStock(String(product.stock ?? 1));
@@ -588,11 +676,38 @@ function AdminAddProducts() {
   const normalizeUploadProduct = (item) => {
     const productName = String(item?.name || "").trim();
     const productPrice = Number(item?.price);
+    const rawInternationalPrice = item?.internationalPrice ?? item?.internationalprice;
+    const parsedInternationalPrice = Number(rawInternationalPrice);
+    const rawCountryPrices = item?.internationalCountryPrices ?? item?.internationalcountryprices;
     if (!productName || Number.isNaN(productPrice)) return null;
+
+    let parsedCountryPrices = [];
+    if (Array.isArray(rawCountryPrices)) {
+      parsedCountryPrices = rawCountryPrices;
+    } else if (typeof rawCountryPrices === "string" && rawCountryPrices.trim()) {
+      try {
+        const parsed = JSON.parse(rawCountryPrices);
+        if (Array.isArray(parsed)) {
+          parsedCountryPrices = parsed;
+        }
+      } catch {
+        parsedCountryPrices = [];
+      }
+    }
 
     return {
       name: productName,
       price: productPrice,
+      internationalPrice:
+        rawInternationalPrice === null || rawInternationalPrice === undefined || rawInternationalPrice === ""
+          ? null
+          : (Number.isNaN(parsedInternationalPrice) ? null : Math.max(0, parsedInternationalPrice)),
+      internationalCountryPrices: parsedCountryPrices
+        .map((entry) => ({
+          country: String(entry?.country || "").trim(),
+          price: Math.max(0, Number(entry?.price || 0))
+        }))
+        .filter((entry) => entry.country && !Number.isNaN(entry.price)),
       image: String(item?.image || "").trim(),
       images: String(item?.images || item?.image || "").trim(),
       description: String(item?.description || "").trim(),
@@ -662,6 +777,38 @@ function AdminAddProducts() {
     setBundleItems((current) => (current.length === 1 ? [createEmptyBundleItem()] : current.filter((_, itemIndex) => itemIndex !== index)));
   };
 
+  const updateRelatedProductItem = (index, value) => {
+    setRelatedProductItems((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, productId: value } : item))
+    );
+  };
+
+  const addRelatedProductItem = () => {
+    setRelatedProductItems((current) => [...current, createEmptyRelatedProduct()]);
+  };
+
+  const removeRelatedProductItem = (index) => {
+    setRelatedProductItems((current) =>
+      current.length === 1 ? [createEmptyRelatedProduct()] : current.filter((_, itemIndex) => itemIndex !== index)
+    );
+  };
+
+  const updateInternationalCountryPrice = (index, field, value) => {
+    setInternationalCountryPrices((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const addInternationalCountryPrice = () => {
+    setInternationalCountryPrices((current) => [...current, createEmptyCountryPrice()]);
+  };
+
+  const removeInternationalCountryPrice = (index) => {
+    setInternationalCountryPrices((current) =>
+      current.length === 1 ? [createEmptyCountryPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+    );
+  };
+
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -698,227 +845,414 @@ function AdminAddProducts() {
               <span>You are editing an existing product. Cancel to start a fresh product form.</span>
             </div>
           )}
-          <div className="form-grid">
-            <label className="admin-field">
-              <span>Product Name</span>
-              <input
-                ref={nameInputRef}
-                placeholder="e.g. Bhagavad Gita Deluxe Edition"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label className="admin-field">
-              <span>Price</span>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 999"
-                value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
-                onChange={(e) => setPrice(e.target.value)}
-                readOnly={productType === "bundle"}
-              />
-            </label>
-            <label className="admin-field">
-              <span>Product Type</span>
-              <select value={productType} onChange={(e) => setProductType(e.target.value === "bundle" ? "bundle" : "single")}>
-                <option value="single">Single Product</option>
-                <option value="bundle">Bundle</option>
-              </select>
-            </label>
-            <label className="admin-field">
-              <span>Festive Offer</span>
-              <select value={festiveOffer ? "yes" : "no"} onChange={(e) => setFestiveOffer(e.target.value === "yes")}>
-                <option value="no">Regular Product</option>
-                <option value="yes">Festive Offer</option>
-              </select>
-            </label>
-            {festiveOffer ? (
-              <label className="admin-field">
-                <span>Festive Discount %</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="95"
-                  step="1"
-                  placeholder="e.g. 20"
-                  value={festiveDiscountPercent}
-                  onChange={(e) => setFestiveDiscountPercent(e.target.value)}
-                />
-              </label>
-            ) : null}
-            <label className="admin-field">
-              <span>Primary Image URL</span>
-              <input placeholder="Paste the main image URL" value={image} onChange={(e) => setImage(e.target.value)} />
-            </label>
-            <div className="admin-field admin-field-wide">
-              <span>Select Product Category</span>
-              <div className="admin-category-manager">
-                <div className="admin-category-picker">
-                  {categoryOptions.map((option) => (
-                    <div
-                      key={option}
-                      className={`admin-category-picker-item${category === option ? " active" : ""}${
-                        editingCategoryName === option ? " editing" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="admin-category-picker-select"
-                        onClick={() => setCategory(option)}
-                      >
-                        {option}
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-category-picker-edit-btn"
-                        onClick={() => handleStartCategoryEdit(option)}
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="admin-category-manager-actions">
-                  <div className="theme-form-row">
-                    <input
-                      placeholder="e.g. Mobile App Access"
-                      value={newCategory}
-                      onChange={(e) => {
-                        setNewCategory(e.target.value);
-                        setCategoryMessage("");
-                      }}
-                    />
-                    <button type="button" onClick={handleAddCategory}>
-                      {editingCategoryName ? "Save" : "Add"}
-                    </button>
-                    {editingCategoryName ? (
-                      <button type="button" className="danger" onClick={handleCancelCategoryEdit}>
-                        Cancel
-                      </button>
-                    ) : null}
-                  </div>
-                  {categoryMessage ? (
-                    <small style={{ color: categoryMessage.includes("successfully") ? "var(--admin-accent)" : "#dc2626" }}>
-                      {categoryMessage}
-                    </small>
-                  ) : null}
-                </div>
-              </div>
+          <div className="product-composer-overview">
+            <div className="product-composer-metric">
+              <span>About Points</span>
+              <strong>{productComposerStats.aboutPointCount}</strong>
             </div>
-            <label className="admin-field">
-              <span>Stock</span>
-              <input
-                type="number"
-                min="0"
-                placeholder="e.g. 25"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-              />
-            </label>
-            <label className="admin-field admin-field-wide">
-              <span>Description</span>
-              <textarea
-                placeholder="Add a short, clear product description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-              />
-            </label>
-            <label className="admin-field admin-field-wide">
-              <span>About This Product</span>
-              <textarea
-                placeholder={"Add one point per line\nExample: Published in Sanskrit\nExample: 848 page edition"}
-                value={aboutProduct}
-                onChange={(e) => setAboutProduct(e.target.value)}
-                rows={5}
-              />
-            </label>
-            {productType === "bundle" ? (
-              <div className="admin-field admin-field-wide">
-                <span>Bundle Products</span>
-                <div className="admin-bundle-builder">
-                  <div className="admin-bundle-builder-head">
-                    <strong>Create this bundle from existing products</strong>
-                    <button type="button" onClick={addBundleItem}>
-                      Add Bundle Item
-                    </button>
-                  </div>
+            <div className="product-composer-metric">
+              <span>Extra Images</span>
+              <strong>{productComposerStats.extraImageCount}</strong>
+            </div>
+            <div className="product-composer-metric">
+              <span>Country Overrides</span>
+              <strong>{productComposerStats.countryOverrideCount}</strong>
+            </div>
+            <div className="product-composer-metric">
+              <span>Related Products</span>
+              <strong>{productComposerStats.relatedCount}</strong>
+            </div>
+          </div>
 
-                  <div className="admin-bundle-builder-list">
-                    {bundleItems.map((item, index) => (
-                      <div key={`bundle-item-${index}`} className="admin-bundle-builder-row">
-                        <select
-                          value={item.productId}
-                          onChange={(e) => updateBundleItem(index, "productId", e.target.value)}
-                        >
-                          <option value="">Select existing product</option>
-                          {availableBundleProducts.map((product) => (
-                            <option key={product._id} value={product._id}>
-                              {product.name}
+          <div className="product-composer-layout">
+            <div className="product-composer-main">
+              <section className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Essentials</h4>
+                    <p>Set the core product information customers will see first.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>Product Name</span>
+                    <input
+                      ref={nameInputRef}
+                      placeholder="e.g. Bhagavad Gita Deluxe Edition"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Product Type</span>
+                    <select value={productType} onChange={(e) => setProductType(e.target.value === "bundle" ? "bundle" : "single")}>
+                      <option value="single">Single Product</option>
+                      <option value="bundle">Bundle</option>
+                    </select>
+                  </label>
+                  <label className="admin-field">
+                    <span>Price</span>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 999"
+                      value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      readOnly={productType === "bundle"}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Stock</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 25"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Festive Offer</span>
+                    <select value={festiveOffer ? "yes" : "no"} onChange={(e) => setFestiveOffer(e.target.value === "yes")}>
+                      <option value="no">Regular Product</option>
+                      <option value="yes">Festive Offer</option>
+                    </select>
+                  </label>
+                  {festiveOffer ? (
+                    <label className="admin-field">
+                      <span>Festive Discount %</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="95"
+                        step="1"
+                        placeholder="e.g. 20"
+                        value={festiveDiscountPercent}
+                        onChange={(e) => setFestiveDiscountPercent(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  <div className="admin-field admin-field-wide">
+                    <span>Select Product Category</span>
+                    <div className="admin-category-manager">
+                      <div className="admin-category-select-row">
+                        <select value={category} onChange={(e) => setCategory(e.target.value)} className="admin-category-select-dropdown">
+                          {categoryOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
                             </option>
                           ))}
                         </select>
-
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
-                          placeholder="Qty"
-                        />
-
-                        <button type="button" className="danger" onClick={() => removeBundleItem(index)}>
-                          Remove
+                        <button
+                          type="button"
+                          className="admin-category-inline-edit"
+                          onClick={() => handleStartCategoryEdit(category || "General")}
+                        >
+                          Edit Selected
                         </button>
                       </div>
-                    ))}
-                  </div>
+                      <div className="admin-category-compact-meta">
+                        <small>
+                          {categoryOptions.length} categories available. Selected: <strong>{category || "General"}</strong>
+                        </small>
+                      </div>
 
-                  <div className="admin-bundle-preview">
-                    <span>Bundle preview</span>
-                    {selectedBundleProducts.length > 0 ? (
-                      <>
-                        <ul>
-                          {selectedBundleProducts.map((product) => (
-                            <li key={`${product._id}-${product.quantity}`}>
-                              {product.name} x {product.quantity}
-                            </li>
-                          ))}
-                        </ul>
-                        <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
-                      </>
-                    ) : (
-                      <p>No products selected for this bundle yet.</p>
-                    )}
+                      <div className="admin-category-manager-actions">
+                        <div className="theme-form-row">
+                          <input
+                            placeholder="e.g. Mobile App Access"
+                            value={newCategory}
+                            onChange={(e) => {
+                              setNewCategory(e.target.value);
+                              setCategoryMessage("");
+                            }}
+                          />
+                          <button type="button" onClick={handleAddCategory}>
+                            {editingCategoryName ? "Save" : "Add"}
+                          </button>
+                          {editingCategoryName ? (
+                            <button type="button" className="danger" onClick={handleCancelCategoryEdit}>
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
+                        <small className="admin-category-helper">
+                          {editingCategoryName
+                            ? `Editing "${editingCategoryName}". Saving will rename it everywhere it is used.`
+                            : "Need a new category? Add it here and select it immediately."}
+                        </small>
+                        {categoryMessage ? (
+                          <small
+                            className={`admin-category-feedback${
+                              categoryMessage.includes("successfully") ? " success" : " error"
+                            }`}
+                          >
+                            {categoryMessage}
+                          </small>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  <label className="admin-field admin-field-wide">
+                    <span>Description</span>
+                    <textarea
+                      placeholder="Add a short, clear product description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </label>
+                  <label className="admin-field admin-field-wide">
+                    <span>About This Product</span>
+                    <textarea
+                      placeholder={"Add one point per line\nExample: Published in Sanskrit\nExample: 848 page edition"}
+                      value={aboutProduct}
+                      onChange={(e) => setAboutProduct(e.target.value)}
+                      rows={5}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Pricing</h4>
+                    <p>Control domestic pricing, fallback international pricing, and country-specific overrides.</p>
                   </div>
                 </div>
-              </div>
-            ) : null}
-            <label className="admin-field admin-field-wide">
-              <span>Additional Image URLs</span>
-              <textarea
-                className="admin-images-textarea"
-                placeholder="Add more image URLs separated by commas or new lines"
-                value={imagesInput}
-                onChange={(e) => setImagesInput(e.target.value)}
-                rows={4}
-              />
-            </label>
-          </div>
-          <div className="admin-thumbnail-preview">
-            <img
-              src={imagePreview}
-              alt={name.trim() || "Product thumbnail preview"}
-              onError={(e) => {
-                e.currentTarget.src = "https://picsum.photos/120";
-              }}
-            />
-            <div>
-              <strong>Thumbnail Preview</strong>
-              <span>{image.trim() ? "Using current image URL" : "Showing fallback preview image"}</span>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>International Price</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Used for all countries except India"
+                      value={internationalPrice}
+                      onChange={(e) => setInternationalPrice(e.target.value)}
+                    />
+                  </label>
+                  <div className="admin-field admin-field-wide">
+                    <span>Country Specific International Prices</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Override the international price for selected countries</strong>
+                        <button type="button" onClick={addInternationalCountryPrice}>
+                          Add Country Price
+                        </button>
+                      </div>
+                      <div className="admin-bundle-builder-list">
+                        {internationalCountryPrices.map((item, index) => (
+                          <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
+                            <select
+                              value={item.country}
+                              onChange={(e) => updateInternationalCountryPrice(index, "country", e.target.value)}
+                            >
+                              <option value="">Select country</option>
+                              {COUNTRY_OPTIONS.filter((country) => country !== "India").map((country) => (
+                                <option key={country} value={country}>
+                                  {country}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Price"
+                              value={item.price}
+                              onChange={(e) => updateInternationalCountryPrice(index, "price", e.target.value)}
+                            />
+                            <button type="button" className="danger" onClick={() => removeInternationalCountryPrice(index)}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="admin-bundle-preview">
+                        <span>How it works</span>
+                        <p>India uses the base price. Matching countries use their own override. All other countries use the fallback international price.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Relationships</h4>
+                    <p>Build bundles and curate cross-links that help product discovery.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  {productType === "bundle" ? (
+                    <div className="admin-field admin-field-wide">
+                      <span>Bundle Products</span>
+                      <div className="admin-bundle-builder">
+                        <div className="admin-bundle-builder-head">
+                          <strong>Create this bundle from existing products</strong>
+                          <button type="button" onClick={addBundleItem}>
+                            Add Bundle Item
+                          </button>
+                        </div>
+
+                        <div className="admin-bundle-builder-list">
+                          {bundleItems.map((item, index) => (
+                            <div key={`bundle-item-${index}`} className="admin-bundle-builder-row">
+                              <select
+                                value={item.productId}
+                                onChange={(e) => updateBundleItem(index, "productId", e.target.value)}
+                              >
+                                <option value="">Select existing product</option>
+                                {availableBundleProducts.map((product) => (
+                                  <option key={product._id} value={product._id}>
+                                    {product.name}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
+                                placeholder="Qty"
+                              />
+
+                              <button type="button" className="danger" onClick={() => removeBundleItem(index)}>
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="admin-bundle-preview">
+                          <span>Bundle preview</span>
+                          {selectedBundleProducts.length > 0 ? (
+                            <>
+                              <ul>
+                                {selectedBundleProducts.map((product) => (
+                                  <li key={`${product._id}-${product.quantity}`}>
+                                    {product.name} x {product.quantity}
+                                  </li>
+                                ))}
+                              </ul>
+                              <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                            </>
+                          ) : (
+                            <p>No products selected for this bundle yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="admin-field admin-field-wide">
+                    <span>Related Products</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Choose products to show in the Related Products section</strong>
+                        <button type="button" onClick={addRelatedProductItem}>
+                          Add Related Product
+                        </button>
+                      </div>
+
+                      <div className="admin-bundle-builder-list">
+                        {relatedProductItems.map((item, index) => (
+                          <div key={`related-product-${index}`} className="admin-bundle-builder-row related-product-row">
+                            <select
+                              value={item.productId}
+                              onChange={(e) => updateRelatedProductItem(index, e.target.value)}
+                            >
+                              <option value="">Select related product</option>
+                              {availableBundleProducts.map((product) => (
+                                <option key={product._id} value={product._id}>
+                                  {product.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <button type="button" className="danger" onClick={() => removeRelatedProductItem(index)}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="admin-bundle-preview">
+                        <span>Related products preview</span>
+                        {selectedRelatedProducts.length > 0 ? (
+                          <ul>
+                            {selectedRelatedProducts.map((relatedProduct) => (
+                              <li key={relatedProduct._id}>
+                                {relatedProduct.name}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>No related products selected yet.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Media</h4>
+                    <p>Add a strong product thumbnail and extra images for the gallery.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>Primary Image URL</span>
+                    <input placeholder="Paste the main image URL" value={image} onChange={(e) => setImage(e.target.value)} />
+                  </label>
+                  <label className="admin-field admin-field-wide">
+                    <span>Additional Image URLs</span>
+                    <textarea
+                      className="admin-images-textarea"
+                      placeholder="Add more image URLs separated by commas or new lines"
+                      value={imagesInput}
+                      onChange={(e) => setImagesInput(e.target.value)}
+                      rows={4}
+                    />
+                  </label>
+                </div>
+              </section>
             </div>
+
+            <aside className="product-composer-side">
+              <div className="product-composer-side-card">
+                <span className="product-composer-side-kicker">Live Preview</span>
+                <h4>{name.trim() || "New product preview"}</h4>
+                <p>{description.trim() || "Your description, pricing, and image choices will show here as you build the product."}</p>
+                <div className="product-composer-price-line">
+                  <strong>Rs {formSummary.numericPrice || 0}</strong>
+                  <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
+                </div>
+                <div className="product-composer-side-list">
+                  <div><span>Type</span><strong>{productType === "bundle" ? "Bundle" : "Single"}</strong></div>
+                  <div><span>Category</span><strong>{category || "General"}</strong></div>
+                  <div><span>Stock</span><strong>{formSummary.numericStock || 0}</strong></div>
+                </div>
+              </div>
+
+              <div className="admin-thumbnail-preview product-composer-preview-card">
+                <img
+                  src={imagePreview}
+                  alt={name.trim() || "Product thumbnail preview"}
+                  onError={(e) => {
+                    e.currentTarget.src = "https://picsum.photos/120";
+                  }}
+                />
+                <div>
+                  <strong>Thumbnail Preview</strong>
+                  <span>{image.trim() ? "Using current image URL" : "Showing fallback preview image"}</span>
+                </div>
+              </div>
+            </aside>
           </div>
           {imagePreviews.length > 0 && (
             <div className="admin-thumbnail-strip">
@@ -1088,7 +1422,7 @@ function AdminAddProducts() {
         <section className="card upload-card">
           <h3>Bulk Upload Files</h3>
           <p className="upload-help">
-            Upload a CSV or JSON file with fields: <code>name, price, image, description, aboutProduct, category, stock</code>
+            Upload a CSV or JSON file with fields: <code>name, price, internationalPrice, internationalCountryPrices, image, description, aboutProduct, category, stock</code>
           </p>
           <label className="upload-dropzone">
             <span className="upload-title">Choose CSV / JSON file</span>
@@ -1148,7 +1482,22 @@ function AdminAddProducts() {
                         <small>{product.category || "General"}</small>
                       </span>
                     </div>
-                    <span>Rs {product.price}</span>
+                      <span>
+                        Rs {product.price}
+                        {product.internationalPrice !== null && product.internationalPrice !== undefined
+                          ? ` / Intl Rs ${product.internationalPrice}`
+                          : ""}
+                      {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
+                        ? ` / ${product.internationalCountryPrices.length} country override${
+                            product.internationalCountryPrices.length === 1 ? "" : "s"
+                          }`
+                        : ""}
+                        {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
+                          ? ` (${product.internationalCountryPrices
+                              .map((item) => `${item.country}: Rs ${item.price}`)
+                              .join(", ")})`
+                          : ""}
+                      </span>
                     <span>
                       <span
                         className={

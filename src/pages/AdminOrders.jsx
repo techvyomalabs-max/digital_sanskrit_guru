@@ -27,6 +27,8 @@ const Icon = ({ name }) => {
 const BACKEND_STATUSES = ["Pending", "Shipped", "Delivered", "Cancelled"];
 const DISPLAY_STATUSES = ["On Hold", ...BACKEND_STATUSES];
 const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
+const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Rejected", "Refunded"];
+const RETURN_FILTER_KEY = "Return Requests";
 
 function AdminOrders() {
   const { token, user } = useAuth();
@@ -56,6 +58,14 @@ function AdminOrders() {
     if (PAYMENT_STATUSES.includes(raw)) return raw;
     return "Paid";
   };
+
+  const getReturnStatus = (item) => {
+    const raw = String(item?.returnRequest?.status || "").trim();
+    return RETURN_STATUSES.includes(raw) ? raw : "Not Requested";
+  };
+
+  const hasReturnRequests = (order) =>
+    Array.isArray(order?.items) && order.items.some((item) => getReturnStatus(item) !== "Not Requested");
 
   const getDisplayStatus = (order) => {
     const rawStatus = String(order?.status || "").trim();
@@ -142,6 +152,37 @@ function AdminOrders() {
     }
   };
 
+  const updateReturnStatus = async (orderId, itemId, returnStatus) => {
+    let adminReason = "";
+    if (returnStatus === "Rejected") {
+      const rejectionReason = window.prompt("Reason for rejecting this return request?", "Return request rejected by admin");
+      if (rejectionReason === null) return;
+      adminReason = rejectionReason.trim();
+      if (!adminReason) {
+        window.alert("Please enter a rejection reason.");
+        return;
+      }
+    }
+
+    setUpdatingOrderId(orderId);
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/items/${itemId}/return-status`,
+        { returnStatus, adminReason },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      await loadOrders();
+      setPageMessage("Return request updated successfully.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Unable to update the return request.");
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
   const filteredOrders = useMemo(() => {
     const rawFromTs = fromDateTime ? new Date(fromDateTime).getTime() : null;
     const rawToTs = toDateTime ? new Date(toDateTime).getTime() : null;
@@ -200,14 +241,20 @@ function AdminOrders() {
       (acc, order) => {
         const safeStatus = getDisplayStatus(order);
         acc[safeStatus] += 1;
+        if (hasReturnRequests(order)) {
+          acc[RETURN_FILTER_KEY] += 1;
+        }
         return acc;
       },
-      { "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Cancelled: 0 }
+      { "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Cancelled: 0, [RETURN_FILTER_KEY]: 0 }
     );
   }, [searchedOrders]);
 
   const visibleOrders = useMemo(() => {
     if (selectedStatus === "All") return searchedOrders;
+    if (selectedStatus === RETURN_FILTER_KEY) {
+      return searchedOrders.filter((order) => hasReturnRequests(order));
+    }
     return searchedOrders.filter((order) => getDisplayStatus(order) === selectedStatus);
   }, [searchedOrders, selectedStatus]);
 
@@ -451,6 +498,12 @@ function AdminOrders() {
           >
             All ({searchedOrders.length})
           </button>
+          <button
+            className={selectedStatus === RETURN_FILTER_KEY ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedStatus(RETURN_FILTER_KEY)}
+          >
+            Return Requests ({statusSummary[RETURN_FILTER_KEY]})
+          </button>
           {DISPLAY_STATUSES.map((status) => (
             <button
               key={status}
@@ -610,6 +663,9 @@ function AdminOrders() {
                   const isCancelled = displayStatus === "Cancelled";
                   const canProgressStatus = paymentStatus === "Paid" && !isCancelled;
                   const productCount = getItemCount(order);
+                  const returnItems = Array.isArray(order?.items)
+                    ? order.items.filter((item) => getReturnStatus(item) !== "Not Requested")
+                    : [];
                   return (
                     <tr key={order._id}>
                       <td className="order-code">
@@ -722,6 +778,54 @@ function AdminOrders() {
                                     ? "Payment failed"
                                     : "Waiting for successful payment"}
                               </p>
+                            ) : null}
+                            {returnItems.length > 0 ? (
+                              <div className="admin-return-panel">
+                                {returnItems.map((item) => {
+                                  const itemId = String(item?._id || item?.id || item?.product || "").trim();
+                                  const returnStatus = getReturnStatus(item);
+                                  return (
+                                    <div key={`${order._id}-${itemId}`} className="admin-return-item">
+                                      <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                        {item?.name || "Item"}: {returnStatus}
+                                      </span>
+                                      {item?.returnRequest?.reason ? (
+                                        <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
+                                      ) : null}
+                                      {item?.returnRequest?.adminReason ? (
+                                        <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
+                                      ) : null}
+                                      {canUpdateOrders && returnStatus === "Requested" ? (
+                                        <div className="admin-return-actions">
+                                          <button
+                                            className="status-action-btn"
+                                            disabled={updatingOrderId === order._id}
+                                            onClick={() => updateReturnStatus(order._id, itemId, "Approved")}
+                                          >
+                                            {updatingOrderId === order._id ? "Updating..." : "Approve Return"}
+                                          </button>
+                                          <button
+                                            className="status-action-btn cancel"
+                                            disabled={updatingOrderId === order._id}
+                                            onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                          >
+                                            {updatingOrderId === order._id ? "Updating..." : "Reject"}
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                      {canUpdateOrders && returnStatus === "Approved" ? (
+                                        <button
+                                          className="status-action-btn"
+                                          disabled={updatingOrderId === order._id}
+                                          onClick={() => updateReturnStatus(order._id, itemId, "Refunded")}
+                                        >
+                                          {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             ) : null}
                             <select
                               id={`status-${order._id}`}

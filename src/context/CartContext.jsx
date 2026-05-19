@@ -17,6 +17,18 @@ const normalizeGuestCartItems = (items) =>
         _id: id,
         name: String(item?.name || "").trim(),
         price: Number(item?.price || 0),
+        internationalPrice:
+          item?.internationalPrice === null || item?.internationalPrice === undefined || item?.internationalPrice === ""
+            ? null
+            : Number(item?.internationalPrice || 0),
+        internationalCountryPrices: Array.isArray(item?.internationalCountryPrices)
+          ? item.internationalCountryPrices
+              .map((entry) => ({
+                country: String(entry?.country || "").trim(),
+                price: Number(entry?.price || 0)
+              }))
+              .filter((entry) => entry.country && !Number.isNaN(entry.price))
+          : [],
         image: String(item?.image || "").trim(),
         description: String(item?.description || "").trim(),
         category: String(item?.category || "General").trim() || "General",
@@ -177,6 +189,18 @@ export function CartProvider({ children }) {
             _id: productId,
             name: String(product?.name || "").trim(),
             price: Number(product?.price || 0),
+            internationalPrice:
+              product?.internationalPrice === null || product?.internationalPrice === undefined
+                ? null
+                : Number(product?.internationalPrice || 0),
+            internationalCountryPrices: Array.isArray(product?.internationalCountryPrices)
+              ? product.internationalCountryPrices
+                  .map((entry) => ({
+                    country: String(entry?.country || "").trim(),
+                    price: Number(entry?.price || 0)
+                  }))
+                  .filter((entry) => entry.country && !Number.isNaN(entry.price))
+              : [],
             image: String(product?.image || "").trim(),
             description: String(product?.description || "").trim(),
             category: String(product?.category || "General").trim() || "General",

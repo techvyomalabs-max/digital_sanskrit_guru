@@ -26,6 +26,16 @@ const formatCart = (cart) => {
       _id: String(item.product._id),
       name: item.product.name,
       price: Number(item.product.price || 0),
+      internationalPrice:
+        item.product.internationalPrice === null || item.product.internationalPrice === undefined
+          ? null
+          : Number(item.product.internationalPrice || 0),
+      internationalCountryPrices: Array.isArray(item.product.internationalCountryPrices)
+        ? item.product.internationalCountryPrices.map((entry) => ({
+            country: String(entry?.country || "").trim(),
+            price: Number(entry?.price || 0)
+          }))
+        : [],
       image: item.product.image || "",
       description: item.product.description || "",
       category: item.product.category || "General",

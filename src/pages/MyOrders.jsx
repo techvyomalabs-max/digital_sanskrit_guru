@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { generateInvoicePdf } from "../utils/invoicePdf";
 import { formatCurrencyForUser } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import "./MyOrders.css";
 
-const progressSteps = ["Placed", "Paid", "Processing", "Print", "Dispatch", "Delivered"];
+const RETURN_WINDOW_DAYS = 7;
 
 function getEffectivePaymentStatus(order) {
   const raw = String(order?.paymentStatus || "").trim();
@@ -20,15 +20,30 @@ function getEffectivePaymentStatus(order) {
   return "Pending";
 }
 
-function getProgressIndex(order) {
-  const paymentStatus = getEffectivePaymentStatus(order);
-  const status = String(order?.status || "Pending");
+function getReturnReferenceDate(order, item) {
+  const candidates = [item?.deliveredAt, order?.deliveredAt, order?.updatedAt, order?.createdAt];
+  for (const candidate of candidates) {
+    const date = candidate ? new Date(candidate) : null;
+    if (date && !Number.isNaN(date.getTime())) {
+      return date;
+    }
+  }
+  return null;
+}
 
-  if (status === "Cancelled") return 0;
-  if (paymentStatus !== "Paid") return 0;
-  if (status === "Delivered") return 5;
-  if (status === "Shipped") return 4;
-  return 1;
+function getReturnWindowInfo(order, item) {
+  const referenceDate = getReturnReferenceDate(order, item);
+  if (!referenceDate) {
+    return { eligible: false, daysLeft: 0 };
+  }
+
+  const msLeft = referenceDate.getTime() + RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000 - Date.now();
+  const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+
+  return {
+    eligible: msLeft >= 0,
+    daysLeft
+  };
 }
 
 function MyOrders() {
@@ -36,6 +51,7 @@ function MyOrders() {
   const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [retryingOrderId, setRetryingOrderId] = useState("");
+  const [requestingReturnOrderId, setRequestingReturnOrderId] = useState("");
   const [pageMessage, setPageMessage] = useState("");
   const [selectedView, setSelectedView] = useState("All");
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
@@ -81,6 +97,27 @@ function MyOrders() {
       setPageMessage("Order cancelled successfully.");
     } catch (err) {
       setPageMessage(err?.response?.data?.message || "Unable to cancel this order right now.");
+    }
+  };
+
+  const requestReturn = async (orderId, itemId) => {
+    const reason = window.prompt("Why are you returning this product?", "Requested by customer");
+    if (reason === null) return;
+
+    const requestKey = `${orderId}:${itemId}`;
+    setRequestingReturnOrderId(requestKey);
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/items/${itemId}/return-request`,
+        { reason },
+        getAuthHeaders()
+      );
+      await loadOrders();
+      setPageMessage("Return request submitted successfully.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Unable to submit the return request right now.");
+    } finally {
+      setRequestingReturnOrderId("");
     }
   };
 
@@ -266,12 +303,11 @@ function MyOrders() {
         const canDownloadInvoice = isPaid && (status === "Shipped" || status === "Delivered");
         const items = Array.isArray(order.items) ? order.items : [];
         const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
-        const paymentStatusClass = `my-payment-status payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
-        const progressIndex = getProgressIndex(order);
+        const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
         const canContinuePayment = !isPaid && status !== "Delivered" && status !== "Cancelled";
         const canCancelOrder = status === "Pending";
         const shouldShowRefundStatus = refundStatus !== "Not Applicable";
-        const refundStatusClass = `my-refund-status refund-${refundStatus.toLowerCase().replace(/\s+/g, "-")}`;
+        const deliveryCharge = Number(order?.deliveryCharge || 0);
 
         return (
           <div key={order._id} className="my-order-card">
@@ -283,55 +319,19 @@ function MyOrders() {
               <div>
                 <span>TOTAL</span>
                 <strong>{formatCurrencyForUser(order.total)}</strong>
+                <small className="my-order-total-note">Includes delivery {formatCurrencyForUser(deliveryCharge)}</small>
               </div>
               <div>
-                <span>STATUS</span>
+                <span>ORDER STATUS</span>
                 <strong className={orderStatusClass}>{orderStatusLabel}</strong>
-                {/* {isPaid && order?.paymentMeta?.paidAt ? (
-                  <small className="my-order-paid-at">
-                    Paid on {formatDate(order.paymentMeta.paidAt)}
-                  </small>
-                ) : null} */}
               </div>
               <div>
                 <span>PAYMENT</span>
                 <strong className={paymentStatusClass}>{paymentStatusLabel}</strong>
-                {isPaid && order?.paymentMeta?.paidAt ? (
-                  <small className="my-order-paid-at">
-                    Paid on {formatDate(order.paymentMeta.paidAt)}
-                  </small>
-                ) : null}
               </div>
-              {shouldShowRefundStatus ? (
-                <div>
-                  <span>REFUND</span>
-                  <strong className={refundStatusClass}>{refundStatus}</strong>
-                </div>
-              ) : null}
               <div className="my-order-id-wrap">
                 <span>ORDER #</span>
                 <strong>{order._id}</strong>
-              </div>
-            </div>
-
-            <div className="my-order-progress-wrap">
-              <h3>Order Progress</h3>
-              <div className="my-order-progress">
-                {progressSteps.map((step, index) => {
-                  const isActive = index <= progressIndex;
-                  const isCurrent = index === progressIndex;
-                  const dotClassName = isCurrent
-                    ? "my-order-progress-dot current"
-                    : isActive
-                      ? "my-order-progress-dot active"
-                      : "my-order-progress-dot";
-                  return (
-                    <div key={`${order._id}-${step}`} className="my-order-progress-step">
-                      <span className={dotClassName} />
-                      <small className={isActive ? "active" : ""}>{step}</small>
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
@@ -341,19 +341,89 @@ function MyOrders() {
                 {items.length === 0 ? (
                   <p className="my-order-items-empty">No items found for this order.</p>
                 ) : (
-                  items.map((item, i) => (
-                    <div key={i} className="my-order-item">
-                      <strong>{item.name}</strong>
-                      <span>Qty: {item.quantity || 1}</span>
-                    </div>
-                  ))
+                  items.map((item, i) => {
+                    const itemId = String(item?._id || item?.id || item?.product || "").trim();
+                    const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
+                    const returnWindow = getReturnWindowInfo(order, item);
+                    const canRequestReturn =
+                      status === "Delivered" &&
+                      isPaid &&
+                      Boolean(itemId) &&
+                      returnRequestStatus === "Not Requested" &&
+                      returnWindow.eligible;
+
+                    return (
+                      <div key={i} className="my-order-item">
+                        <div className="my-order-item-content">
+                          {itemId ? (
+                            <Link to={`/product/${itemId}`} className="my-order-item-link">
+                              <strong>{item.name}</strong>
+                            </Link>
+                          ) : (
+                            <strong>{item.name}</strong>
+                          )}
+                          {status === "Delivered" ? (
+                            <p className="my-order-item-return-note">
+                              {returnRequestStatus === "Requested"
+                                ? "Return requested. Our team will review it."
+                                : returnRequestStatus === "Approved"
+                                  ? "Return approved. Refund is being processed."
+                                  : returnRequestStatus === "Rejected"
+                                    ? "Return request was rejected."
+                                    : returnRequestStatus === "Refunded"
+                                      ? "Returned and refunded."
+                                      : returnWindow.eligible
+                                        ? `Return available for ${returnWindow.daysLeft} more day${returnWindow.daysLeft === 1 ? "" : "s"}.`
+                                        : "7-day return window has closed."}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="my-order-item-side">
+                          <span>{formatCurrencyForUser(Number(item?.price || 0))}</span>
+                          <span>Qty: {item.quantity || 1}</span>
+                          {canRequestReturn ? (
+                            <button
+                              className="my-order-return-btn"
+                              onClick={() => requestReturn(order._id, itemId)}
+                              disabled={requestingReturnOrderId === `${order._id}:${itemId}`}
+                            >
+                              {requestingReturnOrderId === `${order._id}:${itemId}` ? "Submitting..." : "Return product"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
               <div className="my-order-actions">
+                <button
+                  className="my-order-invoice-btn"
+                  disabled={!canDownloadInvoice}
+                  onClick={() => {
+                    if (!canDownloadInvoice) return;
+                    generateInvoice(order);
+                  }}
+                >
+                  {canDownloadInvoice ? "Download invoice" : "Invoice after shipping"}
+                </button>
+
+                <p className="my-order-invoice-note">
+                  {status === "Cancelled"
+                    ? "Invoice is not available for cancelled orders."
+                    : canDownloadInvoice
+                      ? "Your invoice is ready to download."
+                      : "Invoice will be available once this order is paid and shipped."}
+                </p>
+
+                {shouldShowRefundStatus ? (
+                  <p className="my-order-refund-note">Refund status: {refundStatus}</p>
+                ) : null}
+
                 {canContinuePayment ? (
                   <button
-                    className="my-order-pay-btn"
+                    className="my-order-continue-btn"
                     onClick={() => handleContinuePayment(order)}
                     disabled={retryingOrderId === order._id}
                   >
@@ -368,25 +438,6 @@ function MyOrders() {
                   >
                     Cancel order
                   </button>
-                ) : null}
-
-                <button
-                  className="my-order-invoice-btn"
-                  disabled={!canDownloadInvoice}
-                  onClick={() => {
-                    if (!canDownloadInvoice) return;
-                    generateInvoice(order);
-                  }}
-                >
-                  {canDownloadInvoice ? "Download invoice" : "Invoice after payment + shipping"}
-                </button>
-
-                {!canDownloadInvoice ? (
-                  <p className="my-order-invoice-note">
-                    {status === "Cancelled"
-                      ? "Invoice is not available for cancelled orders."
-                      : "Invoice is available after payment and shipping."}
-                  </p>
                 ) : null}
               </div>
             </div>

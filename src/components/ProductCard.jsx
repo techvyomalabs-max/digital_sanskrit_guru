@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyForUser } from "../utils/currency";
+import { getProductPriceDetails } from "../utils/productPricing";
 import "./ProductCard.css";
 
 function ProductCard({ product, showDescription = true, variant = "default" }) {
@@ -16,6 +17,8 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const roundedStars = Math.max(0, Math.min(5, Math.round(displayRating)));
 
   const isWishlisted = wishlist.some((p) => p._id === product._id);
+  const pricing = getProductPriceDetails(product);
+  const displayPrice = Number(pricing.price || 0);
   const isFestiveOffer = product?.festiveOffer === true;
   const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product?.festiveDiscountPercent || 0)));
   const isBundle =
@@ -24,14 +27,14 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const bundleItems = Array.isArray(product?.bundleItems) ? product.bundleItems : [];
   const bundleOriginalTotal = bundleItems.reduce((sum, item) => {
     const bundledProduct = item?.product;
-    return sum + Number(bundledProduct?.price || 0) * Math.max(1, Number(item?.quantity || 1));
+    return sum + Number(getProductPriceDetails(bundledProduct).price || 0) * Math.max(1, Number(item?.quantity || 1));
   }, 0);
-  const bundleSavings = Math.max(0, bundleOriginalTotal - Number(product?.price || 0));
+  const bundleSavings = Math.max(0, bundleOriginalTotal - displayPrice);
   const festiveOriginalPrice =
     isFestiveOffer && festiveDiscountPercent > 0
-      ? Math.round(Number(product?.price || 0) / (1 - festiveDiscountPercent / 100))
+      ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const festiveSavings = Math.max(0, festiveOriginalPrice - Number(product?.price || 0));
+  const festiveSavings = Math.max(0, festiveOriginalPrice - displayPrice);
 
   const handleWishlistToggle = () => {
     if (isWishlisted) {
@@ -81,12 +84,12 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         )}
 
         <div className="price-box">
-          <span className="discount-price">{formatCurrencyForUser(product.price)}</span>
+          <span className="discount-price">{formatCurrencyForUser(displayPrice)}</span>
           <span className="original-price">
             {formatCurrencyForUser(
-              festiveOriginalPrice > Number(product?.price || 0)
+              festiveOriginalPrice > displayPrice
                 ? festiveOriginalPrice
-                : Number(product.price || 0) + 500
+                : displayPrice + 500
             )}
           </span>
         </div>
@@ -98,7 +101,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
           </div>
         ) : null}
 
-        {isBundle && bundleOriginalTotal > Number(product?.price || 0) ? (
+        {isBundle && bundleOriginalTotal > displayPrice ? (
           <div className="product-bundle-savings">
             <span>Individual total {formatCurrencyForUser(bundleOriginalTotal)}</span>
             <strong>Save {formatCurrencyForUser(bundleSavings)}</strong>

@@ -5,6 +5,7 @@ import { useCart } from "../hooks/useCart";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyForUser } from "../utils/currency";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
+import { getProductPriceDetails } from "../utils/productPricing";
 import "./Cart.css";
 
 function Cart() {
@@ -18,6 +19,7 @@ function Cart() {
     removeSavedForLater
   } = useCart();
   const { selectedAddress } = useDeliveryLocation();
+  const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
   const [charges, setCharges] = useState({
     gstPercent: 0,
     deliveryCharge: 0,
@@ -34,7 +36,7 @@ function Cart() {
 
   const subtotal = roundMoney(
     cartItems.reduce(
-      (sum, item) => sum + Number(item.price || 0) * Math.max(1, Number(item.quantity || 1)),
+      (sum, item) => sum + getItemUnitPrice(item) * Math.max(1, Number(item.quantity || 1)),
       0
     )
   );
@@ -102,7 +104,7 @@ function Cart() {
               <div className="cart-items">
               {cartItems.map((item, index) => {
                 const qty = Math.max(1, Number(item.quantity || 1));
-                const lineTotal = roundMoney(Number(item.price || 0) * qty);
+                const lineTotal = roundMoney(getItemUnitPrice(item) * qty);
 
                 return (
                   <div key={item._id || item.id || index} className="cart-item">
@@ -161,7 +163,7 @@ function Cart() {
                     />
                     <div className="saved-later-info">
                       <strong>{item.name}</strong>
-                      <span>{formatCurrencyForUser(Number(item.price || 0))}</span>
+                      <span>{formatCurrencyForUser(getItemUnitPrice(item))}</span>
                     </div>
                     <div className="saved-later-actions">
                       <button onClick={() => moveToCartFromSaved(item)}>Move to cart</button>
@@ -199,4 +201,3 @@ function Cart() {
 }
 
 export default Cart;
-

@@ -9,6 +9,22 @@ const reviewSchema = new mongoose.Schema({
   comment: String
 });
 
+const internationalCountryPriceSchema = new mongoose.Schema(
+  {
+    country: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    price: {
+      type: Number,
+      required: true,
+      min: 0
+    }
+  },
+  { _id: false }
+);
+
 const bundleItemSchema = new mongoose.Schema(
   {
     product: {
@@ -35,6 +51,16 @@ const productSchema = new mongoose.Schema(
     price: {
       type: Number,
       required: true
+    },
+
+    internationalPrice: {
+      type: Number,
+      default: null
+    },
+
+    internationalCountryPrices: {
+      type: [internationalCountryPriceSchema],
+      default: []
     },
 
     description: String,
@@ -76,6 +102,16 @@ const productSchema = new mongoose.Schema(
 
     bundleItems: {
       type: [bundleItemSchema],
+      default: []
+    },
+
+    relatedProducts: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product"
+        }
+      ],
       default: []
     },
 

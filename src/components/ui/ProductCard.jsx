@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { formatCurrencyForUser } from "../../utils/currency";
+import { getProductPriceDetails } from "../../utils/productPricing";
 
 function ProductCard({ product }) {
   const productId = product._id || product.id;
+  const pricing = getProductPriceDetails(product);
 
   return (
     <div style={styles.card}>
@@ -12,7 +14,7 @@ function ProductCard({ product }) {
         style={styles.image}
       />
       <h3>{product.name}</h3>
-      <p>{formatCurrencyForUser(product.price)}</p>
+      <p>{formatCurrencyForUser(pricing.price)}</p>
       <Link to={`/product/${productId}`}>
         <button style={styles.button}>View Product</button>
       </Link>

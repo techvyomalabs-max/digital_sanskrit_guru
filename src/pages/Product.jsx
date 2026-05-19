@@ -3,8 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
+import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Product.css";
 import { formatCurrencyForUser } from "../utils/currency";
+import { getProductPriceDetails } from "../utils/productPricing";
 
 const PRODUCT_EXTRA_DETAILS = {
   soundaryalahari: {
@@ -75,9 +77,11 @@ function Product() {
   const { id } = useParams();
   const { addToCart } = useCart();
   const { user, token } = useAuth();
+  const { selectedAddress } = useDeliveryLocation();
   const navigate = useNavigate();
 
   const [product, setProduct] = useState(null);
+  const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -123,6 +127,11 @@ function Product() {
       setProduct(found);
       setMainImage(galleryImages[0] || "");
       setQty(1);
+      setManagedRelatedProducts(
+        Array.isArray(found?.relatedProducts)
+          ? found.relatedProducts.filter((p) => String(p?._id || "") !== String(id)).slice(0, 8)
+          : []
+      );
       setRelatedProducts(
         recommended.length > 0
           ? recommended.filter((p) => p?._id !== id).slice(0, 4)
@@ -130,6 +139,7 @@ function Product() {
       );
     } catch {
       setProduct(null);
+      setManagedRelatedProducts([]);
       setRelatedProducts([]);
     } finally {
       setLoading(false);
@@ -212,19 +222,21 @@ function Product() {
   const isFestiveOffer = product.festiveOffer === true;
   const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product.festiveDiscountPercent || 0)));
   const reviewCount = Array.isArray(product.reviews) ? product.reviews.length : 0;
+  const pricing = getProductPriceDetails(product, selectedAddress?.country);
+  const displayPrice = Number(pricing.price || 0);
   const bundleOriginalTotal = bundleItems.reduce((sum, item) => {
     const bundledProduct = item?.product;
-    return sum + Number(bundledProduct?.price || 0) * Math.max(1, Number(item?.quantity || 1));
+    return sum + Number(getProductPriceDetails(bundledProduct, selectedAddress?.country).price || 0) * Math.max(1, Number(item?.quantity || 1));
   }, 0);
-  const bundleSavings = Math.max(0, bundleOriginalTotal - Number(product.price || 0));
+  const bundleSavings = Math.max(0, bundleOriginalTotal - displayPrice);
   const festiveOriginalPrice =
     isFestiveOffer && festiveDiscountPercent > 0
-      ? Math.round(Number(product.price || 0) / (1 - festiveDiscountPercent / 100))
+      ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const listPrice = festiveOriginalPrice > Number(product.price || 0)
+  const listPrice = festiveOriginalPrice > displayPrice
     ? festiveOriginalPrice
-    : Number(product.price || 0) + 500;
-  const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - Number(product.price || 0)) / listPrice) * 100)) : 0;
+    : displayPrice + 500;
+  const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - displayPrice) / listPrice) * 100)) : 0;
 
   return (
     <>
@@ -275,9 +287,14 @@ function Product() {
           <hr />
           <div className="price-block">
             <p className="price">
-              <strong>{formatCurrencyForUser(product.price)}</strong>
+              <strong>{formatCurrencyForUser(displayPrice)}</strong>
+              {pricing.priceType === "international-country"
+                ? <small>{pricing.matchedCountry} price</small>
+                : pricing.isInternational
+                  ? <small>International price</small>
+                  : null}
             </p>
-            {isBundle && bundleOriginalTotal > Number(product.price || 0) ? (
+            {isBundle && bundleOriginalTotal > displayPrice ? (
               <div className="bundle-savings-box">
                 <span>Individual total: {formatCurrencyForUser(bundleOriginalTotal)}</span>
                 <strong>You save {formatCurrencyForUser(bundleSavings)}</strong>
@@ -300,7 +317,7 @@ function Product() {
 
         <div className="product-right">
           <div className="buy-box">
-            <p className="buy-price">{formatCurrencyForUser(product.price)}</p>
+            <p className="buy-price">{formatCurrencyForUser(displayPrice)}</p>
             <p className="delivery">FREE Delivery</p>
             <p className="buy-box-note">Fastest delivery available at your selected location.</p>
 
@@ -457,6 +474,26 @@ function Product() {
       </div>
 
       <div className="related-section">
+        <h3>Related Products</h3>
+        <div className="related-products">
+          {managedRelatedProducts.length > 0 ? (
+            managedRelatedProducts.map((p) => (
+              <div key={p._id} className="related-card">
+                <img src={p.image || "https://picsum.photos/200"} alt={p.name} />
+                <h4>{p.name}</h4>
+                <p>{formatCurrencyForUser(getProductPriceDetails(p, selectedAddress?.country).price)}</p>
+                <Link to={`/product/${p._id}`}>
+                  <button className="view-btn">View</button>
+                </Link>
+              </div>
+            ))
+          ) : (
+            <p className="related-empty">No related products added by admin.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="related-section">
         <h3>You may also like</h3>
         <div className="related-products">
           {relatedProducts.length > 0 ? (
@@ -464,7 +501,7 @@ function Product() {
               <div key={p._id} className="related-card">
                 <img src={p.image || "https://picsum.photos/200"} alt={p.name} />
                 <h4>{p.name}</h4>
-                <p>{formatCurrencyForUser(p.price)}</p>
+                <p>{formatCurrencyForUser(getProductPriceDetails(p, selectedAddress?.country).price)}</p>
                 <Link to={`/product/${p._id}`}>
                   <button className="view-btn">View</button>
                 </Link>

@@ -5,6 +5,7 @@ const StoreSettings = require("../models/StoreSettings");
 const User = require("../models/User");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { getProductPriceDetails } = require("../utils/productPricing");
 
 const router = express.Router();
 
@@ -77,6 +78,72 @@ const normalizeBundleItems = (rawBundleItems = []) => {
   }, []);
 };
 
+const normalizeRelatedProducts = (rawRelatedProducts = [], currentProductId = "") => {
+  if (!Array.isArray(rawRelatedProducts)) {
+    return [];
+  }
+
+  const currentId = String(currentProductId || "").trim();
+  const seen = new Set();
+
+  return rawRelatedProducts.reduce((acc, item) => {
+    const productId = String(item?.product || item?.productId || item?._id || item?.id || item || "").trim();
+    if (!productId || productId === currentId || seen.has(productId)) {
+      return acc;
+    }
+
+    seen.add(productId);
+    acc.push(productId);
+    return acc;
+  }, []);
+};
+
+const normalizeProductPrice = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    return Math.max(0, Number(fallback) || 0);
+  }
+  return Math.max(0, parsed);
+};
+
+const normalizeInternationalPrice = (value, fallback = null) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, parsed);
+};
+
+const normalizeInternationalCountryPrices = (rawItems = []) => {
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return rawItems.reduce((acc, item) => {
+    const country = String(item?.country || "").trim();
+    const price = Number(item?.price);
+    const key = country.toLowerCase();
+
+    if (!country || seen.has(key) || Number.isNaN(price) || price < 0) {
+      return acc;
+    }
+
+    seen.add(key);
+    acc.push({
+      country,
+      price: Math.max(0, price)
+    });
+    return acc;
+  }, []);
+};
+
 const getCategoryLabel = (product) => {
   const raw = String(product?.category || "").trim();
 
@@ -105,19 +172,27 @@ router.post("/", protect, admin, async (req, res) => {
     const images = normalizeImages(req.body.images, req.body.image);
     const productType = String(req.body?.productType || "single").trim().toLowerCase() === "bundle" ? "bundle" : "single";
     const bundleItems = productType === "bundle" ? normalizeBundleItems(req.body.bundleItems) : [];
+    const relatedProducts = normalizeRelatedProducts(req.body.relatedProducts);
     const festiveOffer = req.body?.festiveOffer === true;
+    const price = normalizeProductPrice(req.body?.price);
+    const internationalPrice = normalizeInternationalPrice(req.body?.internationalPrice, null);
+    const internationalCountryPrices = normalizeInternationalCountryPrices(req.body?.internationalCountryPrices);
     if (productType === "bundle" && bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
     const product = await Product.create({
       ...req.body,
+      price,
+      internationalPrice,
+      internationalCountryPrices,
       aboutProduct: normalizeAboutProduct(req.body.aboutProduct),
       image: images[0] || String(req.body.image || "").trim(),
       images,
       festiveOffer,
       festiveDiscountPercent: festiveOffer ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent) : 0,
       productType,
-      bundleItems
+      bundleItems,
+      relatedProducts
     });
     res.json(product);
   } catch (error) {
@@ -135,7 +210,15 @@ router.put("/:id", protect, admin, async (req, res) => {
     }
 
     product.name = req.body.name ?? product.name;
-    product.price = req.body.price ?? product.price;
+    product.price = req.body.price !== undefined ? normalizeProductPrice(req.body.price, product.price) : product.price;
+    product.internationalPrice =
+      req.body.internationalPrice !== undefined
+        ? normalizeInternationalPrice(req.body.internationalPrice, product.internationalPrice)
+        : product.internationalPrice;
+    product.internationalCountryPrices =
+      req.body.internationalCountryPrices !== undefined
+        ? normalizeInternationalCountryPrices(req.body.internationalCountryPrices)
+        : product.internationalCountryPrices;
     product.description = req.body.description ?? product.description;
     product.aboutProduct = req.body.aboutProduct !== undefined
       ? normalizeAboutProduct(req.body.aboutProduct)
@@ -152,6 +235,10 @@ router.put("/:id", protect, admin, async (req, res) => {
     product.bundleItems = product.productType === "bundle"
       ? normalizeBundleItems(req.body.bundleItems ?? product.bundleItems)
       : [];
+    product.relatedProducts =
+      req.body.relatedProducts !== undefined
+        ? normalizeRelatedProducts(req.body.relatedProducts, product._id)
+        : product.relatedProducts;
     if (product.productType === "bundle" && product.bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
@@ -177,7 +264,9 @@ router.get("/", async (req, res) => {
       req.query.category !== undefined;
 
     if (!hasPaginationQuery) {
-      const products = await Product.find().populate("bundleItems.product", "name image price category");
+      const products = await Product.find()
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category")
+        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock");
       return res.json(products);
     }
 
@@ -186,7 +275,10 @@ router.get("/", async (req, res) => {
     const sortOption = String(req.query.sort || "featured").trim();
     const selectedCategory = String(req.query.category || "All").trim();
 
-    const products = await Product.find().populate("bundleItems.product", "name image price category").lean();
+    const products = await Product.find()
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category")
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock")
+      .lean();
     const baseProducts = products;
     const settings = await StoreSettings.findOne().lean();
     const festiveOffersFilterEnabled = settings?.collectionFilterVisibility?.festiveOffers !== false;
@@ -221,11 +313,11 @@ router.get("/", async (req, res) => {
 
     filteredProducts.sort((a, b) => {
       if (sortOption === "priceLow") {
-        return Number(a?.price || 0) - Number(b?.price || 0);
+        return getProductPriceDetails(a, req.query.country).price - getProductPriceDetails(b, req.query.country).price;
       }
 
       if (sortOption === "priceHigh") {
-        return Number(b?.price || 0) - Number(a?.price || 0);
+        return getProductPriceDetails(b, req.query.country).price - getProductPriceDetails(a, req.query.country).price;
       }
 
       if (sortOption === "rating") {
@@ -335,7 +427,9 @@ router.get("/recommend/:productId", async (req, res) => {
 // Get one product by id
 router.get("/:id", async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate("bundleItems.product", "name image price category stock");
+    const product = await Product.findById(req.params.id)
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category stock")
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock");
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
