@@ -2,6 +2,7 @@ const express = require("express");
 const StoreSettings = require("../models/StoreSettings");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../utils/currency");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -19,6 +20,8 @@ const LEGACY_DEFAULT_PRODUCT_CATEGORIES = [
   "Web Version",
   "General"
 ];
+const SUPPORTED_PRICING_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "CAD", "AUD"];
+const DEFAULT_INTERNATIONAL_CURRENCY = "USD";
 
 function sanitizeThemeId(value, fallback = "custom-theme") {
   return String(value || "")
@@ -133,6 +136,58 @@ function normalizeCountryName(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeCurrencyCode(value, fallback = DEFAULT_INTERNATIONAL_CURRENCY) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (SUPPORTED_PRICING_CURRENCIES.includes(normalized)) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function normalizePricingMarkets(input) {
+  const values = Array.isArray(input) ? input : [];
+  const seenMarkets = new Set();
+
+  return values.reduce((acc, item) => {
+    const name = String(item?.name || "").trim();
+    const key = name.toLowerCase();
+    if (!name || seenMarkets.has(key)) {
+      return acc;
+    }
+
+    seenMarkets.add(key);
+    const seenCountries = new Set();
+    const countries = (Array.isArray(item?.countries) ? item.countries : []).reduce((countryAcc, countryValue) => {
+      const country = String(countryValue || "").trim();
+      const countryKey = country.toLowerCase();
+      if (!country || seenCountries.has(countryKey)) {
+        return countryAcc;
+      }
+
+      seenCountries.add(countryKey);
+      countryAcc.push(country);
+      return countryAcc;
+    }, []);
+
+    acc.push({
+      name,
+      currency: normalizeCurrencyCode(item?.currency, DEFAULT_INTERNATIONAL_CURRENCY),
+      countries
+    });
+    return acc;
+  }, []);
+}
+
+function normalizeInternationalPricingDefaults(input) {
+  return {
+    currency: normalizeCurrencyCode(input?.currency, DEFAULT_INTERNATIONAL_CURRENCY)
+  };
+}
+
+function normalizeCurrencyConversionRates(input) {
+  return normalizeCurrencyRates(input || DEFAULT_CURRENCY_EXCHANGE_RATES);
+}
+
 function normalizeInternationalDelivery(input, fallbackDeliveryCharge = 0) {
   const rawRates = Array.isArray(input?.countryRates) ? input.countryRates : [];
   const seen = new Set();
@@ -191,6 +246,9 @@ function normalizeSettings(settings) {
     warehouseLocation: normalizeWarehouseLocation(settings?.warehouseLocation || {}),
     distancePricing: normalizeDistancePricing(settings?.distancePricing || {}, settings?.deliveryCharge || 0),
     internationalDelivery: normalizeInternationalDelivery(settings?.internationalDelivery || {}, settings?.deliveryCharge || 0),
+    pricingMarkets: normalizePricingMarkets(settings?.pricingMarkets || []),
+    internationalPricingDefaults: normalizeInternationalPricingDefaults(settings?.internationalPricingDefaults || {}),
+    currencyConversionRates: normalizeCurrencyConversionRates(settings?.currencyConversionRates || {}),
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
@@ -231,6 +289,13 @@ router.put("/", protect, admin, async (req, res) => {
   const hasInternationalDelivery = Boolean(
     req.body?.internationalDelivery && typeof req.body.internationalDelivery === "object"
   );
+  const hasPricingMarkets = Array.isArray(req.body?.pricingMarkets);
+  const hasInternationalPricingDefaults = Boolean(
+    req.body?.internationalPricingDefaults && typeof req.body.internationalPricingDefaults === "object"
+  );
+  const hasCurrencyConversionRates = Boolean(
+    req.body?.currencyConversionRates && typeof req.body.currencyConversionRates === "object"
+  );
   const hasHeroBannerImage = typeof req.body?.heroBannerImage === "string";
   const hasHeroBannerProductId = typeof req.body?.heroBannerProductId === "string";
   const hasHeroBanners = Array.isArray(req.body?.heroBanners);
@@ -255,6 +320,15 @@ router.put("/", protect, admin, async (req, res) => {
   const internationalDelivery = hasInternationalDelivery
     ? normalizeInternationalDelivery(req.body?.internationalDelivery, nextDeliveryCharge)
     : normalizeInternationalDelivery(settings.internationalDelivery || {}, nextDeliveryCharge);
+  const pricingMarkets = hasPricingMarkets
+    ? normalizePricingMarkets(req.body?.pricingMarkets)
+    : normalizePricingMarkets(settings.pricingMarkets || []);
+  const internationalPricingDefaults = hasInternationalPricingDefaults
+    ? normalizeInternationalPricingDefaults(req.body?.internationalPricingDefaults)
+    : normalizeInternationalPricingDefaults(settings.internationalPricingDefaults || {});
+  const currencyConversionRates = hasCurrencyConversionRates
+    ? normalizeCurrencyConversionRates(req.body?.currencyConversionRates)
+    : normalizeCurrencyConversionRates(settings.currencyConversionRates || {});
   const customThemes = hasCustomThemes
     ? normalizeCustomThemes(req.body?.customThemes)
     : normalizeCustomThemes(settings.customThemes || []);
@@ -271,6 +345,9 @@ router.put("/", protect, admin, async (req, res) => {
   settings.warehouseLocation = warehouseLocation;
   settings.distancePricing = distancePricing;
   settings.internationalDelivery = internationalDelivery;
+  settings.pricingMarkets = pricingMarkets;
+  settings.internationalPricingDefaults = internationalPricingDefaults;
+  settings.currencyConversionRates = currencyConversionRates;
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
   const nextHeroBanners = hasHeroBanners

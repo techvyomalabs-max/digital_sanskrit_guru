@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useWishlist } from "../hooks/useWishlist";
-import { formatCurrencyForUser } from "../utils/currency";
+import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
 import "./ProductCard.css";
 
@@ -19,6 +19,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const isWishlisted = wishlist.some((p) => p._id === product._id);
   const pricing = getProductPriceDetails(product);
   const displayPrice = Number(pricing.price || 0);
+  const displayCurrency = pricing.currency || "INR";
   const isFestiveOffer = product?.festiveOffer === true;
   const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product?.festiveDiscountPercent || 0)));
   const isBundle =
@@ -30,11 +31,23 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
     return sum + Number(getProductPriceDetails(bundledProduct).price || 0) * Math.max(1, Number(item?.quantity || 1));
   }, 0);
   const bundleSavings = Math.max(0, bundleOriginalTotal - displayPrice);
+  const marketRegularPrice = Number(pricing.marketRegularPrice || 0);
+  const hasActiveMarketSale =
+    pricing.priceType === "international-market-sale" &&
+    marketRegularPrice > displayPrice;
   const festiveOriginalPrice =
     isFestiveOffer && festiveDiscountPercent > 0
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
   const festiveSavings = Math.max(0, festiveOriginalPrice - displayPrice);
+  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
+  const listPrice = hasActiveMarketSale
+    ? marketRegularPrice
+    : isBundle && bundleOriginalTotal > displayPrice
+      ? bundleOriginalTotal
+      : festiveOriginalPrice > displayPrice
+        ? festiveOriginalPrice
+        : fallbackOriginalPrice;
 
   const handleWishlistToggle = () => {
     if (isWishlisted) {
@@ -84,27 +97,23 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         )}
 
         <div className="price-box">
-          <span className="discount-price">{formatCurrencyForUser(displayPrice)}</span>
+          <span className="discount-price">{formatResolvedPrice(pricing)}</span>
           <span className="original-price">
-            {formatCurrencyForUser(
-              festiveOriginalPrice > displayPrice
-                ? festiveOriginalPrice
-                : displayPrice + 500
-            )}
+            {formatCurrencyExact(listPrice, displayCurrency)}
           </span>
         </div>
 
         {isFestiveOffer && festiveSavings > 0 ? (
           <div className="product-festive-savings">
             <span>Festive deal</span>
-            <strong>Save {formatCurrencyForUser(festiveSavings)}</strong>
+            <strong>Save {formatCurrencyExact(festiveSavings, displayCurrency)}</strong>
           </div>
         ) : null}
 
         {isBundle && bundleOriginalTotal > displayPrice ? (
           <div className="product-bundle-savings">
-            <span>Individual total {formatCurrencyForUser(bundleOriginalTotal)}</span>
-            <strong>Save {formatCurrencyForUser(bundleSavings)}</strong>
+            <span>Individual total {formatCurrencyExact(bundleOriginalTotal, displayCurrency)}</span>
+            <strong>Save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
           </div>
         ) : null}
 

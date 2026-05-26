@@ -116,6 +116,50 @@ const internationalDeliveryCountryRateSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const pricingMarketSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    currency: {
+      type: String,
+      default: "USD",
+      trim: true
+    },
+    countries: {
+      type: [String],
+      default: []
+    }
+  },
+  { _id: false }
+);
+
+const internationalPricingDefaultsSchema = new mongoose.Schema(
+  {
+    currency: {
+      type: String,
+      default: "USD",
+      trim: true
+    }
+  },
+  { _id: false }
+);
+
+const currencyConversionRatesSchema = new mongoose.Schema(
+  {
+    INR: { type: Number, default: 1, min: 0 },
+    USD: { type: Number, default: 0.012, min: 0 },
+    EUR: { type: Number, default: 0.011, min: 0 },
+    GBP: { type: Number, default: 0.009, min: 0 },
+    AED: { type: Number, default: 0.044, min: 0 },
+    CAD: { type: Number, default: 0.016, min: 0 },
+    AUD: { type: Number, default: 0.019, min: 0 }
+  },
+  { _id: false }
+);
+
 const internationalDeliverySchema = new mongoose.Schema(
   {
     enabled: {
@@ -179,6 +223,18 @@ const storeSettingsSchema = new mongoose.Schema(
     },
     internationalDelivery: {
       type: internationalDeliverySchema,
+      default: () => ({})
+    },
+    pricingMarkets: {
+      type: [pricingMarketSchema],
+      default: []
+    },
+    internationalPricingDefaults: {
+      type: internationalPricingDefaultsSchema,
+      default: () => ({})
+    },
+    currencyConversionRates: {
+      type: currencyConversionRatesSchema,
       default: () => ({})
     },
     siteTheme: {

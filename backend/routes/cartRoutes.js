@@ -36,6 +36,16 @@ const formatCart = (cart) => {
             price: Number(entry?.price || 0)
           }))
         : [],
+      marketPrices: Array.isArray(item.product.marketPrices)
+        ? item.product.marketPrices.map((entry) => ({
+            market: String(entry?.market || "").trim(),
+            regularPrice: Number(entry?.regularPrice || 0),
+            salePrice:
+              entry?.salePrice === null || entry?.salePrice === undefined ? null : Number(entry?.salePrice || 0),
+            startDate: entry?.startDate || null,
+            endDate: entry?.endDate || null
+          }))
+        : [],
       image: item.product.image || "",
       description: item.product.description || "",
       category: item.product.category || "General",

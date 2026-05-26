@@ -28,6 +28,24 @@ function createEmptyCountryPrice() {
   return { country: "", price: "" };
 }
 
+function createEmptyMarketPrice() {
+  return { market: "", regularPrice: "", salePrice: "", startDate: "", endDate: "" };
+}
+
+function hasNumericInput(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function hasAnyMarketPriceInput(item) {
+  return Boolean(
+    String(item?.market || "").trim() ||
+      hasNumericInput(item?.regularPrice) ||
+      hasNumericInput(item?.salePrice) ||
+      String(item?.startDate || "").trim() ||
+      String(item?.endDate || "").trim()
+  );
+}
+
 function createEmptyRelatedProduct() {
   return { productId: "" };
 }
@@ -81,6 +99,7 @@ function AdminAddProducts() {
   const [price, setPrice] = useState("");
   const [internationalPrice, setInternationalPrice] = useState("");
   const [internationalCountryPrices, setInternationalCountryPrices] = useState([createEmptyCountryPrice()]);
+  const [marketPrices, setMarketPrices] = useState([createEmptyMarketPrice()]);
   const [image, setImage] = useState("");
   const [imagesInput, setImagesInput] = useState("");
   const [description, setDescription] = useState("");
@@ -92,6 +111,7 @@ function AdminAddProducts() {
   const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
+  const [pricingMarkets, setPricingMarkets] = useState([]);
   const [newCategory, setNewCategory] = useState("");
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [categoryMessage, setCategoryMessage] = useState("");
@@ -126,6 +146,7 @@ function AdminAddProducts() {
           ? res.data.productCategories
           : DEFAULT_CATEGORY_OPTIONS;
         setCategoryOptions(nextCategories);
+        setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
         const nextHeroBanners =
           Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
             ? res.data.heroBanners.map((item) => ({
@@ -144,6 +165,7 @@ function AdminAddProducts() {
       .catch(() => {
         if (!active) return;
         setCategoryOptions(DEFAULT_CATEGORY_OPTIONS);
+        setPricingMarkets([]);
         setHeroBanners([createEmptyHeroBanner()]);
         setActiveHeroBannerIndex(0);
       });
@@ -176,6 +198,7 @@ function AdminAddProducts() {
       siteTheme: currentSettings?.siteTheme,
       customThemes: currentSettings?.customThemes || [],
       productCategories: nextCategories,
+      pricingMarkets: currentSettings?.pricingMarkets || [],
       heroBanners: currentSettings?.heroBanners || []
     };
 
@@ -295,6 +318,9 @@ function AdminAddProducts() {
     const countryOverrideCount = internationalCountryPrices.filter(
       (item) => String(item?.country || "").trim() && String(item?.price || "").trim()
     ).length;
+    const marketPriceCount = marketPrices.filter(
+      (item) => String(item?.market || "").trim() && String(item?.regularPrice || "").trim()
+    ).length;
 
     const relatedCount = relatedProductItems.filter((item) => String(item?.productId || "").trim()).length;
 
@@ -302,15 +328,17 @@ function AdminAddProducts() {
       extraImageCount,
       aboutPointCount,
       countryOverrideCount,
+      marketPriceCount,
       relatedCount
     };
-  }, [aboutProduct, imagesInput, internationalCountryPrices, relatedProductItems]);
+  }, [aboutProduct, imagesInput, internationalCountryPrices, marketPrices, relatedProductItems]);
 
   const resetForm = () => {
     setName("");
     setPrice("");
     setInternationalPrice("");
     setInternationalCountryPrices([createEmptyCountryPrice()]);
+    setMarketPrices([createEmptyMarketPrice()]);
     setImage("");
     setImagesInput("");
     setDescription("");
@@ -499,6 +527,16 @@ function AdminAddProducts() {
       return;
     }
 
+    const hasIncompleteMarketPriceRow = marketPrices.some((item) => {
+      if (!hasAnyMarketPriceInput(item)) return false;
+      return !String(item?.market || "").trim() || !hasNumericInput(item?.regularPrice);
+    });
+
+    if (hasIncompleteMarketPriceRow) {
+      setFormMessage("Complete each Market Pricing row with both market and regular price, or remove the unfinished row.");
+      return;
+    }
+
     const payload = {
       name: formSummary.normalizedName,
       price: formSummary.numericPrice,
@@ -509,6 +547,18 @@ function AdminAddProducts() {
           price: Math.max(0, Number(item?.price || 0))
         }))
         .filter((item) => item.country && !Number.isNaN(item.price)),
+      marketPrices: marketPrices
+        .map((item) => ({
+          market: String(item?.market || "").trim(),
+          regularPrice: hasNumericInput(item?.regularPrice) ? Math.max(0, Number(item.regularPrice)) : null,
+          salePrice:
+            !hasNumericInput(item?.salePrice)
+              ? null
+              : Math.max(0, Number(item.salePrice)),
+          startDate: String(item?.startDate || "").trim() || null,
+          endDate: String(item?.endDate || "").trim() || null
+        }))
+        .filter((item) => item.market && item.regularPrice !== null && !Number.isNaN(item.regularPrice)),
       image: image.trim(),
       images: imagesInput,
       description: description.trim(),
@@ -584,6 +634,18 @@ function AdminAddProducts() {
             price: String(item?.price ?? "")
           }))
         : [createEmptyCountryPrice()]
+    );
+    setMarketPrices(
+      Array.isArray(product.marketPrices) && product.marketPrices.length > 0
+        ? product.marketPrices.map((item) => ({
+            market: String(item?.market || ""),
+            regularPrice: String(item?.regularPrice ?? ""),
+            salePrice:
+              item?.salePrice === null || item?.salePrice === undefined ? "" : String(item?.salePrice ?? ""),
+            startDate: item?.startDate ? String(item.startDate).slice(0, 10) : "",
+            endDate: item?.endDate ? String(item.endDate).slice(0, 10) : ""
+          }))
+        : [createEmptyMarketPrice()]
     );
     setImage(product.image || "");
     setImagesInput(Array.isArray(product.images) && product.images.length > 0 ? product.images.join("\n") : product.image || "");
@@ -679,6 +741,7 @@ function AdminAddProducts() {
     const rawInternationalPrice = item?.internationalPrice ?? item?.internationalprice;
     const parsedInternationalPrice = Number(rawInternationalPrice);
     const rawCountryPrices = item?.internationalCountryPrices ?? item?.internationalcountryprices;
+    const rawMarketPrices = item?.marketPrices ?? item?.marketprices;
     if (!productName || Number.isNaN(productPrice)) return null;
 
     let parsedCountryPrices = [];
@@ -695,6 +758,20 @@ function AdminAddProducts() {
       }
     }
 
+    let parsedMarketPrices = [];
+    if (Array.isArray(rawMarketPrices)) {
+      parsedMarketPrices = rawMarketPrices;
+    } else if (typeof rawMarketPrices === "string" && rawMarketPrices.trim()) {
+      try {
+        const parsed = JSON.parse(rawMarketPrices);
+        if (Array.isArray(parsed)) {
+          parsedMarketPrices = parsed;
+        }
+      } catch {
+        parsedMarketPrices = [];
+      }
+    }
+
     return {
       name: productName,
       price: productPrice,
@@ -708,6 +785,18 @@ function AdminAddProducts() {
           price: Math.max(0, Number(entry?.price || 0))
         }))
         .filter((entry) => entry.country && !Number.isNaN(entry.price)),
+      marketPrices: parsedMarketPrices
+        .map((entry) => ({
+          market: String(entry?.market || "").trim(),
+          regularPrice: Math.max(0, Number(entry?.regularPrice || 0)),
+          salePrice:
+            entry?.salePrice === null || entry?.salePrice === undefined || String(entry?.salePrice).trim() === ""
+              ? null
+              : Math.max(0, Number(entry?.salePrice || 0)),
+          startDate: String(entry?.startDate || "").trim() || null,
+          endDate: String(entry?.endDate || "").trim() || null
+        }))
+        .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice)),
       image: String(item?.image || "").trim(),
       images: String(item?.images || item?.image || "").trim(),
       description: String(item?.description || "").trim(),
@@ -809,6 +898,22 @@ function AdminAddProducts() {
     );
   };
 
+  const updateMarketPrice = (index, field, value) => {
+    setMarketPrices((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const addMarketPrice = () => {
+    setMarketPrices((current) => [...current, createEmptyMarketPrice()]);
+  };
+
+  const removeMarketPrice = (index) => {
+    setMarketPrices((current) =>
+      current.length === 1 ? [createEmptyMarketPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+    );
+  };
+
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -857,6 +962,10 @@ function AdminAddProducts() {
             <div className="product-composer-metric">
               <span>Country Overrides</span>
               <strong>{productComposerStats.countryOverrideCount}</strong>
+            </div>
+            <div className="product-composer-metric">
+              <span>Market Prices</span>
+              <strong>{productComposerStats.marketPriceCount}</strong>
             </div>
             <div className="product-composer-metric">
               <span>Related Products</span>
@@ -1018,7 +1127,7 @@ function AdminAddProducts() {
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Pricing</h4>
-                    <p>Control domestic pricing, fallback international pricing, and country-specific overrides.</p>
+                    <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
                   </div>
                 </div>
                 <div className="form-grid">
@@ -1071,6 +1180,65 @@ function AdminAddProducts() {
                       <div className="admin-bundle-preview">
                         <span>How it works</span>
                         <p>India uses the base price. Matching countries use their own override. All other countries use the fallback international price.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="admin-field admin-field-wide">
+                    <span>Market Pricing</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Set reusable region pricing like North America, Europe, or GCC</strong>
+                        <button type="button" onClick={addMarketPrice}>
+                          Add Market Price
+                        </button>
+                      </div>
+                      <div className="admin-bundle-builder-list">
+                        {marketPrices.map((item, index) => (
+                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap">
+                            <select
+                              value={item.market}
+                              onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
+                            >
+                              <option value="">Select pricing market</option>
+                              {pricingMarkets.map((market) => (
+                                <option key={market.name} value={market.name}>
+                                  {market.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Regular price"
+                              value={item.regularPrice}
+                              onChange={(e) => updateMarketPrice(index, "regularPrice", e.target.value)}
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Sale price (optional)"
+                              value={item.salePrice}
+                              onChange={(e) => updateMarketPrice(index, "salePrice", e.target.value)}
+                            />
+                            <input
+                              type="date"
+                              value={item.startDate}
+                              onChange={(e) => updateMarketPrice(index, "startDate", e.target.value)}
+                            />
+                            <input
+                              type="date"
+                              value={item.endDate}
+                              onChange={(e) => updateMarketPrice(index, "endDate", e.target.value)}
+                            />
+                            <button type="button" className="danger" onClick={() => removeMarketPrice(index)}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="admin-bundle-preview">
+                        <span>Market priority</span>
+                        <p>India base price wins first, then country override, then matched market price, then fallback international price.</p>
                       </div>
                     </div>
                   </div>
@@ -1422,7 +1590,7 @@ function AdminAddProducts() {
         <section className="card upload-card">
           <h3>Bulk Upload Files</h3>
           <p className="upload-help">
-            Upload a CSV or JSON file with fields: <code>name, price, internationalPrice, internationalCountryPrices, image, description, aboutProduct, category, stock</code>
+            Upload a CSV or JSON file with fields: <code>name, price, internationalPrice, internationalCountryPrices, marketPrices, image, description, aboutProduct, category, stock</code>
           </p>
           <label className="upload-dropzone">
             <span className="upload-title">Choose CSV / JSON file</span>
@@ -1492,10 +1660,24 @@ function AdminAddProducts() {
                             product.internationalCountryPrices.length === 1 ? "" : "s"
                           }`
                         : ""}
+                      {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
+                        ? ` / ${product.marketPrices.length} market price${
+                            product.marketPrices.length === 1 ? "" : "s"
+                          }`
+                        : ""}
                         {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
                           ? ` (${product.internationalCountryPrices
                               .map((item) => `${item.country}: Rs ${item.price}`)
                               .join(", ")})`
+                          : ""}
+                        {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
+                          ? ` ${product.marketPrices
+                              .map((item) => {
+                                const regular = `Rs ${item.regularPrice}`;
+                                const sale = item.salePrice !== null && item.salePrice !== undefined ? ` / Sale Rs ${item.salePrice}` : "";
+                                return `[${item.market}: ${regular}${sale}]`;
+                              })
+                              .join(" ")}`
                           : ""}
                       </span>
                     <span>

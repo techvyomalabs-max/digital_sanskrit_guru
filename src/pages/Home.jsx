@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
-import { formatCurrencyForUser } from "../utils/currency";
-import { getProductPriceDetails } from "../utils/productPricing";
+import { formatResolvedPrice } from "../utils/currency";
+import { getProductPriceDetails, storePricingConfig } from "../utils/productPricing";
 import "./Home.css";
 
 const CATALOG_PREVIEW_LIMIT = 4;
@@ -30,14 +30,12 @@ function getAverageRating(product) {
   return reviews.reduce((sum, review) => sum + Number(review?.rating || 0), 0) / reviews.length;
 }
 
-function formatPrice(value) {
-  return formatCurrencyForUser(value, {
-    maximumFractionDigits: 0
-  });
+function formatPrice(pricing) {
+  return formatResolvedPrice(pricing, { maximumFractionDigits: 0 });
 }
 
 function getDisplayPrice(product) {
-  return Number(getProductPriceDetails(product).price || 0);
+  return getProductPriceDetails(product);
 }
 
 function Home() {
@@ -56,6 +54,11 @@ function Home() {
     axios
       .get("/api/settings")
       .then((res) => {
+        storePricingConfig({
+          pricingMarkets: res.data?.pricingMarkets || [],
+          internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+          currencyConversionRates: res.data?.currencyConversionRates || {}
+        });
         const nextHeroBanners =
           Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
             ? res.data.heroBanners
@@ -94,7 +97,7 @@ function Home() {
 
   const budgetPicks = useMemo(() => {
     return [...products]
-      .sort((a, b) => getDisplayPrice(a) - getDisplayPrice(b))
+      .sort((a, b) => Number(getDisplayPrice(a).price || 0) - Number(getDisplayPrice(b).price || 0))
       .slice(0, 4);
   }, [products]);
 

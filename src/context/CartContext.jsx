@@ -29,6 +29,20 @@ const normalizeGuestCartItems = (items) =>
               }))
               .filter((entry) => entry.country && !Number.isNaN(entry.price))
           : [],
+        marketPrices: Array.isArray(item?.marketPrices)
+          ? item.marketPrices
+              .map((entry) => ({
+                market: String(entry?.market || "").trim(),
+                regularPrice: Number(entry?.regularPrice || 0),
+                salePrice:
+                  entry?.salePrice === null || entry?.salePrice === undefined
+                    ? null
+                    : Number(entry?.salePrice || 0),
+                startDate: entry?.startDate || null,
+                endDate: entry?.endDate || null
+              }))
+              .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice))
+          : [],
         image: String(item?.image || "").trim(),
         description: String(item?.description || "").trim(),
         category: String(item?.category || "General").trim() || "General",
@@ -200,6 +214,20 @@ export function CartProvider({ children }) {
                     price: Number(entry?.price || 0)
                   }))
                   .filter((entry) => entry.country && !Number.isNaN(entry.price))
+              : [],
+            marketPrices: Array.isArray(product?.marketPrices)
+              ? product.marketPrices
+                  .map((entry) => ({
+                    market: String(entry?.market || "").trim(),
+                    regularPrice: Number(entry?.regularPrice || 0),
+                    salePrice:
+                      entry?.salePrice === null || entry?.salePrice === undefined
+                        ? null
+                        : Number(entry?.salePrice || 0),
+                    startDate: entry?.startDate || null,
+                    endDate: entry?.endDate || null
+                  }))
+                  .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice))
               : [],
             image: String(product?.image || "").trim(),
             description: String(product?.description || "").trim(),

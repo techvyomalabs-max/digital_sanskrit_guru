@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { generateInvoicePdf } from "../utils/invoicePdf";
-import { formatCurrencyForUser } from "../utils/currency";
+import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import "./MyOrders.css";
 
@@ -318,8 +318,8 @@ function MyOrders() {
               </div>
               <div>
                 <span>TOTAL</span>
-                <strong>{formatCurrencyForUser(order.total)}</strong>
-                <small className="my-order-total-note">Includes delivery {formatCurrencyForUser(deliveryCharge)}</small>
+                <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
+                <small className="my-order-total-note">Includes delivery {formatOrderDisplayCurrency(order, "deliveryCharge", deliveryCharge)}</small>
               </div>
               <div>
                 <span>ORDER STATUS</span>
@@ -379,7 +379,7 @@ function MyOrders() {
                           ) : null}
                         </div>
                         <div className="my-order-item-side">
-                          <span>{formatCurrencyForUser(Number(item?.price || 0))}</span>
+                          <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
                           <span>Qty: {item.quantity || 1}</span>
                           {canRequestReturn ? (
                             <button

@@ -1,5 +1,7 @@
 const express = require("express");
 const Coupon = require("../models/Coupon");
+const StoreSettings = require("../models/StoreSettings");
+const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -54,6 +56,9 @@ router.delete("/:id", async (req, res) => {
 router.post("/apply", async (req, res) => {
   const code = String(req.body?.code || "").trim().toUpperCase();
   const total = Number(req.body?.total || 0);
+  const currency = normalizeCurrencyCode(req.body?.currency, "INR");
+  const settings = await StoreSettings.findOne().lean();
+  const currencyRates = settings?.currencyConversionRates || {};
 
   if (!code) {
     return res.status(400).json({ message: "Coupon code is required" });
@@ -72,9 +77,11 @@ router.post("/apply", async (req, res) => {
     return res.status(400).json({ message: "Coupon expired" });
   }
 
-  if (total < Number(coupon.minOrder || 0)) {
+  const minOrder = roundMoney(convertCurrencyAmount(Number(coupon.minOrder || 0), { currency, rates: currencyRates }));
+
+  if (total < minOrder) {
     return res.status(400).json({
-      message: `Minimum order Rs ${coupon.minOrder}`
+      message: `Minimum order ${minOrder} ${currency}`
     });
   }
 
@@ -82,14 +89,19 @@ router.post("/apply", async (req, res) => {
   if (coupon.type === "percentage") {
     discount = (total * Number(coupon.value || 0)) / 100;
   } else if (coupon.type === "fixed") {
-    discount = Number(coupon.value || 0);
+    discount = convertCurrencyAmount(Number(coupon.value || 0), { currency, rates: currencyRates });
   }
 
   const safeDiscount = Math.max(0, Math.min(total, discount));
   return res.json({
     discount: safeDiscount,
-    newTotal: Math.max(0, total - safeDiscount)
+    newTotal: Math.max(0, total - safeDiscount),
+    currency
   });
 });
+
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
 
 module.exports = router;

@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@babel/runtime": "^7.29.7",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",

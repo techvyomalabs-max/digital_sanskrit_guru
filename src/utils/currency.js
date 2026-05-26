@@ -90,7 +90,7 @@ const CURRENCY_TO_LOCALE = {
 
 const BASE_CURRENCY = "INR";
 
-const CURRENCY_EXCHANGE_RATES = {
+export const DEFAULT_CURRENCY_EXCHANGE_RATES = {
   INR: 1,
   USD: 0.012,
   GBP: 0.009,
@@ -117,8 +117,34 @@ const STORAGE_KEYS = {
   preferredCurrency: "preferredCurrency",
   geoCountry: "geoCountry",
   geoPrompted: "currencyGeoPermissionPrompted",
-  deliveryCountry: "selectedDeliveryCountry"
+  deliveryCountry: "selectedDeliveryCountry",
+  conversionRates: "currencyConversionRates"
 };
+
+export function normalizeCurrencyRates(rates = {}) {
+  const normalized = { ...DEFAULT_CURRENCY_EXCHANGE_RATES };
+  Object.keys(DEFAULT_CURRENCY_EXCHANGE_RATES).forEach((currencyCode) => {
+    const candidate = Number(rates?.[currencyCode]);
+    if (Number.isFinite(candidate) && candidate > 0) {
+      normalized[currencyCode] = candidate;
+    }
+  });
+  return normalized;
+}
+
+export function storeCurrencyConversionRates(rates = {}) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.conversionRates, JSON.stringify(normalizeCurrencyRates(rates)));
+}
+
+export function getStoredCurrencyConversionRates() {
+  if (typeof localStorage === "undefined") return normalizeCurrencyRates({});
+  try {
+    return normalizeCurrencyRates(JSON.parse(localStorage.getItem(STORAGE_KEYS.conversionRates) || "{}"));
+  } catch {
+    return normalizeCurrencyRates({});
+  }
+}
 
 function getBrowserLocale() {
   if (typeof navigator === "undefined") return "en-IN";
@@ -232,12 +258,13 @@ export function convertCurrencyAmount(value, options = {}) {
   const amount = Number(value || 0);
   const sourceCurrency = String(options.sourceCurrency || BASE_CURRENCY).toUpperCase();
   const targetCurrency = String(options.currency || getUserCurrency()).toUpperCase();
+  const rates = normalizeCurrencyRates(options.rates || getStoredCurrencyConversionRates());
 
   if (!Number.isFinite(amount)) return 0;
   if (sourceCurrency === targetCurrency) return amount;
 
-  const sourceRate = CURRENCY_EXCHANGE_RATES[sourceCurrency];
-  const targetRate = CURRENCY_EXCHANGE_RATES[targetCurrency];
+  const sourceRate = rates[sourceCurrency];
+  const targetRate = rates[targetCurrency];
   if (!sourceRate || !targetRate) return amount;
 
   const inBaseCurrency = sourceCurrency === BASE_CURRENCY ? amount : amount / sourceRate;
@@ -264,6 +291,21 @@ export function formatCurrencyForUser(value, options = {}) {
     minimumFractionDigits,
     maximumFractionDigits
   }).format(amount);
+}
+
+export function formatCurrencyExact(value, currency = BASE_CURRENCY, options = {}) {
+  const normalizedCurrency = String(currency || BASE_CURRENCY).trim().toUpperCase() || BASE_CURRENCY;
+  return formatCurrencyForUser(value, {
+    ...options,
+    currency: normalizedCurrency,
+    sourceCurrency: normalizedCurrency
+  });
+}
+
+export function formatResolvedPrice(pricing, options = {}) {
+  const amount = Number(pricing?.price || 0);
+  const currency = String(pricing?.currency || BASE_CURRENCY).trim().toUpperCase() || BASE_CURRENCY;
+  return formatCurrencyExact(amount, currency, options);
 }
 
 export function formatCurrencyINR(value) {

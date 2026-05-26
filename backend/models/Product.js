@@ -25,6 +25,35 @@ const internationalCountryPriceSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const marketPriceSchema = new mongoose.Schema(
+  {
+    market: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    regularPrice: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    salePrice: {
+      type: Number,
+      default: null,
+      min: 0
+    },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    endDate: {
+      type: Date,
+      default: null
+    }
+  },
+  { _id: false }
+);
+
 const bundleItemSchema = new mongoose.Schema(
   {
     product: {
@@ -60,6 +89,11 @@ const productSchema = new mongoose.Schema(
 
     internationalCountryPrices: {
       type: [internationalCountryPriceSchema],
+      default: []
+    },
+
+    marketPrices: {
+      type: [marketPriceSchema],
       default: []
     },
 

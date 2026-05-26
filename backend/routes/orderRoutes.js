@@ -4,6 +4,7 @@ const StoreSettings = require("../models/StoreSettings");
 const Coupon = require("../models/Coupon");
 const Product = require("../models/Product");
 const { resolveDeliveryCharge } = require("../utils/deliveryPricing");
+const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
@@ -57,6 +58,19 @@ router.post("/", protect, async (req, res) => {
 
   const products = await Product.find({ _id: { $in: requestedProductIds } }).lean();
   const productsById = new Map(products.map((product) => [String(product._id), product]));
+  const settings =
+    (await StoreSettings.findOne()) || {
+      gstPercent: 0,
+      deliveryCharge: 0,
+      pricingMarkets: [],
+      internationalPricingDefaults: { currency: "USD" },
+      currencyConversionRates: {}
+    };
+  const pricingConfig = {
+    pricingMarkets: settings?.pricingMarkets || [],
+    internationalPricingDefaults: settings?.internationalPricingDefaults || {},
+    currencyConversionRates: settings?.currencyConversionRates || {}
+  };
 
   const normalizedItems = items.reduce((acc, item) => {
     const productId = String(item?._id || item?.id || item?.product || "").trim();
@@ -66,7 +80,7 @@ router.post("/", protect, async (req, res) => {
     }
 
     const quantity = Math.max(1, Number(item?.quantity || 1));
-    const pricing = getProductPriceDetails(product, shippingCountry);
+    const pricing = getProductPriceDetails(product, shippingCountry, pricingConfig);
 
     acc.push({
       product: productId,
@@ -77,6 +91,7 @@ router.post("/", protect, async (req, res) => {
       category: String(product?.category || item?.category || "General").trim() || "General",
       quantity,
       price: roundMoney(pricing.price),
+      currency: String(pricing.currency || "INR").trim().toUpperCase(),
       domesticPrice: roundMoney(pricing.domesticPrice),
       internationalPrice: roundMoney(pricing.internationalPrice),
       internationalCountryPrices: Array.isArray(product?.internationalCountryPrices)
@@ -85,7 +100,20 @@ router.post("/", protect, async (req, res) => {
             price: roundMoney(Number(entry?.price || 0))
           }))
         : [],
+      marketPrices: Array.isArray(product?.marketPrices)
+        ? product.marketPrices.map((entry) => ({
+            market: String(entry?.market || "").trim(),
+            regularPrice: roundMoney(Number(entry?.regularPrice || 0)),
+            salePrice:
+              entry?.salePrice === null || entry?.salePrice === undefined
+                ? null
+                : roundMoney(Number(entry?.salePrice || 0)),
+            startDate: entry?.startDate || null,
+            endDate: entry?.endDate || null
+          }))
+        : [],
       appliedPriceType: pricing.priceType,
+      matchedMarket: pricing.matchedMarket || "",
       deliveredAt: null,
       returnRequest: {
         status: "Not Requested",
@@ -104,10 +132,19 @@ router.post("/", protect, async (req, res) => {
   const subtotal = roundMoney(
     normalizedItems.reduce((sum, item) => sum + Number(item?.price || 0) * Math.max(1, Number(item?.quantity || 1)), 0)
   );
+  const orderCurrency = normalizeCurrencyCode(
+    req.body?.currencyDisplay?.currency || normalizedItems[0]?.currency || "INR",
+    "INR"
+  );
 
-  const settings = (await StoreSettings.findOne()) || { gstPercent: 0, deliveryCharge: 0 };
   const gstPercent = Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
-  const deliveryCharge = resolveDeliveryCharge(settings, shipping);
+  const deliveryCharge = roundMoney(
+    convertCurrencyAmount(resolveDeliveryCharge(settings, shipping), {
+      sourceCurrency: "INR",
+      currency: orderCurrency,
+      rates: settings?.currencyConversionRates || {}
+    })
+  );
   const gstAmount = roundMoney((subtotal * gstPercent) / 100);
   const grossTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
 
@@ -116,12 +153,24 @@ router.post("/", protect, async (req, res) => {
   if (couponCode) {
     const coupon = await Coupon.findOne({ code: couponCode });
     if (coupon && (!coupon.expiresAt || new Date() <= coupon.expiresAt)) {
-      const minOrder = Number(coupon.minOrder || 0);
+      const minOrder = roundMoney(
+        convertCurrencyAmount(Number(coupon.minOrder || 0), {
+          sourceCurrency: "INR",
+          currency: orderCurrency,
+          rates: settings?.currencyConversionRates || {}
+        })
+      );
       if (grossTotal >= minOrder) {
         if (coupon.type === "percentage") {
           discount = roundMoney((grossTotal * Number(coupon.value || 0)) / 100);
         } else if (coupon.type === "fixed") {
-          discount = roundMoney(Number(coupon.value || 0));
+          discount = roundMoney(
+            convertCurrencyAmount(Number(coupon.value || 0), {
+              sourceCurrency: "INR",
+              currency: orderCurrency,
+              rates: settings?.currencyConversionRates || {}
+            })
+          );
         }
         discount = Math.max(0, Math.min(grossTotal, discount));
         appliedCouponCode = couponCode;
@@ -167,7 +216,7 @@ router.post("/", protect, async (req, res) => {
     },
     refundStatus: "Not Applicable",
     currencyDisplay: {
-      currency: requestedCurrency,
+      currency: requestedCurrency || orderCurrency,
       amount: Number.isFinite(requestedDisplayAmount) ? requestedDisplayAmount : null,
       detectedCountry: requestedDetectedCountry
     },

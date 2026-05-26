@@ -5,7 +5,7 @@ import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Product.css";
-import { formatCurrencyForUser } from "../utils/currency";
+import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
 
 const PRODUCT_EXTRA_DETAILS = {
@@ -224,18 +224,28 @@ function Product() {
   const reviewCount = Array.isArray(product.reviews) ? product.reviews.length : 0;
   const pricing = getProductPriceDetails(product, selectedAddress?.country);
   const displayPrice = Number(pricing.price || 0);
+  const displayCurrency = pricing.currency || "INR";
   const bundleOriginalTotal = bundleItems.reduce((sum, item) => {
     const bundledProduct = item?.product;
     return sum + Number(getProductPriceDetails(bundledProduct, selectedAddress?.country).price || 0) * Math.max(1, Number(item?.quantity || 1));
   }, 0);
   const bundleSavings = Math.max(0, bundleOriginalTotal - displayPrice);
+  const marketRegularPrice = Number(pricing.marketRegularPrice || 0);
+  const hasActiveMarketSale =
+    pricing.priceType === "international-market-sale" &&
+    marketRegularPrice > displayPrice;
   const festiveOriginalPrice =
     isFestiveOffer && festiveDiscountPercent > 0
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const listPrice = festiveOriginalPrice > displayPrice
-    ? festiveOriginalPrice
-    : displayPrice + 500;
+  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
+  const listPrice = hasActiveMarketSale
+    ? marketRegularPrice
+    : isBundle && bundleOriginalTotal > displayPrice
+      ? bundleOriginalTotal
+      : festiveOriginalPrice > displayPrice
+        ? festiveOriginalPrice
+        : fallbackOriginalPrice;
   const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - displayPrice) / listPrice) * 100)) : 0;
 
   return (
@@ -287,7 +297,7 @@ function Product() {
           <hr />
           <div className="price-block">
             <p className="price">
-              <strong>{formatCurrencyForUser(displayPrice)}</strong>
+              <strong>{formatResolvedPrice(pricing)}</strong>
               {pricing.priceType === "international-country"
                 ? <small>{pricing.matchedCountry} price</small>
                 : pricing.isInternational
@@ -296,12 +306,12 @@ function Product() {
             </p>
             {isBundle && bundleOriginalTotal > displayPrice ? (
               <div className="bundle-savings-box">
-                <span>Individual total: {formatCurrencyForUser(bundleOriginalTotal)}</span>
-                <strong>You save {formatCurrencyForUser(bundleSavings)}</strong>
+                <span>Individual total: {formatCurrencyExact(bundleOriginalTotal, displayCurrency)}</span>
+                <strong>You save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
               </div>
             ) : null}
             <p className="price-meta">
-              M.R.P.: <span>{formatCurrencyForUser(listPrice)}</span> ({discountPercent}% off)
+              M.R.P.: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
             </p>
             <p className="tax-note">Inclusive of all taxes</p>
           </div>
@@ -317,7 +327,7 @@ function Product() {
 
         <div className="product-right">
           <div className="buy-box">
-            <p className="buy-price">{formatCurrencyForUser(displayPrice)}</p>
+            <p className="buy-price">{formatResolvedPrice(pricing)}</p>
             <p className="delivery">FREE Delivery</p>
             <p className="buy-box-note">Fastest delivery available at your selected location.</p>
 
@@ -481,7 +491,7 @@ function Product() {
               <div key={p._id} className="related-card">
                 <img src={p.image || "https://picsum.photos/200"} alt={p.name} />
                 <h4>{p.name}</h4>
-                <p>{formatCurrencyForUser(getProductPriceDetails(p, selectedAddress?.country).price)}</p>
+                <p>{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
                 <Link to={`/product/${p._id}`}>
                   <button className="view-btn">View</button>
                 </Link>
@@ -501,7 +511,7 @@ function Product() {
               <div key={p._id} className="related-card">
                 <img src={p.image || "https://picsum.photos/200"} alt={p.name} />
                 <h4>{p.name}</h4>
-                <p>{formatCurrencyForUser(getProductPriceDetails(p, selectedAddress?.country).price)}</p>
+                <p>{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
                 <Link to={`/product/${p._id}`}>
                   <button className="view-btn">View</button>
                 </Link>

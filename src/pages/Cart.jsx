@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
-import { formatCurrencyForUser } from "../utils/currency";
+import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
-import { getProductPriceDetails } from "../utils/productPricing";
+import { getProductPriceDetails, storePricingConfig } from "../utils/productPricing";
 import "./Cart.css";
 
 function Cart() {
@@ -20,6 +20,10 @@ function Cart() {
   } = useCart();
   const { selectedAddress } = useDeliveryLocation();
   const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
+  const displayCurrency =
+    cartItems.length > 0
+      ? String(getProductPriceDetails(cartItems[0], selectedAddress?.country).currency || "INR")
+      : "INR";
   const [charges, setCharges] = useState({
     gstPercent: 0,
     deliveryCharge: 0,
@@ -47,6 +51,11 @@ function Cart() {
       .get("/api/settings")
       .then((res) => {
         if (!active) return;
+        storePricingConfig({
+          pricingMarkets: res.data?.pricingMarkets || [],
+          internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+          currencyConversionRates: res.data?.currencyConversionRates || {}
+        });
         setCharges({
           gstPercent: Number(res.data?.gstPercent || 0),
           deliveryCharge: Number(res.data?.deliveryCharge || 0),
@@ -70,14 +79,19 @@ function Cart() {
 
   const totals = useMemo(() => {
     const gstAmount = roundMoney((subtotal * Number(charges.gstPercent || 0)) / 100);
-    const deliveryCharge = roundMoney(Number(deliveryDetails.deliveryCharge || 0));
+    const deliveryCharge = roundMoney(
+      convertCurrencyAmount(Number(deliveryDetails.deliveryCharge || 0), {
+        sourceCurrency: "INR",
+        currency: displayCurrency
+      })
+    );
     return {
       subtotal,
       gstAmount,
       deliveryCharge,
       grandTotal: roundMoney(subtotal + gstAmount + deliveryCharge)
     };
-  }, [subtotal, charges.gstPercent, deliveryDetails.deliveryCharge]);
+  }, [subtotal, charges.gstPercent, deliveryDetails.deliveryCharge, displayCurrency]);
 
   if (cartItems.length === 0 && savedForLaterItems.length === 0) {
     return (
@@ -116,7 +130,7 @@ function Cart() {
 
                     <div className="cart-info">
                       <h3>{item.name}</h3>
-                      <p className="cart-item-price-mobile">{formatCurrencyForUser(lineTotal)}</p>
+                      <p className="cart-item-price-mobile">{formatCurrencyExact(lineTotal, displayCurrency)}</p>
 
                       <div className="qty-box">
                         <button onClick={() => updateQty(item._id || item.id, qty > 1 ? qty - 1 : 1)}>
@@ -134,14 +148,14 @@ function Cart() {
                       <button className="save-later-btn" onClick={() => saveForLater(item)}>
                         Save for later
                       </button>
-                      <strong className="cart-item-price">{formatCurrencyForUser(lineTotal)}</strong>
+                      <strong className="cart-item-price">{formatCurrencyExact(lineTotal, displayCurrency)}</strong>
                     </div>
                   </div>
                 );
               })}
               </div>
               <p className="cart-subtotal-inline">
-                Subtotal ({itemCount} items): <strong>{formatCurrencyForUser(totals.subtotal)}</strong>
+                Subtotal ({itemCount} items): <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
               </p>
             </>
           ) : (
@@ -163,7 +177,7 @@ function Cart() {
                     />
                     <div className="saved-later-info">
                       <strong>{item.name}</strong>
-                      <span>{formatCurrencyForUser(getItemUnitPrice(item))}</span>
+                      <span>{formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))}</span>
                     </div>
                     <div className="saved-later-actions">
                       <button onClick={() => moveToCartFromSaved(item)}>Move to cart</button>
@@ -178,16 +192,16 @@ function Cart() {
 
         <div className="cart-summary">
           <p className="cart-total">
-            Subtotal ({itemCount} items): <strong>{formatCurrencyForUser(totals.subtotal)}</strong>
+            Subtotal ({itemCount} items): <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
           </p>
-          <p>GST ({charges.gstPercent}%): {formatCurrencyForUser(totals.gstAmount)}</p>
+          <p>GST ({charges.gstPercent}%): {formatCurrencyExact(totals.gstAmount, displayCurrency)}</p>
           {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
             <p>Estimated warehouse distance: {deliveryDetails.distanceKm.toFixed(1)} km</p>
           )}
           {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
             <p>International delivery applied for {deliveryDetails.matchedCountry}.</p>
           )}
-          <h3>Order Total: {formatCurrencyForUser(totals.grandTotal)}</h3>
+          <h3>Order Total: {formatCurrencyExact(totals.grandTotal, displayCurrency)}</h3>
 
           {cartItems.length > 0 ? (
             <Link to="/checkout" className="checkout-link">

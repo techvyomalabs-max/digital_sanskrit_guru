@@ -4,7 +4,7 @@ import axios from "axios";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
 import { generateInvoicePdf } from "../utils/invoicePdf";
-import { formatCurrencyForUser } from "../utils/currency";
+import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDateTime } from "../utils/date";
 import "./AdminOrderDetails.css";
 
@@ -147,7 +147,7 @@ function AdminOrderDetails() {
                           <strong>{item?.name || "Product"}</strong>
                           <p>Qty: {Math.max(1, Number(item?.quantity || 1))}</p>
                         </div>
-                        <span>{formatCurrencyForUser(Number(item?.price || 0))}</span>
+                        <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
                       </div>
                     ))
                   ) : (
@@ -172,25 +172,25 @@ function AdminOrderDetails() {
                   <h2>Payment summary</h2>
                   <div className="admin-order-summary-row">
                     <span>Subtotal</span>
-                    <strong>{formatCurrencyForUser(Number(order.subtotal || 0))}</strong>
+                    <strong>{formatOrderDisplayCurrency(order, "subtotal", Number(order.subtotal || 0))}</strong>
                   </div>
                   <div className="admin-order-summary-row">
                     <span>GST ({Number(order.gstPercent || 0)}%)</span>
-                    <strong>{formatCurrencyForUser(Number(order.gstAmount || 0))}</strong>
+                    <strong>{formatOrderDisplayCurrency(order, "gstAmount", Number(order.gstAmount || 0))}</strong>
                   </div>
                   <div className="admin-order-summary-row">
                     <span>Delivery</span>
-                    <strong>{formatCurrencyForUser(Number(order.deliveryCharge || 0))}</strong>
+                    <strong>{formatOrderDisplayCurrency(order, "deliveryCharge", Number(order.deliveryCharge || 0))}</strong>
                   </div>
                   {Number(order.discount || 0) > 0 ? (
                     <div className="admin-order-summary-row">
                       <span>Discount {order.couponCode ? `(${order.couponCode})` : ""}</span>
-                      <strong>-{formatCurrencyForUser(Number(order.discount || 0))}</strong>
+                      <strong>-{formatOrderDisplayCurrency(order, "discount", Number(order.discount || 0))}</strong>
                     </div>
                   ) : null}
                   <div className="admin-order-summary-row total">
                     <span>Total</span>
-                    <strong>{formatCurrencyForUser(Number(order.total || 0))}</strong>
+                    <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
                   </div>
                 </article>
 

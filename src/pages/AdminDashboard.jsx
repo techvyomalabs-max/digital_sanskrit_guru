@@ -11,6 +11,8 @@ import {
   normalizeWarehouseLocation,
   parseGoogleMapsCoordinates
 } from "../utils/deliveryPricing";
+import { COUNTRY_OPTIONS } from "../utils/countryOptions";
+import { storePricingConfig, SUPPORTED_PRICING_CURRENCIES } from "../utils/productPricing";
 import "./AdminDashboard.css";
 
 const LOW_STOCK_THRESHOLD = 5;
@@ -26,6 +28,16 @@ function formatCurrency(value) {
 
 function formatPercent(value) {
   return `${Math.round(Number(value) || 0)}%`;
+}
+
+function normalizePricingMarketsInput(pricingMarkets = []) {
+  return Array.isArray(pricingMarkets)
+    ? pricingMarkets.map((market) => ({
+        name: String(market?.name || ""),
+        currency: String(market?.currency || "USD").toUpperCase(),
+        countries: Array.isArray(market?.countries) ? market.countries.map((country) => String(country || "")) : []
+      }))
+    : [];
 }
 
 function AdminDashboard() {
@@ -59,6 +71,19 @@ function AdminDashboard() {
       domesticCountry: "India",
       defaultFee: 0,
       countryRates: []
+    },
+    pricingMarkets: [],
+    internationalPricingDefaults: {
+      currency: "USD"
+    },
+    currencyConversionRates: {
+      INR: "1",
+      USD: "0.012",
+      EUR: "0.011",
+      GBP: "0.009",
+      AED: "0.044",
+      CAD: "0.016",
+      AUD: "0.019"
     },
     homeSectionVisibility: {
       festiveOffers: true
@@ -125,6 +150,11 @@ function AdminDashboard() {
       .get("/api/settings")
       .then((res) => {
         if (!active) return;
+        storePricingConfig({
+          pricingMarkets: res.data?.pricingMarkets || [],
+          internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+          currencyConversionRates: res.data?.currencyConversionRates || {}
+        });
         setPricingSettings({
           gstPercent: String(Number(res.data?.gstPercent || 0)),
           deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
@@ -162,6 +192,19 @@ function AdminDashboard() {
                 }))
               : []
           },
+          pricingMarkets: normalizePricingMarketsInput(res.data?.pricingMarkets || []),
+          internationalPricingDefaults: {
+            currency: String(res.data?.internationalPricingDefaults?.currency || "USD").toUpperCase()
+          },
+          currencyConversionRates: {
+            INR: String(Number(res.data?.currencyConversionRates?.INR || 1)),
+            USD: String(Number(res.data?.currencyConversionRates?.USD || 0.012)),
+            EUR: String(Number(res.data?.currencyConversionRates?.EUR || 0.011)),
+            GBP: String(Number(res.data?.currencyConversionRates?.GBP || 0.009)),
+            AED: String(Number(res.data?.currencyConversionRates?.AED || 0.044)),
+            CAD: String(Number(res.data?.currencyConversionRates?.CAD || 0.016)),
+            AUD: String(Number(res.data?.currencyConversionRates?.AUD || 0.019))
+          },
           homeSectionVisibility: {
             festiveOffers: res.data?.homeSectionVisibility?.festiveOffers !== false
           },
@@ -178,6 +221,17 @@ function AdminDashboard() {
           warehouseLocation: { name: "", address: "", mapUrl: "", latitude: "", longitude: "" },
           distancePricing: { enabled: true, baseFee: "0", perKmCharge: "0", freeRadiusKm: "0", maxCharge: "" },
           internationalDelivery: { enabled: false, domesticCountry: "India", defaultFee: "0", countryRates: [] },
+          pricingMarkets: [],
+          internationalPricingDefaults: { currency: "USD" },
+          currencyConversionRates: {
+            INR: "1",
+            USD: "0.012",
+            EUR: "0.011",
+            GBP: "0.009",
+            AED: "0.044",
+            CAD: "0.016",
+            AUD: "0.019"
+          },
           homeSectionVisibility: { festiveOffers: true },
           collectionFilterVisibility: { festiveOffers: true }
         });
@@ -200,6 +254,24 @@ function AdminDashboard() {
         internationalDelivery: normalizeInternationalDelivery(
           pricingSettings.internationalDelivery,
           pricingSettings.deliveryCharge
+        ),
+        pricingMarkets: pricingSettings.pricingMarkets
+          .map((market) => ({
+            name: String(market?.name || "").trim(),
+            currency: String(market?.currency || "USD").trim().toUpperCase(),
+            countries: Array.isArray(market?.countries)
+              ? market.countries.map((country) => String(country || "").trim()).filter(Boolean)
+              : []
+          }))
+          .filter((market) => market.name),
+        internationalPricingDefaults: {
+          currency: String(pricingSettings.internationalPricingDefaults?.currency || "USD").trim().toUpperCase()
+        },
+        currencyConversionRates: Object.fromEntries(
+          Object.entries(pricingSettings.currencyConversionRates || {}).map(([currencyCode, value]) => [
+            currencyCode,
+            Number(value || 0)
+          ])
         ),
         homeSectionVisibility: {
           festiveOffers: pricingSettings.homeSectionVisibility.festiveOffers
@@ -250,12 +322,30 @@ function AdminDashboard() {
               }))
             : []
         },
+        pricingMarkets: normalizePricingMarketsInput(res.data?.pricingMarkets || []),
+        internationalPricingDefaults: {
+          currency: String(res.data?.internationalPricingDefaults?.currency || "USD").toUpperCase()
+        },
+        currencyConversionRates: {
+          INR: String(Number(res.data?.currencyConversionRates?.INR || 1)),
+          USD: String(Number(res.data?.currencyConversionRates?.USD || 0.012)),
+          EUR: String(Number(res.data?.currencyConversionRates?.EUR || 0.011)),
+          GBP: String(Number(res.data?.currencyConversionRates?.GBP || 0.009)),
+          AED: String(Number(res.data?.currencyConversionRates?.AED || 0.044)),
+          CAD: String(Number(res.data?.currencyConversionRates?.CAD || 0.016)),
+          AUD: String(Number(res.data?.currencyConversionRates?.AUD || 0.019))
+        },
         homeSectionVisibility: {
           festiveOffers: res.data?.homeSectionVisibility?.festiveOffers !== false
         },
         collectionFilterVisibility: {
           festiveOffers: res.data?.collectionFilterVisibility?.festiveOffers !== false
         }
+      });
+      storePricingConfig({
+        pricingMarkets: res.data?.pricingMarkets || [],
+        internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+        currencyConversionRates: res.data?.currencyConversionRates || {}
       });
       setPricingMessage("Pricing settings updated.");
     } catch (err) {
@@ -324,6 +414,54 @@ function AdminDashboard() {
       internationalDelivery: {
         ...prev.internationalDelivery,
         countryRates: prev.internationalDelivery.countryRates.filter((_, itemIndex) => itemIndex !== index)
+      }
+    }));
+  };
+
+  const updatePricingMarketField = (index, field, value) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      pricingMarkets: prev.pricingMarkets.map((market, marketIndex) =>
+        marketIndex === index ? { ...market, [field]: value } : market
+      )
+    }));
+  };
+
+  const updatePricingMarketCountries = (index, selectedOptions) => {
+    const countries = Array.from(selectedOptions || []).map((option) => option.value);
+    updatePricingMarketField(index, "countries", countries);
+  };
+
+  const addPricingMarket = () => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      pricingMarkets: [...prev.pricingMarkets, { name: "", currency: "USD", countries: [] }]
+    }));
+  };
+
+  const removePricingMarket = (index) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      pricingMarkets: prev.pricingMarkets.filter((_, marketIndex) => marketIndex !== index)
+    }));
+  };
+
+  const updateInternationalPricingDefaultField = (field, value) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      internationalPricingDefaults: {
+        ...prev.internationalPricingDefaults,
+        [field]: value
+      }
+    }));
+  };
+
+  const updateCurrencyConversionRate = (currencyCode, value) => {
+    setPricingSettings((prev) => ({
+      ...prev,
+      currencyConversionRates: {
+        ...prev.currencyConversionRates,
+        [currencyCode]: value
       }
     }));
   };
@@ -919,6 +1057,121 @@ function AdminDashboard() {
               No country-specific rates yet. Add one if you want a different fee for specific international destinations.
             </div>
           )}
+          </div>
+
+          <div className="distance-pricing-section">
+            <div className="distance-pricing-header">
+              <div>
+                <h4>Pricing Markets</h4>
+                <p>Group countries into reusable pricing markets like North America, Europe, or GCC.</p>
+              </div>
+              <button type="button" className="pricing-link-btn" onClick={addPricingMarket}>
+                Add Pricing Market
+              </button>
+            </div>
+
+            {pricingSettings.pricingMarkets.length > 0 ? (
+              <div className="delivery-zone-list">
+                {pricingSettings.pricingMarkets.map((market, index) => (
+                  <div key={`pricing-market-${index}`} className="delivery-zone-card">
+                    <div className="delivery-zone-card-header">
+                      <strong>Market {index + 1}</strong>
+                      <button type="button" onClick={() => removePricingMarket(index)}>
+                        Remove
+                      </button>
+                    </div>
+                    <div className="delivery-zone-grid">
+                      <label className="pricing-field">
+                        <span className="pricing-label">Market Name</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. North America"
+                          value={market.name}
+                          onChange={(e) => updatePricingMarketField(index, "name", e.target.value)}
+                        />
+                      </label>
+                      <label className="pricing-field">
+                        <span className="pricing-label">Currency</span>
+                        <select
+                          value={market.currency || "USD"}
+                          onChange={(e) => updatePricingMarketField(index, "currency", e.target.value)}
+                        >
+                          {SUPPORTED_PRICING_CURRENCIES.map((currencyCode) => (
+                            <option key={currencyCode} value={currencyCode}>
+                              {currencyCode}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="pricing-field pricing-field-wide">
+                        <span className="pricing-label">Countries In This Market</span>
+                        <select
+                          multiple
+                          value={market.countries}
+                          onChange={(e) => updatePricingMarketCountries(index, e.target.selectedOptions)}
+                          className="pricing-multiselect"
+                        >
+                          {COUNTRY_OPTIONS.filter((country) => country !== "India").map((country) => (
+                            <option key={country} value={country}>
+                              {country}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pricing-hint">
+                          Hold Ctrl or Cmd to select multiple countries. {market.countries.length} selected.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="delivery-zone-empty">
+                No pricing markets yet. Add one if you want reusable region-based product pricing.
+              </div>
+            )}
+
+            <div className="delivery-zone-card" style={{ marginTop: "16px" }}>
+              <div className="delivery-zone-card-header">
+                <strong>Fallback International Currency</strong>
+              </div>
+              <div className="delivery-zone-grid">
+                <label className="pricing-field">
+                  <span className="pricing-label">Currency</span>
+                  <select
+                    value={pricingSettings.internationalPricingDefaults?.currency || "USD"}
+                    onChange={(e) => updateInternationalPricingDefaultField("currency", e.target.value)}
+                  >
+                    {SUPPORTED_PRICING_CURRENCIES.map((currencyCode) => (
+                      <option key={currencyCode} value={currencyCode}>
+                        {currencyCode}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="delivery-zone-card" style={{ marginTop: "16px" }}>
+              <div className="delivery-zone-card-header">
+                <strong>Conversion Rates From INR</strong>
+              </div>
+              <div className="delivery-zone-grid">
+                {SUPPORTED_PRICING_CURRENCIES.map((currencyCode) => (
+                  <label key={currencyCode} className="pricing-field">
+                    <span className="pricing-label">{currencyCode}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={pricingSettings.currencyConversionRates?.[currencyCode] ?? ""}
+                      onChange={(e) => updateCurrencyConversionRate(currencyCode, e.target.value)}
+                      disabled={currencyCode === "INR"}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="distance-pricing-section">

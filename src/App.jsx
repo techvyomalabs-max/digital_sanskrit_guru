@@ -26,6 +26,7 @@ import AdminCoupons from "./pages/AdminCoupons";
 import AdminUsers from "./pages/AdminUsers";
 import AdminThemeSettings from "./pages/AdminThemeSettings";
 import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils/siteTheme";
+import { storePricingConfig } from "./utils/productPricing";
 
 function App() {
   useEffect(() => {
@@ -41,6 +42,11 @@ function App() {
       .then((res) => {
         if (!active) return;
         applySiteTheme(res.data?.siteTheme || DEFAULT_SITE_THEME, res.data?.customThemes || []);
+        storePricingConfig({
+          pricingMarkets: res.data?.pricingMarkets || [],
+          internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+          currencyConversionRates: res.data?.currencyConversionRates || {}
+        });
       })
       .catch(() => {
         if (!active) return;

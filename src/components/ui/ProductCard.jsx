@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { formatCurrencyForUser } from "../../utils/currency";
+import { formatResolvedPrice } from "../../utils/currency";
 import { getProductPriceDetails } from "../../utils/productPricing";
 
 function ProductCard({ product }) {
@@ -14,7 +14,7 @@ function ProductCard({ product }) {
         style={styles.image}
       />
       <h3>{product.name}</h3>
-      <p>{formatCurrencyForUser(pricing.price)}</p>
+      <p>{formatResolvedPrice(pricing)}</p>
       <Link to={`/product/${productId}`}>
         <button style={styles.button}>View Product</button>
       </Link>

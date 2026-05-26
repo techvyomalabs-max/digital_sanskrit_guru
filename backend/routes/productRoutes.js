@@ -106,6 +106,9 @@ const normalizeProductPrice = (value, fallback = 0) => {
   return Math.max(0, parsed);
 };
 
+const hasNumericInput = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== "";
+
 const normalizeInternationalPrice = (value, fallback = null) => {
   if (value === null || value === undefined || String(value).trim() === "") {
     return fallback;
@@ -128,7 +131,7 @@ const normalizeInternationalCountryPrices = (rawItems = []) => {
 
   return rawItems.reduce((acc, item) => {
     const country = String(item?.country || "").trim();
-    const price = Number(item?.price);
+    const price = hasNumericInput(item?.price) ? Number(item.price) : Number.NaN;
     const key = country.toLowerCase();
 
     if (!country || seen.has(key) || Number.isNaN(price) || price < 0) {
@@ -139,6 +142,46 @@ const normalizeInternationalCountryPrices = (rawItems = []) => {
     acc.push({
       country,
       price: Math.max(0, price)
+    });
+    return acc;
+  }, []);
+};
+
+const normalizeDateValue = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeMarketPrices = (rawItems = []) => {
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return rawItems.reduce((acc, item) => {
+    const market = String(item?.market || "").trim();
+    const regularPrice = hasNumericInput(item?.regularPrice) ? Number(item.regularPrice) : Number.NaN;
+    const salePrice =
+      !hasNumericInput(item?.salePrice)
+        ? null
+        : Number(item.salePrice);
+    const key = market.toLowerCase();
+
+    if (!market || seen.has(key) || Number.isNaN(regularPrice) || regularPrice < 0) {
+      return acc;
+    }
+
+    seen.add(key);
+    acc.push({
+      market,
+      regularPrice: Math.max(0, regularPrice),
+      salePrice: salePrice === null || Number.isNaN(salePrice) || salePrice < 0 ? null : Math.max(0, salePrice),
+      startDate: normalizeDateValue(item?.startDate),
+      endDate: normalizeDateValue(item?.endDate)
     });
     return acc;
   }, []);
@@ -177,6 +220,7 @@ router.post("/", protect, admin, async (req, res) => {
     const price = normalizeProductPrice(req.body?.price);
     const internationalPrice = normalizeInternationalPrice(req.body?.internationalPrice, null);
     const internationalCountryPrices = normalizeInternationalCountryPrices(req.body?.internationalCountryPrices);
+    const marketPrices = normalizeMarketPrices(req.body?.marketPrices);
     if (productType === "bundle" && bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
@@ -185,6 +229,7 @@ router.post("/", protect, admin, async (req, res) => {
       price,
       internationalPrice,
       internationalCountryPrices,
+      marketPrices,
       aboutProduct: normalizeAboutProduct(req.body.aboutProduct),
       image: images[0] || String(req.body.image || "").trim(),
       images,
@@ -219,6 +264,10 @@ router.put("/:id", protect, admin, async (req, res) => {
       req.body.internationalCountryPrices !== undefined
         ? normalizeInternationalCountryPrices(req.body.internationalCountryPrices)
         : product.internationalCountryPrices;
+    product.marketPrices =
+      req.body.marketPrices !== undefined
+        ? normalizeMarketPrices(req.body.marketPrices)
+        : product.marketPrices;
     product.description = req.body.description ?? product.description;
     product.aboutProduct = req.body.aboutProduct !== undefined
       ? normalizeAboutProduct(req.body.aboutProduct)
@@ -265,8 +314,8 @@ router.get("/", async (req, res) => {
 
     if (!hasPaginationQuery) {
       const products = await Product.find()
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock");
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
+        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock");
       return res.json(products);
     }
 
@@ -276,11 +325,16 @@ router.get("/", async (req, res) => {
     const selectedCategory = String(req.query.category || "All").trim();
 
     const products = await Product.find()
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     const baseProducts = products;
     const settings = await StoreSettings.findOne().lean();
+    const pricingConfig = {
+      pricingMarkets: settings?.pricingMarkets || [],
+      internationalPricingDefaults: settings?.internationalPricingDefaults || {},
+      currencyConversionRates: settings?.currencyConversionRates || {}
+    };
     const festiveOffersFilterEnabled = settings?.collectionFilterVisibility?.festiveOffers !== false;
 
     const regularCategories = [...new Set(baseProducts.map((product) => getCategoryLabel(product)))];
@@ -313,11 +367,17 @@ router.get("/", async (req, res) => {
 
     filteredProducts.sort((a, b) => {
       if (sortOption === "priceLow") {
-        return getProductPriceDetails(a, req.query.country).price - getProductPriceDetails(b, req.query.country).price;
+        return (
+          getProductPriceDetails(a, req.query.country, pricingConfig).price -
+          getProductPriceDetails(b, req.query.country, pricingConfig).price
+        );
       }
 
       if (sortOption === "priceHigh") {
-        return getProductPriceDetails(b, req.query.country).price - getProductPriceDetails(a, req.query.country).price;
+        return (
+          getProductPriceDetails(b, req.query.country, pricingConfig).price -
+          getProductPriceDetails(a, req.query.country, pricingConfig).price
+        );
       }
 
       if (sortOption === "rating") {
@@ -428,8 +488,8 @@ router.get("/recommend/:productId", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices category stock")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices category stock");
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock");
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
