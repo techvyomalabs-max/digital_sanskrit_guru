@@ -1,0 +1,23 @@
+{
+  "name": "my-ecommerce-app-backend",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node -e \"console.log('Backend build step not required')\"",
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.2",
+    "razorpay": "^2.9.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
