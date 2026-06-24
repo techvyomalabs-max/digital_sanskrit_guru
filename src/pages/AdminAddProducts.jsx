@@ -123,6 +123,7 @@ function AdminAddProducts() {
   const [marketPrices, setMarketPrices] = useState([createEmptyMarketPrice()]);
   const [image, setImage] = useState("");
   const [imagesInput, setImagesInput] = useState("");
+  const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [aboutProduct, setAboutProduct] = useState("");
   const [festiveOffer, setFestiveOffer] = useState(false);
@@ -153,7 +154,7 @@ function AdminAddProducts() {
   const [heroBannerMessage, setHeroBannerMessage] = useState("");
   const imagePreview = image.trim() || "https://picsum.photos/120";
   const imagePreviews = imagesInput
-    .split(/\r?\n|,/)
+    .split(/\r?\n/)
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 4);
@@ -329,7 +330,7 @@ function AdminAddProducts() {
 
   const productComposerStats = useMemo(() => {
     const extraImageCount = imagesInput
-      .split(/\r?\n|,/)
+      .split(/\r?\n/)
       .map((item) => item.trim())
       .filter(Boolean).length;
 
@@ -364,6 +365,7 @@ function AdminAddProducts() {
     setMarketPrices([createEmptyMarketPrice()]);
     setImage("");
     setImagesInput("");
+    setTrailerVideoUrl("");
     setDescription("");
     setAboutProduct("");
     setFestiveOffer(false);
@@ -527,7 +529,7 @@ function AdminAddProducts() {
 
       setImagesInput((current) => {
         const existing = current
-          .split(/\r?\n|,/)
+          .split(/\r?\n/)
           .map((item) => item.trim())
           .filter(Boolean);
         return [...existing, ...optimizedImages].slice(0, 8).join("\n");
@@ -743,6 +745,51 @@ function AdminAddProducts() {
     setCategoryMessage("");
   };
 
+  const handleDeleteCategory = async () => {
+    if (!editingCategoryName) return;
+
+    const confirmed = window.confirm(
+      `Delete the category "${editingCategoryName}"?\n\nAll products currently in this category will be moved to "General".`
+    );
+    if (!confirmed) return;
+
+    try {
+      // Remove from list; keep all others
+      const nextCategories = categoryOptions.filter((opt) => opt !== editingCategoryName);
+      // Ensure "General" always exists as fallback
+      if (!nextCategories.includes("General")) nextCategories.unshift("General");
+
+      await saveCategoryOptions(nextCategories);
+
+      // Move affected products to "General"
+      const affected = products.filter(
+        (p) => String(p?.category || "").trim().toLowerCase() === editingCategoryName.toLowerCase()
+      );
+      await Promise.all(
+        affected.map((p) =>
+          axios.put(`/api/products/${p._id}`, { category: "General" }, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        )
+      );
+
+      if (affected.length > 0) await loadProducts();
+
+      // If current form was using deleted category, reset to General
+      if (category.toLowerCase() === editingCategoryName.toLowerCase()) {
+        setCategory("General");
+      }
+
+      setEditingCategoryName("");
+      setNewCategory("");
+      setCategoryMessage(
+        `Category "${editingCategoryName}" deleted.${affected.length > 0 ? ` ${affected.length} product${affected.length === 1 ? "" : "s"} moved to "General".` : ""}`
+      );
+    } catch (err) {
+      setCategoryMessage(err?.response?.data?.message || "Could not delete category.");
+    }
+  };
+
   const saveProduct = async () => {
     if (!formSummary.isValid) {
       setFormMessage("Complete name, price, stock, and primary image before saving.");
@@ -788,6 +835,7 @@ function AdminAddProducts() {
         .filter((item) => item.market && item.regularPrice !== null && !Number.isNaN(item.regularPrice)),
       image: image.trim(),
       images: imagesInput,
+      trailerVideoUrl: trailerVideoUrl.trim(),
       description: description.trim(),
       aboutProduct,
       festiveOffer,
@@ -876,6 +924,7 @@ function AdminAddProducts() {
     );
     setImage(product.image || "");
     setImagesInput(Array.isArray(product.images) && product.images.length > 0 ? product.images.join("\n") : product.image || "");
+    setTrailerVideoUrl(String(product.trailerVideoUrl || ""));
     setDescription(product.description || "");
     setAboutProduct(Array.isArray(product.aboutProduct) ? product.aboutProduct.join("\n") : "");
     setFestiveOffer(product.festiveOffer === true);
@@ -1307,9 +1356,19 @@ function AdminAddProducts() {
                             {editingCategoryName ? "Save" : "Add"}
                           </button>
                           {editingCategoryName ? (
-                            <button type="button" className="danger" onClick={handleCancelCategoryEdit}>
-                              Cancel
-                            </button>
+                            <>
+                              <button type="button" onClick={handleCancelCategoryEdit}>
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-category-delete-btn"
+                                onClick={handleDeleteCategory}
+                                title={`Delete "${editingCategoryName}" category`}
+                              >
+                                🗑 Delete
+                              </button>
+                            </>
                           ) : null}
                         </div>
                         <small className="admin-category-helper">
@@ -1336,6 +1395,14 @@ function AdminAddProducts() {
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       rows={3}
+                    />
+                  </label>
+                  <label className="admin-field admin-field-wide">
+                    <span>Trailer Video URL</span>
+                    <input
+                      placeholder="YouTube, Vimeo, or direct MP4 link"
+                      value={trailerVideoUrl}
+                      onChange={(e) => setTrailerVideoUrl(e.target.value)}
                     />
                   </label>
                   <label className="admin-field admin-field-wide">

@@ -11,7 +11,7 @@ gap:12px;
 
 .theme-preset-card{
 border:1px solid var(--admin-border);
-border-radius:12px;
+border-radius:var(--radius-md);
 padding:14px;
 background:var(--admin-surface);
 text-align:left;
@@ -46,7 +46,7 @@ display:flex;
 align-items:center;
 gap:10px;
 border:1px solid var(--admin-border);
-border-radius:10px;
+border-radius:var(--radius-md);
 padding:8px 10px;
 background:var(--admin-surface);
 }
@@ -68,5 +68,416 @@ color:var(--admin-muted);
   .theme-preset-grid,
   .theme-creator-grid{
     grid-template-columns:1fr;
+  }
+}
+
+.theme-preset-wrapper {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+.theme-preset-wrapper .theme-preset-card {
+  width: 100%;
+}
+
+.theme-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.theme-delete-btn:hover {
+  background: var(--admin-danger);
+  color: #ffffff;
+  border-color: var(--admin-danger);
+}
+
+/* ── Festive Controls Styles ── */
+
+.festive-toggle-row {
+  margin: 16px 0;
+  display: flex;
+  align-items: center;
+}
+
+.festive-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.festive-toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  background-color: var(--admin-border);
+  border-radius: 13px;
+  transition: background-color 0.2s;
+  outline: none;
+  border: none;
+}
+
+.festive-toggle.on {
+  background-color: var(--admin-primary);
+}
+
+.festive-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.festive-toggle.on .festive-toggle-thumb {
+  transform: translateX(22px);
+}
+
+.festive-toggle-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--admin-text);
+}
+
+.festive-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--admin-text);
+  margin: 24px 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.festive-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.festive-type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 4px;
+}
+
+.festive-type-card:hover {
+  border-color: var(--admin-muted);
+  transform: translateY(-2px);
+  box-shadow: var(--premium-shadow-sm);
+}
+
+.festive-type-card.active {
+  border-color: var(--admin-primary);
+  background: var(--admin-surface-2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--admin-primary) 18%, transparent);
+}
+
+.festive-type-emoji {
+  font-size: 32px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.festive-type-card strong {
+  font-size: 14px;
+  color: var(--admin-text);
+}
+
+.festive-type-card small {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+.festive-type-card-custom {
+  padding: 0;
+  overflow: hidden;
+}
+
+.festive-type-card-select {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+  gap: 4px;
+}
+
+.festive-custom-anim-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--admin-danger);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.festive-custom-anim-delete:hover {
+  background: var(--admin-danger);
+  color: #fff;
+}
+
+.festive-intensity-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.festive-intensity-chip {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-md);
+  background: var(--admin-surface);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 110px;
+}
+
+.festive-intensity-chip:hover {
+  border-color: var(--admin-muted);
+}
+
+.festive-intensity-chip.active {
+  border-color: var(--admin-primary);
+  background: var(--admin-surface-2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--admin-primary) 18%, transparent);
+}
+
+.festive-intensity-chip input {
+  display: none;
+}
+
+.festive-intensity-chip span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-text);
+}
+
+.festive-intensity-chip small {
+  font-size: 11px;
+  color: var(--admin-muted);
+  margin-top: 2px;
+}
+
+.festive-add-anim-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--admin-surface-2);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--admin-border);
+}
+
+.festive-add-anim-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.festive-lottiefiles-link {
+  font-size: 13px;
+  color: var(--admin-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.festive-lottiefiles-link:hover {
+  text-decoration: underline;
+}
+
+.festive-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.festive-color-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.festive-color-slot-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-muted);
+}
+
+.festive-color-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  background: var(--admin-surface);
+}
+
+.festive-color-slot-row input[type="color"] {
+  width: 34px;
+  height: 34px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.festive-color-hex {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  color: var(--admin-text) !important;
+  outline: none !important;
+  min-width: 0;
+}
+
+.festive-color-clear {
+  border: none;
+  background: transparent;
+  color: var(--admin-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.festive-color-clear:hover {
+  background: var(--admin-border);
+  color: var(--admin-text);
+}
+
+.festive-color-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  background: var(--admin-surface-2);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  min-height: 48px;
+  align-items: center;
+}
+
+.festive-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.festive-color-preview-hint {
+  font-size: 13px;
+  color: var(--admin-muted);
+}
+
+.festive-banner-preview {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  margin: 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 16px;
+  text-align: center;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), var(--premium-shadow-sm);
+}
+
+.festive-banner-preview-link {
+  text-decoration: underline;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.95;
+  transition: opacity 0.2s;
+}
+
+.festive-banner-preview-link:hover {
+  opacity: 1;
+}
+
+.festive-banner-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .festive-add-anim-form {
+    grid-template-columns: 1fr;
+  }
+  .festive-banner-fields {
+    grid-template-columns: 1fr;
   }
 }

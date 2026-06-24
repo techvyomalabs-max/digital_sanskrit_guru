@@ -208,6 +208,11 @@ export function AuthProvider({ children }) {
     setToken(null);
     setRememberMe(false);
     clearStoredAuth();
+    try {
+      sessionStorage.removeItem("festiveBannerDismissed");
+    } catch (e) {}
+    window.location.hash = "/login";
+    window.location.reload();
   };
 
   return (

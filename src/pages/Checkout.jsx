@@ -167,11 +167,16 @@ function Checkout() {
     setCouponMessage("");
 
     try {
-      const res = await axios.post("/api/coupons/apply", {
-        code,
-        total: totals.grandTotal,
-        currency: displayCurrency
-      });
+      const res = await axios.post(
+        "/api/coupons/apply",
+        {
+          code,
+          total: totals.grandTotal,
+          currency: displayCurrency,
+          items: cartItems
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+      );
       setDiscount(Number(res.data?.discount || 0));
       setCouponCode(code.toUpperCase());
       setCouponMessage("Coupon applied.");

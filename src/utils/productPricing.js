@@ -270,7 +270,11 @@ export function getProductPriceDetails(product, country, pricingConfig = getStor
   const usedMarketSale = hasMarketPrice && marketPriceDetails?.saleActive === true && marketSalePrice !== null;
   const currency = resolvePricingCurrency(useInternationalPrice, matchedMarket, internationalPricingDefaults);
   const shouldConvert = useInternationalPrice;
-  const resolvedBasePrice = useInternationalPrice ? resolvedInternationalPrice : domesticPrice;
+  let resolvedBasePrice = useInternationalPrice ? resolvedInternationalPrice : domesticPrice;
+  if (product?.festiveOffer === true && product?.festiveDiscountPercent > 0) {
+    const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product.festiveDiscountPercent || 0)));
+    resolvedBasePrice = resolvedBasePrice * (1 - festiveDiscountPercent / 100);
+  }
 
   return {
     domesticPrice: convertResolvedAmount(domesticPrice, currency, shouldConvert, currencyConversionRates),

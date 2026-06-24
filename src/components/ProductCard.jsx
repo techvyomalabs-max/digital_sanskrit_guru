@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
@@ -49,11 +50,31 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         ? festiveOriginalPrice
         : fallbackOriginalPrice;
 
+  const [copied, setCopied] = useState(false);
+
   const handleWishlistToggle = () => {
     if (isWishlisted) {
       removeFromWishlist(product._id);
     } else {
       addToWishlist(product);
+    }
+  };
+
+  const handleShare = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const shareUrl = `${window.location.origin}/#/product/${product._id}`;
+    if (navigator.share) {
+      navigator.share({
+        title: product.name,
+        text: product.description || `Check out ${product.name} on Digital Sanskrit Guru!`,
+        url: shareUrl
+      }).catch((err) => console.log("Sharing failed", err));
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch((err) => console.error("Failed to copy link", err));
     }
   };
 
@@ -72,12 +93,28 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       {reviewCount > 5 && <span className="product-badge">Best Seller</span>}
       <button
         type="button"
+        className="share-product-btn"
+        onClick={handleShare}
+        aria-label="Share product"
+        title="Share Product"
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+      </button>
+      <button
+        type="button"
         className={`wishlist-heart-btn ${isWishlisted ? "active" : ""}`}
         onClick={handleWishlistToggle}
         aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
       >
-        {isWishlisted ? "\u2665" : "\u2661"}
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" strokeWidth="2.5" fill={isWishlisted ? "currentColor" : "none"} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+        </svg>
       </button>
+      {copied && <span className="share-tooltip">Link copied!</span>}
 
       <Link to={`/product/${product._id}`} className="product-image-wrap">
         <img

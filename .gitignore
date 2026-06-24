@@ -25,3 +25,29 @@ backend/.env
 *.njsproj
 *.sln
 *.sw?
+
+# Custom environment files
+backend.env
+frontend.env
+backend.env.*
+frontend.env.*
+backend/Create .env
+deployment/hostinger-node-app/backend/Create .env
+
+# Build and deployment directories
+deployment/
+backend-staging/
+backend-direct-upload/
+frontend-dist-upload/
+
+# Archives and package zips
+*.zip
+*.tar
+*.tar.gz
+
+# Scratch scripts and load/stress tests
+scratch-*.cjs
+*test*.js
+backend/run-load-test.js
+backend/run-stress-test.js
+backend/test-*.js

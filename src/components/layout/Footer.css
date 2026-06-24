@@ -1,13 +1,16 @@
 .site-footer {
-  margin-top: 40px;
-  padding: 18px;
+  margin-top: var(--space-8);
+  padding: var(--space-6) var(--space-4);
   background: var(--site-footer-bg);
   color: var(--site-footer-text);
   text-align: center;
   border-top: 1px solid var(--site-footer-border);
+  letter-spacing: 0.02em;
 }
 
 .site-footer p {
   margin: 0;
   font-size: 14px;
+  font-weight: 500;
+  opacity: 0.85;
 }

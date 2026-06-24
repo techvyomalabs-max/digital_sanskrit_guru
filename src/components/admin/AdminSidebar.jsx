@@ -9,6 +9,7 @@ const adminNavItems = [
   { to: "/admin/products", label: "Warehouse" },
   { to: "/admin/add-products", label: "Add Products" },
   { to: "/admin/coupons", label: "Coupons" },
+  { to: "/admin/marketing", label: "Marketing" },
   { to: "/", label: "Store" }
 ];
 

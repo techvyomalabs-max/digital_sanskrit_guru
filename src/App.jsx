@@ -1,10 +1,12 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
+import FestiveAnimation from "./components/FestiveAnimation";
+import FestiveBanner from "./components/FestiveBanner";
 import { requestLocationPermissionForCurrency } from "./utils/currency";
 import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils/siteTheme";
 import { storePricingConfig } from "./utils/productPricing";
@@ -28,6 +30,7 @@ const AdminAddProducts = lazy(() => import("./pages/AdminAddProducts"));
 const AdminCoupons = lazy(() => import("./pages/AdminCoupons"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const AdminThemeSettings = lazy(() => import("./pages/AdminThemeSettings"));
+const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 
 function RouteLoadingFallback() {
   return (
@@ -48,43 +51,187 @@ function RouteLoadingFallback() {
 }
 
 function App() {
+  const [festiveAnimation, setFestiveAnimation] = useState({
+    enabled: false, type: "diwali", intensity: "subtle", customColors: []
+  });
+  const [festiveBanner, setFestiveBanner] = useState({
+    enabled: false, text: "", bgFrom: "#FF6B00", bgTo: "#FFD700",
+    textColor: "#ffffff", linkUrl: "", linkText: "Shop Now"
+  });
+  const [isBannerDismissed, setIsBannerDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem("festiveBannerDismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [lastBannerText, setLastBannerText] = useState("");
+
+  useEffect(() => {
+    if (festiveBanner.text && festiveBanner.text !== lastBannerText) {
+      if (lastBannerText !== "") {
+        try {
+          sessionStorage.removeItem("festiveBannerDismissed");
+        } catch {}
+        setIsBannerDismissed(false);
+      }
+      setLastBannerText(festiveBanner.text);
+    }
+  }, [festiveBanner.text, lastBannerText]);
+
+  const isBannerActive = festiveBanner.enabled && !isBannerDismissed;
+
   useEffect(() => {
     requestLocationPermissionForCurrency();
   }, []);
+
+  // Apply/remove html.banner-active so CSS can push navbar + content down by 40px
+  useEffect(() => {
+    if (isBannerActive) {
+      document.documentElement.classList.add("banner-active");
+    } else {
+      document.documentElement.classList.remove("banner-active");
+    }
+    return () => document.documentElement.classList.remove("banner-active");
+  }, [isBannerActive]);
+
+  // Register service worker for push notifications
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then(async (registration) => {
+        // Only auto-subscribe if permission was already granted
+        if (Notification.permission !== "granted") return;
+
+        try {
+          const existing = await registration.pushManager.getSubscription();
+          if (existing) return; // Already subscribed
+
+          const keyRes = await fetch("/api/push/vapid-key");
+          if (!keyRes.ok) return;
+          const { publicKey } = await keyRes.json();
+          if (!publicKey) return;
+
+          const sub = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey)
+          });
+
+          const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+          if (token) {
+            await fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify(sub.toJSON())
+            });
+          }
+        } catch {
+          // Push subscription is optional — ignore errors
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  }
 
   useEffect(() => {
     let active = true;
     const storedThemeSettings = readStoredSiteTheme();
 
-    axios
-      .get("/api/settings/public")
-      .then((res) => {
-        if (!active) return;
-        applySiteTheme(res.data?.siteTheme || DEFAULT_SITE_THEME, res.data?.customThemes || []);
-        storePricingConfig({
-          pricingMarkets: res.data?.pricingMarkets || [],
-          internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
-          currencyConversionRates: res.data?.currencyConversionRates || {}
+    const fetchSettings = () => {
+      axios
+        .get("/api/settings/public")
+        .then((res) => {
+          if (!active) return;
+          applySiteTheme(res.data?.siteTheme || DEFAULT_SITE_THEME, res.data?.customThemes || []);
+          storePricingConfig({
+            pricingMarkets: res.data?.pricingMarkets || [],
+            internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
+            currencyConversionRates: res.data?.currencyConversionRates || {}
+          });
+          if (res.data?.festiveAnimation) {
+            setFestiveAnimation({
+              enabled:          Boolean(res.data.festiveAnimation.enabled),
+              type:             String(res.data.festiveAnimation.type      || "diwali"),
+              intensity:        String(res.data.festiveAnimation.intensity || "subtle"),
+              customColors:     Array.isArray(res.data.festiveAnimation.customColors)     ? res.data.festiveAnimation.customColors     : [],
+              customAnimations: Array.isArray(res.data.festiveAnimation.customAnimations) ? res.data.festiveAnimation.customAnimations : []
+            });
+          }
+          if (res.data?.festiveBanner) {
+            setFestiveBanner({
+              enabled:   Boolean(res.data.festiveBanner.enabled),
+              text:      String(res.data.festiveBanner.text      || ""),
+              bgFrom:    String(res.data.festiveBanner.bgFrom    || "#FF6B00"),
+              bgTo:      String(res.data.festiveBanner.bgTo      || "#FFD700"),
+              textColor: String(res.data.festiveBanner.textColor || "#ffffff"),
+              linkUrl:   String(res.data.festiveBanner.linkUrl   || ""),
+              linkText:  String(res.data.festiveBanner.linkText  || "Shop Now")
+            });
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          if (storedThemeSettings) {
+            applySiteTheme(
+              storedThemeSettings.siteTheme || DEFAULT_SITE_THEME,
+              storedThemeSettings.customThemes || []
+            );
+          }
         });
-      })
-      .catch(() => {
-        if (!active) return;
-        if (storedThemeSettings) {
-          applySiteTheme(
-            storedThemeSettings.siteTheme || DEFAULT_SITE_THEME,
-            storedThemeSettings.customThemes || []
-          );
-        }
-      });
+    };
+
+    fetchSettings();
+
+    const handleSettingsUpdate = () => {
+      try {
+        sessionStorage.removeItem("festiveBannerDismissed");
+      } catch {}
+      setIsBannerDismissed(false);
+      fetchSettings();
+    };
+
+    window.addEventListener("siteSettingsUpdated", handleSettingsUpdate);
 
     return () => {
       active = false;
+      window.removeEventListener("siteSettingsUpdated", handleSettingsUpdate);
     };
   }, []);
 
   return (
     <HashRouter>
-      <Navbar />
+      {isBannerActive && (
+        <FestiveBanner
+          text={festiveBanner.text}
+          bgFrom={festiveBanner.bgFrom}
+          bgTo={festiveBanner.bgTo}
+          textColor={festiveBanner.textColor}
+          linkUrl={festiveBanner.linkUrl}
+          linkText={festiveBanner.linkText}
+          onDismiss={() => {
+            try {
+              sessionStorage.setItem("festiveBannerDismissed", "1");
+            } catch {}
+            setIsBannerDismissed(true);
+          }}
+        />
+      )}
+      <FestiveAnimation
+        enabled={festiveAnimation.enabled}
+        type={festiveAnimation.type}
+        intensity={festiveAnimation.intensity}
+        customColors={festiveAnimation.customColors}
+        customAnimations={festiveAnimation.customAnimations || []}
+      />
+      <Navbar bannerActive={isBannerActive} />
 
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
@@ -179,6 +326,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminThemeSettings />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/marketing"
+            element={
+              <AdminRoute>
+                <AdminMarketing />
               </AdminRoute>
             }
           />

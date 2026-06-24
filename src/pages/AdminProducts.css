@@ -19,7 +19,7 @@ align-items:center;
 .inventory-bar-track,
 .warehouse-zone-bar-track{
 height:12px;
-border-radius:999px;
+border-radius:var(--radius-full);
 background:var(--admin-border-soft);
 overflow:hidden;
 }
@@ -40,7 +40,7 @@ margin-bottom:18px;
 
 .warehouse-metric{
 border:1px solid var(--admin-border);
-border-radius:12px;
+border-radius:var(--radius-md);
 padding:14px;
 background:var(--admin-surface-2);
 display:grid;
@@ -93,7 +93,7 @@ color:var(--admin-muted);
 border:1px solid var(--admin-primary);
 background:linear-gradient(90deg,var(--admin-primary),var(--admin-primary-2));
 color:#fff;
-border-radius:10px;
+border-radius:var(--radius-md);
 padding:10px 14px;
 font-weight:700;
 cursor:pointer;
@@ -113,7 +113,7 @@ gap:12px;
 align-items:center;
 padding:14px;
 border:1px solid var(--admin-border);
-border-radius:12px;
+border-radius:var(--radius-md);
 background:var(--admin-surface);
 }
 
@@ -157,7 +157,7 @@ flex-wrap:wrap;
 border:1px solid var(--admin-border);
 background:var(--admin-surface);
 color:var(--admin-text);
-border-radius:10px;
+border-radius:var(--radius-md);
 padding:10px 12px;
 }
 
@@ -165,7 +165,7 @@ padding:10px 12px;
 border:1px solid var(--admin-border);
 background:var(--admin-surface-2);
 color:var(--admin-text);
-border-radius:10px;
+border-radius:var(--radius-md);
 padding:10px 12px;
 cursor:pointer;
 font-weight:700;
@@ -188,7 +188,7 @@ display:inline-flex;
 align-items:center;
 justify-content:center;
 padding:6px 10px;
-border-radius:999px;
+border-radius:var(--radius-full);
 font-size:12px;
 font-weight:700;
 }

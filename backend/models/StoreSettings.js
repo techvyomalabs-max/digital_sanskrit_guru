@@ -35,7 +35,8 @@ const customThemeSchema = new mongoose.Schema(
       text: { type: String, required: true, trim: true },
       header: { type: String, required: true, trim: true },
       accent: { type: String, required: true, trim: true },
-      button: { type: String, required: true, trim: true }
+      button: { type: String, required: true, trim: true },
+      navBottom: { type: String, default: "#1c2735", trim: true }
     }
   },
   { _id: false }
@@ -200,6 +201,64 @@ const heroBannerSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const sponsorSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    description: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    logoUrl: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    websiteUrl: {
+      type: String,
+      default: "",
+      trim: true
+    }
+  }
+);
+
+const DEFAULT_SPONSORS = [
+  {
+    name: "Sanskrit Academy",
+    description: "Preserving Ancient Wisdom",
+    logoUrl: "",
+    websiteUrl: "https://sanskritacademy.org"
+  },
+  {
+    name: "Vyoma Linguistic Labs",
+    description: "Language Tech Research",
+    logoUrl: "",
+    websiteUrl: "https://vyomalabs.in"
+  },
+  {
+    name: "Veda Foundation",
+    description: "Vedic Heritage Safeguarding",
+    logoUrl: "",
+    websiteUrl: "https://vedafoundation.org"
+  },
+  {
+    name: "Indic Heritage Trust",
+    description: "Cultural Legacy Preservation",
+    logoUrl: "",
+    websiteUrl: "https://indicheritage.org"
+  },
+  {
+    name: "Devavani Press",
+    description: "Scholarly Publishing Partner",
+    logoUrl: "",
+    websiteUrl: "https://devavanipress.com"
+  }
+];
+
 const storeSettingsSchema = new mongoose.Schema(
   {
     gstPercent: {
@@ -275,6 +334,118 @@ const storeSettingsSchema = new mongoose.Schema(
         default: true
       }
     },
+    // ── Festive Animation ──────────────────────────────────────────────────
+    festiveAnimation: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      // "diwali" | "holi" | "christmas" | "newyear" | "confetti" OR a custom animation ID
+      type: {
+        type: String,
+        default: "diwali"
+      },
+      intensity: {
+        type: String,
+        enum: ["subtle", "medium", "heavy"],
+        default: "subtle"
+      },
+      // Admin-defined custom particle colors (max 8). Empty = use preset palette.
+      customColors: {
+        type: [String],
+        default: []
+      },
+      // Admin-added Lottie animations from external sources
+      customAnimations: {
+        type: [
+          {
+            id:         { type: String, required: true },
+            name:       { type: String, required: true, trim: true },
+            sourceUrl:  { type: String, required: true, trim: true },
+            sourceType: { type: String, enum: ["lottie"], default: "lottie" }
+          }
+        ],
+        default: []
+      }
+    },
+    // ── Festive Banner (announcement bar above navbar) ─────────────────────
+    festiveBanner: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      text: {
+        type: String,
+        default: "🎉 Festive Sale is Live! Shop Now",
+        trim: true
+      },
+      bgFrom: {
+        type: String,
+        default: "#FF6B00",
+        trim: true
+      },
+      bgTo: {
+        type: String,
+        default: "#FFD700",
+        trim: true
+      },
+      textColor: {
+        type: String,
+        default: "#ffffff",
+        trim: true
+      },
+      linkUrl: {
+        type: String,
+        default: "",
+        trim: true
+      },
+      linkText: {
+        type: String,
+        default: "Shop Now",
+        trim: true
+      }
+    },
+    orderConfirmationEmail: {
+      subjectTemplate: {
+        type: String,
+        default: "Order Confirmed — {{SITE_NAME}}",
+        trim: true
+      },
+      bodyTemplate: {
+        type: String,
+        default: `<h2>Thank you for your order! 🎉</h2>
+<p>Hi <strong>{{USER_NAME}}</strong>,</p>
+<p>Your order has been placed successfully. We'll notify you when it ships.</p>
+<p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+<h3>Order Details:</h3>
+{{ITEMS_TABLE}}
+{{SUMMARY_TABLE}}
+<p><strong>Shipping to:</strong><br/>
+{{SHIPPING_INFO}}
+</p>`,
+        trim: true
+      },
+      headerBgColor: {
+        type: String,
+        default: "#1a1a2e",
+        trim: true
+      },
+      accentColor: {
+        type: String,
+        default: "#e94560",
+        trim: true
+      },
+      headerText: {
+        type: String,
+        default: "Digital Sanskrit Guru",
+        trim: true
+      },
+      headerSubtext: {
+        type: String,
+        default: "Spreading the wisdom of Sanskrit",
+        trim: true
+      }
+    },
     lastUpdatedByName: {
       type: String,
       default: ""
@@ -286,6 +457,29 @@ const storeSettingsSchema = new mongoose.Schema(
     lastUpdatedAt: {
       type: Date,
       default: null
+    },
+    // ── Marketing / Notification settings ───────────────────────────────────
+    lowStockThreshold: {
+      type: Number,
+      default: 5,
+      min: 0
+    },
+    notificationEmail: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    emailEnabled: {
+      type: Boolean,
+      default: false
+    },
+    pushEnabled: {
+      type: Boolean,
+      default: true
+    },
+    sponsors: {
+      type: [sponsorSchema],
+      default: DEFAULT_SPONSORS
     }
   },
   { timestamps: true }

@@ -4,6 +4,7 @@ const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../utils/currency");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
+const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -49,7 +50,8 @@ function normalizeCustomThemes(input) {
       text: String(item?.palette?.text || "").trim(),
       header: String(item?.palette?.header || "").trim(),
       accent: String(item?.palette?.accent || "").trim(),
-      button: String(item?.palette?.button || "").trim()
+      button: String(item?.palette?.button || "").trim(),
+      navBottom: String(item?.palette?.navBottom || "").trim() || "#1c2735"
     };
 
     const paletteValid = Object.values(palette).every((color) => HEX_COLOR_REGEX.test(color));
@@ -234,12 +236,28 @@ function normalizeHeroBanners(input, legacyImage = "", legacyProductId = "") {
   return fallbackImage ? [{ image: fallbackImage, productId: fallbackProductId }] : [];
 }
 
+function normalizeSponsors(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => ({
+      _id: item?._id ? String(item._id).trim() : undefined,
+      name: String(item?.name || "").trim(),
+      description: String(item?.description || "").trim(),
+      logoUrl: String(item?.logoUrl || "").trim(),
+      websiteUrl: String(item?.websiteUrl || "").trim()
+    }))
+    .filter((item) => item.name);
+}
+
 function normalizeSettings(settings) {
   const heroBanners = normalizeHeroBanners(
     settings?.heroBanners || [],
     settings?.heroBannerImage || "",
     settings?.heroBannerProductId || ""
   );
+
+  const VALID_ANIM_INTENSITIES = ["subtle", "medium", "heavy"];
+  const rawAnimIntensity = String(settings?.festiveAnimation?.intensity || "subtle");
 
   return {
     gstPercent: Number(settings?.gstPercent || 0),
@@ -262,9 +280,58 @@ function normalizeSettings(settings) {
     collectionFilterVisibility: {
       festiveOffers: settings?.collectionFilterVisibility?.festiveOffers !== false
     },
+    festiveAnimation: {
+      enabled:   Boolean(settings?.festiveAnimation?.enabled),
+      type:      String(settings?.festiveAnimation?.type || "diwali"),
+      intensity: VALID_ANIM_INTENSITIES.includes(rawAnimIntensity) ? rawAnimIntensity : "subtle",
+      customColors: Array.isArray(settings?.festiveAnimation?.customColors)
+        ? settings.festiveAnimation.customColors
+            .map(c => String(c || "").trim())
+            .filter(c => /^#[0-9A-Fa-f]{6}$/.test(c))
+            .slice(0, 8)
+        : [],
+      customAnimations: Array.isArray(settings?.festiveAnimation?.customAnimations)
+        ? settings.festiveAnimation.customAnimations
+            .filter(a => a?.id && a?.name && a?.sourceUrl)
+            .map(a => ({
+              id:         String(a.id).trim(),
+              name:       String(a.name).trim(),
+              sourceUrl:  String(a.sourceUrl).trim(),
+              sourceType: String(a.sourceType || "lottie")
+            }))
+            .slice(0, 20)
+        : []
+    },
+    festiveBanner: {
+      enabled:   Boolean(settings?.festiveBanner?.enabled),
+      text:      String(settings?.festiveBanner?.text      || "🎉 Festive Sale is Live!").trim(),
+      bgFrom:    String(settings?.festiveBanner?.bgFrom    || "#FF6B00").trim(),
+      bgTo:      String(settings?.festiveBanner?.bgTo      || "#FFD700").trim(),
+      textColor: String(settings?.festiveBanner?.textColor || "#ffffff").trim(),
+      linkUrl:   String(settings?.festiveBanner?.linkUrl   || "").trim(),
+      linkText:  String(settings?.festiveBanner?.linkText  || "Shop Now").trim()
+    },
+    orderConfirmationEmail: {
+      subjectTemplate: String(settings?.orderConfirmationEmail?.subjectTemplate || "Order Confirmed — {{SITE_NAME}}").trim(),
+      bodyTemplate: String(settings?.orderConfirmationEmail?.bodyTemplate || `<h2>Thank you for your order! 🎉</h2>
+<p>Hi <strong>{{USER_NAME}}</strong>,</p>
+<p>Your order has been placed successfully. We'll notify you when it ships.</p>
+<p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+<h3>Order Details:</h3>
+{{ITEMS_TABLE}}
+{{SUMMARY_TABLE}}
+<p><strong>Shipping to:</strong><br/>
+{{SHIPPING_INFO}}
+</p>`).trim(),
+      headerBgColor: String(settings?.orderConfirmationEmail?.headerBgColor || "#1a1a2e").trim(),
+      accentColor: String(settings?.orderConfirmationEmail?.accentColor || "#e94560").trim(),
+      headerText: String(settings?.orderConfirmationEmail?.headerText || "Digital Sanskrit Guru").trim(),
+      headerSubtext: String(settings?.orderConfirmationEmail?.headerSubtext || "Spreading the wisdom of Sanskrit").trim()
+    },
     lastUpdatedByName: String(settings?.lastUpdatedByName || "").trim(),
     lastUpdatedByEmail: String(settings?.lastUpdatedByEmail || "").trim().toLowerCase(),
-    lastUpdatedAt: settings?.lastUpdatedAt || null
+    lastUpdatedAt: settings?.lastUpdatedAt || null,
+    sponsors: normalizeSponsors(settings?.sponsors || [])
   };
 }
 
@@ -280,7 +347,10 @@ function buildPublicSettingsPayload(settings) {
     internationalPricingDefaults: normalized.internationalPricingDefaults,
     currencyConversionRates: normalized.currencyConversionRates,
     siteTheme: normalized.siteTheme,
-    customThemes: normalized.customThemes
+    customThemes: normalized.customThemes,
+    festiveAnimation: normalized.festiveAnimation,
+    festiveBanner:    normalized.festiveBanner,
+    sponsors:         normalized.sponsors
   };
 }
 
@@ -301,6 +371,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.heroBanners || []) !== JSON.stringify(nextSettings?.heroBanners || [])) changes.push("hero banners");
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
+  if (JSON.stringify(previousSettings?.sponsors || []) !== JSON.stringify(nextSettings?.sponsors || [])) changes.push("sponsors");
 
   return changes;
 }
@@ -313,13 +384,15 @@ async function getOrCreateSettings() {
   return settings;
 }
 
+// Admin: full settings (60s cache)
 router.get("/", async (req, res) => {
-  const settings = await getOrCreateSettings();
+  const settings = await cacheAside("settings:full", 60, getOrCreateSettings);
   res.json(normalizeSettings(settings));
 });
 
+// Public: checkout/pricing settings (5 min cache — rarely changes)
 router.get("/public", async (req, res) => {
-  const settings = await getOrCreateSettings();
+  const settings = await cacheAside("settings:public", TTL.SETTINGS_PUBLIC, getOrCreateSettings);
   res.json(buildPublicSettingsPayload(settings));
 });
 
@@ -352,6 +425,12 @@ router.put("/", protect, admin, async (req, res) => {
   const hasCollectionFilterVisibility = Boolean(
     req.body?.collectionFilterVisibility && typeof req.body.collectionFilterVisibility === "object"
   );
+  const hasFestiveAnimation = Boolean(
+    req.body?.festiveAnimation && typeof req.body.festiveAnimation === "object"
+  );
+  const hasOrderConfirmationEmail = Boolean(
+    req.body?.orderConfirmationEmail && typeof req.body.orderConfirmationEmail === "object"
+  );
 
   const gstPercent = Number.isNaN(rawGst) ? 0 : Math.min(50, Math.max(0, rawGst));
   const deliveryCharge = Number.isNaN(rawDelivery) ? 0 : Math.max(0, rawDelivery);
@@ -383,6 +462,10 @@ router.put("/", protect, admin, async (req, res) => {
   const productCategories = hasProductCategories
     ? normalizeProductCategories(req.body?.productCategories)
     : normalizeProductCategories(settings.productCategories || []);
+  const hasSponsors = Array.isArray(req.body?.sponsors);
+  const sponsors = hasSponsors
+    ? normalizeSponsors(req.body?.sponsors)
+    : normalizeSponsors(settings.sponsors || []);
   const allowedThemeIds = new Set([
     ...StoreSettings.SITE_THEMES,
     ...customThemes.map((theme) => theme.id)
@@ -398,6 +481,7 @@ router.put("/", protect, admin, async (req, res) => {
   settings.currencyConversionRates = currencyConversionRates;
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
+  settings.sponsors = sponsors;
   const nextHeroBanners = hasHeroBanners
     ? normalizeHeroBanners(req.body?.heroBanners || [])
     : normalizeHeroBanners(
@@ -418,6 +502,71 @@ router.put("/", protect, admin, async (req, res) => {
       ? req.body?.collectionFilterVisibility?.festiveOffers !== false
       : settings?.collectionFilterVisibility?.festiveOffers !== false
   };
+  // ── Festive animation ────────────────────────────────────────────────────
+  if (hasFestiveAnimation) {
+    const PRESET_TYPES  = ["diwali", "holi", "christmas", "newyear", "confetti"];
+    const VALID_INTENSITIES = ["subtle", "medium", "heavy"];
+    const inType      = String(req.body.festiveAnimation?.type      || "").trim();
+    const inIntensity = String(req.body.festiveAnimation?.intensity || "");
+    const inColors    = Array.isArray(req.body.festiveAnimation?.customColors)
+      ? req.body.festiveAnimation.customColors
+          .map(c => String(c || "").trim())
+          .filter(c => /^#[0-9A-Fa-f]{6}$/.test(c))
+          .slice(0, 8)
+      : (settings.festiveAnimation?.customColors || []);
+    // customAnimations: accept add/remove/reorder via full array replacement
+    const inCustomAnimations = Array.isArray(req.body.festiveAnimation?.customAnimations)
+      ? req.body.festiveAnimation.customAnimations
+          .filter(a => a?.id && a?.name && a?.sourceUrl)
+          .map(a => ({
+            id:         String(a.id).trim(),
+            name:       String(a.name).trim(),
+            sourceUrl:  String(a.sourceUrl).trim(),
+            sourceType: "lottie"
+          }))
+          .slice(0, 20)
+      : (settings.festiveAnimation?.customAnimations || []);
+    // Type must be a preset OR exist in current customAnimations
+    const allKnownTypes = [...PRESET_TYPES, ...inCustomAnimations.map(a => a.id)];
+    settings.festiveAnimation = {
+      enabled:          Boolean(req.body.festiveAnimation?.enabled),
+      type:             inType && allKnownTypes.includes(inType) ? inType : (settings.festiveAnimation?.type || "diwali"),
+      intensity:        VALID_INTENSITIES.includes(inIntensity) ? inIntensity : (settings.festiveAnimation?.intensity || "subtle"),
+      customColors:     inColors,
+      customAnimations: inCustomAnimations
+    };
+  }
+  // ── Festive banner ──────────────────────────────────────────────────
+  if (req.body?.festiveBanner && typeof req.body.festiveBanner === "object") {
+    settings.festiveBanner = {
+      enabled:   Boolean(req.body.festiveBanner?.enabled),
+      text:      String(req.body.festiveBanner?.text      || "🎉 Festive Sale is Live!").trim(),
+      bgFrom:    String(req.body.festiveBanner?.bgFrom    || "#FF6B00").trim(),
+      bgTo:      String(req.body.festiveBanner?.bgTo      || "#FFD700").trim(),
+      textColor: String(req.body.festiveBanner?.textColor || "#ffffff").trim(),
+      linkUrl:   String(req.body.festiveBanner?.linkUrl   || "").trim(),
+      linkText:  String(req.body.festiveBanner?.linkText  || "Shop Now").trim()
+    };
+  }
+  if (hasOrderConfirmationEmail) {
+    settings.orderConfirmationEmail = {
+      subjectTemplate: String(req.body.orderConfirmationEmail.subjectTemplate || "Order Confirmed — {{SITE_NAME}}").trim(),
+      bodyTemplate: String(req.body.orderConfirmationEmail.bodyTemplate || `<h2>Thank you for your order! 🎉</h2>
+<p>Hi <strong>{{USER_NAME}}</strong>,</p>
+<p>Your order has been placed successfully. We'll notify you when it ships.</p>
+<p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+<h3>Order Details:</h3>
+{{ITEMS_TABLE}}
+{{SUMMARY_TABLE}}
+<p><strong>Shipping to:</strong><br/>
+{{SHIPPING_INFO}}
+</p>`).trim(),
+      headerBgColor: String(req.body.orderConfirmationEmail.headerBgColor || "#1a1a2e").trim(),
+      accentColor: String(req.body.orderConfirmationEmail.accentColor || "#e94560").trim(),
+      headerText: String(req.body.orderConfirmationEmail.headerText || "Digital Sanskrit Guru").trim(),
+      headerSubtext: String(req.body.orderConfirmationEmail.headerSubtext || "Spreading the wisdom of Sanskrit").trim()
+    };
+  }
   settings.siteTheme = hasSiteTheme && allowedThemeIds.has(rawTheme)
     ? rawTheme
     : allowedThemeIds.has(settings.siteTheme)
@@ -446,6 +595,8 @@ router.put("/", protect, admin, async (req, res) => {
   });
 
   res.json(normalizedSettings);
+  // Settings change may affect pricing/home data — flush all relevant caches
+  invalidateProductCache();
 });
 
 module.exports = router;

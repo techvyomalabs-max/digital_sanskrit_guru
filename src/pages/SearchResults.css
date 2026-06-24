@@ -1,8 +1,12 @@
-﻿.search-results-page {
-  background: #eaeded;
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEARCH RESULTS — Premium search experience
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.search-results-page {
+  background: var(--site-bg);
   align-content: start;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 
 .search-results-shell {
@@ -10,52 +14,54 @@
   max-width: 1500px;
   margin: 0 auto;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .search-results-header {
-  background: #ffffff;
-  border: 1px solid #d5d9d9;
-  border-radius: 8px;
-  padding: 14px;
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: 14px;
+  gap: var(--space-4);
+  box-shadow: var(--premium-shadow-sm);
 }
 
 .search-results-kicker {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border: 1px solid #d5d9d9;
-  border-radius: 4px;
-  background: #f0f2f2;
-  color: #565959;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-sm);
+  background: var(--site-surface-muted);
+  color: var(--site-text-soft);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .search-results-header h1 {
-  margin: 8px 0 0;
-  color: #0f1111;
+  margin: var(--space-2) 0 0;
+  color: var(--site-text);
   font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  font-weight: 700;
   line-height: 1.2;
 }
 
 .search-results-header p {
   margin: 6px 0 0;
-  color: #565959;
+  color: var(--site-text-soft);
   font-size: 13px;
 }
 
 .search-results-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .search-results-home-link,
@@ -63,15 +69,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid #d5d9d9;
-  background: #f7fafa;
-  color: #0f1111;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--site-border);
+  background: var(--site-surface-muted);
+  color: var(--site-text);
   text-decoration: none;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .search-results-actions button {
@@ -81,29 +88,33 @@
 
 .search-results-home-link:hover,
 .search-results-actions button:hover {
-  background: #f0f2f2;
+  background: var(--site-surface);
+  border-color: var(--site-link);
+  color: var(--site-link);
 }
 
 .search-results-layout {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
 .search-results-sidebar {
-  background: #ffffff;
-  border: 1px solid #d5d9d9;
-  border-radius: 8px;
-  padding: 12px;
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   position: sticky;
   top: 92px;
+  box-shadow: var(--premium-shadow-sm);
 }
 
 .search-results-sidebar h3 {
-  margin: 0 0 10px;
-  color: #0f1111;
+  margin: 0 0 var(--space-3);
+  color: var(--site-text);
   font-size: 16px;
+  font-weight: 700;
 }
 
 .search-results-category-list {
@@ -113,72 +124,76 @@
 
 .search-results-category-list button {
   text-align: left;
-  border: 1px solid #d5d9d9;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #0f1111;
-  padding: 8px 10px;
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-sm);
+  background: var(--site-surface);
+  color: var(--site-text);
+  padding: 10px var(--space-3);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .search-results-category-list button:hover {
-  background: #f7fafa;
+  background: var(--site-surface-muted);
+  border-color: var(--site-link);
 }
 
 .search-results-category-list button.active {
-  border-color: #fcd200;
-  background: #fff7cc;
+  border-color: var(--site-badge-bg);
+  background: #FEF3C7;
+  color: var(--site-link);
 }
 
 .search-results-main {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .search-results-toolbar {
-  background: #ffffff;
-  border: 1px solid #d5d9d9;
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  color: #565959;
-  font-size: 12px;
+  gap: var(--space-2);
+  color: var(--site-text-soft);
+  font-size: 13px;
 }
 
 .search-results-sort {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .search-results-sort label {
-  color: #565959;
+  color: var(--site-text-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .search-results-sort select {
-  border: 1px solid #a6a6a6;
-  border-radius: 4px;
-  background: #fff;
-  color: #0f1111;
-  min-height: 30px;
-  padding: 0 8px;
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-sm);
+  background: var(--site-surface);
+  color: var(--site-text);
+  min-height: 32px;
+  padding: 0 var(--space-2);
 }
 
 .search-results-grid {
-  background: #ffffff;
-  border: 1px solid #d5d9d9;
-  border-radius: 8px;
-  padding: 12px;
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--space-3);
+  box-shadow: var(--premium-shadow-sm);
 }
 
 @media (max-width: 1200px) {
@@ -208,7 +223,7 @@
 
 @media (max-width: 600px) {
   .search-results-page {
-    padding: 8px;
+    padding: var(--space-2);
   }
 
   .search-results-actions {

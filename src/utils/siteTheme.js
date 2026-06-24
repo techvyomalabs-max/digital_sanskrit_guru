@@ -5,40 +5,43 @@ const BUILT_IN_THEME_DEFINITIONS = [
   {
     value: "sunrise",
     label: "Sunrise",
-    description: "Warm saffron and sandstone accents",
+    description: "Premium saffron gold and deep navy theme",
     palette: {
-      bg: "#f4efe7",
+      bg: "#fbfaf7",
       surface: "#ffffff",
-      text: "#1f2937",
-      header: "#7c2d12",
-      accent: "#9a3412",
-      button: "#fb923c"
+      text: "#0f172a",
+      header: "#0f172a",
+      accent: "#d97706",
+      button: "#d97706",
+      navBottom: "#1e293b"
     }
   },
   {
     value: "forest",
     label: "Forest",
-    description: "Deep green surfaces with fresh mint highlights",
+    description: "Premium emerald and mint theme",
     palette: {
-      bg: "#edf6f0",
+      bg: "#f2f7f4",
       surface: "#ffffff",
-      text: "#163126",
-      header: "#174d3a",
-      accent: "#166534",
-      button: "#22c55e"
+      text: "#064e3b",
+      header: "#064e3b",
+      accent: "#059669",
+      button: "#059669",
+      navBottom: "#022c22"
     }
   },
   {
     value: "midnight",
     label: "Midnight",
-    description: "Ink blue shell with gold accents",
+    description: "Premium dark slate and gold theme",
     palette: {
-      bg: "#edf2fb",
-      surface: "#ffffff",
-      text: "#18253d",
-      header: "#162447",
-      accent: "#1d4ed8",
-      button: "#2563eb"
+      bg: "#0b0f19",
+      surface: "#1e293b",
+      text: "#f8fafc",
+      header: "#0f172a",
+      accent: "#f59e0b",
+      button: "#38bdf8",
+      navBottom: "#020617"
     }
   }
 ];
@@ -96,6 +99,8 @@ function buildThemeVariables(theme) {
   const headerText = getReadableTextColor(palette.header);
   const buttonText = getReadableTextColor(palette.button);
   const accentText = getReadableTextColor(palette.accent);
+  const navBottomBg = palette.navBottom || "#1c2735";
+  const navBottomText = getReadableTextColor(navBottomBg);
 
   return {
     "--site-bg": palette.bg,
@@ -107,6 +112,7 @@ function buildThemeVariables(theme) {
     "--site-link": palette.accent,
     "--site-link-hover": darken(palette.accent, 0.12),
     "--site-header-bg": palette.header,
+    "--site-header-bg-glass": toRgba(palette.header, 0.96),
     "--site-header-border": darken(palette.header, 0.18),
     "--site-header-text": headerText,
     "--site-search-border": palette.accent,
@@ -121,7 +127,10 @@ function buildThemeVariables(theme) {
     "--site-footer-text": getReadableTextColor(darken(palette.header, 0.24)),
     "--site-hero-start": palette.header,
     "--site-hero-end": palette.button,
-    "--site-card-shadow": `0 16px 40px ${toRgba(palette.header, 0.14)}`
+    "--site-card-shadow": `0 16px 40px ${toRgba(palette.header, 0.14)}`,
+    "--site-nav-bottom-bg": navBottomBg,
+    "--site-nav-bottom-bg-glass": toRgba(navBottomBg, 0.95),
+    "--site-nav-bottom-text": navBottomText
   };
 }
 
@@ -132,7 +141,8 @@ function normalizeCustomTheme(theme) {
     text: String(theme?.palette?.text || "").trim(),
     header: String(theme?.palette?.header || "").trim(),
     accent: String(theme?.palette?.accent || "").trim(),
-    button: String(theme?.palette?.button || "").trim()
+    button: String(theme?.palette?.button || "").trim(),
+    navBottom: String(theme?.palette?.navBottom || "").trim() || "#1c2735"
   };
 
   const paletteValid = Object.values(palette).every((color) => HEX_COLOR_REGEX.test(color));

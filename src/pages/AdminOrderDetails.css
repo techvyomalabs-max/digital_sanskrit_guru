@@ -1,5 +1,5 @@
 .admin-order-details-page {
-  background: var(--admin-bg, #eaeded);
+  background: var(--admin-bg, #FAFAF8);
   min-height: calc(100vh - 40px);
 }
 
@@ -57,16 +57,16 @@
 }
 
 .admin-order-details-btn {
-  background: var(--admin-primary, #2563eb);
-  border-color: var(--admin-primary, #2563eb);
+  background: var(--admin-primary, #D97706);
+  border-color: var(--admin-primary, #D97706);
   color: #fff;
 }
 
 .admin-order-details-feedback {
   margin: 0 0 12px;
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  background: rgba(217, 119, 6, 0.06);
+  color: var(--admin-primary-2, #B45309);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 13px;
@@ -264,14 +264,14 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--admin-primary, #2563eb);
+  color: var(--admin-primary, #D97706);
   justify-content: flex-start;
 }
 
 .order-code-link:hover,
 .admin-order-details-link:hover {
-  border-color: var(--admin-primary, #2563eb);
-  color: var(--admin-primary, #2563eb);
+  border-color: var(--admin-primary, #D97706);
+  color: var(--admin-primary, #D97706);
 }
 
 .admin-order-details-btn:hover {

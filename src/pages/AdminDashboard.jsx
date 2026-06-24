@@ -4,7 +4,7 @@ import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import SalesChart from "../components/SalesChart";
-import { formatDate, formatTime } from "../utils/date";
+import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import {
   normalizeDistancePricing,
   normalizeInternationalDelivery,
@@ -29,6 +29,10 @@ function formatCurrency(value) {
 
 function formatPercent(value) {
   return `${Math.round(Number(value) || 0)}%`;
+}
+
+function createCsvCell(value) {
+  return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
 }
 
 function normalizePricingMarketsInput(pricingMarkets = []) {
@@ -567,6 +571,29 @@ function AdminDashboard() {
       .slice(0, 6);
   }, [orders]);
 
+  const topSellingProducts = useMemo(() => {
+    const salesByProduct = orders.reduce((acc, order) => {
+      (order.items || []).forEach((item) => {
+        const itemName = String(item?.name || item?.product?.name || item?.title || "").trim();
+        if (!itemName) return;
+
+        if (!acc[itemName]) {
+          acc[itemName] = { name: itemName, quantity: 0, sales: 0 };
+        }
+
+        const quantity = Number(item?.quantity || 1);
+        acc[itemName].quantity += quantity;
+        acc[itemName].sales += Number(item?.price || 0) * quantity;
+      });
+
+      return acc;
+    }, {});
+
+    return Object.values(salesByProduct)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
+  }, [orders]);
+
   const analytics = useMemo(() => {
     const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
     const totalQuantity = orders.reduce((sum, order) => {
@@ -734,6 +761,104 @@ function AdminDashboard() {
     };
   }, [orders]);
 
+  const exportSalesReport = () => {
+    const itemQuantity = orders.reduce(
+      (sum, order) => sum + (order?.items || []).reduce((itemSum, item) => itemSum + Number(item?.quantity || 1), 0),
+      0
+    );
+
+    const summaryRows = [
+      ["Report Name", "Sales Report"],
+      ["Generated At", new Date().toISOString()],
+      ["Total Orders", orders.length],
+      ["Total Revenue INR", Math.round(Number(revenueKpis.total || 0))],
+      ["Revenue Today INR", Math.round(Number(revenueKpis.today || 0))],
+      ["Revenue Last 7 Days INR", Math.round(Number(revenueKpis.last7Days || 0))],
+      ["Revenue Last 30 Days INR", Math.round(Number(revenueKpis.last30Days || 0))],
+      ["Average Order Value INR", Math.round(Number(analytics.averageOrderValue || 0))],
+      ["Total Units Sold", itemQuantity],
+      ["Delivered Orders", analytics.statuses.Delivered],
+      ["Pending Orders", analytics.statuses.Pending],
+      ["Cancelled Orders", analytics.statuses.Cancelled],
+      ["Repeat Customer Rate", formatPercent(analytics.repeatRate)]
+    ];
+
+    const detailHeaders = [
+      "Order ID",
+      "Order Date",
+      "Customer Name",
+      "Customer Email",
+      "Items Count",
+      "Units Sold",
+      "Subtotal INR",
+      "GST INR",
+      "Delivery INR",
+      "Discount INR",
+      "Total INR",
+      "Display Currency",
+      "Display Amount",
+      "Order Status",
+      "Payment Status",
+      "Refund Status"
+    ];
+
+    const detailRows = orders.map((order) => {
+      const itemsCount = Array.isArray(order?.items) ? order.items.length : 0;
+      const unitsSold = (order?.items || []).reduce((sum, item) => sum + Number(item?.quantity || 1), 0);
+
+      return [
+        order?._id || "",
+        order?.createdAt ? new Date(order.createdAt).toISOString() : "",
+        order?.user?.name || order?.shipping?.name || "Unknown",
+        order?.user?.email || "",
+        itemsCount,
+        unitsSold,
+        Math.round(Number(order?.subtotal || 0)),
+        Math.round(Number(order?.gstAmount || 0)),
+        Math.round(Number(order?.deliveryCharge || 0)),
+        Math.round(Number(order?.discount || 0)),
+        Math.round(Number(order?.total || 0)),
+        order?.currencyDisplay?.currency || "INR",
+        order?.currencyDisplay?.amount ?? "",
+        normalizeStatus(order?.status),
+        order?.paymentStatus || "Pending",
+        order?.refundStatus || "Not Applicable"
+      ];
+    });
+
+    const productHeaders = ["Product", "Units Sold", "Estimated Revenue INR"];
+    const productRows = topSellingProducts.map((item) => [
+      item?.name || "",
+      Number(item?.quantity || 0),
+      Math.round(Number(item?.sales || 0))
+    ]);
+
+    const csvSections = [
+      ["Sales Report Summary"],
+      ...summaryRows,
+      [],
+      ["Order Details"],
+      detailHeaders,
+      ...detailRows,
+      [],
+      ["Top Selling Products"],
+      productHeaders,
+      ...productRows
+    ];
+
+    const csv = csvSections
+      .map((row) => row.map((cell) => createCsvCell(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sales-report-${formatDateForFileName(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const notifications = useMemo(() => {
     const list = [];
     if (analytics.statuses.Pending >= 5) {
@@ -774,9 +899,14 @@ function AdminDashboard() {
               {lastUpdatedAt ? ` | Last update: ${formatTime(lastUpdatedAt)}` : ""}
             </p>
           </div>
-          <Link className="admin-header-link-btn" to="/admin/theme">
-            Theme Settings
-          </Link>
+          <div className="admin-header-actions">
+            <button type="button" className="admin-header-link-btn" onClick={exportSalesReport}>
+              Export Sales Report
+            </button>
+            <Link className="admin-header-link-btn" to="/admin/theme">
+              Theme Settings
+            </Link>
+          </div>
         </div>
 
         <section className="card pricing-controls-card">

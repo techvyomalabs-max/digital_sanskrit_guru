@@ -111,6 +111,11 @@ const productSchema = new mongoose.Schema(
       default: []
     },
 
+    trailerVideoUrl: {
+      type: String,
+      default: ""
+    },
+
     category: {
       type: String,
       default: "General"
@@ -176,5 +181,26 @@ const productSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ── Indexes (Tier-1 performance) ──────────────────────────────────────────────
+// These turn full-collection scans into fast O(log n) index lookups.
+
+// 1. Category listing + sort by creation date (main collection page)
+productSchema.index({ category: 1, createdAt: -1 });
+
+// 2. Featured sort: stock desc + rating desc (default sort on collection page)
+productSchema.index({ stock: -1, rating: -1 });
+
+// 3. Low-stock admin alert queries
+productSchema.index({ stock: 1 });
+
+// 4. Festive offer filtering
+productSchema.index({ festiveOffer: 1, createdAt: -1 });
+
+// 5. Full-text search on name and description
+productSchema.index({ name: "text", description: "text" }, { weights: { name: 10, description: 3 } });
+
+// 6. Rating sort
+productSchema.index({ rating: -1 });
 
 module.exports = mongoose.model("Product", productSchema);

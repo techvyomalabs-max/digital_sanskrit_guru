@@ -1,4 +1,4 @@
-﻿import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../../hooks/useAuth";
@@ -11,7 +11,7 @@ const onDemandUrl = String(
   import.meta.env.VITE_ONDEMAND_URL || "https://antiquewhite-squid-823975.hostingersite.com/#/"
 ).trim();
 
-function Navbar() {
+function Navbar({ bannerActive = false }) {
   const { user, logout } = useAuth();
   const { cartItems } = useCart();
   const { wishlist } = useWishlist();
@@ -27,8 +27,38 @@ function Navbar() {
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationStatusMessage, setLocationStatusMessage] = useState("");
   const [collectionCategories, setCollectionCategories] = useState(["All"]);
+  const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
   const isAdminRoute = location.pathname.startsWith("/admin");
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > 140) {
+        setShowAttachedBar(false);
+        setIsCollectionFilterMenuOpen(false);
+      } else if (currentScrollY < 60) {
+        setShowAttachedBar(true);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!showAttachedBar) {
+      document.documentElement.classList.add("navbar-attached-hidden");
+    } else {
+      document.documentElement.classList.remove("navbar-attached-hidden");
+    }
+    return () => {
+      document.documentElement.classList.remove("navbar-attached-hidden");
+    };
+  }, [showAttachedBar]);
+
+
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -51,6 +81,7 @@ function Navbar() {
     setIsManagingAddresses(false);
     setIsDetectingLocation(false);
     setLocationStatusMessage("");
+    setShowAttachedBar(window.scrollY < 140);
   }, [location.pathname, location.search]);
 
   useEffect(() => {
@@ -218,7 +249,8 @@ function Navbar() {
   };
 
   return (
-    <nav className="navbar">
+    <>
+      <nav className={`navbar${bannerActive ? " banner-active" : ""}`}>
       <div className="navbar-top">
         <div className="navbar-inner">
           <Link to="/" className="navbar-logo navbar-outline">
@@ -279,7 +311,9 @@ function Navbar() {
                 🛒
               </span>
               <span className="navbar-cart-label">Cart</span>
-              <span className="navbar-badge">{cartItems.length}</span>
+              <span className="navbar-badge">
+                {cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0)}
+              </span>
             </Link>
 
             <button
@@ -301,7 +335,7 @@ function Navbar() {
         </div>
       </div>
 
-      <div className="navbar-attached-bar">
+      <div className={`navbar-attached-bar ${!showAttachedBar ? "navbar-attached-bar-hidden" : ""}`}>
         <div className="navbar-inner navbar-attached-bar-inner">
           <div className="navbar-attached-bar-start">
             {!isAdminRoute ? (
@@ -313,34 +347,52 @@ function Navbar() {
                   aria-expanded={isCollectionFilterMenuOpen}
                   onClick={() => setIsCollectionFilterMenuOpen((current) => !current)}
                 >
-                  <span />
-                  <span />
-                  <span />
-                </button>
-                {isCollectionFilterMenuOpen ? (
-                  <div className="navbar-collection-filter-menu">
-                    <strong className="navbar-collection-filter-title">Browse by category</strong>
-                    <div className="navbar-collection-filter-list">
-                      {collectionCategories.map((category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          className="navbar-collection-filter-item"
-                          onClick={() => {
-                            setIsCollectionFilterMenuOpen(false);
-                            navigate(
-                              category === "All"
-                                ? "/collection"
-                                : `/collection?category=${encodeURIComponent(category)}`
-                            );
-                          }}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="hamburger-icon">
+                    <span />
+                    <span />
+                    <span />
                   </div>
-                ) : null}
+                  <span className="navbar-collection-menu-text">All</span>
+                </button>
+                <button
+                  type="button"
+                  className="navbar-quick-nav-btn"
+                  onClick={() => {
+                    if (location.pathname === "/") {
+                      document.getElementById("home-section-top-rated")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    } else {
+                      navigate("/?scrollTo=top-rated");
+                    }
+                  }}
+                >
+                  Top Rated
+                </button>
+                <button
+                  type="button"
+                  className="navbar-quick-nav-btn"
+                  onClick={() => {
+                    if (location.pathname === "/") {
+                      document.getElementById("home-section-new-arrivals")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    } else {
+                      navigate("/?scrollTo=new-arrivals");
+                    }
+                  }}
+                >
+                  New Arrivals
+                </button>
+                <button
+                  type="button"
+                  className="navbar-quick-nav-btn"
+                  onClick={() => {
+                    if (location.pathname === "/") {
+                      document.getElementById("home-section-budget-picks")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    } else {
+                      navigate("/?scrollTo=budget-picks");
+                    }
+                  }}
+                >
+                  Budget Picks
+                </button>
               </>
             ) : null}
           </div>
@@ -356,6 +408,30 @@ function Navbar() {
             </a>
           ) : null}
         </div>
+        {!isAdminRoute && isCollectionFilterMenuOpen ? (
+          <div className="navbar-collection-filter-menu">
+            <strong className="navbar-collection-filter-title">Browse by category</strong>
+            <div className="navbar-collection-filter-list">
+              {collectionCategories.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  className="navbar-collection-filter-item"
+                  onClick={() => {
+                    setIsCollectionFilterMenuOpen(false);
+                    navigate(
+                      category === "All"
+                        ? "/collection"
+                        : `/collection?category=${encodeURIComponent(category)}`
+                    );
+                  }}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       {!isAdminRoute && isCollectionFilterMenuOpen ? (
         <button
@@ -365,59 +441,6 @@ function Navbar() {
           onClick={() => setIsCollectionFilterMenuOpen(false)}
         />
       ) : null}
-      {isMenuOpen && (
-        <button
-          type="button"
-          className="navbar-menu-backdrop"
-          aria-label="Close navigation menu"
-          onClick={() => setIsMenuOpen(false)}
-        />
-      )}
-
-      <div className={`navbar-subbar ${isMenuOpen ? "navbar-subbar-open" : ""}`}>
-        <div className="navbar-inner navbar-subbar-inner" id="navbar-subbar-links">
-          <button
-            type="button"
-            className="navbar-mobile-location"
-            onClick={() => setIsAddressModalOpen(true)}
-          >
-            {deliveryLine1} <strong>{deliveryLine2}</strong>
-          </button>
-
-          <NavLink className={linkClassName} to="/" end>
-            Home
-          </NavLink>
-          <NavLink className={linkClassName} to="/wishlist">
-            Wishlist <span className="navbar-inline-count">{wishlist.length}</span>
-          </NavLink>
-          <NavLink className={linkClassName} to="/my-orders">
-            My Orders
-          </NavLink>
-          {user ? (
-            <NavLink className={linkClassName} to="/account">
-              My Account
-            </NavLink>
-          ) : (
-            <NavLink className={linkClassName} to="/login">
-              Login
-            </NavLink>
-          )}
-          {user?.isAdmin && (
-            <NavLink className={linkClassName} to="/admin">
-              Admin Dashboard
-            </NavLink>
-          )}
-          {user ? (
-            <button type="button" className="navbar-link navbar-logout navbar-outline" onClick={logout}>
-              Sign Out
-            </button>
-          ) : (
-            <NavLink className={linkClassName} to="/register">
-              New Customer? Register
-            </NavLink>
-          )}
-        </div>
-      </div>
 
       {isAddressModalOpen && (
         <div
@@ -538,7 +561,125 @@ function Navbar() {
           </div>
         </div>
       )}
-    </nav>
+
+      </nav>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="navbar-mobile-bottom-bar">
+        <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end>
+          <span className="mobile-bottom-icon">🏠</span>
+          <span className="mobile-bottom-label">Home</span>
+        </NavLink>
+        <button
+          type="button"
+          className={`mobile-bottom-item${isCollectionFilterMenuOpen ? " active" : ""}`}
+          onClick={() => {
+            setIsCollectionFilterMenuOpen((prev) => !prev);
+            if (location.pathname !== "/collection") {
+              navigate("/collection");
+            }
+          }}
+        >
+          <span className="mobile-bottom-icon">📚</span>
+          <span className="mobile-bottom-label">Categories</span>
+        </button>
+        <button
+          type="button"
+          className="mobile-bottom-item"
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            const searchInput = document.querySelector(".navbar-search");
+            if (searchInput) {
+              searchInput.focus();
+            }
+          }}
+        >
+          <span className="mobile-bottom-icon">🔍</span>
+          <span className="mobile-bottom-label">Search</span>
+        </button>
+        <NavLink to="/cart" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
+          <div className="mobile-bottom-cart-wrap">
+            <span className="mobile-bottom-icon">🛒</span>
+            {cartItems.length > 0 ? (
+              <span className="mobile-bottom-badge">
+                {cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0)}
+              </span>
+            ) : null}
+          </div>
+          <span className="mobile-bottom-label">Cart</span>
+        </NavLink>
+        <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
+          <span className="mobile-bottom-icon">👤</span>
+          <span className="mobile-bottom-label">{user ? "Profile" : "Login"}</span>
+        </NavLink>
+      </div>
+
+      {isMenuOpen && (
+        <button
+          type="button"
+          className="navbar-menu-backdrop"
+          aria-label="Close navigation menu"
+          onClick={() => setIsMenuOpen(false)}
+        />
+      )}
+
+      <div className={`navbar-subbar ${isMenuOpen ? "navbar-subbar-open" : ""}`}>
+        <div className="navbar-inner navbar-subbar-inner" id="navbar-subbar-links">
+          <div className="navbar-subbar-header">
+            <span className="navbar-subbar-title">Menu</span>
+            <button
+              type="button"
+              className="navbar-subbar-close"
+              onClick={() => setIsMenuOpen(false)}
+              aria-label="Close menu"
+            >
+              ✕
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="navbar-mobile-location"
+            onClick={() => setIsAddressModalOpen(true)}
+          >
+            {deliveryLine1} <strong>{deliveryLine2}</strong>
+          </button>
+
+          <NavLink className={linkClassName} to="/" end>
+            Home
+          </NavLink>
+          <NavLink className={linkClassName} to="/wishlist">
+            Wishlist <span className="navbar-inline-count">{wishlist.length}</span>
+          </NavLink>
+          <NavLink className={linkClassName} to="/my-orders">
+            My Orders
+          </NavLink>
+          {user ? (
+            <NavLink className={linkClassName} to="/account">
+              My Account
+            </NavLink>
+          ) : (
+            <NavLink className={linkClassName} to="/login">
+              Login
+            </NavLink>
+          )}
+          {user?.isAdmin && (
+            <NavLink className={linkClassName} to="/admin">
+              Admin Dashboard
+            </NavLink>
+          )}
+          {user ? (
+            <button type="button" className="navbar-link navbar-logout navbar-outline" onClick={logout}>
+              Sign Out
+            </button>
+          ) : (
+            <NavLink className={linkClassName} to="/register">
+              New Customer? Register
+            </NavLink>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 

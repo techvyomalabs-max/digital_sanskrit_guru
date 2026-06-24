@@ -1,5 +1,14 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Digital Sanskrit Guru
+   Premium ecommerce marketplace tokens
+   Font: Inter | Palette: Deep Navy + Saffron Gold + Warm Off-White
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
-  font-family: "Poppins", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  /* ── Typography ────────────────────────────────────────────────────────── */
+  font-family: "Inter", "Poppins", "Segoe UI", system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -7,85 +16,114 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --site-bg: #f4efe7;
+  /* ── Spacing scale (8px base) ─────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Radius scale ─────────────────────────────────────────────────────── */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-full: 999px;
+
+  /* ── Shadow depth system ──────────────────────────────────────────────── */
+  --premium-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --premium-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --premium-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04);
+  --premium-shadow-xl: 0 20px 48px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(15, 23, 42, 0.06);
+
+  /* ── Color palette — Premium Saffron (default) ────────────────────────── */
+  --site-bg: #FAFAF8;
   --site-surface: #ffffff;
-  --site-surface-muted: #f8f3ea;
-  --site-text: #1f2937;
-  --site-text-soft: #6b7280;
-  --site-border: #dfd4c4;
-  --site-link: #9a3412;
-  --site-link-hover: #c2410c;
-  --site-header-bg: #7c2d12;
-  --site-header-border: #6b250f;
-  --site-header-text: #fff8f1;
-  --site-search-border: #f59e0b;
-  --site-search-focus: #f97316;
-  --site-badge-bg: #fbbf24;
-  --site-badge-text: #3f2b00;
-  --site-button-bg: #fb923c;
-  --site-button-hover: #f97316;
-  --site-button-text: #fff7ed;
-  --site-footer-bg: #431407;
-  --site-footer-border: #5b2110;
-  --site-footer-text: #ffedd5;
-  --site-hero-start: #7c2d12;
-  --site-hero-end: #ea580c;
-  --site-card-shadow: 0 16px 40px rgba(124, 45, 18, 0.08);
+  --site-surface-muted: #F5F3EF;
+  --site-text: #0F172A;
+  --site-text-soft: #64748B;
+  --site-border: #E2E8F0;
+  --site-link: #B45309;
+  --site-link-hover: #92400E;
+  --site-header-bg: #0F172A;
+  --site-header-border: #1E293B;
+  --site-header-text: #F8FAFC;
+  --site-search-border: #D97706;
+  --site-search-focus: #B45309;
+  --site-badge-bg: #D97706;
+  --site-badge-text: #FFFBEB;
+  --site-button-bg: #D97706;
+  --site-button-hover: #B45309;
+  --site-button-text: #FFFBEB;
+  --site-footer-bg: #0F172A;
+  --site-footer-border: #1E293B;
+  --site-footer-text: #CBD5E1;
+  --site-hero-start: #0F172A;
+  --site-hero-end: #D97706;
+  --site-card-shadow: var(--premium-shadow-md);
 }
 
+/* ── Theme: Forest ──────────────────────────────────────────────────────── */
 :root[data-site-theme="forest"] {
-  --site-bg: #edf6f0;
+  --site-bg: #F5FAF7;
   --site-surface: #ffffff;
-  --site-surface-muted: #f3fbf6;
-  --site-text: #163126;
-  --site-text-soft: #587065;
-  --site-border: #cfe0d5;
+  --site-surface-muted: #EEF6F1;
+  --site-text: #0F2B1F;
+  --site-text-soft: #4B7A62;
+  --site-border: #D1E7DA;
   --site-link: #166534;
-  --site-link-hover: #15803d;
-  --site-header-bg: #174d3a;
-  --site-header-border: #123829;
-  --site-header-text: #f3fff8;
-  --site-search-border: #34d399;
-  --site-search-focus: #10b981;
-  --site-badge-bg: #86efac;
-  --site-badge-text: #123524;
-  --site-button-bg: #22c55e;
-  --site-button-hover: #16a34a;
-  --site-button-text: #f0fdf4;
-  --site-footer-bg: #10281f;
-  --site-footer-border: #163528;
-  --site-footer-text: #dcfce7;
-  --site-hero-start: #14532d;
-  --site-hero-end: #10b981;
-  --site-card-shadow: 0 16px 40px rgba(20, 83, 45, 0.1);
+  --site-link-hover: #14532D;
+  --site-header-bg: #14412E;
+  --site-header-border: #0F3222;
+  --site-header-text: #F0FFF6;
+  --site-search-border: #22C55E;
+  --site-search-focus: #16A34A;
+  --site-badge-bg: #22C55E;
+  --site-badge-text: #052E16;
+  --site-button-bg: #16A34A;
+  --site-button-hover: #15803D;
+  --site-button-text: #F0FDF4;
+  --site-footer-bg: #0C2B1D;
+  --site-footer-border: #14412E;
+  --site-footer-text: #BBF7D0;
+  --site-hero-start: #14532D;
+  --site-hero-end: #22C55E;
+  --site-card-shadow: var(--premium-shadow-md);
 }
 
+/* ── Theme: Midnight ────────────────────────────────────────────────────── */
 :root[data-site-theme="midnight"] {
-  --site-bg: #edf2fb;
+  --site-bg: #F4F7FC;
   --site-surface: #ffffff;
-  --site-surface-muted: #f4f7fd;
-  --site-text: #18253d;
-  --site-text-soft: #61708d;
-  --site-border: #d8dfed;
-  --site-link: #1d4ed8;
-  --site-link-hover: #2563eb;
-  --site-header-bg: #162447;
-  --site-header-border: #0f1731;
-  --site-header-text: #eff4ff;
-  --site-search-border: #facc15;
-  --site-search-focus: #f59e0b;
-  --site-badge-bg: #facc15;
-  --site-badge-text: #3f3200;
-  --site-button-bg: #2563eb;
-  --site-button-hover: #1d4ed8;
-  --site-button-text: #eff6ff;
-  --site-footer-bg: #0f172a;
-  --site-footer-border: #1e293b;
-  --site-footer-text: #dbeafe;
+  --site-surface-muted: #EDF1FA;
+  --site-text: #0F172A;
+  --site-text-soft: #475569;
+  --site-border: #CBD5E1;
+  --site-link: #1D4ED8;
+  --site-link-hover: #1E40AF;
+  --site-header-bg: #0F172A;
+  --site-header-border: #1E293B;
+  --site-header-text: #F1F5F9;
+  --site-search-border: #FACC15;
+  --site-search-focus: #EAB308;
+  --site-badge-bg: #FACC15;
+  --site-badge-text: #422006;
+  --site-button-bg: #2563EB;
+  --site-button-hover: #1D4ED8;
+  --site-button-text: #EFF6FF;
+  --site-footer-bg: #0F172A;
+  --site-footer-border: #1E293B;
+  --site-footer-text: #CBD5E1;
   --site-hero-start: #172554;
-  --site-hero-end: #2563eb;
-  --site-card-shadow: 0 16px 44px rgba(23, 37, 84, 0.12);
+  --site-hero-end: #2563EB;
+  --site-card-shadow: var(--premium-shadow-md);
 }
+
+/* ── Global resets ──────────────────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
@@ -99,9 +137,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  font-family: "Poppins", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.6), transparent 28%),
-    var(--site-bg);
+  font-family: "Inter", "Poppins", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--site-bg);
   color: var(--site-text);
 }
 
@@ -128,4 +165,9 @@ button {
 #root {
   width: 100%;
   min-height: 100vh;
+}
+
+/* Push layout flow down when the 40px fixed festive banner is active to prevent overlap */
+html.banner-active body {
+  padding-top: 40px;
 }

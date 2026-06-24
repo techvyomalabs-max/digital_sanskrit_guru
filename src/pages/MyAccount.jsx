@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -8,6 +8,135 @@ import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyForUser } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import "./MyAccount.css";
+
+// ── Push Notification Subscribe Section ──────────────────────────────────────
+function PushSubscribeSection({ token }) {
+  const [permission, setPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
+  const [status, setStatus] = useState("");
+  const [isSubscribing, setIsSubscribing] = useState(false);
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  }
+
+  const subscribe = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setStatus("Push notifications are not supported by your browser.");
+      return;
+    }
+    setIsSubscribing(true);
+    setStatus("");
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      if (result !== "granted") {
+        setStatus("Notification permission denied. Enable it in browser settings.");
+        return;
+      }
+      const sw = await navigator.serviceWorker.ready;
+      const existing = await sw.pushManager.getSubscription();
+      if (existing) {
+        setStatus("✅ You are already subscribed to push notifications.");
+        return;
+      }
+      const keyRes = await fetch("/api/push/vapid-key");
+      if (!keyRes.ok) throw new Error("Could not get push key.");
+      const { publicKey } = await keyRes.json();
+      const sub = await sw.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      if (token) {
+        await axios.post("/api/push/subscribe", sub.toJSON(), {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+      setStatus("✅ Subscribed! You'll receive notifications for orders and stock alerts.");
+    } catch (err) {
+      setStatus(err?.message || "Failed to subscribe.");
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  const unsubscribe = async () => {
+    setIsSubscribing(true);
+    setStatus("");
+    try {
+      const sw = await navigator.serviceWorker.ready;
+      const sub = await sw.pushManager.getSubscription();
+      if (sub) {
+        await sub.unsubscribe();
+        if (token) {
+          await axios.delete("/api/push/unsubscribe", {
+            headers: { Authorization: `Bearer ${token}` },
+            data: { endpoint: sub.endpoint }
+          });
+        }
+      }
+      setPermission("default");
+      setStatus("Unsubscribed from push notifications.");
+    } catch {
+      setStatus("Failed to unsubscribe.");
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
+
+  return (
+    <section className="my-account-panel my-account-panel-compact">
+      <div className="my-account-panel-head">
+        <div>
+          <p className="my-account-section-kicker">Notifications</p>
+          <h2>Push Notifications</h2>
+        </div>
+      </div>
+      <div className="my-account-push-box">
+        <p className="my-account-push-desc">
+          Get instant alerts for order updates, delivery status, and low-stock warnings for your wishlist items.
+        </p>
+        <div className="my-account-push-status">
+          <span className={`my-account-push-dot ${permission === "granted" ? "on" : "off"}`} />
+          {permission === "granted" ? "Notifications enabled" : permission === "denied" ? "Notifications blocked in browser" : "Notifications not enabled"}
+        </div>
+        {status && <p className="my-account-push-msg">{status}</p>}
+        <div className="my-account-push-actions">
+          {permission !== "denied" && permission !== "granted" && (
+            <button
+              type="button"
+              className="my-account-push-btn primary"
+              onClick={subscribe}
+              disabled={isSubscribing}
+            >
+              {isSubscribing ? "Subscribing..." : "Enable Push Notifications"}
+            </button>
+          )}
+          {permission === "granted" && (
+            <button
+              type="button"
+              className="my-account-push-btn"
+              onClick={unsubscribe}
+              disabled={isSubscribing}
+            >
+              {isSubscribing ? "Processing..." : "Disable Notifications"}
+            </button>
+          )}
+          {permission === "denied" && (
+            <p className="my-account-push-hint">To re-enable, click the lock icon in your browser address bar → Notifications → Allow.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 
 async function fetchCoordinatesForAddress(parts = {}) {
   const query = [
@@ -69,6 +198,7 @@ function MyAccount() {
   const [orders, setOrders] = useState([]);
   const [showAddressForm, setShowAddressForm] = useState(addresses.length === 0);
   const [editingIndex, setEditingIndex] = useState(null);
+  const [addressError, setAddressError] = useState("");
   const [addressLabel, setAddressLabel] = useState("Home");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -202,19 +332,21 @@ function MyAccount() {
     const cleanCountry = String(country || "").trim();
 
     if (!name || !cleanPhone || !address || !city || !state || !cleanPincode || !cleanCountry) {
-      alert("Please fill full name, phone, address, city, state, postal code, and country.");
+      setAddressError("Please fill full name, phone, address, city, state, postal code, and country.");
       return;
     }
 
     if (cleanPhone.length < 10) {
-      alert("Enter a valid phone number.");
+      setAddressError("Enter a valid phone number (at least 10 digits).");
       return;
     }
 
     if (!/^[A-Za-z0-9\s-]{3,12}$/.test(cleanPincode)) {
-      alert("Enter a valid postal code.");
+      setAddressError("Enter a valid postal code.");
       return;
     }
+
+    setAddressError("");
 
     const existingAddress = editingIndex === null ? null : addresses[editingIndex] || null;
     const nextCoordinates = await fetchCoordinatesForAddress({
@@ -255,6 +387,7 @@ function MyAccount() {
 
     resetAddressForm();
     setShowAddressForm(false);
+    setAddressError("");
   };
 
   const editAddress = (index) => {
@@ -283,12 +416,6 @@ function MyAccount() {
 
   return (
     <div className="my-account-page">
-      <div className="my-account-breadcrumb">
-        <Link to="/">Home</Link>
-        <span>/</span>
-        <strong>Your Account</strong>
-      </div>
-
       <section className="my-account-header">
         <div>
           <p className="my-account-kicker">Your Account</p>
@@ -506,6 +633,10 @@ function MyAccount() {
               <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. India, USA, UK" />
             </label>
 
+            {addressError && (
+              <p className="my-account-form-error">{addressError}</p>
+            )}
+
             <div className="my-account-address-form-actions">
               <button type="button" className="primary" onClick={saveAddress}>
                 {editingIndex === null ? "Save Address" : "Update Address"}
@@ -516,6 +647,7 @@ function MyAccount() {
                   onClick={() => {
                     resetAddressForm();
                     setShowAddressForm(false);
+                    setAddressError("");
                   }}
                 >
                   Cancel
@@ -581,6 +713,8 @@ function MyAccount() {
           </div>
         )}
       </section>
+
+      <PushSubscribeSection token={token} />
     </div>
   );
 }

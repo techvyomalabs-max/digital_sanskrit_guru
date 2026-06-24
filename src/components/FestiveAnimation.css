@@ -1,0 +1,34 @@
+/* Festive animation canvas — fixed overlay, never blocks interaction */
+.festive-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;   /* Clicks pass straight through */
+  z-index: 9999;          /* Always on top */
+  display: block;
+}
+
+/* Festive Lottie overlay (external animations) */
+.festive-lottie-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.festive-lottie-overlay lottie-player {
+  width: 100%;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .festive-canvas,
+  .festive-lottie-overlay { display: none; }
+}

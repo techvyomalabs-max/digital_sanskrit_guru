@@ -1,6 +1,7 @@
 const express = require("express");
 const Coupon = require("../models/Coupon");
 const StoreSettings = require("../models/StoreSettings");
+const User = require("../models/User");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
@@ -16,6 +17,8 @@ router.post("/", protect, admin, async (req, res) => {
     const value = Number(req.body?.value || 0);
     const minOrder = Math.max(0, Number(req.body?.minOrder || 0));
     const expiresAt = req.body?.expiresAt ? new Date(req.body.expiresAt) : undefined;
+    const assignedUserEmail = req.body?.assignedUserEmail ? String(req.body.assignedUserEmail).trim().toLowerCase() : null;
+    const applicableProducts = Array.isArray(req.body?.applicableProducts) ? req.body.applicableProducts : [];
 
     if (!code) {
       return res.status(400).json({ message: "Coupon code is required" });
@@ -29,6 +32,18 @@ router.post("/", protect, admin, async (req, res) => {
     if (expiresAt && Number.isNaN(expiresAt.getTime())) {
       return res.status(400).json({ message: "Invalid expiry date" });
     }
+    if (assignedUserEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(assignedUserEmail)) {
+        return res.status(400).json({ message: "Invalid user email format" });
+      }
+    }
+    const mongoose = require("mongoose");
+    for (const pId of applicableProducts) {
+      if (!mongoose.Types.ObjectId.isValid(pId)) {
+        return res.status(400).json({ message: "Invalid product selection" });
+      }
+    }
 
     const coupon = await Coupon.create({
       code,
@@ -36,6 +51,8 @@ router.post("/", protect, admin, async (req, res) => {
       value,
       minOrder,
       expiresAt,
+      assignedUserEmail,
+      applicableProducts,
       lastUpdatedByName: actor.name,
       lastUpdatedByEmail: actor.email,
       lastUpdatedAt: new Date()
@@ -51,7 +68,9 @@ router.post("/", protect, admin, async (req, res) => {
       details: {
         type: coupon.type,
         value: Number(coupon.value || 0),
-        minOrder: Number(coupon.minOrder || 0)
+        minOrder: Number(coupon.minOrder || 0),
+        assignedUserEmail,
+        applicableProductsCount: applicableProducts.length
       }
     });
 
@@ -64,9 +83,34 @@ router.post("/", protect, admin, async (req, res) => {
   }
 });
 
+// Public: returns coupon details
 router.get("/", async (_req, res) => {
-  const coupons = await Coupon.find().sort({ createdAt: -1 });
-  res.json(coupons);
+  try {
+    const coupons = await Coupon.find().sort({ createdAt: -1 });
+    const publicCoupons = coupons.map((c) => ({
+      _id: c._id,
+      code: c.code,
+      type: c.type,
+      value: c.value,
+      minOrder: c.minOrder || 0,
+      expiresAt: c.expiresAt || null
+    }));
+    res.json(publicCoupons);
+  } catch {
+    res.status(500).json({ message: "Failed to load coupons" });
+  }
+});
+
+// Admin: returns full coupon details
+router.get("/admin/all", protect, admin, async (_req, res) => {
+  try {
+    const coupons = await Coupon.find()
+      .populate("applicableProducts", "name")
+      .sort({ createdAt: -1 });
+    res.json(coupons);
+  } catch {
+    res.status(500).json({ message: "Failed to load coupons" });
+  }
 });
 
 router.delete("/:id", protect, admin, async (req, res) => {
@@ -90,7 +134,7 @@ router.delete("/:id", protect, admin, async (req, res) => {
   res.json({ message: "Coupon deleted" });
 });
 
-router.post("/apply", async (req, res) => {
+router.post("/apply", protect, async (req, res) => {
   const code = String(req.body?.code || "").trim().toUpperCase();
   const total = Number(req.body?.total || 0);
   const currency = normalizeCurrencyCode(req.body?.currency, "INR");
@@ -112,6 +156,58 @@ router.post("/apply", async (req, res) => {
 
   if (coupon.expiresAt && new Date() > coupon.expiresAt) {
     return res.status(400).json({ message: "Coupon expired" });
+  }
+
+  // 1. Check if user already used this coupon
+  if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
+    return res.status(400).json({ message: "You have already used this coupon code" });
+  }
+
+  // 2. Check if user email matches assignment
+  if (coupon.assignedUserEmail) {
+    const user = await User.findById(req.user).select("email").lean();
+    if (String(coupon.assignedUserEmail).toLowerCase() !== String(user?.email || "").toLowerCase()) {
+      return res.status(400).json({ message: "This coupon is gifted/assigned to another user's account" });
+    }
+  }
+
+  // 3. Product-restricted check
+  if (Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0) {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const matchingItems = items.filter((item) => {
+      const itemId = String(item.product || item._id || item.id || "");
+      return coupon.applicableProducts.some((pId) => String(pId) === itemId);
+    });
+
+    if (matchingItems.length === 0) {
+      return res.status(400).json({ message: "This coupon code is not applicable to the products in your cart" });
+    }
+
+    const matchingTotal = matchingItems.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
+      0
+    );
+    const minOrder = roundMoney(convertCurrencyAmount(Number(coupon.minOrder || 0), { currency, rates: currencyRates }));
+
+    if (matchingTotal < minOrder) {
+      return res.status(400).json({
+        message: `Minimum order for qualifying products is ${minOrder} ${currency}`
+      });
+    }
+
+    let discount = 0;
+    if (coupon.type === "percentage") {
+      discount = (matchingTotal * Number(coupon.value || 0)) / 100;
+    } else if (coupon.type === "fixed") {
+      discount = convertCurrencyAmount(Number(coupon.value || 0), { currency, rates: currencyRates });
+    }
+
+    const safeDiscount = Math.max(0, Math.min(matchingTotal, discount));
+    return res.json({
+      discount: safeDiscount,
+      newTotal: Math.max(0, total - safeDiscount),
+      currency
+    });
   }
 
   const minOrder = roundMoney(convertCurrencyAmount(Number(coupon.minOrder || 0), { currency, rates: currencyRates }));

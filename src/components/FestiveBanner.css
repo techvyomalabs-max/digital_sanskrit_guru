@@ -1,0 +1,93 @@
+/* ── Festive Banner ── fixed top announcement bar ───────────────────────── */
+.festive-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 160;                  /* sits above navbar (z-index:150) */
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 48px;              /* room for close button */
+  background: linear-gradient(90deg, var(--banner-from, #FF6B00), var(--banner-to, #FFD700));
+  color: var(--banner-color, #fff);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+}
+
+/* subtle shimmer sweep */
+.festive-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255,255,255,0.18) 50%,
+    transparent 60%
+  );
+  animation: banner-shimmer 3s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes banner-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.festive-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.festive-banner-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.festive-banner-link:hover {
+  opacity: 0.85;
+}
+
+.festive-banner-close {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.18);
+  border: none;
+  color: inherit;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.festive-banner-close:hover {
+  background: rgba(255,255,255,0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .festive-banner::before { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .festive-banner { font-size: 11px; padding: 0 40px; }
+}

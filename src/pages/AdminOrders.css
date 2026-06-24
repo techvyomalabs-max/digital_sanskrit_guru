@@ -1,17 +1,17 @@
 .admin-orders-page {
-  --orders-bg: #f6f7fb;
-  --orders-surface: #ffffff;
-  --orders-surface-soft: #f9fafb;
-  --orders-border: #e5e7eb;
-  --orders-border-strong: #d1d5db;
-  --orders-text: #111827;
-  --orders-muted: #6b7280;
-  --orders-primary: #2563eb;
-  --orders-primary-dark: #1d4ed8;
+  --orders-bg: var(--admin-bg);
+  --orders-surface: var(--admin-surface);
+  --orders-surface-soft: var(--admin-surface-2);
+  --orders-border: var(--admin-border);
+  --orders-border-strong: var(--admin-border);
+  --orders-text: var(--admin-text);
+  --orders-muted: var(--admin-muted);
+  --orders-primary: var(--admin-primary);
+  --orders-primary-dark: var(--admin-primary-2);
   --orders-green: #15803d;
   --orders-amber: #b45309;
   --orders-red: #be123c;
-  --orders-shadow: 0 16px 40px rgba(17, 24, 39, 0.08);
+  --orders-shadow: var(--premium-shadow-md);
   background: var(--admin-bg, var(--orders-bg));
   min-height: calc(100vh - 40px);
   width: 100%;
@@ -260,7 +260,7 @@
 
 .orders-search-input-wrap:focus-within {
   border-color: var(--orders-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
 }
 
 .orders-filter-bar input,
@@ -296,7 +296,7 @@
 .orders-filter-bar select:focus,
 .admin-status-update select:focus {
   border-color: var(--orders-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
 }
 
 .orders-date-grid {

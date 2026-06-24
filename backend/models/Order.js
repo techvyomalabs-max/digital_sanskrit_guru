@@ -177,4 +177,18 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ── Indexes (Tier-1 performance) ──────────────────────────────────────────────
+
+// 1. User's own orders — most frequent query (GET /api/orders/my)
+orderSchema.index({ user: 1, createdAt: -1 });
+
+// 2. Admin: filter by status (Pending, Shipped, etc.) + date sort
+orderSchema.index({ status: 1, createdAt: -1 });
+
+// 3. Admin: all orders sorted newest-first (default admin view)
+orderSchema.index({ createdAt: -1 });
+
+// 4. Payment verification by Razorpay order ID
+orderSchema.index({ "paymentMeta.razorpayOrderId": 1 });
+
 module.exports = mongoose.model("Order", orderSchema);

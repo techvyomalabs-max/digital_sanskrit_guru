@@ -1,22 +1,22 @@
-﻿.my-account-page{
+.my-account-page{
   max-width:1500px;
   margin:0 auto;
-  padding:16px 24px 26px;
+  padding:var(--space-4) var(--space-6) var(--space-8);
   display:grid;
-  gap:14px;
-  background:#eaeded;
+  gap:var(--space-4);
+  background:var(--site-bg);
 }
 
 .my-account-breadcrumb{
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:var(--space-2);
   font-size:12px;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-breadcrumb a{
-  color:#007185;
+  color:var(--site-link);
   text-decoration:none;
 }
 
@@ -25,7 +25,7 @@
 }
 
 .my-account-breadcrumb strong{
-  color:#0f1111;
+  color:var(--site-text);
   font-weight:700;
 }
 
@@ -33,52 +33,52 @@
 .my-account-section,
 .my-account-panel,
 .my-account-summary-item{
-  background:#ffffff;
-  border:1px solid #d5d9d9;
-  border-radius:8px;
-  box-shadow:none;
+  background:var(--site-surface);
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--premium-shadow-sm);
 }
 
 .my-account-header{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(260px,320px);
-  gap:12px;
-  padding:16px;
+  gap:var(--space-3);
+  padding:var(--space-4);
 }
 
 .my-account-kicker,
 .my-account-section-kicker,
 .my-account-tile-eyebrow{
-  margin:0 0 6px;
+  margin:0 0 var(--space-2);
   font-size:11px;
   font-weight:700;
   letter-spacing:.04em;
   text-transform:uppercase;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-header h1{
   margin:0;
   font-size:28px;
   line-height:1.2;
-  color:#0f1111;
+  color:var(--site-text);
 }
 
 .my-account-subtitle{
-  margin:8px 0 0;
+  margin:var(--space-2) 0 0;
   font-size:14px;
   line-height:1.45;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-highlight{
-  border:1px solid #d5d9d9;
-  border-radius:8px;
-  padding:12px;
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-md);
+  padding:var(--space-3);
   display:grid;
-  gap:8px;
+  gap:var(--space-2);
   align-content:start;
-  background:#fff;
+  background:var(--site-surface);
 }
 
 .my-account-highlight-label{
@@ -86,20 +86,20 @@
   width:fit-content;
   padding:3px 8px;
   border-radius:999px;
-  background:#f3f3f3;
-  color:#565959;
+  background:var(--site-surface-muted);
+  color:var(--site-text-soft);
   font-size:11px;
   font-weight:700;
 }
 
 .my-account-highlight strong{
   font-size:18px;
-  color:#0f1111;
+  color:var(--site-text);
 }
 
 .my-account-highlight p{
   margin:0;
-  color:#565959;
+  color:var(--site-text-soft);
   font-size:13px;
   line-height:1.4;
 }
@@ -114,15 +114,16 @@
   align-items:center;
   justify-content:center;
   min-height:32px;
-  padding:0 12px;
-  border-radius:20px;
-  border:1px solid #d5d9d9;
+  padding:0 var(--space-3);
+  border-radius:var(--radius-full);
+  border:1px solid var(--site-border);
   text-decoration:none;
   font-size:13px;
   font-weight:700;
-  color:#0f1111;
-  background:#f7fafa;
+  color:var(--site-text);
+  background:var(--site-surface-muted);
   cursor:pointer;
+  transition: all 0.2s ease;
 }
 
 .my-account-pill-link:hover,
@@ -131,19 +132,20 @@
 .my-account-address-actions button:hover,
 .my-account-address-form-actions button:hover,
 .my-account-label-chip:hover{
-  background:#f0f2f2;
+  background:var(--site-surface);
+  border-color:var(--site-text-soft);
 }
 
 .my-account-summary-strip{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:10px;
+  gap:var(--space-2);
 }
 
 .my-account-summary-item{
-  padding:10px 12px;
+  padding:var(--space-2) var(--space-3);
   display:grid;
-  gap:4px;
+  gap:var(--space-1);
 }
 
 .my-account-summary-item span{
@@ -151,18 +153,18 @@
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:.04em;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-summary-item strong{
   font-size:24px;
-  color:#0f1111;
+  color:var(--site-text);
   line-height:1;
 }
 
 .my-account-section,
 .my-account-panel{
-  padding:14px;
+  padding:var(--space-4);
 }
 
 .my-account-section-head,
@@ -170,8 +172,8 @@
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  gap:10px;
-  margin-bottom:10px;
+  gap:var(--space-2);
+  margin-bottom:var(--space-3);
 }
 
 .my-account-section-head h2,
@@ -179,29 +181,32 @@
   margin:0;
   font-size:24px;
   line-height:1.2;
-  color:#0f1111;
+  color:var(--site-text);
 }
 
 .my-account-tile-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
-  gap:10px;
+  gap:var(--space-2);
 }
 
 .my-account-tile{
   text-decoration:none;
   color:inherit;
-  border:1px solid #d5d9d9;
-  border-radius:8px;
-  padding:12px;
-  background:#fff;
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-md);
+  padding:var(--space-3);
+  background:var(--site-surface);
   display:grid;
   grid-template-columns:42px minmax(0,1fr);
-  gap:10px;
+  gap:var(--space-2);
+  transition: all 0.2s ease;
 }
 
 .my-account-tile:hover{
-  border-color:#c45500;
+  border-color:var(--site-link);
+  box-shadow:var(--premium-shadow-md);
+  transform:translateY(-2px);
 }
 
 .my-account-tile-icon{
@@ -210,63 +215,63 @@
   border-radius:50%;
   display:grid;
   place-items:center;
-  background:#f0f2f2;
-  color:#0f1111;
+  background:var(--site-surface-muted);
+  color:var(--site-text);
   font-size:16px;
   font-weight:700;
 }
 
 .my-account-tile-copy{
   display:grid;
-  gap:4px;
+  gap:var(--space-1);
 }
 
 .my-account-tile-copy h3{
   margin:0;
   font-size:17px;
   line-height:1.25;
-  color:#0f1111;
+  color:var(--site-text);
 }
 
 .my-account-tile-copy p{
   margin:0;
   font-size:12px;
   line-height:1.4;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-tile-footer{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:8px;
+  gap:var(--space-2);
   padding-top:2px;
 }
 
 .my-account-tile-footer span{
   font-size:11px;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-tile-footer strong{
   font-size:12px;
-  color:#007185;
+  color:var(--site-link);
 }
 
 .my-account-detail-list{
   display:grid;
-  gap:8px;
+  gap:var(--space-2);
 }
 
 .my-account-detail-row{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
-  padding:10px 12px;
-  border-radius:8px;
-  background:#f7fafa;
-  border:1px solid #e3e6e6;
+  gap:var(--space-3);
+  padding:var(--space-2) var(--space-3);
+  border-radius:var(--radius-md);
+  background:var(--site-surface-muted);
+  border:1px solid var(--site-border);
 }
 
 .my-account-detail-row span,
@@ -275,37 +280,37 @@
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:.04em;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-detail-row strong,
 .my-account-order-meta strong,
 .my-account-order-id{
-  color:#0f1111;
+  color:var(--site-text);
 }
 
 .my-account-address-list{
   display:grid;
-  gap:8px;
+  gap:var(--space-2);
   max-height:280px;
   overflow:auto;
-  padding-right:4px;
+  padding-right:var(--space-1);
 }
 
 .my-account-address-item{
   display:grid;
   gap:5px;
-  padding:10px;
-  border-radius:8px;
-  border:1px solid #d5d9d9;
-  background:#fff;
+  padding:var(--space-2);
+  border-radius:var(--radius-md);
+  border:1px solid var(--site-border);
+  background:var(--site-surface);
 }
 
 .my-account-address-top{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:8px;
+  gap:var(--space-2);
 }
 
 .my-account-address-top strong{
@@ -317,10 +322,10 @@
   align-items:center;
   justify-content:center;
   min-height:24px;
-  padding:0 10px;
-  border-radius:20px;
-  background:#f0f2f2;
-  color:#0f1111;
+  padding:0 var(--space-2);
+  border-radius:var(--radius-full);
+  background:var(--site-surface-muted);
+  color:var(--site-text);
   font-size:11px;
   font-weight:700;
 }
@@ -329,7 +334,7 @@
 .my-account-empty p,
 .my-account-order-items{
   margin:0;
-  color:#565959;
+  color:var(--site-text-soft);
   line-height:1.4;
   font-size:13px;
 }
@@ -337,21 +342,26 @@
 .my-account-address-actions{
   display:flex;
   flex-wrap:wrap;
-  gap:8px;
-  margin-top:4px;
+  gap:var(--space-2);
+  margin-top:var(--space-1);
 }
 
 .my-account-address-actions button.danger{
-  border-color:#f5c7c7;
-  color:#b12704;
-  background:#fff6f6;
+  border-color:#fecaca;
+  color:#b91c1c;
+  background:#fef2f2;
+}
+
+.my-account-address-actions button.danger:hover{
+  background:#fee2e2;
+  border-color:#fca5a5;
 }
 
 .my-account-default-pill{
   display:inline-flex;
   align-items:center;
-  border-radius:20px;
-  padding:0 10px;
+  border-radius:var(--radius-full);
+  padding:0 var(--space-2);
   min-height:32px;
   background:#e6f5ec;
   color:#067d62;
@@ -360,14 +370,14 @@
 }
 
 .my-account-address-form{
-  margin-top:10px;
+  margin-top:var(--space-2);
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:10px;
-  padding:10px;
-  border:1px solid #d5d9d9;
-  border-radius:8px;
-  background:#f7fafa;
+  gap:var(--space-2);
+  padding:var(--space-2);
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-md);
+  background:var(--site-surface-muted);
 }
 
 .my-account-label-row,
@@ -375,19 +385,19 @@
   grid-column:1 / -1;
   display:flex;
   flex-wrap:wrap;
-  gap:8px;
+  gap:var(--space-2);
 }
 
 .my-account-label-chip.active,
 .my-account-address-form-actions button.primary{
-  background:#ffd814;
-  border-color:#fcd200;
-  color:#0f1111;
+  background:var(--site-badge-bg);
+  border-color:var(--site-badge-bg);
+  color:var(--site-badge-text);
 }
 
 .my-account-address-form label{
   display:grid;
-  gap:5px;
+  gap:var(--space-1);
 }
 
 .my-account-address-form label span{
@@ -395,7 +405,7 @@
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:.04em;
-  color:#565959;
+  color:var(--site-text-soft);
 }
 
 .my-account-address-form textarea{
@@ -406,68 +416,70 @@
 
 .my-account-address-form input,
 .my-account-address-form textarea{
-  border:1px solid #a6a6a6;
-  border-radius:6px;
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-sm);
   padding:8px 10px;
   font:inherit;
-  background:#fff;
-  color:#0f1111;
+  background:var(--site-surface);
+  color:var(--site-text);
+  transition: all 0.2s ease;
 }
 
 .my-account-address-form input:focus,
 .my-account-address-form textarea:focus{
-  outline:2px solid #f90;
-  border-color:#f90;
+  outline:2px solid var(--site-badge-bg);
+  border-color:var(--site-badge-bg);
 }
 
 .my-account-empty{
   display:grid;
-  gap:10px;
-  padding:12px;
-  border-radius:8px;
-  border:1px dashed #c7cccc;
-  background:#fff;
+  gap:var(--space-2);
+  padding:var(--space-3);
+  border-radius:var(--radius-md);
+  border:1px dashed var(--site-border);
+  background:var(--site-surface);
 }
 
 .my-account-recent-orders{
   display:grid;
-  gap:8px;
+  gap:var(--space-2);
   max-height:320px;
   overflow:auto;
-  padding-right:4px;
+  padding-right:var(--space-1);
 }
 
 .my-account-order-card{
-  border:1px solid #d5d9d9;
-  border-radius:8px;
+  border:1px solid var(--site-border);
+  border-radius:var(--radius-lg);
   overflow:hidden;
-  background:#fff;
+  background:var(--site-surface);
+  box-shadow:var(--premium-shadow-sm);
 }
 
 .my-account-order-meta{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:8px;
-  padding:10px 12px;
-  background:#f7fafa;
-  border-bottom:1px solid #e3e6e6;
+  gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);
+  background:var(--site-surface-muted);
+  border-bottom:1px solid var(--site-border);
 }
 
 .my-account-order-meta div{
   display:grid;
-  gap:3px;
+  gap:var(--space-1);
 }
 
 .my-account-order-body{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
-  gap:10px;
-  padding:10px 12px;
+  gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);
 }
 
 .my-account-order-id{
-  margin:0 0 4px;
+  margin:0 0 var(--space-1);
   font-size:13px;
   font-weight:700;
 }
@@ -488,8 +500,8 @@
 
 @media (max-width: 760px){
   .my-account-page{
-    padding:12px 10px 20px;
-    gap:10px;
+    padding:var(--space-3) var(--space-2) var(--space-5);
+    gap:var(--space-2);
   }
 
   .my-account-summary-strip,
@@ -501,14 +513,15 @@
   .my-account-header,
   .my-account-section,
   .my-account-panel,
-  .my-account-summary-item{
-    border-radius:6px;
+  .my-account-summary-item,
+  .my-account-order-card{
+    border-radius:var(--radius-md);
   }
 
   .my-account-header,
   .my-account-section,
   .my-account-panel{
-    padding:10px;
+    padding:var(--space-2);
   }
 
   .my-account-section-head,

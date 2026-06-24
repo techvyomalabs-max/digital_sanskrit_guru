@@ -15,6 +15,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./responsive-overrides.css"; // global responsive fixes for all pages/devices
 import "./lib/api";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";

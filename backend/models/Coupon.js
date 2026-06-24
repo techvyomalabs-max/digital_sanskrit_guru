@@ -23,6 +23,24 @@ const couponSchema = new mongoose.Schema(
     expiresAt: {
       type: Date
     },
+    applicableProducts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product"
+      }
+    ],
+    assignedUserEmail: {
+      type: String,
+      default: null,
+      trim: true,
+      lowercase: true
+    },
+    usedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      }
+    ],
     lastUpdatedByName: {
       type: String,
       default: ""

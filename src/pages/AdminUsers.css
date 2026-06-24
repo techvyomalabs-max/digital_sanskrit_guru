@@ -7,7 +7,7 @@ margin-bottom:20px;
 
 .users-metric-card{
 border:1px solid var(--admin-border);
-border-radius:14px;
+border-radius:var(--radius-lg);
 padding:16px;
 background:var(--admin-surface);
 display:grid;
@@ -30,7 +30,7 @@ align-items:center;
 justify-content:center;
 min-width:92px;
 padding:8px 14px;
-border-radius:999px;
+border-radius:var(--radius-full);
 font-size:13px;
 font-weight:700;
 border:1px solid var(--admin-border);

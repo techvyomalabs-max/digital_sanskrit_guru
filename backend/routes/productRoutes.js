@@ -7,8 +7,12 @@ const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
+const { appCache, TTL, invalidateProductCache, cacheAside } = require("../utils/cache");
 
 const router = express.Router();
+
+// 25mb JSON body — only for admin product write routes (images can be large URLs)
+const largeJson = express.json({ limit: "25mb" });
 
 const getItemProductId = (item) => {
   if (!item) return "";
@@ -22,7 +26,7 @@ const normalizeImages = (rawImages, fallbackImage = "") => {
   const list = Array.isArray(rawImages)
     ? rawImages
     : String(rawImages || "")
-        .split(/\r?\n|,/)
+        .split(/\r?\n/)
         .map((image) => image.trim())
         .filter(Boolean);
 
@@ -44,6 +48,8 @@ const normalizeAboutProduct = (rawAboutProduct = []) => {
     .map((item) => item.trim())
     .filter(Boolean);
 };
+
+const normalizeTrailerVideoUrl = (value) => String(value || "").trim();
 
 const isBundleProduct = (product) =>
   String(product?.productType || "single") === "bundle" ||
@@ -254,7 +260,8 @@ const buildHomePayload = (products = [], settings = {}) => {
     budgetPicks,
     bundleProducts,
     festiveOfferProducts,
-    catalogPreviewProducts
+    catalogPreviewProducts,
+    sponsors: Array.isArray(settings?.sponsors) ? settings.sponsors : []
   };
 };
 
@@ -275,7 +282,8 @@ const getProductAuditFields = (product = {}) => ({
   bundleItems: Array.isArray(product?.bundleItems) ? product.bundleItems : [],
   relatedProducts: Array.isArray(product?.relatedProducts) ? product.relatedProducts : [],
   image: String(product?.image || "").trim(),
-  images: Array.isArray(product?.images) ? product.images : []
+  images: Array.isArray(product?.images) ? product.images : [],
+  trailerVideoUrl: String(product?.trailerVideoUrl || "").trim()
 });
 
 const summarizeProductChanges = (before = {}, after = {}) => {
@@ -294,11 +302,12 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   if (JSON.stringify(before.relatedProducts || []) !== JSON.stringify(after.relatedProducts || [])) changes.push("related products");
   if (String(before.image || "") !== String(after.image || "")) changes.push("primary image");
   if (JSON.stringify(before.images || []) !== JSON.stringify(after.images || [])) changes.push("gallery");
+  if (String(before.trailerVideoUrl || "") !== String(after.trailerVideoUrl || "")) changes.push("trailer video");
   return changes;
 };
 
-// Create product (ADMIN)
-router.post("/", protect, admin, async (req, res) => {
+// Create product (ADMIN) — 25mb for image URLs
+router.post("/", protect, admin, largeJson, async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const images = normalizeImages(req.body.images, req.body.image);
@@ -322,6 +331,7 @@ router.post("/", protect, admin, async (req, res) => {
       aboutProduct: normalizeAboutProduct(req.body.aboutProduct),
       image: images[0] || String(req.body.image || "").trim(),
       images,
+      trailerVideoUrl: normalizeTrailerVideoUrl(req.body?.trailerVideoUrl),
       festiveOffer,
       festiveDiscountPercent: festiveOffer ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent) : 0,
       productType,
@@ -347,13 +357,15 @@ router.post("/", protect, admin, async (req, res) => {
     });
 
     res.json(product);
+    // Invalidate cache so next request gets fresh product list
+    invalidateProductCache();
   } catch (error) {
     res.status(500).json({ message: "Failed to create product", error: error.message });
   }
 });
 
-// UPDATE product (ADMIN)
-router.put("/:id", protect, admin, async (req, res) => {
+// UPDATE product (ADMIN) — 25mb for image URLs
+router.put("/:id", protect, admin, largeJson, async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const product = await Product.findById(req.params.id);
@@ -382,6 +394,10 @@ router.put("/:id", protect, admin, async (req, res) => {
     product.aboutProduct = req.body.aboutProduct !== undefined
       ? normalizeAboutProduct(req.body.aboutProduct)
       : product.aboutProduct;
+    product.trailerVideoUrl =
+      req.body.trailerVideoUrl !== undefined
+        ? normalizeTrailerVideoUrl(req.body.trailerVideoUrl)
+        : product.trailerVideoUrl;
     product.stock = req.body.stock ?? product.stock;
     product.category = req.body.category ?? product.category;
     product.festiveOffer = req.body?.festiveOffer === true;
@@ -432,28 +448,34 @@ router.put("/:id", protect, admin, async (req, res) => {
     });
 
     res.json(updatedProduct);
+    // Invalidate cache after any product update
+    invalidateProductCache();
   } catch (error) {
     res.status(500).json({ message: "Failed to update product", error: error.message });
   }
 });
 
-// Get all products
+// Get home page data — cached 90 seconds
 router.get("/home", async (req, res) => {
   try {
-    const [products, settings] = await Promise.all([
-      Product.find()
-        .select(HOME_PRODUCT_SELECT)
-        .populate("bundleItems.product", HOME_BUNDLE_PRODUCT_SELECT)
-        .lean(),
-      StoreSettings.findOne().lean()
-    ]);
+    const data = await cacheAside("home:payload", TTL.PRODUCTS_HOME, async () => {
+      const [products, settings] = await Promise.all([
+        Product.find()
+          .select(HOME_PRODUCT_SELECT)
+          .populate("bundleItems.product", HOME_BUNDLE_PRODUCT_SELECT)
+          .lean(),
+        StoreSettings.findOne().lean()
+      ]);
+      return buildHomePayload(Array.isArray(products) ? products : [], settings || {});
+    });
 
-    return res.json(buildHomePayload(Array.isArray(products) ? products : [], settings || {}));
+    return res.json(data);
   } catch (error) {
     res.status(500).json({ message: "Failed to load home products", error: error.message });
   }
 });
 
+// Get products with pagination — cache paginated + filter results 60 seconds
 router.get("/", async (req, res) => {
   try {
     const hasPaginationQuery =
@@ -463,11 +485,20 @@ router.get("/", async (req, res) => {
       req.query.category !== undefined;
 
     if (!hasPaginationQuery) {
-      const products = await Product.find()
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock");
+      // Full product list (admin panel, etc.) — cache 60s
+      const products = await cacheAside("products:all", TTL.PRODUCTS_LIST, () =>
+        Product.find()
+          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
+          .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .lean()
+      );
       return res.json(products);
     }
+
+    // Build a deterministic cache key from all query params
+    const cacheKey = `products:list:${JSON.stringify(req.query)}`;
+    const cached = appCache.get(cacheKey);
+    if (cached) return res.json(cached);
 
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, Math.min(48, Number.parseInt(req.query.limit, 10) || 8));
@@ -551,7 +582,7 @@ router.get("/", async (req, res) => {
     const startIndex = (page - 1) * limit;
     const items = filteredProducts.slice(startIndex, startIndex + limit);
 
-    return res.json({
+    const payload = {
       items,
       page,
       limit,
@@ -560,7 +591,12 @@ router.get("/", async (req, res) => {
       hasMore: startIndex + items.length < total,
       categories,
       categoryCounts
-    });
+    };
+
+    // Cache paginated result for 60 seconds
+    appCache.set(cacheKey, payload, TTL.PRODUCTS_LIST);
+
+    return res.json(payload);
   } catch (error) {
     res.status(500).json({ message: "Failed to load products", error: error.message });
   }
@@ -576,10 +612,13 @@ router.get("/debug/summary", async (req, res) => {
     res.status(500).json({ message: "Failed to load product summary", error: error.message });
   }
 });
-// Get recommended products based on co-purchase history
+// Get recommended products — cached 3 minutes
 router.get("/recommend/:productId", async (req, res) => {
   try {
     const { productId } = req.params;
+    const cacheKey = `recommend:${productId}`;
+    const cached = appCache.get(cacheKey);
+    if (cached) return res.json(cached);
 
     const orders = await Order.find({
       $or: [
@@ -623,28 +662,36 @@ router.get("/recommend/:productId", async (req, res) => {
     const rank = new Map(sortedIds.map((id, index) => [id, index]));
     products.sort((a, b) => (rank.get(String(a._id)) ?? 999) - (rank.get(String(b._id)) ?? 999));
 
-    res.json(
-      products.map((product) => ({
-        ...product.toObject(),
-        boughtTogetherCount: counts[String(product._id)] || 0
-      }))
-    );
+    const ranked = products.map((product) => ({
+      ...product.toObject(),
+      boughtTogetherCount: counts[String(product._id)] || 0
+    }));
+
+    // Cache for 3 minutes — recommendations change slowly
+    appCache.set(cacheKey, ranked, TTL.RECOMMENDATIONS);
+    res.json(ranked);
   } catch {
     res.status(500).json({ message: "Failed to load recommendations" });
   }
 });
 
-// Get one product by id
+// Get one product by id — cached 2 minutes
 router.get("/:id", async (req, res) => {
   try {
+    const cacheKey = `product:${req.params.id}`;
+    const cached = appCache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const product = await Product.findById(req.params.id)
       .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock");
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .lean();
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
+    appCache.set(cacheKey, product, TTL.PRODUCT_SINGLE);
     res.json(product);
   } catch {
     res.status(404).json({ message: "Product not found" });
@@ -681,6 +728,8 @@ router.post("/:id/reviews", protect, async (req, res) => {
       product.reviews.length;
 
     await product.save();
+    // Invalidate single product cache after review
+    appCache.del(`product:${req.params.id}`);
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ message: "Failed to submit review", error: error.message });
@@ -712,6 +761,8 @@ router.delete("/:id", protect, admin, async (req, res) => {
     });
 
     res.json({ message: "Product deleted" });
+    // Invalidate all product cache after deletion
+    invalidateProductCache();
   } catch (error) {
     res.status(500).json({ message: "Failed to delete product", error: error.message });
   }

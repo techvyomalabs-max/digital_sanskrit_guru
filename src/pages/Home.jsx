@@ -1,5 +1,5 @@
-﻿import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
@@ -75,6 +75,75 @@ function getDisplayPrice(product) {
   return getProductPriceDetails(product);
 }
 
+const SPONSORS = [
+  {
+    id: "sanskrit-academy",
+    name: "Sanskrit Academy",
+    description: "Preserving Ancient Wisdom",
+    icon: (
+      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M32 12C28 24 16 36 16 48c0 8.8 7.2 12 16 12s16-3.2 16-12c0-12-12-24-16-36z" />
+        <path d="M32 20c-3 9-10 18-10 28 0 5 3 8 10 8s10-3 10-8c0-10-7-19-10-28z" />
+        <path d="M32 30c-2 6-6 12-6 18 0 3 2 4 6 4s6-1 6-4c0-6-4-12-6-18z" />
+        <circle cx="32" cy="52" r="2" fill="currentColor" />
+      </svg>
+    )
+  },
+  {
+    id: "vyoma-labs",
+    name: "Vyoma Linguistic Labs",
+    description: "Language Tech Research",
+    icon: (
+      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M32 8A24 24 0 1 0 56 32h-8A16 16 0 1 1 32 16V8z" />
+        <circle cx="32" cy="12" r="4" fill="currentColor" />
+        <circle cx="52" cy="32" r="4" fill="currentColor" />
+        <circle cx="32" cy="52" r="4" fill="currentColor" />
+        <circle cx="12" cy="32" r="4" fill="currentColor" />
+        <path d="M32 20v24M20 32h24" strokeWidth="2" strokeDasharray="3 3" />
+      </svg>
+    )
+  },
+  {
+    id: "veda-foundation",
+    name: "Veda Foundation",
+    description: "Vedic Heritage Safeguarding",
+    icon: (
+      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 48h40L44 60H20z" fill="currentColor" opacity="0.1" />
+        <path d="M12 48h40M16 54h32M20 60h24" />
+        <path d="M32 8c0 0 12 12 12 24a12 12 0 0 1-24 0C20 20 32 8 32 8z" />
+        <path d="M32 20c0 0 6 6 6 12a6 6 0 0 1-12 0C26 26 32 20 32 20z" />
+      </svg>
+    )
+  },
+  {
+    id: "indic-heritage",
+    name: "Indic Heritage Trust",
+    description: "Cultural Legacy Preservation",
+    icon: (
+      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 56h48M12 50h40M16 26h32" />
+        <path d="M18 26v24M28 26v24M36 26v24M46 26v24" />
+        <path d="M32 8L10 22h44z" fill="currentColor" opacity="0.1" />
+        <path d="M32 8L10 22v4h44v-4z" />
+      </svg>
+    )
+  },
+  {
+    id: "devavani-press",
+    name: "Devavani Press",
+    description: "Scholarly Publishing Partner",
+    icon: (
+      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M32 50c-4-4-12-6-24-6v-30c12 0 20 2 24 6 4-4 12-6 24-6v30c-12 0-20 2-24 6z" />
+        <path d="M32 16v34" />
+        <path d="M44 14l8-8m-4 12l4-4" strokeWidth="2" />
+      </svg>
+    )
+  }
+];
+
 function Home() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isRetryingHomeData, setIsRetryingHomeData] = useState(false);
@@ -90,11 +159,10 @@ function Home() {
   const [showFestiveOffersSection, setShowFestiveOffersSection] = useState(true);
   const [activeHeroBannerIndex, setActiveHeroBannerIndex] = useState(0);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
+  const [sponsorsList, setSponsorsList] = useState([]);
   const spotlightRef = useRef(null);
   const catalogRef = useRef(null);
-  const topRatedSectionRef = useRef(null);
-  const newArrivalsSectionRef = useRef(null);
-  const budgetPicksSectionRef = useRef(null);
+  const location = useLocation();
 
   useEffect(() => {
     let active = true;
@@ -142,6 +210,7 @@ function Home() {
         setCatalogPreviewProducts(
           Array.isArray(response.data?.catalogPreviewProducts) ? response.data.catalogPreviewProducts : []
         );
+        setSponsorsList(Array.isArray(response.data?.sponsors) ? response.data.sponsors : []);
       } catch {
         if (!active) return;
         setHomeLoadFailed(true);
@@ -154,6 +223,7 @@ function Home() {
         setBundleProducts([]);
         setFestiveOfferProducts([]);
         setCatalogPreviewProducts([]);
+        setSponsorsList([]);
       } finally {
         if (!active) return;
         setIsRetryingHomeData(false);
@@ -173,9 +243,20 @@ function Home() {
     spotlightRef.current?.scrollBy({ left: direction * 320, behavior: "smooth" });
   };
 
-  const scrollToSection = (sectionRef) => {
-    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  // Handle scrollTo query param from navbar quick-nav buttons
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const scrollTarget = params.get("scrollTo");
+    if (scrollTarget && !isLoadingProducts) {
+      const targetId = `home-section-${scrollTarget}`;
+      const element = document.getElementById(targetId);
+      if (element) {
+        window.setTimeout(() => {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      }
+    }
+  }, [location.search, isLoadingProducts]);
 
   useEffect(() => {
     if (heroBanners.length <= 1) return undefined;
@@ -319,35 +400,9 @@ function Home() {
             Homepage content took too long to load. Refresh once if products are missing.
           </p>
         ) : null}
-        <div className="home-strip">
-          <button
-            type="button"
-            className="home-strip-card"
-            onClick={() => scrollToSection(topRatedSectionRef)}
-          >
-            <strong>Top Rated</strong>
-            <span>Best reviewed items first</span>
-          </button>
-          <button
-            type="button"
-            className="home-strip-card"
-            onClick={() => scrollToSection(newArrivalsSectionRef)}
-          >
-            <strong>New Arrivals</strong>
-            <span>Fresh additions to the catalog</span>
-          </button>
-          <button
-            type="button"
-            className="home-strip-card"
-            onClick={() => scrollToSection(budgetPicksSectionRef)}
-          >
-            <strong>Budget Picks</strong>
-            <span>Lower price, faster discovery</span>
-          </button>
-        </div>
       </section>
 
-      <section ref={topRatedSectionRef} className="home-section">
+      <section id="home-section-top-rated" className="home-section">
         <div className="home-section-head">
           <div>
             <span className="home-section-kicker">Most trusted</span>
@@ -383,7 +438,7 @@ function Home() {
       </section>
 
       <section className="home-highlights">
-        <div ref={newArrivalsSectionRef} className="home-highlight-card">
+        <div id="home-section-new-arrivals" className="home-highlight-card">
           <div className="home-highlight-head">
             <div>
               <span className="home-section-kicker">Fresh drop</span>
@@ -441,7 +496,7 @@ function Home() {
           </div>
         </div>
 
-        <div ref={budgetPicksSectionRef} className="home-highlight-card">
+        <div id="home-section-budget-picks" className="home-highlight-card">
           <div className="home-highlight-head">
             <div>
               <span className="home-section-kicker">Best value</span>
@@ -628,6 +683,82 @@ function Home() {
           )}
         </div>
       </section>
+      </DeferredHomeSection>
+
+      <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading sponsors">
+        <section className="home-section home-deferred-section home-sponsors-section">
+          <div className="home-section-head">
+            <div>
+              <span className="home-section-kicker">Sponsors & Partners</span>
+              <h2>Supported By</h2>
+              <p>Our work is powered by the trust and sponsorship of these esteemed institutions.</p>
+            </div>
+          </div>
+
+          <div className="home-sponsors-grid">
+            {(sponsorsList.length > 0 ? sponsorsList : SPONSORS).map((sponsor, idx) => {
+              const hasLogoImage = sponsor.logoUrl && sponsor.logoUrl.trim() !== "";
+              
+              const sponsorNameLower = String(sponsor.name || "").toLowerCase();
+              const matchedPreset = SPONSORS.find(
+                (preset) =>
+                  preset.id === sponsor.id ||
+                  sponsorNameLower.includes(preset.name.toLowerCase()) ||
+                  preset.name.toLowerCase().includes(sponsorNameLower)
+              );
+
+              const fallbackIcon = (
+                <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="10" y="14" width="44" height="36" rx="8" />
+                  <path d="M22 24h20M22 32h14" />
+                  <circle cx="42" cy="32" r="3" fill="currentColor" />
+                </svg>
+              );
+
+              const logoElement = hasLogoImage ? (
+                <img
+                  src={sponsor.logoUrl}
+                  alt={sponsor.name}
+                  className="home-sponsor-logo-img"
+                  width="64"
+                  height="64"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="home-sponsor-icon-wrapper">
+                  {matchedPreset ? matchedPreset.icon : fallbackIcon}
+                </div>
+              );
+
+              const props = {
+                key: sponsor.id || sponsor._id || idx,
+                className: "home-sponsor-card"
+              };
+
+              const innerContent = (
+                <>
+                  {logoElement}
+                  <strong className="home-sponsor-name">{sponsor.name}</strong>
+                  <span className="home-sponsor-desc">{sponsor.description}</span>
+                </>
+              );
+
+              if (sponsor.websiteUrl) {
+                return (
+                  <a href={sponsor.websiteUrl} target="_blank" rel="noreferrer" {...props}>
+                    {innerContent}
+                  </a>
+                );
+              }
+
+              return (
+                <div {...props}>
+                  {innerContent}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </DeferredHomeSection>
     </div>
   );

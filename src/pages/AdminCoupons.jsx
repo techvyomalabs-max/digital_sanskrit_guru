@@ -13,6 +13,9 @@ function AdminCoupons() {
   const [value, setValue] = useState("");
   const [minOrder, setMinOrder] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [assignedUserEmail, setAssignedUserEmail] = useState("");
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [productsList, setProductsList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -29,12 +32,16 @@ function AdminCoupons() {
     setValue("");
     setMinOrder("");
     setExpiresAt("");
+    setAssignedUserEmail("");
+    setSelectedProducts([]);
   };
 
   const loadCoupons = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get("/api/coupons");
+      const res = await axios.get("/api/coupons/admin/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setCoupons(Array.isArray(res.data) ? res.data : []);
     } catch {
       setCoupons([]);
@@ -44,8 +51,18 @@ function AdminCoupons() {
     }
   };
 
+  const loadProducts = async () => {
+    try {
+      const res = await axios.get("/api/products");
+      setProductsList(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      console.error("Could not load products.");
+    }
+  };
+
   useEffect(() => {
     loadCoupons();
+    loadProducts();
   }, []);
 
   const createCoupon = async () => {
@@ -66,7 +83,9 @@ function AdminCoupons() {
         type,
         value: couponValue,
         minOrder: Number.isNaN(couponMinOrder) ? 0 : couponMinOrder,
-        expiresAt: expiresAt || undefined
+        expiresAt: expiresAt || undefined,
+        assignedUserEmail: assignedUserEmail || undefined,
+        applicableProducts: selectedProducts
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -137,7 +156,36 @@ function AdminCoupons() {
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
             />
+            <input
+              placeholder="Gift to Email (Optional)"
+              type="email"
+              value={assignedUserEmail}
+              onChange={(e) => setAssignedUserEmail(e.target.value)}
+            />
           </div>
+
+          <div className="applicable-products-container">
+            <h4 className="selection-label">Restrict to Products (Optional - leave blank for all)</h4>
+            <div className="applicable-products-list">
+              {productsList.map((prod) => (
+                <label key={prod._id} className="applicable-product-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedProducts.includes(prod._id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedProducts([...selectedProducts, prod._id]);
+                      } else {
+                        setSelectedProducts(selectedProducts.filter((id) => id !== prod._id));
+                      }
+                    }}
+                  />
+                  <span>{prod.name} (Rs {prod.price})</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="coupon-form-actions">
             <button className="primary-btn" disabled={isSaving} onClick={createCoupon}>
               {isSaving ? "Creating..." : "Create Coupon"}
@@ -165,6 +213,8 @@ function AdminCoupons() {
                     <th>Type</th>
                     <th>Discount</th>
                     <th>Min Order</th>
+                    <th>Restrictions</th>
+                    <th>Usage</th>
                     <th>Expiry</th>
                     <th>Last Updated</th>
                     <th>Action</th>
@@ -179,6 +229,22 @@ function AdminCoupons() {
                       <td>{coupon.type === "percentage" ? "Percentage" : "Fixed"}</td>
                       <td>{coupon.type === "percentage" ? `${coupon.value}%` : `Rs ${coupon.value}`}</td>
                       <td>Rs {Number(coupon.minOrder || 0)}</td>
+                      <td>
+                        {coupon.assignedUserEmail && (
+                          <div className="restrict-item">
+                            👤 <strong>User:</strong> {coupon.assignedUserEmail}
+                          </div>
+                        )}
+                        {coupon.applicableProducts && coupon.applicableProducts.length > 0 && (
+                          <div className="restrict-item">
+                            📦 <strong>Products:</strong> {coupon.applicableProducts.map((p) => p?.name || "Product").join(", ")}
+                          </div>
+                        )}
+                        {!coupon.assignedUserEmail && (!coupon.applicableProducts || coupon.applicableProducts.length === 0) && (
+                          <span style={{ color: "var(--admin-muted)" }}>None (Storewide)</span>
+                        )}
+                      </td>
+                      <td>{coupon.usedBy ? coupon.usedBy.length : 0} uses</td>
                       <td>{coupon.expiresAt ? formatDate(coupon.expiresAt) : "No expiry"}</td>
                       <td>
                         {coupon.lastUpdatedAt ? (

@@ -339,7 +339,7 @@ font-weight:600;
 
 .hero-banner-admin-card{
 background:
-radial-gradient(circle at 90% 12%, rgba(56, 189, 248, 0.14), transparent 34%),
+radial-gradient(circle at 90% 12%, rgba(217, 119, 6, 0.14), transparent 34%),
 linear-gradient(145deg,var(--admin-surface) 0%,var(--admin-surface-2) 100%);
 }
 

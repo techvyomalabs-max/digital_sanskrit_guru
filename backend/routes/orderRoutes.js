@@ -3,12 +3,27 @@ const Order = require("../models/Order");
 const StoreSettings = require("../models/StoreSettings");
 const Coupon = require("../models/Coupon");
 const Product = require("../models/Product");
+const User = require("../models/User");
+const Wishlist = require("../models/Wishlist");
 const { resolveDeliveryCharge } = require("../utils/deliveryPricing");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
+const {
+  sendOrderConfirmation,
+  sendOrderStatusUpdate,
+  sendLowStockAdminAlert,
+  sendWishlistLowStockAlert
+} = require("../utils/email");
+const {
+  sendPushToUser,
+  broadcastPush,
+  orderPayload,
+  lowStockPayload,
+  wishlistLowStockPayload
+} = require("../utils/webPush");
 
 const router = express.Router();
 
@@ -17,6 +32,66 @@ const allowedPaymentStatuses = new Set(["Pending", "Paid", "Failed"]);
 const allowedRefundStatuses = new Set(["Not Applicable", "Pending", "Processing", "Refunded", "Rejected"]);
 const allowedReturnStatuses = new Set(["Requested", "Approved", "Rejected", "Refunded"]);
 const RETURN_WINDOW_DAYS = 7;
+
+// ── Notification helper (fire-and-forget — never blocks the response) ─────────
+
+async function fireNotifications(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error("[Notification] Non-blocking error:", err.message);
+  }
+}
+
+// ── Low-stock alert helper: called after stock is decremented ─────────────────
+// Checks which of the just-ordered products are now at/below threshold
+// and sends push + email to admin + all users who wishlisted those products.
+async function fireLowStockAlerts(normalizedItems) {
+  try {
+    const settings = await StoreSettings.findOne()
+      .select("lowStockThreshold notificationEmail pushEnabled emailEnabled")
+      .lean();
+    const threshold = Number(settings?.lowStockThreshold ?? 5);
+
+    const productIds = normalizedItems.map((i) => i.product);
+    const lowStockProducts = await Product.find({
+      _id: { $in: productIds },
+      stock: { $lte: threshold }
+    }).select("_id name stock category").lean();
+
+    if (lowStockProducts.length === 0) return;
+
+    // 1. Admin alert
+    const admins = await User.find({ isAdmin: true }).select("_id").lean();
+    const enriched = lowStockProducts.map((p) => ({ ...p, wishlistCount: 0 }));
+    await sendLowStockAdminAlert(enriched);
+    for (const adminUser of admins) {
+      await sendPushToUser(adminUser._id,
+        lowStockPayload(`${lowStockProducts.length} item(s)`, lowStockProducts.map((p) => p.stock).join(", "))
+      );
+    }
+
+    // 2. Wishlist user alerts
+    const lowStockIds = lowStockProducts.map((p) => p._id);
+    const wishlistDocs = await Wishlist.find({ productIds: { $in: lowStockIds } })
+      .populate("user", "name email")
+      .lean();
+
+    for (const wl of wishlistDocs) {
+      if (!wl.user?._id) continue;
+      const affected = lowStockProducts.filter((p) =>
+        wl.productIds.some((id) => String(id) === String(p._id))
+      );
+      if (affected.length === 0) continue;
+      const names = affected.map((p) => p.name);
+      const minStock = Math.min(...affected.map((p) => p.stock));
+      await sendPushToUser(wl.user._id, wishlistLowStockPayload(names, minStock));
+      await sendWishlistLowStockAlert(wl.user, affected);
+    }
+  } catch (err) {
+    console.error("[Low-Stock Alert] Error:", err.message);
+  }
+}
 
 const getReturnReferenceDate = (order, item) => {
   const candidates = [item?.deliveredAt, order?.deliveredAt, order?.updatedAt, order?.createdAt];
@@ -46,6 +121,72 @@ const canRequestReturnForItem = (order, item) => {
   const msSinceDelivered = Date.now() - referenceDate.getTime();
   return msSinceDelivered <= RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 };
+
+// ── Stock helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Atomically decrement stock for each item in the order.
+ * Uses bulkWrite with a $gte guard so stock can never go below 0.
+ * Returns an array of product IDs that were out-of-stock (should be empty on success).
+ */
+async function decrementStock(normalizedItems) {
+  const ops = normalizedItems.map((item) => ({
+    updateOne: {
+      filter: { _id: item.product, stock: { $gte: item.quantity } },
+      update: { $inc: { stock: -item.quantity } }
+    }
+  }));
+
+  const result = await Product.bulkWrite(ops, { ordered: false });
+  const modifiedCount = result.modifiedCount || 0;
+
+  if (modifiedCount < normalizedItems.length) {
+    // Some products didn't have enough stock — find which ones
+    const productIds = normalizedItems.map((i) => i.product);
+    const stockRecords = await Product.find({ _id: { $in: productIds } })
+      .select("_id name stock")
+      .lean();
+
+    const stockMap = new Map(stockRecords.map((p) => [String(p._id), p]));
+    const outOfStock = normalizedItems
+      .filter((item) => {
+        const record = stockMap.get(String(item.product));
+        return !record || Number(record.stock) < Number(item.quantity);
+      })
+      .map((item) => {
+        const record = stockMap.get(String(item.product));
+        return `${item.name} (available: ${record ? record.stock : 0}, requested: ${item.quantity})`;
+      });
+
+    return outOfStock;
+  }
+
+  return [];
+}
+
+/**
+ * Restore stock for all items in a cancelled order.
+ * Safe to call even if decrementStock was partial — $inc up is always safe.
+ */
+async function restoreStockForOrder(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (items.length === 0) return;
+
+  const ops = items
+    .filter((item) => item.product && item.quantity > 0)
+    .map((item) => ({
+      updateOne: {
+        filter: { _id: item.product },
+        update: { $inc: { stock: item.quantity } }
+      }
+    }));
+
+  if (ops.length > 0) {
+    await Product.bulkWrite(ops, { ordered: false });
+  }
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
 
 // Create order (logged-in user)
 router.post("/", protect, async (req, res) => {
@@ -130,6 +271,23 @@ router.post("/", protect, async (req, res) => {
     return res.status(400).json({ message: "No valid products found for this order." });
   }
 
+  // ── Stock check + atomic decrement ───────────────────────────────────────
+  // Only decrement for non-Failed orders (Failed = payment didn't go through,
+  // so we still record the attempt but don't hold stock).
+  const rawPaymentStatusEarly = String(req.body?.paymentStatus || "").trim();
+  if (!allowedPaymentStatuses.has(rawPaymentStatusEarly)) {
+    return res.status(400).json({ message: "Invalid payment status." });
+  }
+
+  if (rawPaymentStatusEarly !== "Failed") {
+    const outOfStock = await decrementStock(normalizedItems);
+    if (outOfStock.length > 0) {
+      return res.status(409).json({
+        message: "Some items are out of stock: " + outOfStock.join("; ")
+      });
+    }
+  }
+
   const subtotal = roundMoney(
     normalizedItems.reduce((sum, item) => sum + Number(item?.price || 0) * Math.max(1, Number(item?.quantity || 1)), 0)
   );
@@ -154,16 +312,54 @@ router.post("/", protect, async (req, res) => {
   if (couponCode) {
     const coupon = await Coupon.findOne({ code: couponCode });
     if (coupon && (!coupon.expiresAt || new Date() <= coupon.expiresAt)) {
-      const minOrder = roundMoney(
-        convertCurrencyAmount(Number(coupon.minOrder || 0), {
-          sourceCurrency: "INR",
-          currency: orderCurrency,
-          rates: settings?.currencyConversionRates || {}
-        })
-      );
-      if (grossTotal >= minOrder) {
+      // 1. Check if user already used this coupon
+      if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
+        await restoreStockForOrder({ items: normalizedItems });
+        return res.status(400).json({ message: "You have already used this coupon code." });
+      }
+
+      // 2. Check if user email matches assignment
+      if (coupon.assignedUserEmail) {
+        const user = await User.findById(req.user).select("email").lean();
+        if (String(coupon.assignedUserEmail).toLowerCase() !== String(user?.email || "").toLowerCase()) {
+          await restoreStockForOrder({ items: normalizedItems });
+          return res.status(400).json({ message: "This coupon is gifted/assigned to another user's account." });
+        }
+      }
+
+      // 3. Product-restricted check or General check
+      if (Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0) {
+        const matchingItems = normalizedItems.filter((item) => {
+          const itemId = String(item.product || item._id || item.id || "");
+          return coupon.applicableProducts.some((pId) => String(pId) === itemId);
+        });
+
+        if (matchingItems.length === 0) {
+          await restoreStockForOrder({ items: normalizedItems });
+          return res.status(400).json({ message: "This coupon code is not applicable to the products in your order." });
+        }
+
+        const matchingTotal = matchingItems.reduce(
+          (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
+          0
+        );
+        const minOrder = roundMoney(
+          convertCurrencyAmount(Number(coupon.minOrder || 0), {
+            sourceCurrency: "INR",
+            currency: orderCurrency,
+            rates: settings?.currencyConversionRates || {}
+          })
+        );
+
+        if (matchingTotal < minOrder) {
+          await restoreStockForOrder({ items: normalizedItems });
+          return res.status(400).json({
+            message: `Minimum order for qualifying products is ${minOrder} ${orderCurrency}`
+          });
+        }
+
         if (coupon.type === "percentage") {
-          discount = roundMoney((grossTotal * Number(coupon.value || 0)) / 100);
+          discount = roundMoney((matchingTotal * Number(coupon.value || 0)) / 100);
         } else if (coupon.type === "fixed") {
           discount = roundMoney(
             convertCurrencyAmount(Number(coupon.value || 0), {
@@ -173,21 +369,50 @@ router.post("/", protect, async (req, res) => {
             })
           );
         }
-        discount = Math.max(0, Math.min(grossTotal, discount));
+
+        discount = Math.max(0, Math.min(matchingTotal, discount));
         appliedCouponCode = couponCode;
+      } else {
+        const minOrder = roundMoney(
+          convertCurrencyAmount(Number(coupon.minOrder || 0), {
+            sourceCurrency: "INR",
+            currency: orderCurrency,
+            rates: settings?.currencyConversionRates || {}
+          })
+        );
+        if (grossTotal >= minOrder) {
+          if (coupon.type === "percentage") {
+            discount = roundMoney((grossTotal * Number(coupon.value || 0)) / 100);
+          } else if (coupon.type === "fixed") {
+            discount = roundMoney(
+              convertCurrencyAmount(Number(coupon.value || 0), {
+                sourceCurrency: "INR",
+                currency: orderCurrency,
+                rates: settings?.currencyConversionRates || {}
+              })
+            );
+          }
+          discount = Math.max(0, Math.min(grossTotal, discount));
+          appliedCouponCode = couponCode;
+        } else {
+          await restoreStockForOrder({ items: normalizedItems });
+          return res.status(400).json({ message: `Minimum order ${minOrder} ${orderCurrency}` });
+        }
       }
+    } else {
+      await restoreStockForOrder({ items: normalizedItems });
+      return res.status(400).json({ message: "Invalid or expired coupon code." });
     }
   }
 
   const total = roundMoney(Math.max(0, grossTotal - discount));
-  const rawPaymentStatus = String(req.body?.paymentStatus || "").trim();
-  if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
-    return res.status(400).json({ message: "Invalid payment status." });
-  }
+  const rawPaymentStatus = rawPaymentStatusEarly;
 
   const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
   const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
   if (rawPaymentStatus === "Paid" && (!razorpayOrderId || !razorpayPaymentId)) {
+    // Roll back stock since we already decremented it
+    await restoreStockForOrder({ items: normalizedItems });
     return res.status(400).json({ message: "Payment reference is required to place paid order." });
   }
 
@@ -199,42 +424,70 @@ router.post("/", protect, async (req, res) => {
     .trim()
     .toUpperCase();
 
-  const order = await Order.create({
-    user: req.user,
-    items: normalizedItems,
-    subtotal,
-    gstPercent,
-    gstAmount,
-    couponCode: appliedCouponCode,
-    discount,
-    deliveryCharge,
-    total,
-    paymentStatus: rawPaymentStatus,
-    paymentMeta: {
-      razorpayOrderId,
-      razorpayPaymentId,
-      paidAt: rawPaymentStatus === "Paid" ? new Date() : null
-    },
-    refundStatus: "Not Applicable",
-    currencyDisplay: {
-      currency: requestedCurrency || orderCurrency,
-      amount: Number.isFinite(requestedDisplayAmount) ? requestedDisplayAmount : null,
-      detectedCountry: requestedDetectedCountry
-    },
-    shipping: {
-      name: shipping.name || "",
-      phone: shipping.phone || "",
-      address: shipping.address || "",
-      city: shipping.city || "",
-      state: shipping.state || "",
-      pincode: shipping.pincode || "",
-      country: shipping.country || "",
-      latitude: shipping.latitude === null || shipping.latitude === undefined ? null : Number(shipping.latitude),
-      longitude: shipping.longitude === null || shipping.longitude === undefined ? null : Number(shipping.longitude)
-    }
-  });
+  let order;
+  try {
+    order = await Order.create({
+      user: req.user,
+      items: normalizedItems,
+      subtotal,
+      gstPercent,
+      gstAmount,
+      couponCode: appliedCouponCode,
+      discount,
+      deliveryCharge,
+      total,
+      paymentStatus: rawPaymentStatus,
+      paymentMeta: {
+        razorpayOrderId,
+        razorpayPaymentId,
+        paidAt: rawPaymentStatus === "Paid" ? new Date() : null
+      },
+      refundStatus: "Not Applicable",
+      currencyDisplay: {
+        currency: requestedCurrency || orderCurrency,
+        amount: Number.isFinite(requestedDisplayAmount) ? requestedDisplayAmount : null,
+        detectedCountry: requestedDetectedCountry
+      },
+      shipping: {
+        name: shipping.name || "",
+        phone: shipping.phone || "",
+        address: shipping.address || "",
+        city: shipping.city || "",
+        state: shipping.state || "",
+        pincode: shipping.pincode || "",
+        country: shipping.country || "",
+        latitude: shipping.latitude === null || shipping.latitude === undefined ? null : Number(shipping.latitude),
+        longitude: shipping.longitude === null || shipping.longitude === undefined ? null : Number(shipping.longitude)
+      }
+    });
+  } catch (createErr) {
+    // Order save failed — restore stock so it isn't permanently lost
+    await restoreStockForOrder({ items: normalizedItems });
+    throw createErr;
+  }
+
+  // Record coupon usage
+  if (order && appliedCouponCode) {
+    await Coupon.updateOne(
+      { code: appliedCouponCode },
+      { $addToSet: { usedBy: req.user } }
+    );
+  }
 
   res.json(order);
+
+  // ── Fire-and-forget: order confirmation push + email ─────────────────────
+  fireNotifications(async () => {
+    const user = await User.findById(req.user).select("name email").lean();
+    if (!user) return;
+    await sendPushToUser(req.user, orderPayload(order, "placed"));
+    await sendOrderConfirmation(order, user);
+  });
+
+  // ── Fire-and-forget: low-stock alerts after stock decrement ───────────────
+  if (rawPaymentStatus !== "Failed") {
+    fireNotifications(() => fireLowStockAlerts(normalizedItems));
+  }
 });
 
 // Get all orders (admin only)
@@ -277,6 +530,9 @@ router.put("/:id/status", protect, admin, async (req, res) => {
     return res.status(400).json({ message: "Order status can be updated only after payment is completed." });
   }
 
+  // Stock-holding states: Pending and Shipped (goods not yet returned)
+  const stockHoldingStates = new Set(["Pending", "Shipped"]);
+
   order.status = normalizedStatus;
   if (normalizedStatus === "Cancelled") {
     order.cancelledAt = order.cancelledAt || new Date();
@@ -296,6 +552,19 @@ router.put("/:id/status", protect, admin, async (req, res) => {
   order.lastUpdatedAt = new Date();
   const updated = await order.save();
 
+  // Restore stock when admin cancels an order that was still holding stock
+  if (normalizedStatus === "Cancelled" && stockHoldingStates.has(previousStatus)) {
+    await restoreStockForOrder(updated);
+  }
+
+  // Restore coupon eligibility on cancellation
+  if (normalizedStatus === "Cancelled" && updated.couponCode) {
+    await Coupon.updateOne(
+      { code: updated.couponCode.toUpperCase() },
+      { $pull: { usedBy: updated.user } }
+    );
+  }
+
   await logAdminAction({
     req,
     action: "order-status-updated",
@@ -310,6 +579,16 @@ router.put("/:id/status", protect, admin, async (req, res) => {
   });
 
   res.json(updated);
+
+  // ── Fire-and-forget: status-change push + email to customer ──────────────
+  if (["Shipped", "Delivered", "Cancelled"].includes(normalizedStatus)) {
+    fireNotifications(async () => {
+      const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
+      if (!populatedOrder?.user) return;
+      await sendPushToUser(populatedOrder.user._id, orderPayload(updated, normalizedStatus.toLowerCase()));
+      await sendOrderStatusUpdate(updated, populatedOrder.user, normalizedStatus);
+    });
+  }
 });
 
 router.put("/:id/cancel", protect, async (req, res) => {
@@ -333,6 +612,18 @@ router.put("/:id/cancel", protect, async (req, res) => {
   order.refundStatus = String(order.paymentStatus || "").trim() === "Paid" ? "Pending" : "Not Applicable";
 
   const updated = await order.save();
+
+  // Restore stock — user can only cancel Pending orders, so stock was held
+  await restoreStockForOrder(updated);
+
+  // Restore coupon eligibility on cancellation
+  if (updated.couponCode) {
+    await Coupon.updateOne(
+      { code: updated.couponCode.toUpperCase() },
+      { $pull: { usedBy: req.user } }
+    );
+  }
+
   res.json(updated);
 });
 
@@ -511,8 +802,12 @@ router.put("/:id/items/:itemId/return-status", protect, admin, async (req, res) 
 
 // GET logged-in user's orders
 router.get("/my", protect, async (req, res) => {
-  const orders = await Order.find({ user: req.user }).sort({ createdAt: -1 });
-  res.json(orders);
+  try {
+    const orders = await Order.find({ user: req.user }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch {
+    res.status(500).json({ message: "Failed to load orders" });
+  }
 });
 
 // Get single order (admin only)
