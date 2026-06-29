@@ -34,7 +34,7 @@
   padding: 0;
   background: var(--site-surface-muted);
   min-height: 0;
-  height: clamp(130px, 18vw, 260px);
+  height: auto;
   border-radius: var(--radius-xl);
   position: relative;
   overflow: hidden;
@@ -43,6 +43,7 @@
 
 .home-banner-loading {
   display: block;
+  height: clamp(130px, 18vw, 260px);
 }
 
 .home-banner-skeleton {
@@ -58,9 +59,7 @@
 .home-banner-image {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+  height: auto;
 }
 
 .home-banner-has-media {
@@ -631,6 +630,10 @@
 
   .home-banner {
     margin: 0;
+    height: auto;
+  }
+
+  .home-banner-loading {
     height: clamp(130px, 38vw, 240px);
   }
 
@@ -755,6 +758,10 @@
   }
 
   .home-banner {
+    height: auto;
+  }
+
+  .home-banner-loading {
     height: clamp(120px, 34vw, 200px);
   }
 
