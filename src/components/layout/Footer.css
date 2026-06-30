@@ -14,3 +14,9 @@
   font-weight: 500;
   opacity: 0.85;
 }
+
+@media (max-width: 768px) {
+  .site-footer {
+    display: none;
+  }
+}

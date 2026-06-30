@@ -620,6 +620,9 @@ router.get("/recommend/:productId", async (req, res) => {
     const cached = appCache.get(cacheKey);
     if (cached) return res.json(cached);
 
+    const currentProduct = await Product.findById(productId).select("category");
+    const category = currentProduct ? currentProduct.category : null;
+
     const orders = await Order.find({
       $or: [
         { "items.product": productId },
@@ -651,19 +654,43 @@ router.get("/recommend/:productId", async (req, res) => {
       .slice(0, 4)
       .map((entry) => entry[0]);
 
-    if (sortedIds.length === 0) {
-      return res.json([]);
+    let products = [];
+    if (sortedIds.length > 0) {
+      products = await Product.find({
+        _id: { $in: sortedIds }
+      });
     }
-
-    const products = await Product.find({
-      _id: { $in: sortedIds }
-    });
 
     const rank = new Map(sortedIds.map((id, index) => [id, index]));
     products.sort((a, b) => (rank.get(String(a._id)) ?? 999) - (rank.get(String(b._id)) ?? 999));
 
+    // Fallback 1: Same category
+    if (products.length < 4 && category) {
+      const existingIds = products.map((p) => String(p._id));
+      existingIds.push(productId);
+
+      const categoryFallback = await Product.find({
+        category: category,
+        _id: { $nin: existingIds }
+      }).limit(4 - products.length);
+
+      products = [...products, ...categoryFallback];
+    }
+
+    // Fallback 2: Any random recent products
+    if (products.length < 4) {
+      const existingIds = products.map((p) => String(p._id));
+      existingIds.push(productId);
+
+      const anyFallback = await Product.find({
+        _id: { $nin: existingIds }
+      }).sort({ createdAt: -1 }).limit(4 - products.length);
+
+      products = [...products, ...anyFallback];
+    }
+
     const ranked = products.map((product) => ({
-      ...product.toObject(),
+      ...(product.toObject ? product.toObject() : product),
       boughtTogetherCount: counts[String(product._id)] || 0
     }));
 
