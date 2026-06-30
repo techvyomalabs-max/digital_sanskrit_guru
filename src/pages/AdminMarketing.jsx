@@ -523,7 +523,7 @@ function AdminMarketing() {
                 <div className="mkt-table-wrap">
                   <table className="mkt-table">
                     <thead>
-                      <tr><th>To</th><th>Subject</th><th>Type</th><th>Status</th><th>Sent At</th></tr>
+                      <tr><th>To</th><th>Subject</th><th>Type</th><th>Status</th><th>Error</th><th>Sent At</th></tr>
                     </thead>
                     <tbody>
                       {emailLog.map((log) => (
@@ -535,6 +535,9 @@ function AdminMarketing() {
                             <span className={`mkt-status-badge ${log.status === "sent" ? "ok" : "fail"}`}>
                               {log.status}
                             </span>
+                          </td>
+                          <td style={{ fontSize: "12px", color: "var(--site-text-soft)", maxWidth: "200px", wordBreak: "break-all" }}>
+                            {log.error || "—"}
                           </td>
                           <td>{log.sentAt ? new Date(log.sentAt).toLocaleString("en-IN") : "—"}</td>
                         </tr>
