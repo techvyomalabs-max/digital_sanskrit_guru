@@ -252,7 +252,7 @@ html.banner-active .navbar {
   position: fixed;
   top: 0;
   right: 0;
-  width: min(380px, 92vw);
+  width: min(280px, 85vw);
   height: 100vh;
   z-index: 1020;
   background: rgba(15, 23, 42, 0.97);
@@ -971,7 +971,7 @@ html.banner-active .navbar {
   }
 
   .navbar-subbar {
-    width: min(360px, 95vw);
+    width: min(260px, 80vw);
   }
 
   .navbar-subbar-open {

@@ -689,12 +689,12 @@
 
   .home-spotlight-row,
   .home-catalog-preview-row {
-    min-height: 370px;
+    min-height: 280px;
   }
 
   .home-catalog-see-more-card,
   .home-skeleton-card {
-    min-height: 370px;
+    min-height: 280px;
   }
 
   .home-banner-nav {
@@ -802,12 +802,12 @@
 
   .home-spotlight-row,
   .home-catalog-preview-row {
-    min-height: 340px;
+    min-height: 260px;
   }
 
   .home-catalog-see-more-card,
   .home-skeleton-card {
-    min-height: 340px;
+    min-height: 260px;
   }
 }
 

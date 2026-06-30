@@ -140,6 +140,7 @@ background:var(--site-bg);
   .recent-header{
     flex-direction:column;
     align-items:flex-start;
+    gap: 8px;
   }
 
   .recent-grid{
@@ -152,26 +153,53 @@ background:var(--site-bg);
   }
 }
 
-@media (min-width: 320px) and (max-width: 480px){
+@media (max-width: 480px){
   .recent-section{
-    padding:16px 14px 18px;
-    border-radius:18px;
+    padding: 12px 10px 14px;
+    border-radius: 12px;
+    margin: 4px 0 8px;
   }
 
   .recent-section h2{
-    font-size:22px;
+    font-size: 18px;
+  }
+
+  .recent-header p{
+    font-size: 12px;
+    margin-top: 2px;
   }
 
   .recent-grid{
-    gap:10px;
+    gap: 8px;
   }
 
   .recent-card{
-    flex-basis:78%;
-    min-width:78%;
+    flex-basis: 130px;
+    min-width: 130px;
+    padding: 8px;
+    gap: 6px;
   }
 
   .recent-card img{
-    height:130px;
+    height: 100px;
+    border-radius: 4px;
+  }
+
+  .recent-card h4{
+    font-size: 12px;
+  }
+
+  .recent-card p{
+    font-size: 13px;
+  }
+
+  .recent-caption{
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 768px){
+  .recent-card .view-btn {
+    display: none;
   }
 }

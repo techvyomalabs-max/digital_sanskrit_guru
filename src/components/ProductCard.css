@@ -412,6 +412,10 @@
   .product-rating {
     font-size: 13px;
   }
+
+  .product-card-home .product-actions {
+    display: none;
+  }
 }
 
 @media (min-width: 481px) and (max-width: 768px) {
@@ -439,11 +443,55 @@
     aspect-ratio: 16/11;
   }
 
+  .product-info {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  .product-category {
+    font-size: 9px;
+    padding: 3px 8px;
+  }
+
+  .product-title {
+    font-size: 13px;
+  }
+
+  .product-card-home .product-title {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
   .product-description {
+    font-size: 12px;
     min-height: auto;
   }
 
+  .price-box {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .discount-price {
+    font-size: 16px;
+  }
+
+  .original-price {
+    font-size: 12px;
+  }
+
+  .product-rating {
+    font-size: 11px;
+    margin-top: 2px;
+  }
+
+  .product-rating-meta {
+    font-size: 10px;
+  }
+
   .product-cta {
-    padding: 12px var(--space-3);
+    padding: 10px var(--space-3);
+    font-size: 13px;
   }
 }
+

@@ -689,7 +689,7 @@ border-bottom:none;
     position:fixed;
     top:0;
     left:0;
-    width:min(320px, calc(100vw - 52px));
+    width:min(260px, 80vw);
     height:100vh;
     max-height:none;
     padding:var(--space-4) var(--space-3) var(--space-5);
