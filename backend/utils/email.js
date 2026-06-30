@@ -18,16 +18,35 @@ const ACCENT_COLOR = "#e94560";
 
 let transporter = null;
 
-function getTransporter() {
+async function getTransporter() {
   if (transporter) return transporter;
+
+  let host = process.env.SMTP_HOST || "smtp.gmail.com";
+  let tlsOptions = {};
+
+  if (host === "smtp.gmail.com") {
+    try {
+      const dns = require("dns").promises;
+      const addresses = await dns.resolve4(host);
+      if (addresses && addresses.length > 0) {
+        host = addresses[0];
+        tlsOptions = { servername: "smtp.gmail.com" };
+        console.log(`[Email] Resolved smtp.gmail.com to IPv4: ${host}`);
+      }
+    } catch (err) {
+      console.error("[Email] Failed to resolve SMTP host IPv4:", err.message);
+    }
+  }
+
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    host,
     port: Number(process.env.SMTP_PORT || 587),
     secure: Number(process.env.SMTP_PORT || 587) === 465,
     auth: {
       user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || ""
-    }
+    },
+    tls: tlsOptions
   });
   return transporter;
 }
@@ -50,7 +69,8 @@ async function sendEmail({ to, subject, html, type = "campaign", orderId = "", p
       return { skipped: true };
     }
 
-    const info = await getTransporter().sendMail({
+    const transporterInstance = await getTransporter();
+    const info = await transporterInstance.sendMail({
       from: `"${SITE_NAME}" <${process.env.SMTP_USER}>`,
       to,
       subject,
