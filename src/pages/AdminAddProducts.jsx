@@ -105,9 +105,9 @@ async function optimizeImageFile(file, options) {
 
 async function optimizeHeroBannerFile(file) {
   return optimizeImageFile(file, {
-    maxWidth: 1600,
-    maxHeight: 700,
-    quality: 0.82
+    maxWidth: 2560,
+    maxHeight: 1080,
+    quality: 0.92
   });
 }
 
