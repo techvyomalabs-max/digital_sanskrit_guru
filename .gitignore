@@ -51,3 +51,6 @@ scratch-*.cjs
 backend/run-load-test.js
 backend/run-stress-test.js
 backend/test-*.js
+
+# Local MongoDB data
+mongodb_data/
