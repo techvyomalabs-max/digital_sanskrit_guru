@@ -105,6 +105,8 @@ function Checkout() {
     selectedAddress,
     selectAddress
   } = useDeliveryLocation();
+  const [isBillingSame, setIsBillingSame] = useState(true);
+  const [selectedBillingIndex, setSelectedBillingIndex] = useState(0);
   const navigate = useNavigate();
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
   const isDummyPaymentEnabled =
@@ -286,6 +288,9 @@ function Checkout() {
 
   const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
     const checkoutCountry = String(selected?.country || "").trim().toUpperCase();
+    const billing = isBillingSame
+      ? selected
+      : (addresses[selectedBillingIndex] || selected);
 
     const { data } = await axios.post(
       "/api/orders",
@@ -293,6 +298,7 @@ function Checkout() {
         items: cartItems,
         total: finalTotal,
         shipping: selected,
+        billing,
         couponCode: couponCode || "",
         discount,
         paymentStatus,
@@ -529,6 +535,49 @@ function Checkout() {
               </div>
             ))}
           </div>
+
+          <div className="billing-address-toggle" style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'var(--site-surface-muted)', borderRadius: '8px', border: '1px solid var(--site-border)' }}>
+            <input
+              type="checkbox"
+              id="billing-same"
+              checked={isBillingSame}
+              onChange={(e) => setIsBillingSame(e.target.checked)}
+              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+            />
+            <label htmlFor="billing-same" style={{ fontWeight: '600', cursor: 'pointer', color: 'var(--site-text)', fontSize: '14.5px' }}>
+              Billing address is same as delivery address
+            </label>
+          </div>
+
+          {!isBillingSame && (
+            <div className="billing-address-section" style={{ marginTop: '24px' }}>
+              <div className="checkout-section-head" style={{ marginBottom: '12px' }}>
+                <h2>Select a billing address</h2>
+              </div>
+              <div className="address-list">
+                {addresses.map((item, index) => (
+                  <div
+                    key={`billing-${index}`}
+                    className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      checked={selectedBillingIndex === index}
+                      onChange={() => setSelectedBillingIndex(index)}
+                    />
+                    <div className="address-info">
+                      <strong>{item.name}</strong>
+                      {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
+                      <p>{item.phone}</p>
+                      <p>{item.address}</p>
+                      {item.landmark && <p>Landmark: {item.landmark}</p>}
+                      {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="order-summary">

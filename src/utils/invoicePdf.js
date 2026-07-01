@@ -50,6 +50,32 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function formatFullAddress(addrObj) {
+  if (!addrObj) return "N/A";
+  if (typeof addrObj === "string") return addrObj;
+  
+  const street = addrObj.address || "";
+  const city = addrObj.city || "";
+  const state = addrObj.state || "";
+  const pincode = addrObj.pincode || "";
+  const country = addrObj.country || "";
+  
+  const hasCity = city && street.toLowerCase().includes(city.toLowerCase());
+  const hasState = state && street.toLowerCase().includes(state.toLowerCase());
+  
+  if (hasCity && hasState) {
+    return street;
+  }
+  
+  return [
+    street,
+    city,
+    state,
+    pincode,
+    country
+  ].filter(Boolean).join(", ");
+}
+
 export function generateInvoicePdf(order, options = {}) {
   const {
     customerName = order?.user?.name || order?.shipping?.name || "Customer",
@@ -66,8 +92,15 @@ export function generateInvoicePdf(order, options = {}) {
   const status = String(order?.status || "Pending");
   const items = Array.isArray(order?.items) ? order.items : [];
   const createdAt = formatDateTime(order?.createdAt);
-  const shippingAddress = order?.shipping?.address || "N/A";
+  const shippingName = order?.shipping?.name || customerName;
   const shippingPhone = order?.shipping?.phone || "N/A";
+  const shippingAddressText = formatFullAddress(order?.shipping);
+  
+  const billingName = order?.billing?.name || shippingName;
+  const billingPhone = order?.billing?.phone || shippingPhone;
+  const billingEmail = order?.billing?.email || customerEmail;
+  const billingAddressText = formatFullAddress(order?.billing || order?.shipping);
+
   const customerState = String(order?.shipping?.state || "").trim();
   
   const currency = String(
@@ -236,43 +269,62 @@ export function generateInvoicePdf(order, options = {}) {
   doc.setTextColor(15, 23, 42);
   y += 72;
 
-  // Billed To & Seller Details columns
-  const colWidth = 240;
+  // Billed To, Shipped To, & Seller Details columns (3-column layout)
+  const colWidth = 160;
   
   // Left Column: Billed To
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
   doc.text("BILLED TO", marginX, y);
-  doc.line(marginX, y + 4, marginX + 80, y + 4);
+  doc.line(marginX, y + 4, marginX + 70, y + 4);
   
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(51, 65, 85);
-  doc.text(`Name: ${customerName}`, marginX, y + 18);
-  doc.text(`Phone: ${shippingPhone}`, marginX, y + 32);
-  doc.text(`Email: ${customerEmail}`, marginX, y + 46);
-  const wrappedAddress = doc.splitTextToSize(`Address: ${shippingAddress}`, colWidth);
-  doc.text(wrappedAddress, marginX, y + 60);
+  doc.text(`Name: ${billingName}`, marginX, y + 18);
+  doc.text(`Phone: ${billingPhone}`, marginX, y + 30);
+  doc.text(`Email: ${billingEmail}`, marginX, y + 42);
+  const wrappedBillingAddress = doc.splitTextToSize(`Address: ${billingAddressText}`, colWidth);
+  doc.text(wrappedBillingAddress, marginX, y + 54);
+
+  // Middle Column: Shipped To
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("SHIPPED TO", 215, y);
+  doc.line(215, y + 4, 215 + 75, y + 4);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Name: ${shippingName}`, 215, y + 18);
+  doc.text(`Phone: ${shippingPhone}`, 215, y + 30);
+  const wrappedShippingAddress = doc.splitTextToSize(`Address: ${shippingAddressText}`, colWidth);
+  doc.text(wrappedShippingAddress, 215, y + 42);
 
   // Right Column: Seller Details
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text("SELLER DETAILS", 320, y);
-  doc.line(320, y + 4, 320 + 105, y + 4);
+  doc.text("SELLER DETAILS", 390, y);
+  doc.line(390, y + 4, 390 + 95, y + 4);
   
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(51, 65, 85);
-  doc.text("Digital Sanskrit Guru Store", 320, y + 18);
-  doc.text("GSTIN: 29DSGXX1234F1Z0", 320, y + 32); // Mock GSTIN for Karnataka supply compliance
-  doc.text("Bangalore, Karnataka, India", 320, y + 46);
-  doc.text("Email: support@digitalsanskritguru.com", 320, y + 60);
+  doc.text("Digital Sanskrit Guru Store", 390, y + 18);
+  doc.text("GSTIN: 29DSGXX1234F1Z0", 390, y + 30);
+  doc.text("Bangalore, Karnataka, India", 390, y + 42);
+  doc.text("Email: support@digitalsanskritguru.com", 390, y + 54);
 
   // Clear vertical layout after addresses
-  const addressHeight = wrappedAddress.length * 12;
-  y += Math.max(addressHeight + 70, 85);
+  const addressHeight = Math.max(
+    wrappedBillingAddress.length * 12 + 54,
+    wrappedShippingAddress.length * 12 + 42,
+    70
+  );
+  y += addressHeight + 20;
 
   // Order Items Table
   doc.setFillColor(15, 23, 42); // Navy Header

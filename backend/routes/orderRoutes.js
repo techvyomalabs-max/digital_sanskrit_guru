@@ -490,6 +490,8 @@ router.post("/", protect, async (req, res) => {
     .trim()
     .toUpperCase();
 
+  const requestedBilling = req.body.billing || req.body.shipping || {};
+
   let order;
   try {
     order = await Order.create({
@@ -513,6 +515,16 @@ router.post("/", protect, async (req, res) => {
         currency: requestedCurrency || orderCurrency,
         amount: Number.isFinite(requestedDisplayAmount) ? requestedDisplayAmount : null,
         detectedCountry: requestedDetectedCountry
+      },
+      billing: {
+        name: requestedBilling.name || "",
+        phone: requestedBilling.phone || "",
+        email: requestedBilling.email || "",
+        address: requestedBilling.address || "",
+        city: requestedBilling.city || "",
+        state: requestedBilling.state || "",
+        pincode: requestedBilling.pincode || "",
+        country: requestedBilling.country || ""
       },
       shipping: {
         name: shipping.name || "",
