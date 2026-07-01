@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import "./AdminMarketing.css";
 import "./AdminShared.css";
 
-const TABS = ["Overview", "Email Campaign", "Push Notification", "Low-Stock Alerts", "Order Email Draft", "Sponsors"];
+const TABS = ["Overview", "Email Campaign", "Push Notification", "Customer Segments", "Low-Stock Alerts", "Order Email Draft", "Sponsors"];
 
 function AdminMarketing() {
   const { token } = useAuth();
@@ -41,7 +41,11 @@ function AdminMarketing() {
   const [filterValue, setFilterValue] = useState("");
   const [recipientCount, setRecipientCount] = useState(0);
   const [recipientPreview, setRecipientPreview] = useState([]);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  // ── Customer Segments states ───────────────────────────────────────────────
+  const [segFilterType, setSegFilterType] = useState("all");
+  const [segFilterValue, setSegFilterValue] = useState("");
+  const [segmentedCustomers, setSegmentedCustomers] = useState([]);
+  const [isLoadingSegments, setIsLoadingSegments] = useState(false);
 
   // ── Push notification state ────────────────────────────────────────────────
   const [pushTitle, setPushTitle] = useState("");
@@ -163,6 +167,28 @@ function AdminMarketing() {
       setIsLoadingPreview(false);
     }
   };
+
+  const loadSegmentedCustomers = async () => {
+    setIsLoadingSegments(true);
+    try {
+      const res = await axios.post("/api/marketing/segmented-customers", {
+        filterType: segFilterType,
+        filterValue: segFilterValue
+      }, { headers });
+      setSegmentedCustomers(res.data.customers || []);
+    } catch (err) {
+      console.error("Failed to load segmented customers", err);
+      setSegmentedCustomers([]);
+    } finally {
+      setIsLoadingSegments(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 3) {
+      loadSegmentedCustomers();
+    }
+  }, [segFilterType, segFilterValue, activeTab]);
 
   useEffect(() => {
     loadStats();
@@ -721,8 +747,122 @@ function AdminMarketing() {
           </div>
         )}
 
-        {/* ── Tab 3: Low-Stock Alerts ── */}
+        {/* ── Tab 3: Customer Segments ── */}
         {activeTab === 3 && (
+          <div className="mkt-section">
+            <div className="card mkt-card">
+              <h3>Customer Segment Search</h3>
+              <p className="mkt-hint">Filter and inspect customer lists based on their purchase history.</p>
+              
+              <div className="mkt-field">
+                <label>Segment Group</label>
+                <select
+                  value={segFilterType}
+                  onChange={(e) => {
+                    setSegFilterType(e.target.value);
+                    setSegFilterValue("");
+                  }}
+                >
+                  <option value="all">All Registered Customers</option>
+                  <option value="category">Purchased from Category</option>
+                  <option value="product">Purchased specific Product</option>
+                  <option value="minSpend">Spent at least (Minimum Spend)</option>
+                </select>
+              </div>
+
+              {segFilterType === "category" && (
+                <div className="mkt-field">
+                  <label>Select Product Category</label>
+                  <select
+                    value={segFilterValue}
+                    onChange={(e) => setSegFilterValue(e.target.value)}
+                  >
+                    <option value="">-- Choose Category --</option>
+                    {targetingOptions.categories?.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {segFilterType === "product" && (
+                <div className="mkt-field">
+                  <label>Select Purchased Product</label>
+                  <select
+                    value={segFilterValue}
+                    onChange={(e) => setSegFilterValue(e.target.value)}
+                  >
+                    <option value="">-- Choose Product --</option>
+                    {targetingOptions.products?.map(prod => (
+                      <option key={prod._id} value={prod._id}>{prod.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {segFilterType === "minSpend" && (
+                <div className="mkt-field">
+                  <label>Minimum Total Spend amount (INR)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Enter amount (e.g. 500)"
+                    value={segFilterValue}
+                    onChange={(e) => setSegFilterValue(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="card mkt-card">
+              <h3>Segment Customers <span className="mkt-badge-inline">{segmentedCustomers.length}</span></h3>
+              {isLoadingSegments ? (
+                <p className="mkt-empty">Loading customers...</p>
+              ) : segmentedCustomers.length === 0 ? (
+                <p className="mkt-empty">No customers found matching this segment.</p>
+              ) : (
+                <div className="mkt-table-wrap">
+                  <table className="mkt-table">
+                    <thead>
+                      <tr>
+                        <th>Customer Name</th>
+                        <th>Email</th>
+                        <th>Total Orders</th>
+                        <th>Lifetime Spend</th>
+                        <th style={{ textAlign: "right" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {segmentedCustomers.map((cust) => (
+                        <tr key={cust._id}>
+                          <td><strong>{cust.name}</strong></td>
+                          <td>{cust.email || "—"}</td>
+                          <td>{cust.orderCount}</td>
+                          <td>Rs {cust.totalSpent.toFixed(2)}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              className="secondary-btn btn-sm"
+                              onClick={() => {
+                                setFilterType(segFilterType);
+                                setFilterValue(segFilterValue);
+                                setActiveTab(1);
+                              }}
+                            >
+                              Send Email
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Tab 4: Low-Stock Alerts ── */}
+        {activeTab === 4 && (
           <div className="mkt-section">
             <div className="card mkt-card">
               <h3>Alert Settings</h3>
@@ -813,8 +953,8 @@ function AdminMarketing() {
           </div>
         )}
 
-        {/* ── Tab 4: Order Email Draft ── */}
-        {activeTab === 4 && (
+        {/* ── Tab 5: Order Email Draft ── */}
+        {activeTab === 5 && (
           <div className="mkt-section">
             <div className="card mkt-card">
               <h3>Order Confirmation Email Template</h3>
@@ -924,8 +1064,8 @@ function AdminMarketing() {
           </div>
         )}
 
-        {/* ── Tab 5: Sponsors ── */}
-        {activeTab === 5 && (
+        {/* ── Tab 6: Sponsors ── */}
+        {activeTab === 6 && (
           <div className="mkt-section">
             <div className="mkt-sponsor-split">
               {/* Form card */}

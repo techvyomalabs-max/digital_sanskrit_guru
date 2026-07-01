@@ -616,3 +616,15 @@
   color: var(--admin-text-soft, #4b5563);
 }
 
+/* Inline Badge */
+.mkt-badge-inline {
+  background: var(--admin-primary, #2563eb);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+

@@ -110,6 +110,44 @@ router.post("/recipient-preview", async (req, res) => {
   }
 });
 
+// ── POST /api/marketing/segmented-customers ──────────────────────────────────
+// Returns a detailed list of matching customers with order counts and spent totals
+router.post("/segmented-customers", async (req, res) => {
+  try {
+    const filterType = String(req.body?.filterType || "all").trim();
+    const filterValue = String(req.body?.filterValue || "").trim();
+
+    const matchedUsers = await resolveRecipientsList(filterType, filterValue);
+    const userIds = matchedUsers.map(u => u._id);
+
+    // Aggregate spend and order count for these users
+    const ordersAgg = await Order.aggregate([
+      { $match: { user: { $in: userIds }, status: { $ne: "Cancelled" } } },
+      { $group: { _id: "$user", totalSpent: { $sum: "$total" }, orderCount: { $sum: 1 } } }
+    ]);
+
+    const statsMap = new Map(ordersAgg.map(o => [String(o._id), o]));
+
+    const enrichedUsers = matchedUsers.map(user => {
+      const stats = statsMap.get(String(user._id)) || { totalSpent: 0, orderCount: 0 };
+      return {
+        _id: String(user._id),
+        name: user.name || "User",
+        email: user.email || "",
+        orderCount: stats.orderCount,
+        totalSpent: stats.totalSpent
+      };
+    });
+
+    // Sort by total spent descending
+    enrichedUsers.sort((a, b) => b.totalSpent - a.totalSpent);
+
+    res.json({ customers: enrichedUsers });
+  } catch (err) {
+    res.status(500).json({ message: err.message || "Failed to load segmented customers." });
+  }
+});
+
 // ── GET /api/marketing/low-stock ─────────────────────────────────────────────
 // List products at or below low-stock threshold + wishlist user count per product
 router.get("/low-stock", async (_req, res) => {
