@@ -41,6 +41,7 @@ function AdminMarketing() {
   const [filterValue, setFilterValue] = useState("");
   const [recipientCount, setRecipientCount] = useState(0);
   const [recipientPreview, setRecipientPreview] = useState([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   // ── Customer Segments states ───────────────────────────────────────────────
   const [segFilterType, setSegFilterType] = useState("all");
   const [segFilterValue, setSegFilterValue] = useState("");
