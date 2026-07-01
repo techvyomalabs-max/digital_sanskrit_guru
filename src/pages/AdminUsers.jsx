@@ -29,6 +29,11 @@ function AdminUsers() {
     recentAdminActions: []
   });
 
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [hasMoreAudit, setHasMoreAudit] = useState(false);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
   useEffect(() => {
     let active = true;
 
@@ -72,6 +77,40 @@ function AdminUsers() {
       clearInterval(pollId);
     };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchAuditLogs = async () => {
+      setIsLoadingAudit(true);
+      try {
+        const res = await axios.get(`/api/auth/admin/audit-logs?page=${auditPage}&limit=10`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!active) return;
+        
+        const newLogs = Array.isArray(res.data?.recentAdminActions) ? res.data.recentAdminActions : [];
+        if (auditPage === 1) {
+          setAuditLogs(newLogs);
+        } else {
+          setAuditLogs((prev) => {
+            const existingIds = new Set(prev.map(item => item._id));
+            const filteredNew = newLogs.filter(item => !existingIds.has(item._id));
+            return [...prev, ...filteredNew];
+          });
+        }
+        setHasMoreAudit(Boolean(res.data?.hasMore));
+      } catch (err) {
+        console.error("Failed to load audit logs", err);
+      } finally {
+        if (active) setIsLoadingAudit(false);
+      }
+    };
+
+    fetchAuditLogs();
+    return () => {
+      active = false;
+    };
+  }, [auditPage, token]);
 
   const avgTimePerUser = useMemo(() => {
     if (metrics.totalUsers <= 0) return 0;
@@ -187,43 +226,51 @@ function AdminUsers() {
 
         <section className="card">
           <h3>Recent Admin Changes</h3>
-          {isLoading ? (
-            <p>Loading admin activity...</p>
-          ) : (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Admin</th>
-                    <th>Action</th>
-                    <th>Target</th>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Admin</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((entry) => (
+                  <tr key={entry._id}>
+                    <td>{entry.createdAt ? `${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}` : "-"}</td>
+                    <td>
+                      <strong>{entry.actorName || "Admin"}</strong>
+                      <div style={{ color: "var(--admin-muted)", fontSize: "12px", marginTop: "4px" }}>
+                        {entry.actorEmail || "-"}
+                      </div>
+                    </td>
+                    <td>{entry.summary || entry.action || "-"}</td>
+                    <td>{entry.entityLabel || entry.entityType || "-"}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {metrics.recentAdminActions.map((entry) => (
-                    <tr key={entry._id}>
-                      <td>{entry.createdAt ? `${formatDate(entry.createdAt)} ${formatTime(entry.createdAt)}` : "-"}</td>
-                      <td>
-                        <strong>{entry.actorName || "Admin"}</strong>
-                        <div style={{ color: "var(--admin-muted)", fontSize: "12px", marginTop: "4px" }}>
-                          {entry.actorEmail || "-"}
-                        </div>
-                      </td>
-                      <td>{entry.summary || entry.action || "-"}</td>
-                      <td>{entry.entityLabel || entry.entityType || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {metrics.recentAdminActions.length === 0 && (
-                <p style={{ margin: "12px 0 0" }}>
-                  No admin changes recorded yet. This list starts filling after the backend is running with audit logging
-                  and admins perform tracked actions.
-                </p>
-              )}
-            </div>
-          )}
+                ))}
+              </tbody>
+            </table>
+            {auditLogs.length === 0 && !isLoadingAudit && (
+              <p style={{ margin: "12px 0 0" }}>
+                No admin changes recorded yet. This list starts filling after the backend is running with audit logging
+                and admins perform tracked actions.
+              </p>
+            )}
+            {hasMoreAudit && (
+              <div style={{ marginTop: "16px", textAlign: "center" }}>
+                <button
+                  className="secondary-btn"
+                  onClick={() => setAuditPage((prev) => prev + 1)}
+                  disabled={isLoadingAudit}
+                  style={{ minWidth: "120px" }}
+                >
+                  {isLoadingAudit ? "Loading..." : "Load More"}
+                </button>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="card">

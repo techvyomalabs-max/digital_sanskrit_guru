@@ -244,16 +244,50 @@ router.post("/activity", protect, async (req, res) => {
   }
 });
 
+router.get("/admin/audit-logs", protect, admin, async (req, res) => {
+  try {
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
+    const skip = (page - 1) * limit;
+
+    const total = await AdminAuditLog.countDocuments();
+    const logs = await AdminAuditLog.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const recentAdminActions = logs.map((entry) => ({
+      _id: String(entry?._id || ""),
+      actorUser: entry?.actorUser ? String(entry.actorUser) : "",
+      actorName: String(entry?.actorName || "").trim() || "Admin",
+      actorEmail: String(entry?.actorEmail || "").trim().toLowerCase(),
+      action: String(entry?.action || "").trim(),
+      entityType: String(entry?.entityType || "").trim(),
+      entityId: String(entry?.entityId || "").trim(),
+      entityLabel: String(entry?.entityLabel || "").trim(),
+      summary: String(entry?.summary || "").trim(),
+      details: entry?.details && typeof entry.details === "object" ? entry.details : {},
+      createdAt: entry?.createdAt || null
+    }));
+
+    res.json({
+      recentAdminActions,
+      total,
+      hasMore: skip + logs.length < total
+    });
+  } catch (err) {
+    console.error("[Auth] Audit logs pagination error:", err.message);
+    res.status(500).json({ message: "Failed to load audit logs." });
+  }
+});
+
 router.get("/admin/users-metrics", protect, admin, async (req, res) => {
   try {
     const users = await User.find().select("name email isAdmin lastActiveAt totalTimeSpentSec").lean();
     const adminUsersRaw = await User.find({ isAdmin: true })
       .select("name email isAdmin adminGrantedAt adminGrantedByName adminGrantedByEmail lastActiveAt")
       .sort({ adminGrantedAt: -1, createdAt: -1 })
-      .lean();
-    const recentAdminActionsRaw = await AdminAuditLog.find()
-      .sort({ createdAt: -1 })
-      .limit(40)
       .lean();
     const now = Date.now();
     const activeWindowMs = 5 * 60 * 1000;
@@ -282,49 +316,7 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
     const activeUsers = mappedUsers.filter((user) => user.isActive).length;
     const totalTimeSpentSec = mappedUsers.reduce((sum, user) => sum + Number(user.totalTimeSpentSec || 0), 0);
 
-    let recentAdminActions = recentAdminActionsRaw.map((entry) => ({
-      _id: String(entry?._id || ""),
-      actorUser: entry?.actorUser ? String(entry.actorUser) : "",
-      actorName: String(entry?.actorName || "").trim() || "Admin",
-      actorEmail: String(entry?.actorEmail || "").trim().toLowerCase(),
-      action: String(entry?.action || "").trim(),
-      entityType: String(entry?.entityType || "").trim(),
-      entityId: String(entry?.entityId || "").trim(),
-      entityLabel: String(entry?.entityLabel || "").trim(),
-      summary: String(entry?.summary || "").trim(),
-      details: entry?.details && typeof entry.details === "object" ? entry.details : {},
-      createdAt: entry?.createdAt || null
-    }));
-
-    if (recentAdminActions.length === 0) {
-      recentAdminActions = adminUsersRaw
-        .map((user) => ({
-          _id: `fallback-admin-${String(user?._id || "")}`,
-          actorUser: String(user?._id || ""),
-          actorName: String(user?.adminGrantedByName || user?.name || "").trim() || "Admin",
-          actorEmail: String(user?.adminGrantedByEmail || user?.email || "").trim().toLowerCase(),
-          action: "admin-access-existing",
-          entityType: "user",
-          entityId: String(user?._id || ""),
-          entityLabel: String(user?.email || "").trim(),
-          summary: `Admin access active for ${String(user?.email || user?.name || "admin").trim()}`,
-          details: { fallback: true },
-          createdAt: user?.adminGrantedAt || user?.lastActiveAt || null
-        }))
-        .sort((a, b) => {
-          const aTs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bTs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return bTs - aTs;
-        });
-    }
-
     const latestAdminActionByEmail = new Map();
-    recentAdminActions.forEach((entry) => {
-      const key = String(entry?.actorEmail || "").trim().toLowerCase();
-      if (key && !latestAdminActionByEmail.has(key)) {
-        latestAdminActionByEmail.set(key, entry);
-      }
-    });
 
     const admins = adminUsersRaw.map((user) => {
       const key = String(user?.email || "").trim().toLowerCase();
@@ -345,7 +337,7 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
       };
     });
 
-    res.json({ totalUsers, activeUsers, totalTimeSpentSec, users: mappedUsers.slice(0, 30), admins, recentAdminActions });
+    res.json({ totalUsers, activeUsers, totalTimeSpentSec, users: mappedUsers.slice(0, 30), admins, recentAdminActions: [] });
   } catch (err) {
     console.error("[Auth] Users-metrics error:", err.message);
     res.status(500).json({ message: "Failed to load user metrics." });
