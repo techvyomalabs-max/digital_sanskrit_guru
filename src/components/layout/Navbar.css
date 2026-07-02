@@ -320,9 +320,9 @@ html.banner-active .navbar {
 }
 
 .navbar-logo-img {
-  height: 46px;
+  height: 54px;
   width: auto;
-  max-width: 165px;
+  max-width: 220px;
   display: block;
   object-fit: contain;
 }
