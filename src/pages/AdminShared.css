@@ -682,8 +682,15 @@ border-bottom:none;
 
 @media (max-width: 1024px){
   .admin-layout{flex-direction:column;}
-  .admin-mobile-nav-toggle{display:flex;}
-  .admin-mobile-nav-backdrop{display:block;}
+  .admin-mobile-nav-toggle{
+    display:flex;
+    z-index: 1110;
+    bottom: 80px;
+  }
+  .admin-mobile-nav-backdrop{
+    display:block;
+    z-index: 1090;
+  }
 
   .sidebar{
     position:fixed;
@@ -699,6 +706,7 @@ border-bottom:none;
     pointer-events:none;
     border-radius:0 var(--radius-lg) var(--radius-lg) 0;
     box-shadow:0 18px 50px rgba(15,23,42,.34);
+    z-index: 1100;
   }
 
   .sidebar.mobile-open{
