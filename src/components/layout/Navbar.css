@@ -1242,3 +1242,11 @@ html.banner-active .navbar {
 .navbar-subbar-close:active {
   transform: scale(0.95);
 }
+
+.lucide-icon {
+  display: inline-block;
+  vertical-align: middle;
+  stroke-width: 2.2px;
+  width: 20px;
+  height: 20px;
+}

@@ -1,6 +1,7 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { House, Grid, Heart, ShoppingCart, User, Search } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
@@ -60,6 +61,29 @@ function Navbar({ bannerActive = false }) {
       window.removeEventListener("siteSettingsUpdated", fetchIcons);
     };
   }, []);
+
+  const renderIcon = (type, customValue) => {
+    const isDefault = !customValue ||
+      (type === "home" && customValue === "🏠") ||
+      (type === "categories" && customValue === "📚") ||
+      (type === "wishlist" && customValue === "❤️") ||
+      (type === "cart" && customValue === "🛒") ||
+      (type === "profile" && customValue === "👤") ||
+      (type === "search" && customValue === "🔍");
+
+    if (isDefault) {
+      switch (type) {
+        case "home": return <House size={20} className="lucide-icon" />;
+        case "categories": return <Grid size={20} className="lucide-icon" />;
+        case "wishlist": return <Heart size={20} className="lucide-icon" />;
+        case "cart": return <ShoppingCart size={20} className="lucide-icon" />;
+        case "profile": return <User size={20} className="lucide-icon" />;
+        case "search": return <Search size={20} className="lucide-icon" />;
+        default: return null;
+      }
+    }
+    return <span className="custom-emoji-icon">{customValue}</span>;
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -315,7 +339,7 @@ function Navbar({ bannerActive = false }) {
             />
             <button type="submit" className="navbar-search-btn" aria-label="Search">
               <span className="navbar-search-btn-icon" aria-hidden="true">
-                {storeIcons.search}
+                {renderIcon("search", storeIcons.search)}
               </span>
               <span className="navbar-search-btn-text">Search</span>
             </button>
@@ -341,7 +365,7 @@ function Navbar({ bannerActive = false }) {
 
             <Link className="navbar-cart navbar-outline" to="/cart">
               <span className="navbar-cart-icon" aria-hidden="true">
-                {storeIcons.cart}
+                {renderIcon("cart", storeIcons.cart)}
               </span>
               <span className="navbar-cart-label">Cart</span>
               <span className="navbar-badge">
@@ -600,7 +624,7 @@ function Navbar({ bannerActive = false }) {
       {/* Mobile Bottom Navigation Bar */}
       <div className="navbar-mobile-bottom-bar">
         <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end>
-          <span className="mobile-bottom-icon">{storeIcons.home}</span>
+          <span className="mobile-bottom-icon">{renderIcon("home", storeIcons.home)}</span>
           <span className="mobile-bottom-label">Home</span>
         </NavLink>
         <button
@@ -613,12 +637,12 @@ function Navbar({ bannerActive = false }) {
             }
           }}
         >
-          <span className="mobile-bottom-icon">{storeIcons.categories}</span>
+          <span className="mobile-bottom-icon">{renderIcon("categories", storeIcons.categories)}</span>
           <span className="mobile-bottom-label">Categories</span>
         </button>
         <NavLink to="/wishlist" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
           <div className="mobile-bottom-cart-wrap">
-            <span className="mobile-bottom-icon">{storeIcons.wishlist}</span>
+            <span className="mobile-bottom-icon">{renderIcon("wishlist", storeIcons.wishlist)}</span>
             {wishlist.length > 0 ? (
               <span className="mobile-bottom-badge">
                 {wishlist.length}
@@ -628,7 +652,7 @@ function Navbar({ bannerActive = false }) {
           <span className="mobile-bottom-label">Wishlist</span>
         </NavLink>
         <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
-          <span className="mobile-bottom-icon">{storeIcons.profile}</span>
+          <span className="mobile-bottom-icon">{renderIcon("profile", storeIcons.profile)}</span>
           <span className="mobile-bottom-label">{user ? "Profile" : "Login"}</span>
         </NavLink>
       </div>
