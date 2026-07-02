@@ -347,9 +347,9 @@ html.banner-active .navbar {
 /* ── Location ───────────────────────────────────────────────────────────── */
 
 .navbar-location {
-  display: flex;
+  display: inline-flex;
   flex-direction: row;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   padding: 8px 10px;
   min-width: 132px;

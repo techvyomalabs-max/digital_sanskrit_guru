@@ -319,7 +319,6 @@ function Navbar({ bannerActive = false }) {
             type="button"
             className="navbar-location navbar-location-btn navbar-outline"
             onClick={() => setIsAddressModalOpen(true)}
-            style={{ display: "inline-flex", alignItems: "center" }}
           >
             <span className="navbar-location-icon" aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
               <MapPin size={18} className="lucide-icon" />
@@ -381,7 +380,7 @@ function Navbar({ bannerActive = false }) {
               aria-label={isMenuOpen ? "Close menu" : "Open menu"}
               onClick={() => setIsMenuOpen((current) => !current)}
             >
-              <span className="navbar-menu-icon" aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <span className="navbar-menu-icon" aria-hidden="true">
                 {isMenuOpen ? <X size={20} className="lucide-icon" /> : <Menu size={20} className="lucide-icon" />}
               </span>
               <span className="navbar-menu-text">{isMenuOpen ? "Close" : "Menu"}</span>
@@ -401,7 +400,6 @@ function Navbar({ bannerActive = false }) {
                   aria-label="Open collection filters"
                   aria-expanded={isCollectionFilterMenuOpen}
                   onClick={() => setIsCollectionFilterMenuOpen((current) => !current)}
-                  style={{ display: "inline-flex", alignItems: "center" }}
                 >
                   <Menu size={16} className="lucide-icon" style={{ marginRight: "6px" }} />
                   <span className="navbar-collection-menu-text">All</span>
