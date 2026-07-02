@@ -342,7 +342,6 @@ function Navbar({ bannerActive = false }) {
               <span className="navbar-search-btn-icon" aria-hidden="true">
                 {renderIcon("search", storeIcons.search)}
               </span>
-              <span className="navbar-search-btn-text">Search</span>
             </button>
           </form>
 
