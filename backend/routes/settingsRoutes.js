@@ -331,7 +331,15 @@ function normalizeSettings(settings) {
     lastUpdatedByName: String(settings?.lastUpdatedByName || "").trim(),
     lastUpdatedByEmail: String(settings?.lastUpdatedByEmail || "").trim().toLowerCase(),
     lastUpdatedAt: settings?.lastUpdatedAt || null,
-    sponsors: normalizeSponsors(settings?.sponsors || [])
+    sponsors: normalizeSponsors(settings?.sponsors || []),
+    storeIcons: {
+      home: String(settings?.storeIcons?.home || "🏠").trim(),
+      categories: String(settings?.storeIcons?.categories || "📚").trim(),
+      wishlist: String(settings?.storeIcons?.wishlist || "❤️").trim(),
+      cart: String(settings?.storeIcons?.cart || "🛒").trim(),
+      profile: String(settings?.storeIcons?.profile || "👤").trim(),
+      search: String(settings?.storeIcons?.search || "🔍").trim()
+    }
   };
 }
 
@@ -350,7 +358,8 @@ function buildPublicSettingsPayload(settings) {
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
-    sponsors:         normalized.sponsors
+    sponsors:         normalized.sponsors,
+    storeIcons:       normalized.storeIcons
   };
 }
 
@@ -372,6 +381,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
   if (JSON.stringify(previousSettings?.sponsors || []) !== JSON.stringify(nextSettings?.sponsors || [])) changes.push("sponsors");
+  if (JSON.stringify(previousSettings?.storeIcons || {}) !== JSON.stringify(nextSettings?.storeIcons || {})) changes.push("store icons");
 
   return changes;
 }
@@ -466,6 +476,18 @@ router.put("/", protect, admin, async (req, res) => {
   const sponsors = hasSponsors
     ? normalizeSponsors(req.body?.sponsors)
     : normalizeSponsors(settings.sponsors || []);
+
+  const hasStoreIcons = Boolean(req.body?.storeIcons && typeof req.body.storeIcons === "object");
+  if (hasStoreIcons) {
+    settings.storeIcons = {
+      home: String(req.body.storeIcons.home || "🏠").trim(),
+      categories: String(req.body.storeIcons.categories || "📚").trim(),
+      wishlist: String(req.body.storeIcons.wishlist || "❤️").trim(),
+      cart: String(req.body.storeIcons.cart || "🛒").trim(),
+      profile: String(req.body.storeIcons.profile || "👤").trim(),
+      search: String(req.body.storeIcons.search || "🔍").trim()
+    };
+  }
   const allowedThemeIds = new Set([
     ...StoreSettings.SITE_THEMES,
     ...customThemes.map((theme) => theme.id)

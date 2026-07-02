@@ -31,6 +31,36 @@ function Navbar({ bannerActive = false }) {
   const hasLoadedCollectionCategories = useRef(false);
   const isAdminRoute = location.pathname.startsWith("/admin");
 
+  const [storeIcons, setStoreIcons] = useState({
+    home: "🏠",
+    categories: "📚",
+    wishlist: "❤️",
+    cart: "🛒",
+    profile: "👤",
+    search: "🔍"
+  });
+
+  useEffect(() => {
+    let active = true;
+    const fetchIcons = () => {
+      axios.get("/api/settings/public")
+        .then(res => {
+          if (active && res.data?.storeIcons) {
+            setStoreIcons(res.data.storeIcons);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchIcons();
+
+    window.addEventListener("siteSettingsUpdated", fetchIcons);
+    return () => {
+      active = false;
+      window.removeEventListener("siteSettingsUpdated", fetchIcons);
+    };
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
@@ -285,7 +315,7 @@ function Navbar({ bannerActive = false }) {
             />
             <button type="submit" className="navbar-search-btn" aria-label="Search">
               <span className="navbar-search-btn-icon" aria-hidden="true">
-                🔍
+                {storeIcons.search}
               </span>
               <span className="navbar-search-btn-text">Search</span>
             </button>
@@ -311,7 +341,7 @@ function Navbar({ bannerActive = false }) {
 
             <Link className="navbar-cart navbar-outline" to="/cart">
               <span className="navbar-cart-icon" aria-hidden="true">
-                🛒
+                {storeIcons.cart}
               </span>
               <span className="navbar-cart-label">Cart</span>
               <span className="navbar-badge">
@@ -570,7 +600,7 @@ function Navbar({ bannerActive = false }) {
       {/* Mobile Bottom Navigation Bar */}
       <div className="navbar-mobile-bottom-bar">
         <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end>
-          <span className="mobile-bottom-icon">🏠</span>
+          <span className="mobile-bottom-icon">{storeIcons.home}</span>
           <span className="mobile-bottom-label">Home</span>
         </NavLink>
         <button
@@ -583,12 +613,12 @@ function Navbar({ bannerActive = false }) {
             }
           }}
         >
-          <span className="mobile-bottom-icon">📚</span>
+          <span className="mobile-bottom-icon">{storeIcons.categories}</span>
           <span className="mobile-bottom-label">Categories</span>
         </button>
         <NavLink to="/wishlist" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
           <div className="mobile-bottom-cart-wrap">
-            <span className="mobile-bottom-icon">❤️</span>
+            <span className="mobile-bottom-icon">{storeIcons.wishlist}</span>
             {wishlist.length > 0 ? (
               <span className="mobile-bottom-badge">
                 {wishlist.length}
@@ -598,7 +628,7 @@ function Navbar({ bannerActive = false }) {
           <span className="mobile-bottom-label">Wishlist</span>
         </NavLink>
         <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
-          <span className="mobile-bottom-icon">👤</span>
+          <span className="mobile-bottom-icon">{storeIcons.profile}</span>
           <span className="mobile-bottom-label">{user ? "Profile" : "Login"}</span>
         </NavLink>
       </div>

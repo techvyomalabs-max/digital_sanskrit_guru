@@ -72,8 +72,20 @@ function AdminThemeSettings() {
   const [bannerTextColor, setBannerTextColor] = useState("#ffffff");
   const [bannerLinkUrl,   setBannerLinkUrl]   = useState("");
   const [bannerLinkText,  setBannerLinkText]  = useState("Shop Now");
-  const [isSavingBanner,  setIsSavingBanner]  = useState(false);
   const [bannerMessage,   setBannerMessage]   = useState("");
+  const [isSavingBanner,  setIsSavingBanner]  = useState(false);
+
+  // Website Icons state
+  const [storeIcons, setStoreIcons] = useState({
+    home: "🏠",
+    categories: "📚",
+    wishlist: "❤️",
+    cart: "🛒",
+    profile: "👤",
+    search: "🔍"
+  });
+  const [isSavingIcons, setIsSavingIcons] = useState(false);
+  const [iconsMessage, setIconsMessage] = useState("");
 
   const themeOptions = useMemo(() => getSiteThemeOptions(customThemes), [customThemes]);
 
@@ -118,6 +130,17 @@ function AdminThemeSettings() {
           setBannerTextColor(String(res.data.festiveBanner.textColor || "#ffffff"));
           setBannerLinkUrl(String(res.data.festiveBanner.linkUrl  || ""));
           setBannerLinkText(String(res.data.festiveBanner.linkText || "Shop Now"));
+        }
+        // Load website icons settings
+        if (res.data?.storeIcons) {
+          setStoreIcons({
+            home: String(res.data.storeIcons.home || "🏠"),
+            categories: String(res.data.storeIcons.categories || "📚"),
+            wishlist: String(res.data.storeIcons.wishlist || "❤️"),
+            cart: String(res.data.storeIcons.cart || "🛒"),
+            profile: String(res.data.storeIcons.profile || "👤"),
+            search: String(res.data.storeIcons.search || "🔍")
+          });
         }
       })
       .catch(() => {
@@ -267,6 +290,24 @@ function AdminThemeSettings() {
       setBannerMessage(err?.response?.data?.message || "Could not save banner settings.");
     } finally {
       setIsSavingBanner(false);
+    }
+  };
+
+  const saveStoreIcons = async () => {
+    setIsSavingIcons(true);
+    setIconsMessage("");
+    try {
+      await axios.put(
+        "/api/settings",
+        { storeIcons },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setIconsMessage("Website icons updated successfully.");
+      window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
+    } catch (err) {
+      setIconsMessage(err?.response?.data?.message || "Could not save website icons.");
+    } finally {
+      setIsSavingIcons(false);
     }
   };
 
@@ -795,6 +836,96 @@ function AdminThemeSettings() {
           {bannerMessage && (
             <p className={`pricing-message ${bannerMessage.includes("Could not") ? "error" : "success"}`}>
               {bannerMessage}
+            </p>
+          )}
+        </section>
+
+        {/* ── Website Icons Settings ── */}
+        <section className="card">
+          <div className="pricing-controls-header">
+            <div>
+              <h3>Website Icons</h3>
+              <p>Configure the custom emojis, icons, or text characters displayed across the storefront links.</p>
+            </div>
+            <span className="pricing-badge">Storefront Icons</span>
+          </div>
+
+          <div className="theme-creator-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "20px", marginTop: "20px" }}>
+            <label className="pricing-field">
+              <span className="pricing-label">Home Link Icon</span>
+              <input
+                type="text"
+                value={storeIcons.home}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, home: e.target.value }))}
+                placeholder="🏠"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+
+            <label className="pricing-field">
+              <span className="pricing-label">Categories Link Icon</span>
+              <input
+                type="text"
+                value={storeIcons.categories}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, categories: e.target.value }))}
+                placeholder="📚"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+
+            <label className="pricing-field">
+              <span className="pricing-label">Wishlist Link Icon</span>
+              <input
+                type="text"
+                value={storeIcons.wishlist}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, wishlist: e.target.value }))}
+                placeholder="❤️"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+
+            <label className="pricing-field">
+              <span className="pricing-label">Cart Link Icon</span>
+              <input
+                type="text"
+                value={storeIcons.cart}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, cart: e.target.value }))}
+                placeholder="🛒"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+
+            <label className="pricing-field">
+              <span className="pricing-label">Profile Link Icon</span>
+              <input
+                type="text"
+                value={storeIcons.profile}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, profile: e.target.value }))}
+                placeholder="👤"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+
+            <label className="pricing-field">
+              <span className="pricing-label">Search Form Icon</span>
+              <input
+                type="text"
+                value={storeIcons.search}
+                onChange={(e) => setStoreIcons((prev) => ({ ...prev, search: e.target.value }))}
+                placeholder="🔍"
+                style={{ fontSize: "1.1rem" }}
+              />
+            </label>
+          </div>
+
+          <div className="pricing-actions-row" style={{ marginTop: "24px" }}>
+            <button className="pricing-save-btn" onClick={saveStoreIcons} disabled={isSavingIcons}>
+              {isSavingIcons ? "Saving..." : "Save Website Icons"}
+            </button>
+          </div>
+          {iconsMessage && (
+            <p className={`pricing-message ${iconsMessage.includes("Could not") ? "error" : "success"}`}>
+              {iconsMessage}
             </p>
           )}
         </section>

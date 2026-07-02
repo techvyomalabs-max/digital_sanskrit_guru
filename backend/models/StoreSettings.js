@@ -480,6 +480,14 @@ const storeSettingsSchema = new mongoose.Schema(
     sponsors: {
       type: [sponsorSchema],
       default: DEFAULT_SPONSORS
+    },
+    storeIcons: {
+      home: { type: String, default: "🏠", trim: true },
+      categories: { type: String, default: "📚", trim: true },
+      wishlist: { type: String, default: "❤️", trim: true },
+      cart: { type: String, default: "🛒", trim: true },
+      profile: { type: String, default: "👤", trim: true },
+      search: { type: String, default: "🔍", trim: true }
     }
   },
   { timestamps: true }
