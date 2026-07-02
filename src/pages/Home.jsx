@@ -677,81 +677,83 @@ function Home() {
         </section>
       </DeferredHomeSection>
 
-      <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading sponsors">
-        <section className="home-section home-deferred-section home-sponsors-section">
-          <div className="home-section-head">
-            <div>
-              <span className="home-section-kicker">Sponsors & Partners</span>
-              <h2>Supported By</h2>
-              <p>Our work is powered by the trust and sponsorship of these esteemed institutions.</p>
+      {sponsorsList.length > 0 && (
+        <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading sponsors">
+          <section className="home-section home-deferred-section home-sponsors-section">
+            <div className="home-section-head">
+              <div>
+                <span className="home-section-kicker">Sponsors & Partners</span>
+                <h2>Supported By</h2>
+                <p>Our work is powered by the trust and sponsorship of these esteemed institutions.</p>
+              </div>
             </div>
-          </div>
 
-          <div className="home-sponsors-grid">
-            {(sponsorsList.length > 0 ? sponsorsList : SPONSORS).map((sponsor, idx) => {
-              const hasLogoImage = sponsor.logoUrl && sponsor.logoUrl.trim() !== "";
+            <div className="home-sponsors-grid">
+              {sponsorsList.map((sponsor, idx) => {
+                const hasLogoImage = sponsor.logoUrl && sponsor.logoUrl.trim() !== "";
 
-              const sponsorNameLower = String(sponsor.name || "").toLowerCase();
-              const matchedPreset = SPONSORS.find(
-                (preset) =>
-                  preset.id === sponsor.id ||
-                  sponsorNameLower.includes(preset.name.toLowerCase()) ||
-                  preset.name.toLowerCase().includes(sponsorNameLower)
-              );
-
-              const fallbackIcon = (
-                <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="10" y="14" width="44" height="36" rx="8" />
-                  <path d="M22 24h20M22 32h14" />
-                  <circle cx="42" cy="32" r="3" fill="currentColor" />
-                </svg>
-              );
-
-              const logoElement = hasLogoImage ? (
-                <img
-                  src={sponsor.logoUrl}
-                  alt={sponsor.name}
-                  className="home-sponsor-logo-img"
-                  width="64"
-                  height="64"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="home-sponsor-icon-wrapper">
-                  {matchedPreset ? matchedPreset.icon : fallbackIcon}
-                </div>
-              );
-
-              const props = {
-                key: sponsor.id || sponsor._id || idx,
-                className: "home-sponsor-card"
-              };
-
-              const innerContent = (
-                <>
-                  {logoElement}
-                  <strong className="home-sponsor-name">{sponsor.name}</strong>
-                  <span className="home-sponsor-desc">{sponsor.description}</span>
-                </>
-              );
-
-              if (sponsor.websiteUrl) {
-                return (
-                  <a href={sponsor.websiteUrl} target="_blank" rel="noreferrer" {...props}>
-                    {innerContent}
-                  </a>
+                const sponsorNameLower = String(sponsor.name || "").toLowerCase();
+                const matchedPreset = SPONSORS.find(
+                  (preset) =>
+                    preset.id === sponsor.id ||
+                    sponsorNameLower.includes(preset.name.toLowerCase()) ||
+                    preset.name.toLowerCase().includes(sponsorNameLower)
                 );
-              }
 
-              return (
-                <div {...props}>
-                  {innerContent}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      </DeferredHomeSection>
+                const fallbackIcon = (
+                  <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="10" y="14" width="44" height="36" rx="8" />
+                    <path d="M22 24h20M22 32h14" />
+                    <circle cx="42" cy="32" r="3" fill="currentColor" />
+                  </svg>
+                );
+
+                const logoElement = hasLogoImage ? (
+                  <img
+                    src={sponsor.logoUrl}
+                    alt={sponsor.name}
+                    className="home-sponsor-logo-img"
+                    width="64"
+                    height="64"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="home-sponsor-icon-wrapper">
+                    {matchedPreset ? matchedPreset.icon : fallbackIcon}
+                  </div>
+                );
+
+                const props = {
+                  key: sponsor.id || sponsor._id || idx,
+                  className: "home-sponsor-card"
+                };
+
+                const innerContent = (
+                  <>
+                    {logoElement}
+                    <strong className="home-sponsor-name">{sponsor.name}</strong>
+                    <span className="home-sponsor-desc">{sponsor.description}</span>
+                  </>
+                );
+
+                if (sponsor.websiteUrl) {
+                  return (
+                    <a href={sponsor.websiteUrl} target="_blank" rel="noreferrer" {...props}>
+                      {innerContent}
+                    </a>
+                  );
+                }
+
+                return (
+                  <div {...props}>
+                    {innerContent}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </DeferredHomeSection>
+      )}
     </div>
   );
 }
