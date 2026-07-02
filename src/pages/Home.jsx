@@ -450,46 +450,46 @@ function Home() {
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts
               ? Array.from({ length: 4 }).map((_, index) => (
-                  <div className="home-mini-skeleton" key={`arrival-skeleton-${index}`}>
-                    <span className="home-skeleton home-skeleton-image" />
-                    <span className="home-skeleton home-skeleton-line short" />
-                  </div>
-                ))
+                <div className="home-mini-skeleton" key={`arrival-skeleton-${index}`}>
+                  <span className="home-skeleton home-skeleton-image" />
+                  <span className="home-skeleton home-skeleton-line short" />
+                </div>
+              ))
               : newArrivals.map((product) => (
-                  <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
-                    <img
-                      src={product.image || "https://picsum.photos/220"}
-                      alt={product.name}
-                      width="220"
-                      height="130"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="home-mini-card-meta">
-                      <span>{getCategoryLabel(product)}</span>
-                      <span>{formatPrice(getDisplayPrice(product))}</span>
-                    </div>
-                    <strong>{product.name}</strong>
-                    <span>{getAverageRating(product).toFixed(1)} rated by readers</span>
-                  </Link>
-                ))}
+                <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
+                  <img
+                    src={product.image || "https://picsum.photos/220"}
+                    alt={product.name}
+                    width="220"
+                    height="130"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="home-mini-card-meta">
+                    <span>{getCategoryLabel(product)}</span>
+                    <span>{formatPrice(getDisplayPrice(product))}</span>
+                  </div>
+                  <strong>{product.name}</strong>
+                  <span>{getAverageRating(product).toFixed(1)} rated by readers</span>
+                </Link>
+              ))}
           </div>
 
           <div className="home-mobile-image-strip">
             {isLoadingProducts
               ? Array.from({ length: 4 }).map((_, index) => (
-                  <div key={`arrival-mobile-skeleton-${index}`} className="home-skeleton-card home-spotlight-item">
-                    <span className="home-skeleton home-skeleton-image" />
-                    <span className="home-skeleton home-skeleton-line short" />
-                    <span className="home-skeleton home-skeleton-line" />
-                    <span className="home-skeleton home-skeleton-line medium" />
-                  </div>
-                ))
+                <div key={`arrival-mobile-skeleton-${index}`} className="home-skeleton-card home-spotlight-item">
+                  <span className="home-skeleton home-skeleton-image" />
+                  <span className="home-skeleton home-skeleton-line short" />
+                  <span className="home-skeleton home-skeleton-line" />
+                  <span className="home-skeleton home-skeleton-line medium" />
+                </div>
+              ))
               : newArrivals.map((product) => (
-                  <div key={product._id} className="home-spotlight-item">
-                    <ProductCard product={product} showDescription={false} variant="home" />
-                  </div>
-                ))}
+                <div key={product._id} className="home-spotlight-item">
+                  <ProductCard product={product} showDescription={false} variant="home" />
+                </div>
+              ))}
           </div>
         </div>
 
@@ -504,46 +504,46 @@ function Home() {
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts
               ? Array.from({ length: 4 }).map((_, index) => (
-                  <div className="home-mini-skeleton" key={`budget-skeleton-${index}`}>
-                    <span className="home-skeleton home-skeleton-image" />
-                    <span className="home-skeleton home-skeleton-line short" />
-                  </div>
-                ))
+                <div className="home-mini-skeleton" key={`budget-skeleton-${index}`}>
+                  <span className="home-skeleton home-skeleton-image" />
+                  <span className="home-skeleton home-skeleton-line short" />
+                </div>
+              ))
               : budgetPicks.map((product) => (
-                  <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
-                    <img
-                      src={product.image || "https://picsum.photos/220"}
-                      alt={product.name}
-                      width="220"
-                      height="130"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="home-mini-card-meta">
-                      <span>{getCategoryLabel(product)}</span>
-                      <span>{formatPrice(getDisplayPrice(product))}</span>
-                    </div>
-                    <strong>{product.name}</strong>
-                    <span>{Number(product?.stock || 0) > 0 ? "In stock now" : "Currently unavailable"}</span>
-                  </Link>
-                ))}
+                <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
+                  <img
+                    src={product.image || "https://picsum.photos/220"}
+                    alt={product.name}
+                    width="220"
+                    height="130"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="home-mini-card-meta">
+                    <span>{getCategoryLabel(product)}</span>
+                    <span>{formatPrice(getDisplayPrice(product))}</span>
+                  </div>
+                  <strong>{product.name}</strong>
+                  <span>{Number(product?.stock || 0) > 0 ? "In stock now" : "Currently unavailable"}</span>
+                </Link>
+              ))}
           </div>
 
           <div className="home-mobile-image-strip">
             {isLoadingProducts
               ? Array.from({ length: 4 }).map((_, index) => (
-                  <div key={`budget-mobile-skeleton-${index}`} className="home-skeleton-card home-spotlight-item">
-                    <span className="home-skeleton home-skeleton-image" />
-                    <span className="home-skeleton home-skeleton-line short" />
-                    <span className="home-skeleton home-skeleton-line" />
-                    <span className="home-skeleton home-skeleton-line medium" />
-                  </div>
-                ))
+                <div key={`budget-mobile-skeleton-${index}`} className="home-skeleton-card home-spotlight-item">
+                  <span className="home-skeleton home-skeleton-image" />
+                  <span className="home-skeleton home-skeleton-line short" />
+                  <span className="home-skeleton home-skeleton-line" />
+                  <span className="home-skeleton home-skeleton-line medium" />
+                </div>
+              ))
               : budgetPicks.map((product) => (
-                  <div key={product._id} className="home-spotlight-item">
-                    <ProductCard product={product} showDescription={false} variant="home" />
-                  </div>
-                ))}
+                <div key={product._id} className="home-spotlight-item">
+                  <ProductCard product={product} showDescription={false} variant="home" />
+                </div>
+              ))}
           </div>
         </div>
       </section>
@@ -621,7 +621,7 @@ function Home() {
             ) : (
               <div className="home-empty-state">
                 <strong>No bundle products yet</strong>
-                <p>Bundle products created by admin will appear here automatically.</p>
+                {/* <p>Bundle products created by admin will appear here automatically.</p> */}
               </div>
             )}
           </div>

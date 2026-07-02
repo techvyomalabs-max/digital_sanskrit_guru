@@ -79,9 +79,9 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
     }
   };
 
-  const cardClassName = `product-card${variant === "home" ? " product-card-home" : ""}${
-    variant === "search" ? " product-card-search" : ""
-  }`;
+  const cardClassName = `product-card${
+    variant === "home" || variant === "wishlist" ? " product-card-home" : ""
+  }${variant === "search" ? " product-card-search" : ""}`;
 
   return (
     <div className={cardClassName}>
@@ -170,11 +170,13 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
           </span>
         </p>
 
-        <div className="product-actions">
-          <Link to={`/product/${product._id}`}>
-            <button className="product-cta">View Product</button>
-          </Link>
-        </div>
+        {variant !== "wishlist" && (
+          <div className="product-actions">
+            <Link to={`/product/${product._id}`}>
+              <button className="product-cta">View Product</button>
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

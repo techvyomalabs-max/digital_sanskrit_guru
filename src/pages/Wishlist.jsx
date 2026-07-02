@@ -15,7 +15,7 @@ function Wishlist() {
 
         <div className="wishlist-grid">
           {wishlist.length > 0 ? (
-            wishlist.map((product) => <ProductCard key={product._id} product={product} />)
+            wishlist.map((product) => <ProductCard key={product._id} product={product} variant="wishlist" />)
           ) : (
             <div className="wishlist-empty">
               <h2>Your wishlist is empty</h2>
