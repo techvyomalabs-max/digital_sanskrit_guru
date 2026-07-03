@@ -464,7 +464,7 @@
 
   .collection-mobile-toolbar {
     display: grid;
-    grid-template-columns: minmax(120px, 1fr) minmax(0, 1fr);
+    grid-template-columns: auto 1fr;
     gap: 8px;
     margin-bottom: 10px;
     position: sticky;
@@ -472,6 +472,7 @@
     z-index: 20;
     background: var(--site-surface);
     padding-bottom: 6px;
+    align-items: center;
   }
 
   html.banner-active .collection-mobile-toolbar {
@@ -488,14 +489,37 @@
   }
 
   .collection-mobile-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid var(--site-border);
     border-radius: var(--radius-md);
     background: var(--site-surface-muted);
     color: var(--site-text);
     min-height: 36px;
-    font-size: 13px;
-    font-weight: 700;
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+    position: relative;
     cursor: pointer;
+  }
+
+  .filter-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--site-badge-bg, #D97706);
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--site-surface);
+    line-height: 1;
   }
 
   .collection-sort-box-mobile {
@@ -668,10 +692,6 @@
     padding: 10px;
   }
 
-  .collection-mobile-toolbar {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
 
   .collection-mobile-filter-btn {
     min-height: 34px;

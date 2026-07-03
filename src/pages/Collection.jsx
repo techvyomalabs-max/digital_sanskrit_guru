@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
+import { SlidersHorizontal, ArrowUpDown, X } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import "./Collection.css";
 
@@ -181,7 +182,7 @@ function Collection() {
               <div className="collection-mobile-filter-head">
                 <h3>Filters</h3>
                 <button type="button" onClick={() => setIsMobileFilterOpen(false)} aria-label="Close filters">
-                  {"\u00D7"}
+                  <X size={18} className="lucide-icon" />
                 </button>
               </div>
 
@@ -219,12 +220,18 @@ function Collection() {
                 type="button"
                 className="collection-mobile-filter-btn"
                 onClick={() => setIsMobileFilterOpen(true)}
+                aria-label="Filters"
               >
-                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                <SlidersHorizontal size={18} className="lucide-icon" />
+                {activeFilterCount > 0 ? (
+                  <span className="filter-badge">{activeFilterCount}</span>
+                ) : null}
               </button>
 
               <div className="collection-sort-box collection-sort-box-mobile">
-                <label htmlFor="collection-sort-mobile">Sort by</label>
+                <label htmlFor="collection-sort-mobile" aria-label="Sort by" style={{ display: "inline-flex" }}>
+                  <ArrowUpDown size={16} className="lucide-icon" style={{ color: "var(--site-text-soft)" }} />
+                </label>
                 <select
                   id="collection-sort-mobile"
                   value={sortOption}
@@ -266,7 +273,9 @@ function Collection() {
                 </button>
 
                 <div className="collection-sort-box">
-                  <label htmlFor="collection-sort">Sort by</label>
+                  <label htmlFor="collection-sort" aria-label="Sort by" style={{ display: "inline-flex" }}>
+                    <ArrowUpDown size={16} className="lucide-icon" style={{ color: "var(--site-text-soft)" }} />
+                  </label>
                   <select id="collection-sort" value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
                     <option value="featured">Featured</option>
                     <option value="latest">Latest</option>
