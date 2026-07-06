@@ -458,6 +458,7 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
 // Get home page data — cached 90 seconds
 router.get("/home", async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "public, max-age=90, s-maxage=90, stale-while-revalidate=30");
     const data = await cacheAside("home:payload", TTL.PRODUCTS_HOME, async () => {
       const [products, settings] = await Promise.all([
         Product.find()
@@ -478,6 +479,7 @@ router.get("/home", async (req, res) => {
 // Get products with pagination — cache paginated + filter results 60 seconds
 router.get("/", async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=60, stale-while-revalidate=20");
     const hasPaginationQuery =
       req.query.page !== undefined ||
       req.query.limit !== undefined ||
@@ -705,6 +707,7 @@ router.get("/recommend/:productId", async (req, res) => {
 // Get one product by id — cached 2 minutes
 router.get("/:id", async (req, res) => {
   try {
+    res.setHeader("Cache-Control", "public, max-age=120, s-maxage=120, stale-while-revalidate=30");
     const cacheKey = `product:${req.params.id}`;
     const cached = appCache.get(cacheKey);
     if (cached) return res.json(cached);

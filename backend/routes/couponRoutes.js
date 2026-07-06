@@ -6,6 +6,7 @@ const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/curre
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
+const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 
 const router = express.Router();
 
@@ -74,6 +75,7 @@ router.post("/", protect, admin, async (req, res) => {
       }
     });
 
+    invalidateProductCache();
     return res.json(coupon);
   } catch (err) {
     if (err?.code === 11000) {
@@ -86,15 +88,18 @@ router.post("/", protect, admin, async (req, res) => {
 // Public: returns coupon details
 router.get("/", async (_req, res) => {
   try {
-    const coupons = await Coupon.find().sort({ createdAt: -1 });
-    const publicCoupons = coupons.map((c) => ({
-      _id: c._id,
-      code: c.code,
-      type: c.type,
-      value: c.value,
-      minOrder: c.minOrder || 0,
-      expiresAt: c.expiresAt || null
-    }));
+    res.setHeader("Cache-Control", "public, max-age=120, s-maxage=120, stale-while-revalidate=30");
+    const publicCoupons = await cacheAside("coupons:public", TTL.COUPONS_PUBLIC, async () => {
+      const coupons = await Coupon.find().sort({ createdAt: -1 });
+      return coupons.map((c) => ({
+        _id: c._id,
+        code: c.code,
+        type: c.type,
+        value: c.value,
+        minOrder: c.minOrder || 0,
+        expiresAt: c.expiresAt || null
+      }));
+    });
     res.json(publicCoupons);
   } catch {
     res.status(500).json({ message: "Failed to load coupons" });
@@ -131,6 +136,7 @@ router.delete("/:id", protect, admin, async (req, res) => {
     });
   }
 
+  invalidateProductCache();
   res.json({ message: "Coupon deleted" });
 });
 
