@@ -634,9 +634,9 @@
   }
 
   .home-banner-image {
-    height: 180px;
+    height: auto;
+    aspect-ratio: 16 / 5.2;
     object-fit: cover;
-    object-position: center;
   }
 
   .home-banner-loading {
@@ -768,9 +768,9 @@
   }
 
   .home-banner-image {
-    height: 160px;
+    height: auto;
+    aspect-ratio: 16 / 5.2;
     object-fit: cover;
-    object-position: center;
   }
 
   .home-banner-loading {
