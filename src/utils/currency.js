@@ -326,12 +326,6 @@ export function formatOrderDisplayCurrency(order, amountKey = "total", fallbackV
   const orderAmount = Number(order?.[amountKey]);
   const safeFallback = Number(fallbackValue || 0);
   const value = Number.isFinite(orderAmount) ? orderAmount : safeFallback;
-  const rawStoredDisplayAmount = order?.currencyDisplay?.amount;
-  const hasStoredDisplayAmount =
-    rawStoredDisplayAmount !== null &&
-    rawStoredDisplayAmount !== undefined &&
-    rawStoredDisplayAmount !== "";
-  const storedDisplayAmount = hasStoredDisplayAmount ? Number(rawStoredDisplayAmount) : NaN;
 
   const displayCurrency = String(
     order?.currencyDisplay?.currency ||
@@ -342,20 +336,31 @@ export function formatOrderDisplayCurrency(order, amountKey = "total", fallbackV
     .trim()
     .toUpperCase();
 
-  if (Number.isFinite(storedDisplayAmount) && displayCurrency) {
-    return formatCurrencyForUser(storedDisplayAmount, {
-      locale: options.locale,
-      currency: displayCurrency,
-      sourceCurrency: displayCurrency,
-      minimumFractionDigits: options.minimumFractionDigits,
-      maximumFractionDigits: options.maximumFractionDigits
-    });
+  // Only use stored display amount if we are requesting the 'total' key
+  if (amountKey === "total") {
+    const rawStoredDisplayAmount = order?.currencyDisplay?.amount;
+    const hasStoredDisplayAmount =
+      rawStoredDisplayAmount !== null &&
+      rawStoredDisplayAmount !== undefined &&
+      rawStoredDisplayAmount !== "";
+    const storedDisplayAmount = hasStoredDisplayAmount ? Number(rawStoredDisplayAmount) : NaN;
+
+    if (Number.isFinite(storedDisplayAmount) && displayCurrency) {
+      return formatCurrencyForUser(storedDisplayAmount, {
+        locale: options.locale,
+        currency: displayCurrency,
+        sourceCurrency: displayCurrency,
+        minimumFractionDigits: options.minimumFractionDigits,
+        maximumFractionDigits: options.maximumFractionDigits
+      });
+    }
   }
 
   if (!displayCurrency || displayCurrency === BASE_CURRENCY) {
     return formatBaseCurrency(value, options);
   }
 
+  // Convert other fields from BASE_CURRENCY (INR) to display currency
   return formatCurrencyForUser(value, {
     locale: options.locale,
     currency: displayCurrency,
