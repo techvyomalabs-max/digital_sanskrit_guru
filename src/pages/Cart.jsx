@@ -115,8 +115,8 @@ function Cart() {
   }, []);
 
   const deliveryDetails = useMemo(
-    () => getDeliveryPricingDetails(charges, selectedAddress),
-    [charges, selectedAddress]
+    () => getDeliveryPricingDetails(charges, selectedAddress, cartItems),
+    [charges, selectedAddress, cartItems]
   );
 
   const totals = useMemo(() => {

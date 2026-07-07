@@ -138,6 +138,10 @@ function AdminAddProducts() {
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [categoryMessage, setCategoryMessage] = useState("");
   const [stock, setStock] = useState("1");
+  const [weight, setWeight] = useState("0");
+  const [height, setHeight] = useState("0");
+  const [width, setWidth] = useState("0");
+  const [length, setLength] = useState("0");
   const [editingProduct, setEditingProduct] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
@@ -375,6 +379,10 @@ function AdminAddProducts() {
     setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
+    setWeight("0");
+    setHeight("0");
+    setWidth("0");
+    setLength("0");
     setEditingProduct(null);
   };
 
@@ -856,7 +864,11 @@ function AdminAddProducts() {
         }))
         .filter((item) => item.productId),
       category: category.trim() || "General",
-      stock: formSummary.numericStock
+      stock: formSummary.numericStock,
+      weight: Math.max(0, Number(weight || 0)),
+      height: Math.max(0, Number(height || 0)),
+      width: Math.max(0, Number(width || 0)),
+      length: Math.max(0, Number(length || 0))
     };
 
     setIsSavingProduct(true);
@@ -947,6 +959,10 @@ function AdminAddProducts() {
     );
     setCategory(product.category || "General");
     setStock(String(product.stock ?? 1));
+    setWeight(String(product.weight ?? 0));
+    setHeight(String(product.height ?? 0));
+    setWidth(String(product.width ?? 0));
+    setLength(String(product.length ?? 0));
     setFormMessage("");
 
     requestAnimationFrame(() => {
@@ -1294,6 +1310,46 @@ function AdminAddProducts() {
                       placeholder="e.g. 25"
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Weight (in Grams)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 450"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Length (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 21"
+                      value={length}
+                      onChange={(e) => setLength(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Width (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 14"
+                      value={width}
+                      onChange={(e) => setWidth(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Height (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 3"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value)}
                     />
                   </label>
                   <label className="admin-field">

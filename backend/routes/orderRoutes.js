@@ -238,6 +238,10 @@ router.post("/", protect, async (req, res) => {
       quantity,
       price: roundMoney(pricing.price),
       currency: String(pricing.currency || "INR").trim().toUpperCase(),
+      weight: Number(product?.weight || 0),
+      height: Number(product?.height || 0),
+      width: Number(product?.width || 0),
+      length: Number(product?.length || 0),
       domesticPrice: roundMoney(pricing.domesticPrice),
       internationalPrice: roundMoney(pricing.internationalPrice),
       internationalCountryPrices: Array.isArray(product?.internationalCountryPrices)
@@ -311,7 +315,7 @@ router.post("/", protect, async (req, res) => {
 
   const gstPercent = Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
   const deliveryCharge = roundMoney(
-    convertCurrencyAmount(resolveDeliveryCharge(settings, shipping), {
+    convertCurrencyAmount(resolveDeliveryCharge(settings, shipping, normalizedItems), {
       sourceCurrency: "INR",
       currency: orderCurrency,
       rates: settings?.currencyConversionRates || {}

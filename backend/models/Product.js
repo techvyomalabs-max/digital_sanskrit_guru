@@ -177,6 +177,26 @@ const productSchema = new mongoose.Schema(
     lastUpdatedAt: {
       type: Date,
       default: null
+    },
+    weight: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    height: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    width: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    length: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   { timestamps: true }

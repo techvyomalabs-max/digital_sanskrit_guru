@@ -400,6 +400,10 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
         : product.trailerVideoUrl;
     product.stock = req.body.stock ?? product.stock;
     product.category = req.body.category ?? product.category;
+    product.weight = req.body.weight !== undefined ? Math.max(0, Number(req.body.weight)) : product.weight;
+    product.height = req.body.height !== undefined ? Math.max(0, Number(req.body.height)) : product.height;
+    product.width = req.body.width !== undefined ? Math.max(0, Number(req.body.width)) : product.width;
+    product.length = req.body.length !== undefined ? Math.max(0, Number(req.body.length)) : product.length;
     product.festiveOffer = req.body?.festiveOffer === true;
     product.festiveDiscountPercent = product.festiveOffer
       ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent)

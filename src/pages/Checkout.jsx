@@ -199,8 +199,8 @@ function Checkout() {
   );
 
   const deliveryDetails = useMemo(() => {
-    return getDeliveryPricingDetails(charges, selectedAddress);
-  }, [charges, selectedAddress]);
+    return getDeliveryPricingDetails(charges, selectedAddress, cartItems);
+  }, [charges, selectedAddress, cartItems]);
 
   const totals = useMemo(() => {
     const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
