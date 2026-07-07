@@ -86,6 +86,24 @@ function App() {
     requestLocationPermissionForCurrency();
   }, []);
 
+  // Strip legacy query parameter ?v= from WooCommerce/plugins to prevent double pageviews in analytics
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has("v")) {
+        urlParams.delete("v");
+        const newSearch = urlParams.toString();
+        const newPath =
+          window.location.pathname +
+          (newSearch ? `?${newSearch}` : "") +
+          window.location.hash;
+        window.history.replaceState({}, document.title, newPath);
+      }
+    } catch (e) {
+      // Fail-silent
+    }
+  }, []);
+
   // Apply/remove html.banner-active so CSS can push navbar + content down by 40px
   useEffect(() => {
     if (isBannerActive) {
