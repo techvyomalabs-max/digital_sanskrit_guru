@@ -115,13 +115,8 @@
   }
 }
 
-@media (max-width: 600px) {
-  .footer-container {
-    grid-template-columns: 1fr;
-    gap: var(--space-8);
-  }
-  
+@media (max-width: 768px) {
   .site-footer {
-    padding-bottom: 80px; /* offset for mobile bottom navigation bar */
+    display: none;
   }
 }
