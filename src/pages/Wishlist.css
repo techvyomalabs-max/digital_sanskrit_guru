@@ -57,6 +57,7 @@
 
 @media (max-width: 720px) {
   .wishlist-page {
+    min-height: auto;
     padding: var(--space-4);
   }
 

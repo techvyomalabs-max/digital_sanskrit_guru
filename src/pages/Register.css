@@ -159,6 +159,7 @@
 
 @media (max-width: 860px) {
   .register-page {
+    min-height: auto;
     padding: var(--space-6) var(--space-4);
   }
 

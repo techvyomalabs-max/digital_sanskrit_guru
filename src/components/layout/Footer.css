@@ -15,6 +15,23 @@
   opacity: 0.85;
 }
 
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 17px;
+  flex-wrap: wrap;
+}
+
+.footer-links a {
+  font-size: 13px;
+  color: #666;
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 768px) {
   .site-footer {
     display: none;

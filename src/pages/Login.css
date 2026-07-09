@@ -161,6 +161,7 @@
 
 @media (max-width: 860px) {
   .login-page {
+    min-height: auto;
     padding: var(--space-6) var(--space-4);
   }
 
