@@ -16,6 +16,36 @@ const router = express.Router();
 // All routes require admin
 router.use(protect, admin);
 
+async function getTotalSpentExpression() {
+  const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
+  const rates = settings?.currencyConversionRates || {};
+
+  const branches = Object.entries(rates)
+    .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
+    .map(([currency, rate]) => ({
+      case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
+      then: Number(rate)
+    }));
+
+  const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
+
+  if (branches.length === 0) {
+    return paidAmountExpression;
+  }
+
+  return {
+    $divide: [
+      paidAmountExpression,
+      {
+        $switch: {
+          branches,
+          default: 1
+        }
+      }
+    ]
+  };
+}
+
 // ── GET /api/marketing/subscribers ──────────────────────────────────────────
 // Overview counts for the marketing dashboard
 router.get("/subscribers", async (_req, res) => {
@@ -63,9 +93,10 @@ async function resolveRecipientsList(filterType, filterValue) {
     }).select("user").lean();
     userIds = orders.map((o) => String(o.user)).filter(Boolean);
   } else if (filterType === "minSpend") {
+    const totalSpentExpression = await getTotalSpentExpression();
     const spendAgg = await Order.aggregate([
       { $match: { status: { $ne: "Cancelled" } } },
-      { $group: { _id: "$user", totalSpent: { $sum: "$total" } } },
+      { $group: { _id: "$user", totalSpent: { $sum: totalSpentExpression } } },
       { $match: { totalSpent: { $gte: Number(filterValue || 0) } } }
     ]);
     userIds = spendAgg.map((s) => String(s._id)).filter(Boolean);
@@ -120,10 +151,11 @@ router.post("/segmented-customers", async (req, res) => {
     const matchedUsers = await resolveRecipientsList(filterType, filterValue);
     const userIds = matchedUsers.map(u => u._id);
 
+    const totalSpentExpression = await getTotalSpentExpression();
     // Aggregate spend and order count for these users
     const ordersAgg = await Order.aggregate([
       { $match: { user: { $in: userIds }, status: { $ne: "Cancelled" } } },
-      { $group: { _id: "$user", totalSpent: { $sum: "$total" }, orderCount: { $sum: 1 } } }
+      { $group: { _id: "$user", totalSpent: { $sum: totalSpentExpression }, orderCount: { $sum: 1 } } }
     ]);
 
     const statsMap = new Map(ordersAgg.map(o => [String(o._id), o]));

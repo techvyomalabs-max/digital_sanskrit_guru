@@ -784,6 +784,32 @@ router.post("/", protect, async (req, res) => {
 // Get all orders (admin only)
 router.get("/", protect, admin, async (req, res) => {
   try {
+    const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
+    const rates = settings?.currencyConversionRates || {};
+
+    const branches = Object.entries(rates)
+      .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
+      .map(([currency, rate]) => ({
+        case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
+        then: Number(rate)
+      }));
+
+    const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
+
+    const totalInBaseExpression = branches.length > 0
+      ? {
+          $divide: [
+            paidAmountExpression,
+            {
+              $switch: {
+                branches,
+                default: 1
+              }
+            }
+          ]
+        }
+      : paidAmountExpression;
+
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limitQuery = req.query.limit;
     const isPaginated = limitQuery !== "all";
@@ -905,7 +931,7 @@ router.get("/", protect, admin, async (req, res) => {
                     ]
                   },
                   0,
-                  "$total"
+                  totalInBaseExpression
                 ]
               }
             },

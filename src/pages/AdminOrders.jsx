@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
-import { formatBaseCurrency, formatOrderDisplayCurrency } from "../utils/currency";
+import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
 import "./AdminOrders.css";
 
 const Icon = ({ name }) => {
@@ -287,7 +287,7 @@ function AdminOrders() {
           order.user?.email || "",
           getPaymentCountry(order),
           itemCount,
-          Math.round(order.total || 0),
+          Math.round(getOrderBaseTotal(order)),
           formatCustomerPaid(order),
           getDisplayStatus(order),
           getPaymentStatus(order),
@@ -354,6 +354,35 @@ function AdminOrders() {
     const amount = Number(value || 0);
     if (!Number.isFinite(amount)) return formatBaseCurrency(0);
     return formatBaseCurrency(amount, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
+  const getOrderBaseTotal = (order) => {
+    const displayCurrency = String(
+      order?.currencyDisplay?.currency ||
+        order?.displayCurrency ||
+        order?.currency ||
+        "INR"
+    )
+      .trim()
+      .toUpperCase();
+
+    const hasStoredDisplayAmount =
+      order?.currencyDisplay?.amount !== null &&
+      order?.currencyDisplay?.amount !== undefined &&
+      order?.currencyDisplay?.amount !== "";
+
+    const paidAmount = hasStoredDisplayAmount
+      ? Number(order.currencyDisplay.amount)
+      : Number(order?.total || 0);
+
+    if (displayCurrency === "INR") {
+      return paidAmount;
+    }
+
+    return convertCurrencyAmount(paidAmount, {
+      sourceCurrency: displayCurrency,
+      currency: "INR"
+    });
   };
 
   const formatCustomerPaid = (order, amountKey = "total", fallbackValue = order?.total || 0) =>
@@ -695,7 +724,7 @@ function AdminOrders() {
                         <small>{getCapturedCurrencyLabel(order)}</small>
                       </td>
                       <td className="admin-order-amount-cell">
-                        <strong>{formatMoney(order.total || 0)}</strong>
+                        <strong>{formatMoney(getOrderBaseTotal(order))}</strong>
                         <small>INR base</small>
                       </td>
                       <td>
