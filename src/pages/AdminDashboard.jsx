@@ -117,13 +117,15 @@ function AdminDashboard() {
       try {
         const [productRes, orderRes] = await Promise.all([
           axios.get("/api/products"),
-          axios.get("/api/orders", {
+          axios.get("/api/orders?limit=all", {
             headers: { Authorization: `Bearer ${token}` }
           })
         ]);
         if (!active) return;
         setProducts(productRes.data);
-        setOrders(orderRes.data);
+        const data = orderRes.data || {};
+        const ordersArray = Array.isArray(data) ? data : (Array.isArray(data.orders) ? data.orders : []);
+        setOrders(ordersArray);
         setOrderLoadError("");
         setLastUpdatedAt(new Date());
       } catch {
