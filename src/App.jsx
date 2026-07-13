@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from "react-router-dom";
 import axios from "axios";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
+import WhatsAppButton from "./components/layout/WhatsAppButton";
 import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
@@ -362,6 +363,7 @@ function App() {
       </Suspense>
 
       <Footer />
+      <WhatsAppButton />
       <CookieConsent />
     </HashRouter>
   );
