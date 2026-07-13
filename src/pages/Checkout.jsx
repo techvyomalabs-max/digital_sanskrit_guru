@@ -128,6 +128,7 @@ function Checkout() {
   const [isPaying, setIsPaying] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [isEditingBillingAddress, setIsEditingBillingAddress] = useState(false);
   const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const displayCurrency =
     cartItems.length > 0
@@ -663,32 +664,92 @@ function Checkout() {
           </div>
 
           {!isBillingSame && (
-            <div className="billing-address-section" style={{ marginTop: '24px' }}>
-              <div className="checkout-section-head" style={{ marginBottom: '12px' }}>
-                <h2>Select a billing address</h2>
-              </div>
-              <div className="address-list">
-                {addresses.map((item, index) => (
-                  <div
-                    key={`billing-${index}`}
-                    className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
-                  >
-                    <input
-                      type="radio"
-                      checked={selectedBillingIndex === index}
-                      onChange={() => setSelectedBillingIndex(index)}
-                    />
-                    <div className="address-info">
-                      <strong>{item.name}</strong>
-                      {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
-                      <p>{item.phone}</p>
-                      <p>{item.address}</p>
-                      {item.landmark && <p>Landmark: {item.landmark}</p>}
-                      {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
+            <div className="billing-address-section" style={{ marginTop: "24px" }}>
+              {selectedBillingAddress && !isEditingBillingAddress ? (
+                <div className="checkout-compact-address-box">
+                  <div className="checkout-compact-address-info">
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <h2 style={{ margin: 0, fontSize: "17px", fontWeight: "700", color: "var(--site-text)" }}>
+                        Billing to {selectedBillingAddress.name}
+                      </h2>
+                      {selectedBillingAddress.label && (
+                        <span className="checkout-address-label" style={{ margin: 0 }}>{selectedBillingAddress.label}</span>
+                      )}
+                      {selectedBillingAddress.isDefault && (
+                        <span className="default-badge" style={{ margin: 0 }}>Default</span>
+                      )}
                     </div>
+                    <p className="checkout-compact-address-detail" style={{ marginTop: "6px" }}>
+                      {selectedBillingAddress.address}
+                    </p>
+                    {selectedBillingAddress.landmark && (
+                      <p className="checkout-compact-address-detail">Landmark: {selectedBillingAddress.landmark}</p>
+                    )}
+                    <p className="checkout-compact-address-detail">
+                      {getAddressLocationText(selectedBillingAddress)}
+                    </p>
+                    <p className="checkout-compact-address-detail" style={{ fontWeight: "500", marginTop: "2px" }}>
+                      Phone: {selectedBillingAddress.phone}
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    className="checkout-compact-address-change-btn"
+                    onClick={() => setIsEditingBillingAddress(true)}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="checkout-section-head" style={{ marginBottom: "12px" }}>
+                    <h2>Select a billing address</h2>
+                    {selectedBillingAddress && isEditingBillingAddress && (
+                      <button
+                        type="button"
+                        className="checkout-compact-address-change-btn"
+                        onClick={() => setIsEditingBillingAddress(false)}
+                        style={{ fontSize: "13px" }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                  <div className="address-list">
+                    {addresses.map((item, index) => (
+                      <div
+                        key={`billing-${index}`}
+                        className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
+                        onClick={() => setSelectedBillingIndex(index)}
+                      >
+                        <input
+                          type="radio"
+                          checked={selectedBillingIndex === index}
+                          onChange={() => setSelectedBillingIndex(index)}
+                        />
+                        <div className="address-info">
+                          <strong>{item.name}</strong>
+                          {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
+                          <p>{item.phone}</p>
+                          <p>{item.address}</p>
+                          {item.landmark && <p>Landmark: {item.landmark}</p>}
+                          {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {addresses.length > 0 && (
+                    <button
+                      type="button"
+                      className="checkout-address-save-btn"
+                      onClick={() => setIsEditingBillingAddress(false)}
+                    >
+                      Use this address
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
         </section>
