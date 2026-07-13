@@ -102,6 +102,8 @@ export function CartProvider({ children }) {
   const { token } = useAuth();
   const [cartItems, setCartItems] = useState(() => readGuestCart());
   const [savedForLaterItems, setSavedForLaterItems] = useState(() => readSavedForLater());
+  const [addedItem, setAddedItem] = useState(null);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
 
   const getCartHeaders = () => ({
     headers: {
@@ -237,6 +239,13 @@ export function CartProvider({ children }) {
           }
         ];
       });
+      setAddedItem({
+        name: String(product?.name || "").trim(),
+        price: Number(product?.price || 0),
+        image: String(product?.image || "").trim(),
+        quantity: nextQty
+      });
+      setIsPopupOpen(true);
       showToast("Added to cart");
       return true;
     }
@@ -249,6 +258,13 @@ export function CartProvider({ children }) {
       );
 
       setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      setAddedItem({
+        name: String(product?.name || "").trim(),
+        price: Number(product?.price || 0),
+        image: String(product?.image || "").trim(),
+        quantity: nextQty
+      });
+      setIsPopupOpen(true);
       showToast("Added to cart");
       return true;
     } catch (err) {
@@ -391,7 +407,11 @@ export function CartProvider({ children }) {
         moveToCartFromSaved,
         removeSavedForLater,
         totalPrice,
-        loadCart
+        loadCart,
+        addedItem,
+        setAddedItem,
+        isPopupOpen,
+        setIsPopupOpen
       }}
     >
       {children}

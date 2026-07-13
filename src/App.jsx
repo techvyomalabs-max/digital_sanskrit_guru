@@ -6,6 +6,7 @@ import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
 import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
+import CartPopup from "./components/ui/CartPopup";
 import AdminRoute from "./components/AdminRoute";
 import FestiveAnimation from "./components/FestiveAnimation";
 import FestiveBanner from "./components/FestiveBanner";
@@ -365,6 +366,7 @@ function App() {
       <Footer />
       <WhatsAppButton />
       <CookieConsent />
+      <CartPopup />
     </HashRouter>
   );
 }
