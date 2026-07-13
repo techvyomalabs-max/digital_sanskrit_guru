@@ -639,6 +639,7 @@
   .home-banner-image {
     height: auto;
     width: 100%;
+    aspect-ratio: auto !important;
   }
 
   .home-banner-loading {
@@ -773,6 +774,7 @@
   .home-banner-image {
     height: auto;
     width: 100%;
+    aspect-ratio: auto !important;
   }
 
   .home-banner-loading {
