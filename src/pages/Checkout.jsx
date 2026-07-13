@@ -129,6 +129,12 @@ function Checkout() {
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isEditingBillingAddress, setIsEditingBillingAddress] = useState(false);
+
+  useEffect(() => {
+    if (!isBillingSame) {
+      setIsEditingBillingAddress(true);
+    }
+  }, [isBillingSame]);
   const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const displayCurrency =
     cartItems.length > 0
@@ -616,12 +622,19 @@ function Checkout() {
                   <div
                     key={index}
                     className={`address-card ${selectedIndex === index ? "selected" : ""}`}
-                    onClick={() => selectAddress(index)}
+                    onClick={() => {
+                      selectAddress(index);
+                      setIsEditingAddress(false);
+                    }}
                   >
                     <input
                       type="radio"
                       checked={selectedIndex === index}
-                      onChange={() => selectAddress(index)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        selectAddress(index);
+                        setIsEditingAddress(false);
+                      }}
                     />
 
                     <div className="address-info">
@@ -637,16 +650,6 @@ function Checkout() {
                   </div>
                 ))}
               </div>
-
-              {addresses.length > 0 && (
-                <button
-                  type="button"
-                  className="checkout-address-save-btn"
-                  onClick={() => setIsEditingAddress(false)}
-                >
-                  Use this address
-                </button>
-              )}
             </>
           )}
 
@@ -720,12 +723,19 @@ function Checkout() {
                       <div
                         key={`billing-${index}`}
                         className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
-                        onClick={() => setSelectedBillingIndex(index)}
+                        onClick={() => {
+                          setSelectedBillingIndex(index);
+                          setIsEditingBillingAddress(false);
+                        }}
                       >
                         <input
                           type="radio"
                           checked={selectedBillingIndex === index}
-                          onChange={() => setSelectedBillingIndex(index)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setSelectedBillingIndex(index);
+                            setIsEditingBillingAddress(false);
+                          }}
                         />
                         <div className="address-info">
                           <strong>{item.name}</strong>
@@ -738,16 +748,6 @@ function Checkout() {
                       </div>
                     ))}
                   </div>
-
-                  {addresses.length > 0 && (
-                    <button
-                      type="button"
-                      className="checkout-address-save-btn"
-                      onClick={() => setIsEditingBillingAddress(false)}
-                    >
-                      Use this address
-                    </button>
-                  )}
                 </>
               )}
             </div>
