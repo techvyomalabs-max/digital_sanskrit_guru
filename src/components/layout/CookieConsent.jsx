@@ -36,6 +36,11 @@ export default function CookieConsent() {
       });
     }
 
+    // Signal Meta Pixel of the updated choices
+    if (window.fbq) {
+      window.fbq("consent", consentData.marketing ? "grant" : "revoke");
+    }
+
     setIsVisible(false);
   };
 
