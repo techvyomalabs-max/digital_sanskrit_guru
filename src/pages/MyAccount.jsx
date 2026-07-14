@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
+import { apiBaseUrl } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
 import { useWishlist } from "../hooks/useWishlist";
@@ -44,7 +45,7 @@ function PushSubscribeSection({ token }) {
         setStatus("✅ You are already subscribed to push notifications.");
         return;
       }
-      const keyRes = await fetch("/api/push/vapid-key");
+      const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
       if (!keyRes.ok) throw new Error("Could not get push key.");
       const { publicKey } = await keyRes.json();
       const sub = await sw.pushManager.subscribe({

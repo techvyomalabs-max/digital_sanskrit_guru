@@ -618,7 +618,7 @@ function Checkout() {
 
         // Track purchase event for GTM and Facebook Pixel
         const orderId = response.razorpay_order_id || `order_${Date.now()}`;
-        if (window.fbq) {
+        if (window.fbq && window.fbqInitialized) {
           window.fbq("track", "Purchase", {
             value: Number(finalTotal || 0),
             currency: displayCurrency || "INR",
@@ -693,7 +693,7 @@ function Checkout() {
 
             // Track purchase event for GTM and Facebook Pixel
             const orderId = response.razorpay_order_id || `order_${Date.now()}`;
-            if (window.fbq) {
+            if (window.fbq && window.fbqInitialized) {
               window.fbq("track", "Purchase", {
                 value: Number(finalTotal || 0),
                 currency: displayCurrency || "INR",

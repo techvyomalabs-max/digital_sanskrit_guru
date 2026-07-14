@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { HashRouter, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
+import { apiBaseUrl } from "./lib/api";
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
@@ -69,7 +70,7 @@ function AnalyticsTracker() {
     }
 
     // 2. PageView for Meta Pixel
-    if (window.fbq) {
+    if (window.fbq && window.fbqInitialized) {
       window.fbq("track", "PageView");
     }
   }, [location]);
@@ -154,7 +155,7 @@ function App() {
           const existing = await registration.pushManager.getSubscription();
           if (existing) return; // Already subscribed
 
-          const keyRes = await fetch("/api/push/vapid-key");
+          const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
           if (!keyRes.ok) return;
           const { publicKey } = await keyRes.json();
           if (!publicKey) return;
@@ -166,7 +167,7 @@ function App() {
 
           const token = sessionStorage.getItem("token") || localStorage.getItem("token");
           if (token) {
-            await fetch("/api/push/subscribe", {
+            await fetch(`${apiBaseUrl || ""}/api/push/subscribe`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
               body: JSON.stringify(sub.toJSON())

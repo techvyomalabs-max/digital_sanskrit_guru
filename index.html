@@ -52,8 +52,14 @@
         fbq('consent', 'grant');
       }
 
-      fbq('init', 'YOUR_FACEBOOK_PIXEL_ID');
-      fbq('track', 'PageView');
+      const pixelId = 'YOUR_FACEBOOK_PIXEL_ID';
+      if (pixelId && pixelId !== 'YOUR_FACEBOOK_PIXEL_ID' && /^\d+$/.test(pixelId)) {
+        fbq('init', pixelId);
+        fbq('track', 'PageView');
+        window.fbqInitialized = true;
+      } else {
+        window.fbqInitialized = false;
+      }
     </script>
     <!-- End Meta Pixel -->
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />

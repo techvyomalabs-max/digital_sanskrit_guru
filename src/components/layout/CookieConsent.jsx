@@ -37,7 +37,7 @@ export default function CookieConsent() {
     }
 
     // Signal Meta Pixel of the updated choices
-    if (window.fbq) {
+    if (window.fbq && window.fbqInitialized) {
       window.fbq("consent", consentData.marketing ? "grant" : "revoke");
     }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { apiBaseUrl } from "../lib/api";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
 import "./AdminMarketing.css";
@@ -213,7 +214,7 @@ function AdminMarketing() {
     if (result !== "granted") return;
     try {
       const sw = await navigator.serviceWorker.ready;
-      const keyRes = await fetch("/api/push/vapid-key");
+      const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
       if (!keyRes.ok) return;
       const { publicKey } = await keyRes.json();
       if (!publicKey) return;

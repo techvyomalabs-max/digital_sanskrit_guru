@@ -85,7 +85,7 @@ export function WishlistProvider({ children }) {
       showToast("Added to wishlist");
 
       // Signal GTM and Meta Pixel of addition to wishlist
-      if (window.fbq) {
+      if (window.fbq && window.fbqInitialized) {
         window.fbq("track", "AddToWishlist", {
           content_name: product.name,
           content_ids: [product._id],
