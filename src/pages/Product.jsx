@@ -615,7 +615,7 @@ function Product() {
               <span className="out-stock">Out of Stock</span>
             )}
           </p>
-          <p className="description">{product.description}</p>
+          <div className="description" dangerouslySetInnerHTML={{ __html: product.description }} />
         </div>
 
         <div className="product-right">
