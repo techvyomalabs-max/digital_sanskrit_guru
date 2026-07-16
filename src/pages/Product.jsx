@@ -198,6 +198,9 @@ function Product() {
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
 
   const [product, setProduct] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
+  const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, product?.description);
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
@@ -266,6 +269,13 @@ function Product() {
       const galleryImages = found ? getGalleryImages(found) : [];
 
       setProduct(found);
+      if (found) {
+        setReviews(found.reviews || []);
+        setHasMoreReviews((found.reviewsCount || 0) > (found.reviews?.length || 0));
+      } else {
+        setReviews([]);
+        setHasMoreReviews(false);
+      }
       setSelectedMedia(
         galleryImages[0]
           ? {
@@ -401,6 +411,29 @@ function Product() {
     }
   };
 
+  const handleLoadMoreReviews = async () => {
+    if (isLoadingMoreReviews) return;
+    setIsLoadingMoreReviews(true);
+    try {
+      const response = await axios.get(
+        `/api/products/${id}/reviews?skip=${reviews.length}&limit=10`
+      );
+      const newReviews = response.data;
+      if (Array.isArray(newReviews) && newReviews.length > 0) {
+        setReviews((current) => [...current, ...newReviews]);
+        if (newReviews.length < 10) {
+          setHasMoreReviews(false);
+        }
+      } else {
+        setHasMoreReviews(false);
+      }
+    } catch {
+      showToast("Failed to load more reviews.");
+    } finally {
+      setIsLoadingMoreReviews(false);
+    }
+  };
+
   const handleBuyNow = async () => {
     if (product.stock === 0) return;
     await addToCart(product, qty);
@@ -421,7 +454,7 @@ function Product() {
     String(product.productType || "single") === "bundle" || bundleItems.length > 0;
   const isFestiveOffer = product.festiveOffer === true;
   const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product.festiveDiscountPercent || 0)));
-  const reviewCount = Array.isArray(product.reviews) ? product.reviews.length : 0;
+  const reviewCount = product.reviewsCount !== undefined ? product.reviewsCount : (Array.isArray(product.reviews) ? product.reviews.length : 0);
   const pricing = getProductPriceDetails(product, selectedAddress?.country);
   const displayPrice = Number(pricing.price || 0);
   const displayCurrency = pricing.currency || "INR";
@@ -733,14 +766,28 @@ function Product() {
       <div className="reviews-section">
         <h3>Customer Reviews</h3>
 
-        {product.reviews && product.reviews.length > 0 ? (
-          product.reviews.map((r, index) => (
-            <div key={index} className="review-card">
-              <strong>{r.user}</strong>
-              <p>{renderStars(r.rating)}</p>
-              <p>{r.comment}</p>
-            </div>
-          ))
+        {reviews.length > 0 ? (
+          <>
+            {reviews.map((r, index) => (
+              <div key={index} className="review-card">
+                <strong>{r.user}</strong>
+                <p>{renderStars(r.rating)}</p>
+                <p>{r.comment}</p>
+              </div>
+            ))}
+            {hasMoreReviews && (
+              <div style={{ display: "flex", justifyContent: "flex-start", marginTop: "16px" }}>
+                <button
+                  type="button"
+                  className="load-more-btn"
+                  disabled={isLoadingMoreReviews}
+                  onClick={handleLoadMoreReviews}
+                >
+                  {isLoadingMoreReviews ? "Loading..." : "Load More Reviews"}
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <p>No reviews yet</p>
         )}

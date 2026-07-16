@@ -810,3 +810,28 @@
   flex-shrink: 0;
 }
 
+.load-more-btn {
+  display: inline-block;
+  width: auto;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--site-surface-muted);
+  color: var(--site-text);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--site-surface);
+  border-color: var(--site-link);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+

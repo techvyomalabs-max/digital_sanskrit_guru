@@ -92,7 +92,9 @@ async function optimizeImageSource(source, { maxWidth, maxHeight, quality = 0.82
 
   try {
     context.drawImage(image, 0, 0, targetWidth, targetHeight);
-    return canvas.toDataURL("image/jpeg", quality);
+    const mimeMatch = String(source || "").match(/^data:([^;]+);base64/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    return canvas.toDataURL(mimeType, mimeType === "image/jpeg" || mimeType === "image/webp" ? quality : undefined);
   } catch {
     throw new Error("This image source does not allow optimization.");
   }
@@ -104,7 +106,11 @@ async function optimizeImageFile(file, options) {
 }
 
 async function optimizeHeroBannerFile(file) {
-  return readFileAsDataUrl(file);
+  return optimizeImageFile(file, {
+    maxWidth: 2048,
+    maxHeight: 1080,
+    quality: 0.95
+  });
 }
 
 function AdminAddProducts() {
@@ -497,7 +503,11 @@ function AdminAddProducts() {
         return;
       }
 
-      const optimized = await readFileAsDataUrl(file);
+      const optimized = await optimizeImageFile(file, {
+        maxWidth: 800,
+        maxHeight: 1200,
+        quality: 0.95
+      });
 
       updateHeroBanner(index, "mobileImage", optimized);
       setHeroBannerMessage("Mobile banner image optimized and attached. Save hero banners to publish.");

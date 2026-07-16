@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const StoreSettings = require("../models/StoreSettings");
@@ -708,6 +709,26 @@ router.get("/recommend/:productId", async (req, res) => {
   }
 });
 
+// Get product reviews with pagination (skip and limit)
+router.get("/:id/reviews", async (req, res) => {
+  try {
+    const skip = Math.max(0, parseInt(req.query.skip) || 0);
+    const limit = Math.max(1, parseInt(req.query.limit) || 10);
+
+    const product = await Product.findById(req.params.id)
+      .select({ reviews: { $slice: [skip, limit] } })
+      .lean();
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json(product.reviews || []);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load reviews", error: error.message });
+  }
+});
+
 // Get one product by id — cached in-memory only to prevent client configuration lag
 router.get("/:id", async (req, res) => {
   try {
@@ -716,14 +737,31 @@ router.get("/:id", async (req, res) => {
     const cached = appCache.get(cacheKey);
     if (cached) return res.json(cached);
 
+    // Get count of total reviews using fast aggregation
+    let reviewsCount = 0;
+    try {
+      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
+        const countResult = await Product.aggregate([
+          { $match: { _id: new mongoose.Types.ObjectId(req.params.id) } },
+          { $project: { reviewsCount: { $size: { $ifNull: ["$reviews", []] } } } }
+        ]);
+        reviewsCount = countResult[0]?.reviewsCount || 0;
+      }
+    } catch (err) {
+      // Fallback if aggregation fails
+    }
+
     const product = await Product.findById(req.params.id)
       .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .select({ reviews: { $slice: 5 } }) // Only return first 5 reviews initially
       .lean();
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
+
+    product.reviewsCount = reviewsCount;
 
     appCache.set(cacheKey, product, TTL.PRODUCT_SINGLE);
     res.json(product);
