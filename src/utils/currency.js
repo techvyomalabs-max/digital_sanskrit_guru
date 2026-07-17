@@ -1,3 +1,5 @@
+import { apiBaseUrl } from "../lib/api";
+
 const REGION_TO_CURRENCY = {
   IN: "INR",
   US: "USD",
@@ -195,7 +197,7 @@ export function requestLocationPermissionForCurrency() {
   const alreadyPrompted = localStorage.getItem(STORAGE_KEYS.geoPrompted) === "1";
   if (alreadyPrompted) return;
 
-  fetch("/api/settings/detect-country")
+  fetch(`${apiBaseUrl || ""}/api/settings/detect-country`)
     .then((res) => {
       if (!res.ok) throw new Error("API error");
       return res.json();

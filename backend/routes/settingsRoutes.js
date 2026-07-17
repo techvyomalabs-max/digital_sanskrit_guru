@@ -412,7 +412,7 @@ router.get("/public", async (req, res) => {
 });
 
 // Public: Detect user country from CDN/Edge headers silently (no browser popup needed)
-router.get("/detect-country", (req, res) => {
+router.get(["/detect-country", "/detect_country"], (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const country = req.headers["cf-ipcountry"] || 
                   req.headers["x-vercel-ip-country"] || 
