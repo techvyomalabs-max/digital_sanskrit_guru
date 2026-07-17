@@ -408,6 +408,17 @@ router.get("/public", async (req, res) => {
   res.json(buildPublicSettingsPayload(settings));
 });
 
+// Public: Detect user country from CDN/Edge headers silently (no browser popup needed)
+router.get("/detect-country", (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  const country = req.headers["cf-ipcountry"] || 
+                  req.headers["x-vercel-ip-country"] || 
+                  req.headers["x-country"] ||
+                  req.headers["cloudfront-viewer-country"] || 
+                  "IN";
+  res.json({ country: String(country).toUpperCase() });
+});
+
 router.put("/", protect, admin, async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const rawGst = Number(req.body?.gstPercent);

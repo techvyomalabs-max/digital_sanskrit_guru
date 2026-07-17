@@ -215,7 +215,8 @@ function Navbar({ bannerActive = false }) {
 
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
-        timeout: 12000
+        timeout: 12000,
+        maximumAge: 0
       });
     });
 

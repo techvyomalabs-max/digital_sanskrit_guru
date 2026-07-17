@@ -189,42 +189,27 @@ function isIndiaTimeZone(timeZone) {
   return tz === "Asia/Kolkata" || tz === "Asia/Calcutta";
 }
 
-function isInIndiaBounds(latitude, longitude) {
-  const lat = Number(latitude);
-  const lon = Number(longitude);
-  if (Number.isNaN(lat) || Number.isNaN(lon)) return false;
-  return lat >= 6 && lat <= 38 && lon >= 68 && lon <= 98;
-}
-
 export function requestLocationPermissionForCurrency() {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return;
-  if (!("geolocation" in navigator)) return;
+  if (typeof window === "undefined" || typeof fetch === "undefined") return;
 
   const alreadyPrompted = localStorage.getItem(STORAGE_KEYS.geoPrompted) === "1";
   if (alreadyPrompted) return;
 
-  localStorage.setItem(STORAGE_KEYS.geoPrompted, "1");
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const latitude = position?.coords?.latitude;
-      const longitude = position?.coords?.longitude;
-
-      if (isInIndiaBounds(latitude, longitude)) {
-        localStorage.setItem(STORAGE_KEYS.geoCountry, "IN");
-      } else {
-        localStorage.setItem(STORAGE_KEYS.geoCountry, "OTHER");
-      }
-    },
-    () => {
-      localStorage.setItem(STORAGE_KEYS.geoCountry, "UNKNOWN");
-    },
-    {
-      enableHighAccuracy: false,
-      timeout: 8000,
-      maximumAge: 1000 * 60 * 60 * 12
-    }
-  );
+  fetch("/api/settings/detect-country")
+    .then((res) => {
+      if (!res.ok) throw new Error("API error");
+      return res.json();
+    })
+    .then((data) => {
+      const country = String(data?.country || "IN").toUpperCase();
+      localStorage.setItem(STORAGE_KEYS.geoCountry, country === "IN" ? "IN" : "OTHER");
+      localStorage.setItem(STORAGE_KEYS.geoPrompted, "1");
+    })
+    .catch(() => {
+      // Fallback silently if offline or API error
+      localStorage.setItem(STORAGE_KEYS.geoCountry, "IN");
+      localStorage.setItem(STORAGE_KEYS.geoPrompted, "1");
+    });
 }
 
 export function getUserCurrency() {
