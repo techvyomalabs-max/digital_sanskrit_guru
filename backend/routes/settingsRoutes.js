@@ -261,7 +261,6 @@ function normalizeSettings(settings) {
   const rawAnimIntensity = String(settings?.festiveAnimation?.intensity || "subtle");
 
   return {
-    enableCurrentLocation: settings?.enableCurrentLocation !== false,
     gstPercent: Number(settings?.gstPercent || 0),
     deliveryCharge: Number(settings?.deliveryCharge || 0),
     warehouseLocation: normalizeWarehouseLocation(settings?.warehouseLocation || {}),
@@ -348,7 +347,6 @@ function normalizeSettings(settings) {
 function buildPublicSettingsPayload(settings) {
   const normalized = normalizeSettings(settings);
   return {
-    enableCurrentLocation: normalized.enableCurrentLocation,
     gstPercent: normalized.gstPercent,
     deliveryCharge: normalized.deliveryCharge,
     warehouseLocation: normalized.warehouseLocation,
@@ -369,7 +367,6 @@ function buildPublicSettingsPayload(settings) {
 function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   const changes = [];
 
-  if (Boolean(previousSettings?.enableCurrentLocation) !== Boolean(nextSettings?.enableCurrentLocation)) changes.push("current location visibility");
   if (Number(previousSettings?.gstPercent || 0) !== Number(nextSettings?.gstPercent || 0)) changes.push("GST");
   if (Number(previousSettings?.deliveryCharge || 0) !== Number(nextSettings?.deliveryCharge || 0)) changes.push("delivery charge");
   if (JSON.stringify(previousSettings?.warehouseLocation || {}) !== JSON.stringify(nextSettings?.warehouseLocation || {})) changes.push("warehouse location");
@@ -424,7 +421,6 @@ router.get("/detect-country", (req, res) => {
 
 router.put("/", protect, admin, async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
-  const hasEnableCurrentLocation = req.body?.enableCurrentLocation !== undefined;
   const rawGst = Number(req.body?.gstPercent);
   const rawDelivery = Number(req.body?.deliveryCharge);
   const rawTheme = String(req.body?.siteTheme || "").trim().toLowerCase();
@@ -510,10 +506,6 @@ router.put("/", protect, admin, async (req, res) => {
     ...StoreSettings.SITE_THEMES,
     ...customThemes.map((theme) => theme.id)
   ]);
-
-  if (hasEnableCurrentLocation) {
-    settings.enableCurrentLocation = Boolean(req.body.enableCurrentLocation);
-  }
 
   settings.gstPercent = Number.isNaN(rawGst) ? settings.gstPercent : gstPercent;
   settings.deliveryCharge = Number.isNaN(rawDelivery) ? settings.deliveryCharge : deliveryCharge;

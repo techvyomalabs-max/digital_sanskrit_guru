@@ -55,7 +55,6 @@ function AdminDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [pricingSettings, setPricingSettings] = useState({
-    enableCurrentLocation: true,
     gstPercent: 0,
     deliveryCharge: 0,
     warehouseLocation: {
@@ -167,7 +166,6 @@ function AdminDashboard() {
           currencyConversionRates: res.data?.currencyConversionRates || {}
         });
         setPricingSettings({
-          enableCurrentLocation: res.data?.enableCurrentLocation !== false,
           gstPercent: String(Number(res.data?.gstPercent || 0)),
           deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
           warehouseLocation: {
@@ -231,7 +229,6 @@ function AdminDashboard() {
       .catch(() => {
         if (!active) return;
         setPricingSettings({
-          enableCurrentLocation: true,
           gstPercent: "0",
           deliveryCharge: "0",
           warehouseLocation: { name: "", address: "", mapUrl: "", latitude: "", longitude: "" },
@@ -266,7 +263,6 @@ function AdminDashboard() {
     setPricingMessage("");
     try {
       const payload = {
-        enableCurrentLocation: pricingSettings.enableCurrentLocation,
         gstPercent: Math.max(0, Number(pricingSettings.gstPercent || 0)),
         deliveryCharge: Math.max(0, Number(pricingSettings.deliveryCharge || 0)),
         warehouseLocation: normalizeWarehouseLocation(pricingSettings.warehouseLocation),
@@ -306,7 +302,6 @@ function AdminDashboard() {
       });
 
       setPricingSettings({
-        enableCurrentLocation: res.data?.enableCurrentLocation !== false,
         gstPercent: String(Number(res.data?.gstPercent || 0)),
         deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
         warehouseLocation: {
@@ -1398,22 +1393,6 @@ function AdminDashboard() {
                 >
                   <option value="shown">Show</option>
                   <option value="hidden">Hide</option>
-                </select>
-              </label>
-
-              <label className="pricing-field">
-                <span className="pricing-label">Customer Geolocation ("Use Current Location")</span>
-                <select
-                  value={pricingSettings.enableCurrentLocation ? "enabled" : "disabled"}
-                  onChange={(e) =>
-                    setPricingSettings((prev) => ({
-                      ...prev,
-                      enableCurrentLocation: e.target.value === "enabled"
-                    }))
-                  }
-                >
-                  <option value="enabled">Enabled (Visible)</option>
-                  <option value="disabled">Disabled (Hidden)</option>
                 </select>
               </label>
             </div>

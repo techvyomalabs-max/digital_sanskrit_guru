@@ -40,20 +40,14 @@ function Navbar({ bannerActive = false }) {
     profile: "👤",
     search: "🔍"
   });
-  const [enableCurrentLocation, setEnableCurrentLocation] = useState(true);
 
   useEffect(() => {
     let active = true;
     const fetchIcons = () => {
       axios.get("/api/settings/public")
         .then(res => {
-          if (active) {
-            if (res.data?.storeIcons) {
-              setStoreIcons(res.data.storeIcons);
-            }
-            if (res.data?.enableCurrentLocation !== undefined) {
-              setEnableCurrentLocation(res.data.enableCurrentLocation);
-            }
+          if (active && res.data?.storeIcons) {
+            setStoreIcons(res.data.storeIcons);
           }
         })
         .catch(() => {});
@@ -562,21 +556,19 @@ function Navbar({ bannerActive = false }) {
               </button>
             </div>
 
-            {enableCurrentLocation && (
-              <div className="navbar-address-current-location">
-                <button
-                  type="button"
-                  className="navbar-address-current-location-btn"
-                  onClick={handleUseCurrentLocation}
-                  disabled={isDetectingLocation}
-                >
-                  {isDetectingLocation ? "Fetching location..." : "Use Current Location"}
-                </button>
-                {locationStatusMessage ? (
-                  <p className="navbar-address-current-location-note">{locationStatusMessage}</p>
-                ) : null}
-              </div>
-            )}
+            <div className="navbar-address-current-location">
+              <button
+                type="button"
+                className="navbar-address-current-location-btn"
+                onClick={handleUseCurrentLocation}
+                disabled={isDetectingLocation}
+              >
+                {isDetectingLocation ? "Fetching location..." : "Use Current Location"}
+              </button>
+              {locationStatusMessage ? (
+                <p className="navbar-address-current-location-note">{locationStatusMessage}</p>
+              ) : null}
+            </div>
 
             {addresses.length > 0 ? (
               <div className="navbar-address-options">

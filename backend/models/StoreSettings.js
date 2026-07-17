@@ -266,10 +266,6 @@ const DEFAULT_SPONSORS = [
 
 const storeSettingsSchema = new mongoose.Schema(
   {
-    enableCurrentLocation: {
-      type: Boolean,
-      default: true
-    },
     gstPercent: {
       type: Number,
       default: 18,
