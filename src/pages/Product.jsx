@@ -832,17 +832,19 @@ function Product() {
           {managedRelatedProducts.length > 0 ? (
             managedRelatedProducts.map((p) => (
               <div key={p._id} className="related-card">
-                <img
-                  src={p.image || "/no-image.webp"}
-                  alt={p.name}
-                  width="200"
-                  height="200"
-                  loading="lazy"
-                  decoding="async"
-                />
+                <div className="related-card-img-wrapper">
+                  <img
+                    src={p.image || "/no-image.webp"}
+                    alt={p.name}
+                    width="200"
+                    height="200"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
                 <h4>{p.name}</h4>
-                <p>{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={`/product/${p._id}`} className="view-btn">View</Link>
+                <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
+                <Link to={`/product/${p._id}`} className="view-btn">View Product</Link>
               </div>
             ))
           ) : (
@@ -857,17 +859,19 @@ function Product() {
           {relatedProducts.length > 0 ? (
             relatedProducts.map((p) => (
               <div key={p._id} className="related-card">
-                <img
-                  src={p.image || "/no-image.webp"}
-                  alt={p.name}
-                  width="200"
-                  height="200"
-                  loading="lazy"
-                  decoding="async"
-                />
+                <div className="related-card-img-wrapper">
+                  <img
+                    src={p.image || "/no-image.webp"}
+                    alt={p.name}
+                    width="200"
+                    height="200"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
                 <h4>{p.name}</h4>
-                <p>{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={`/product/${p._id}`} className="view-btn">View</Link>
+                <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
+                <Link to={`/product/${p._id}`} className="view-btn">View Product</Link>
               </div>
             ))
           ) : (
