@@ -907,6 +907,13 @@ router.get("/", protect, admin, async (req, res) => {
     const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
     const rates = settings?.currencyConversionRates || {};
 
+    const branches = Object.entries(rates)
+      .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
+      .map(([currency, rate]) => ({
+        case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
+        then: Number(rate)
+      }));
+
     const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
 
     const totalInBaseExpression = branches.length > 0
