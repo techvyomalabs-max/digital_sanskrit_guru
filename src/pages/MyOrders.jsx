@@ -777,17 +777,9 @@ function MyOrders() {
           >
             <div style={{ padding: "12px 16px", backgroundColor: "#16213e", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #0f3460" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
-                <span>📖 Digital Sanskrit Reader</span>
+                <span>📖 Digital Sanskrit Reader • Protected Access</span>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
-                <a
-                  href={activeWebReaderUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#0f3460", color: "#fff", textDecoration: "none", fontSize: "12px" }}
-                >
-                  Open in New Tab ↗
-                </a>
                 <button
                   onClick={() => setActiveWebReaderUrl("")}
                   style={{ padding: "6px 14px", borderRadius: "6px", backgroundColor: "#e94560", color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}
@@ -799,7 +791,8 @@ function MyOrders() {
             <iframe
               src={activeWebReaderUrl}
               title="Digital Web Reader"
-              style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#ffffff" }}
+              onContextMenu={(e) => e.preventDefault()}
+              style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#ffffff", userSelect: "none" }}
               allow="fullscreen"
             />
           </div>
