@@ -487,32 +487,19 @@ function MyOrders() {
                               </div>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                                 {(item.webReaderLink || String(item.name || "").toLowerCase().includes("web") || item.isDigital) && (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        const readerLink = item.webReaderLink || item.product?.webReaderLink;
-                                        if (readerLink) {
-                                          setActiveWebReaderUrl(readerLink);
-                                        } else {
-                                          alert("Web Reader link has not been configured for this item in Admin yet. Please enter the Bunny CDN / Web Reader link in Admin -> Add Products.");
-                                        }
-                                      }}
-                                      style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#2563eb", color: "#fff", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-                                    >
-                                      📖 Read Web Version
-                                    </button>
-                                    {item.webReaderLink && (
-                                      <button
-                                        onClick={() => {
-                                          navigator.clipboard.writeText(item.webReaderLink);
-                                          showToast("Web Reader access link copied to clipboard!");
-                                        }}
-                                        style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "transparent", border: "1px solid var(--site-border)", color: "var(--site-text)", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-                                      >
-                                        📋 Copy Link
-                                      </button>
-                                    )}
-                                  </>
+                                  <button
+                                    onClick={() => {
+                                      const readerLink = item.webReaderLink || item.product?.webReaderLink;
+                                      if (readerLink) {
+                                        setActiveWebReaderUrl(readerLink);
+                                      } else {
+                                        alert("Web Reader link has not been configured for this item in Admin yet. Please enter the Bunny CDN / Web Reader link in Admin -> Add Products.");
+                                      }
+                                    }}
+                                    style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#2563eb", color: "#fff", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                                  >
+                                    📖 Read Web Version
+                                  </button>
                                 )}
                                 {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
                                   <a
