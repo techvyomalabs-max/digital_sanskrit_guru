@@ -1221,6 +1221,25 @@ router.put("/:id/status", protect, admin, async (req, res) => {
     fireNotifications(async () => {
       const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
       if (!populatedOrder?.user) return;
+
+      const isDigitalOnly = Array.isArray(populatedOrder.items) && populatedOrder.items.length > 0 && populatedOrder.items.every((item) =>
+        Boolean(
+          item.isDigital ||
+          item.webReaderLink ||
+          item.kindleLink ||
+          String(item.name || "").toLowerCase().includes("web") ||
+          String(item.name || "").toLowerCase().includes("kindle") ||
+          String(item.name || "").toLowerCase().includes("flipbook") ||
+          String(item.format || "").toLowerCase().includes("web") ||
+          String(item.format || "").toLowerCase().includes("flipbook")
+        )
+      );
+
+      // Digital-only orders get instant online access upon payment; skip physical shipping/delivery notification emails
+      if (isDigitalOnly && ["Shipped", "Delivered"].includes(normalizedStatus)) {
+        return;
+      }
+
       await sendPushToUser(populatedOrder.user._id, orderPayload(updated, normalizedStatus.toLowerCase()));
       await sendOrderStatusUpdate(updated, populatedOrder.user, normalizedStatus);
     });
