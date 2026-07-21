@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
@@ -21,11 +21,18 @@ const formatDate = (dateString) => {
 function MyLibrary() {
   const { token } = useAuth();
   const { showToast } = useToast();
+  const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
   const [activeGuideItem, setActiveGuideItem] = useState(null);
+
+  useEffect(() => {
+    if (location.state?.autoOpenUrl) {
+      setActiveWebReaderUrl(location.state.autoOpenUrl);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     let isMounted = true;

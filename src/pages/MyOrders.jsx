@@ -490,11 +490,7 @@ function MyOrders() {
                                   <button
                                     onClick={() => {
                                       const readerLink = item.webReaderLink || item.product?.webReaderLink;
-                                      if (readerLink) {
-                                        setActiveWebReaderUrl(readerLink);
-                                      } else {
-                                        alert("Web Reader link has not been configured for this item in Admin yet. Please enter the Bunny CDN / Web Reader link in Admin -> Add Products.");
-                                      }
+                                      navigate("/my-library", { state: { autoOpenUrl: readerLink, search: item.name } });
                                     }}
                                     style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#2563eb", color: "#fff", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
                                   >
