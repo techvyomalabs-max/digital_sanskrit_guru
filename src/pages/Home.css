@@ -895,3 +895,101 @@
     gap: var(--space-3);
   }
 }
+
+/* ── Scale & Experience Stats Section ── */
+.home-stats-section {
+  padding: var(--space-6) !important;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(217, 119, 6, 0.03) 100%);
+  border-radius: var(--radius-xl);
+  margin: var(--space-6) 0;
+  border: 1px solid rgba(209, 213, 219, 0.4);
+}
+
+.home-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6);
+  margin-top: var(--space-4);
+}
+
+.home-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--premium-shadow-sm);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.home-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, #2563eb, #d97706);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.home-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--premium-shadow-md);
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.home-stat-card:hover::before {
+  opacity: 1;
+}
+
+.home-stat-icon-wrapper {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 50%;
+  color: #2563eb;
+  margin-bottom: var(--space-4);
+  transition: transform 0.25s ease;
+}
+
+.home-stat-card:hover .home-stat-icon-wrapper {
+  transform: scale(1.1);
+}
+
+.home-stat-number {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--site-text);
+  margin-bottom: var(--space-2);
+  letter-spacing: -0.5px;
+}
+
+.home-stat-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--site-text);
+  margin-bottom: 6px;
+}
+
+.home-stat-desc {
+  font-size: 12.5px;
+  color: var(--site-text-soft);
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .home-stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
