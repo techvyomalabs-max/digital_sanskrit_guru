@@ -219,19 +219,94 @@ async function sendOrderConfirmation(order, user) {
     </table>`;
   const shippingInfoHtml = `${String(order.shipping?.name || "")} — ${String(order.shipping?.address || "")}, ${String(order.shipping?.city || "")}, ${String(order.shipping?.state || "")} ${String(order.shipping?.pincode || "")}`;
 
+  const hasDigitalItems = Array.isArray(order.items) && order.items.some((item) =>
+    Boolean(
+      item.isDigital ||
+      item.webReaderLink ||
+      item.kindleLink ||
+      String(item.name || "").toLowerCase().includes("web") ||
+      String(item.name || "").toLowerCase().includes("kindle") ||
+      String(item.name || "").toLowerCase().includes("flipbook") ||
+      String(item.format || "").toLowerCase().includes("web") ||
+      String(item.format || "").toLowerCase().includes("flipbook")
+    )
+  );
+
+  const hasPhysicalItems = Array.isArray(order.items) && order.items.some((item) =>
+    !Boolean(
+      item.isDigital ||
+      item.webReaderLink ||
+      item.kindleLink ||
+      String(item.name || "").toLowerCase().includes("web") ||
+      String(item.name || "").toLowerCase().includes("kindle") ||
+      String(item.name || "").toLowerCase().includes("flipbook") ||
+      String(item.format || "").toLowerCase().includes("web") ||
+      String(item.format || "").toLowerCase().includes("flipbook")
+    )
+  );
+
+  const siteUrl = process.env.SITE_URL || "http://localhost:5173";
+
+  let defaultBody = "";
+  if (hasDigitalItems && hasPhysicalItems) {
+    defaultBody = `
+      <h2>Thank you for your order! 🎉</h2>
+      <p>Hi <strong>{{USER_NAME}}</strong>,</p>
+      <p>Your mixed order has been placed successfully. Below are the details for your digital and physical items:</p>
+      
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">⚡ Instant Digital Access Unlocked!</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now.</p>
+        <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+      </div>
+
+      <p style="margin-top: 16px; font-size: 14px; color: #334155; line-height: 1.5;">
+        <strong>📦 Physical Items Shipping:</strong> Your paperback/physical items are being prepared for dispatch. We will send you another email with courier tracking details as soon as they are shipped.
+      </p>
+
+      <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+      <h3>Order Details:</h3>
+      {{ITEMS_TABLE}}
+      {{SUMMARY_TABLE}}
+      <p><strong>Shipping to:</strong><br/>
+      {{SHIPPING_INFO}}
+      </p>
+    `;
+  } else if (hasDigitalItems) {
+    defaultBody = `
+      <h2>Thank you for your order! 🎉</h2>
+      <p>Hi <strong>{{USER_NAME}}</strong>,</p>
+      <p>Your order has been placed successfully. Since this order contains only digital items, access has been granted instantly!</p>
+      
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">⚡ Instant Digital Access Granted!</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately.</p>
+        <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+      </div>
+
+      <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+      <h3>Order Details:</h3>
+      {{ITEMS_TABLE}}
+      {{SUMMARY_TABLE}}
+      <p style="color: #64748b; font-size: 13px; font-style: italic;">Instant Online Delivery — No physical shipping required.</p>
+    `;
+  } else {
+    defaultBody = `
+      <h2>Thank you for your order! 🎉</h2>
+      <p>Hi <strong>{{USER_NAME}}</strong>,</p>
+      <p>Your order has been placed successfully. We'll notify you when it ships.</p>
+      <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
+      <h3>Order Details:</h3>
+      {{ITEMS_TABLE}}
+      {{SUMMARY_TABLE}}
+      <p><strong>Shipping to:</strong><br/>
+      {{SHIPPING_INFO}}
+      </p>
+    `;
+  }
+
   let substitutedSubject = subject;
-  let substitutedBody = body || `
-    <h2>Thank you for your order! 🎉</h2>
-    <p>Hi <strong>{{USER_NAME}}</strong>,</p>
-    <p>Your order has been placed successfully. We'll notify you when it ships.</p>
-    <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
-    <h3>Order Details:</h3>
-    {{ITEMS_TABLE}}
-    {{SUMMARY_TABLE}}
-    <p><strong>Shipping to:</strong><br/>
-    {{SHIPPING_INFO}}
-    </p>
-  `;
+  let substitutedBody = body || defaultBody;
 
   const tags = {
     "{{USER_NAME}}": userName,
