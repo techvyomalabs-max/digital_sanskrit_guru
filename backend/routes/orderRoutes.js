@@ -1225,6 +1225,9 @@ router.get("/analytics/sales", protect, admin, async (req, res) => {
 // Financial Analytics (Admin only)
 router.get("/analytics/finance", protect, admin, async (req, res) => {
   try {
+    const settings = await StoreSettings.findOne().select("warehouseLocation").lean();
+    const warehouseState = String(settings?.warehouseLocation?.state || "Karnataka").trim().toLowerCase();
+
     const orders = await Order.find({ paymentStatus: "Paid" })
       .populate("user", "name email")
       .sort({ createdAt: -1 })
@@ -1234,6 +1237,9 @@ router.get("/analytics/finance", protect, admin, async (req, res) => {
     let totalGST = 0;
     let totalShipping = 0;
     let totalDiscounts = 0;
+    let totalCGST = 0;
+    let totalSGST = 0;
+    let totalIGST = 0;
     const monthlyFinanceMap = {};
 
     orders.forEach((order) => {
@@ -1241,6 +1247,18 @@ router.get("/analytics/finance", protect, admin, async (req, res) => {
       totalGST += Number(order.gstAmount || 0);
       totalShipping += Number(order.deliveryCharge || 0);
       totalDiscounts += Number(order.discount || 0);
+
+      // CGST / SGST / IGST logic based on Place of Supply
+      const customerState = String(order.shipping?.state || order.billing?.state || "Karnataka").trim().toLowerCase();
+      const isLocalState = customerState === warehouseState;
+      const orderGst = Number(order.gstAmount || 0);
+
+      if (isLocalState) {
+        totalCGST += orderGst / 2;
+        totalSGST += orderGst / 2;
+      } else {
+        totalIGST += orderGst;
+      }
 
       // Monthly breakdown aggregation
       const date = new Date(order.createdAt);
@@ -1272,26 +1290,56 @@ router.get("/analytics/finance", protect, admin, async (req, res) => {
       .slice(-12);
 
     // Ledger for the recent 50 orders
-    const ledger = orders.slice(0, 50).map((order) => ({
-      _id: order._id,
-      createdAt: order.createdAt,
-      customer: order.user?.name || order.shipping?.name || "Customer",
-      email: order.user?.email || "N/A",
-      subtotal: Number(order.subtotal || 0),
-      gstAmount: Number(order.gstAmount || 0),
-      deliveryCharge: Number(order.deliveryCharge || 0),
-      discount: Number(order.discount || 0),
-      total: Number(order.total || 0),
-      currency: order.currencyDisplay?.currency || "INR",
-      paymentStatus: order.paymentStatus,
-      refundStatus: order.refundStatus
-    }));
+    const ledger = orders.slice(0, 50).map((order) => {
+      const customerState = String(order.shipping?.state || order.billing?.state || "Karnataka").trim().toLowerCase();
+      const isLocalState = customerState === warehouseState;
+      const orderGst = Number(order.gstAmount || 0);
+      
+      const cgst = isLocalState ? orderGst / 2 : 0;
+      const sgst = isLocalState ? orderGst / 2 : 0;
+      const igst = isLocalState ? 0 : orderGst;
+
+      // Reconciliation matching logic
+      const hasRazorpayId = Boolean(order.paymentMeta?.razorpayPaymentId || order.razorpayPaymentId);
+      const isPaid = order.paymentStatus === "Paid";
+      
+      let reconciliationStatus = "Unreconciled";
+      if (isPaid && hasRazorpayId) {
+        reconciliationStatus = "Reconciled";
+      } else if (isPaid) {
+        reconciliationStatus = "Pending Review";
+      }
+
+      return {
+        _id: order._id,
+        createdAt: order.createdAt,
+        customer: order.user?.name || order.shipping?.name || "Customer",
+        email: order.user?.email || "N/A",
+        subtotal: Number(order.subtotal || 0),
+        gstAmount: orderGst,
+        cgst: Number(cgst.toFixed(2)),
+        sgst: Number(sgst.toFixed(2)),
+        igst: Number(igst.toFixed(2)),
+        deliveryCharge: Number(order.deliveryCharge || 0),
+        discount: Number(order.discount || 0),
+        total: Number(order.total || 0),
+        currency: order.currencyDisplay?.currency || "INR",
+        paymentStatus: order.paymentStatus,
+        refundStatus: order.refundStatus,
+        placeOfSupply: String(order.shipping?.state || order.billing?.state || "Karnataka"),
+        reconciliationStatus
+      };
+    });
 
     res.json({
       success: true,
+      warehouseState: settings?.warehouseLocation?.state || "Karnataka",
       summary: {
         grossRevenue: Math.round(totalGrossRevenue),
         taxGST: Math.round(totalGST),
+        cgst: Math.round(totalCGST),
+        sgst: Math.round(totalSGST),
+        igst: Math.round(totalIGST),
         shippingCharges: Math.round(totalShipping),
         discountsGiven: Math.round(totalDiscounts),
         netRevenue: Math.round(netRevenue)

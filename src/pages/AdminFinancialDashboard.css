@@ -9,6 +9,159 @@
   margin-top: 4px;
 }
 
+.text-blue-muted {
+  color: #3b82f6 !important;
+}
+
+.text-indigo {
+  color: #6366f1 !important;
+}
+
+/* GSTR Export Button styling */
+.gstr-export-btn {
+  background: var(--site-accent, #e94560);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(233, 69, 96, 0.25);
+  transition: all 0.2s ease;
+}
+
+.gstr-export-btn:hover {
+  background: #d83a54;
+  transform: translateY(-1px);
+}
+
+/* Reconciliation Tools Section */
+.recon-tools-section {
+  background: var(--site-surface);
+  border: 1px solid var(--site-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--premium-shadow-sm);
+  margin-top: var(--space-6);
+}
+
+.recon-tools-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(209, 213, 219, 0.2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.recon-tools-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--site-text);
+}
+
+.recon-badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.recon-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.recon-stat-box {
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--site-border);
+}
+
+.recon-stat-box strong {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.recon-stat-box span {
+  font-size: 12px;
+  color: var(--site-text-soft, #64748b);
+  font-weight: 500;
+}
+
+.recon-stat-box.green {
+  background: rgba(16, 185, 129, 0.03);
+  border-color: rgba(16, 185, 129, 0.15);
+}
+.recon-stat-box.green strong {
+  color: #10b981;
+}
+
+.recon-stat-box.orange {
+  background: rgba(245, 158, 11, 0.03);
+  border-color: rgba(245, 158, 11, 0.15);
+}
+.recon-stat-box.orange strong {
+  color: #f59e0b;
+}
+
+.recon-stat-box.blue {
+  background: rgba(59, 130, 246, 0.03);
+  border-color: rgba(59, 130, 246, 0.15);
+}
+.recon-stat-box.blue strong {
+  color: #3b82f6;
+}
+
+/* Ledger Card Header Styling */
+.ledger-card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(209, 213, 219, 0.2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.ledger-card-header-row h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--site-text);
+}
+
+.pos-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-text-soft, #64748b);
+}
+
+.pos-filter-select {
+  border: 1px solid var(--site-border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  background: var(--site-surface);
+  color: var(--site-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Table elements */
 .financial-ledger-card {
   background: var(--site-surface);
   border: 1px solid var(--site-border);
@@ -18,25 +171,28 @@
   margin-top: var(--space-6);
 }
 
-.financial-ledger-card h3 {
-  margin: 0 0 var(--space-4) 0;
-  font-size: 15px;
+.recon-status-badge {
+  display: inline-block;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--site-text);
-  border-bottom: 1px solid rgba(209, 213, 219, 0.2);
-  padding-bottom: var(--space-2);
+  padding: 3px 8px;
+  border-radius: 12px;
+  text-align: center;
 }
 
-.finance-payment-pill {
-  display: block;
-  font-size: 10.5px;
-  background: rgba(16, 185, 129, 0.12);
+.recon-status-badge.reconciled {
+  background: rgba(16, 185, 129, 0.1);
   color: #10b981;
-  padding: 2px 6px;
-  border-radius: 4px;
-  width: fit-content;
-  margin-top: 4px;
-  font-weight: bold;
+}
+
+.recon-status-badge.pending-review {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+
+.recon-status-badge.unreconciled {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
 .text-red {
@@ -46,4 +202,15 @@
 
 .text-purple {
   color: #8b5cf6 !important;
+}
+
+@media (max-width: 768px) {
+  .recon-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .ledger-card-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
 }

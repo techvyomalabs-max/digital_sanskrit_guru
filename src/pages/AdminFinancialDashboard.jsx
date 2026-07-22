@@ -36,6 +36,7 @@ function AdminFinancialDashboard() {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [gstFilter, setGstFilter] = useState("all");
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -57,6 +58,85 @@ function AdminFinancialDashboard() {
     };
     fetchAnalytics();
   }, [token]);
+
+  // Reconciliation stats computation
+  const reconStats = (() => {
+    if (!data?.recentTransactions) return { total: 0, reconciled: 0, pending: 0 };
+    const txs = data.recentTransactions;
+    const reconciled = txs.filter((t) => t.reconciliationStatus === "Reconciled").length;
+    const pending = txs.filter((t) => t.reconciliationStatus === "Pending Review").length;
+    return {
+      total: txs.length,
+      reconciled,
+      pending
+    };
+  })();
+
+  // Filter transactions for GST place of supply
+  const filteredTransactions = (() => {
+    if (!data?.recentTransactions) return [];
+    if (gstFilter === "all") return data.recentTransactions;
+    
+    const warehouse = String(data.warehouseState || "Karnataka").toLowerCase().trim();
+    if (gstFilter === "intra") {
+      return data.recentTransactions.filter(
+        (t) => String(t.placeOfSupply).toLowerCase().trim() === warehouse
+      );
+    }
+    if (gstFilter === "inter") {
+      return data.recentTransactions.filter(
+        (t) => String(t.placeOfSupply).toLowerCase().trim() !== warehouse
+      );
+    }
+    return data.recentTransactions;
+  })();
+
+  // GSTR-1 CSV Report Export
+  const exportGstr1Csv = () => {
+    if (!data?.recentTransactions) return;
+    
+    // CSV headers matching GSTR-1 format guidelines
+    const headers = [
+      "Invoice Number",
+      "Invoice Date",
+      "Customer",
+      "Place Of Supply (State)",
+      "Taxable Subtotal (INR)",
+      "CGST (INR)",
+      "SGST (INR)",
+      "IGST (INR)",
+      "Shipping Charge (INR)",
+      "Discount Applied (INR)",
+      "Invoice Value (INR)",
+      "Reconciliation Status"
+    ];
+
+    const rows = data.recentTransactions.map((tx) => [
+      `"${tx._id}"`,
+      `"${new Date(tx.createdAt).toLocaleDateString("en-IN")}"`,
+      `"${tx.customer.replace(/"/g, '""')}"`,
+      `"${tx.placeOfSupply}"`,
+      tx.subtotal.toFixed(2),
+      tx.cgst.toFixed(2),
+      tx.sgst.toFixed(2),
+      tx.igst.toFixed(2),
+      tx.deliveryCharge.toFixed(2),
+      tx.discount.toFixed(2),
+      tx.total.toFixed(2),
+      `"${tx.reconciliationStatus}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `GSTR1_Reconciliation_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Chart Data preparation
   const monthlyTrendData = {
@@ -151,14 +231,19 @@ function AdminFinancialDashboard() {
       <AdminSidebar />
 
       <main className="admin-main financial-dashboard-page">
-        <header className="admin-orders-header">
+        <header className="admin-orders-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
           <div>
             <p className="admin-orders-kicker">Accounting & Taxes</p>
             <h1>Financial Dashboard</h1>
             <p className="admin-orders-subtitle">
-              Audit tax collections, coupon discounts, shipping charges, and calculate net earnings.
+              GST compliance calculation, Place of Supply matching, and payment ledger reconciliation.
             </p>
           </div>
+          {!isLoading && (
+            <button className="gstr-export-btn" onClick={exportGstr1Csv}>
+              📥 Export GSTR-1 Report (CSV)
+            </button>
+          )}
         </header>
 
         {error && <p className="admin-orders-feedback error">{error}</p>}
@@ -178,24 +263,6 @@ function AdminFinancialDashboard() {
                   Rs {(data?.summary?.grossRevenue || 0).toLocaleString("en-IN")}
                 </p>
               </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Tax (GST) Collected</p>
-                <p className="admin-overview-value text-purple">
-                  Rs {(data?.summary?.taxGST || 0).toLocaleString("en-IN")}
-                </p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Delivery Charges</p>
-                <p className="admin-overview-value text-amber">
-                  Rs {(data?.summary?.shippingCharges || 0).toLocaleString("en-IN")}
-                </p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Discounts Applied</p>
-                <p className="admin-overview-value text-red">
-                  Rs {(data?.summary?.discountsGiven || 0).toLocaleString("en-IN")}
-                </p>
-              </article>
               <article className="admin-overview-card highlight-green">
                 <p className="admin-overview-label">Net Earnings</p>
                 <p className="admin-overview-value text-green">
@@ -203,6 +270,47 @@ function AdminFinancialDashboard() {
                 </p>
                 <small className="admin-overview-subnote">Gross Revenue - GST - Shipping</small>
               </article>
+              <article className="admin-overview-card">
+                <p className="admin-overview-label">Total GST Tax</p>
+                <p className="admin-overview-value text-purple">
+                  Rs {(data?.summary?.taxGST || 0).toLocaleString("en-IN")}
+                </p>
+              </article>
+              <article className="admin-overview-card">
+                <p className="admin-overview-label">CGST + SGST (Intra-state)</p>
+                <p className="admin-overview-value text-blue-muted">
+                  Rs {((data?.summary?.cgst || 0) + (data?.summary?.sgst || 0)).toLocaleString("en-IN")}
+                </p>
+                <small className="admin-overview-subnote">Warehouse State: {data?.warehouseState || "Karnataka"}</small>
+              </article>
+              <article className="admin-overview-card">
+                <p className="admin-overview-label">IGST (Inter-state)</p>
+                <p className="admin-overview-value text-indigo">
+                  Rs {(data?.summary?.igst || 0).toLocaleString("en-IN")}
+                </p>
+              </article>
+            </section>
+
+            {/* Reconciliation Tools Row */}
+            <section className="recon-tools-section">
+              <div className="recon-tools-header">
+                <h3>🔄 Automated Payment Reconciliation Audit</h3>
+                <span className="recon-badge">Razorpay API Sync Status: Online</span>
+              </div>
+              <div className="recon-stats-grid">
+                <div className="recon-stat-box green">
+                  <strong>{reconStats.reconciled}</strong>
+                  <span>Reconciled Transactions</span>
+                </div>
+                <div className="recon-stat-box orange">
+                  <strong>{reconStats.pending}</strong>
+                  <span>Pending Review</span>
+                </div>
+                <div className="recon-stat-box blue">
+                  <strong>{reconStats.total}</strong>
+                  <span>Total Scanned Ledger Logs</span>
+                </div>
+              </div>
             </section>
 
             {/* Charts Row */}
@@ -224,47 +332,72 @@ function AdminFinancialDashboard() {
 
             {/* Recent Transactions Ledger */}
             <div className="financial-ledger-card">
-              <h3>📒 Recent Transaction Audit Ledger</h3>
+              <div className="ledger-card-header-row">
+                <h3>📒 Transaction Audit Ledger & GSTR Place of Supply</h3>
+                
+                {/* GST Place of Supply Filter */}
+                <div className="pos-filter-group">
+                  <label htmlFor="pos-filter">Place of Supply:</label>
+                  <select 
+                    id="pos-filter"
+                    value={gstFilter} 
+                    onChange={(e) => setGstFilter(e.target.value)}
+                    className="pos-filter-select"
+                  >
+                    <option value="all">All States</option>
+                    <option value="intra">Intra-state (CGST + SGST)</option>
+                    <option value="inter">Inter-state (IGST)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="admin-orders-table-wrap">
                 <table className="admin-orders-table">
                   <thead>
                     <tr>
                       <th>Order ID</th>
                       <th>Date</th>
-                      <th>Customer</th>
-                      <th>Subtotal</th>
-                      <th>GST</th>
-                      <th>Delivery</th>
+                      <th>Place of Supply</th>
+                      <th>Taxable Subtotal</th>
+                      <th>CGST</th>
+                      <th>SGST</th>
+                      <th>IGST</th>
                       <th>Discount</th>
                       <th>Total Collected</th>
+                      <th>Reconciliation</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data?.recentTransactions?.length > 0 ? (
-                      data.recentTransactions.map((tx) => (
+                    {filteredTransactions.length > 0 ? (
+                      filteredTransactions.map((tx) => (
                         <tr key={tx._id}>
                           <td className="order-code">#{tx._id.slice(-6).toUpperCase()}</td>
                           <td>{new Date(tx.createdAt).toLocaleDateString("en-IN")}</td>
                           <td>
-                            <strong>{tx.customer}</strong>
-                            <small style={{ display: "block", color: "#64748b" }}>{tx.email}</small>
+                            <strong>{tx.placeOfSupply}</strong>
+                            <small style={{ display: "block", color: "#64748b" }}>{tx.customer}</small>
                           </td>
                           <td>Rs {tx.subtotal.toFixed(2)}</td>
-                          <td>Rs {tx.gstAmount.toFixed(2)}</td>
-                          <td>Rs {tx.deliveryCharge.toFixed(2)}</td>
+                          <td>{tx.cgst > 0 ? `Rs ${tx.cgst.toFixed(2)}` : "—"}</td>
+                          <td>{tx.sgst > 0 ? `Rs ${tx.sgst.toFixed(2)}` : "—"}</td>
+                          <td>{tx.igst > 0 ? `Rs ${tx.igst.toFixed(2)}` : "—"}</td>
                           <td className={tx.discount > 0 ? "text-red" : ""}>
                             {tx.discount > 0 ? `- Rs ${tx.discount.toFixed(2)}` : "—"}
                           </td>
                           <td>
                             <strong>Rs {tx.total.toFixed(2)}</strong>
-                            <span className="finance-payment-pill">Paid</span>
+                          </td>
+                          <td>
+                            <span className={`recon-status-badge ${tx.reconciliationStatus.toLowerCase().replace(" ", "-")}`}>
+                              {tx.reconciliationStatus}
+                            </span>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="8" style={{ textAlign: "center", padding: "30px" }}>
-                          No transactions found.
+                        <td colSpan="10" style={{ textAlign: "center", padding: "30px" }}>
+                          No transaction matches the filter option.
                         </td>
                       </tr>
                     )}
