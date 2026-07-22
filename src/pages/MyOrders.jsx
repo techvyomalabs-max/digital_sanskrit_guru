@@ -381,8 +381,25 @@ function MyOrders() {
         const orderStatusLabel = status === "Cancelled" ? "Cancelled" : isPaid ? status : "On Hold";
         const refundStatus = String(order?.refundStatus || "Not Applicable");
         const paymentStatusLabel = paymentStatus;
-        const canDownloadInvoice = isPaid && (status === "Shipped" || status === "Delivered");
         const items = Array.isArray(order.items) ? order.items : [];
+        const isDigitalOnly = items.length > 0 && items.every((item) =>
+          Boolean(
+            item.isDigital ||
+            item.webReaderLink ||
+            item.kindleLink ||
+            String(item.name || "").toLowerCase().includes("web") ||
+            String(item.name || "").toLowerCase().includes("kindle") ||
+            String(item.name || "").toLowerCase().includes("flipbook") ||
+            String(item.format || "").toLowerCase().includes("web") ||
+            String(item.format || "").toLowerCase().includes("flipbook")
+          )
+        );
+        const canDownloadInvoice = isPaid && (
+          status === "Shipped" || 
+          status === "Delivered" || 
+          status === "Completed" || 
+          isDigitalOnly
+        );
         const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
         const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
         const canContinuePayment = !isPaid && status !== "Delivered" && status !== "Cancelled";
@@ -593,7 +610,9 @@ function MyOrders() {
                     ? "Generating invoice..."
                     : canDownloadInvoice
                       ? "Download invoice"
-                      : "Invoice after shipping"}
+                      : isDigitalOnly
+                        ? "Invoice after payment"
+                        : "Invoice after shipping"}
                 </button>
 
                 {order.trackingId ? (
@@ -610,7 +629,9 @@ function MyOrders() {
                     ? "Invoice is not available for cancelled orders."
                     : canDownloadInvoice
                       ? "Your invoice is ready to download."
-                      : "Invoice will be available once this order is paid and shipped."}
+                      : isDigitalOnly
+                        ? "Invoice will be available once this order is paid."
+                        : "Invoice will be available once this order is paid and shipped."}
                 </p>
 
                 {shouldShowRefundStatus ? (
