@@ -64,13 +64,13 @@ function AdminSalesDashboard() {
       {
         label: "Sales Volume (INR)",
         data: data?.monthlySalesTrends?.map((d) => d.amount) || [],
-        borderColor: "#2563eb",
-        backgroundColor: "rgba(37, 99, 235, 0.05)",
+        borderColor: "#D97706",
+        backgroundColor: "rgba(217, 119, 6, 0.05)",
         borderWidth: 2.5,
         tension: 0.35,
         fill: true,
-        pointBackgroundColor: "#2563eb",
-        pointBorderColor: "#ffffff",
+        pointBackgroundColor: "#D97706",
+        pointBorderColor: "var(--admin-surface, #ffffff)",
         pointBorderWidth: 2,
         pointRadius: 4,
         pointHoverRadius: 6
@@ -84,15 +84,15 @@ function AdminSalesDashboard() {
       {
         data: data?.formatDistribution ? Object.values(data.formatDistribution) : [],
         backgroundColor: [
-          "#2563eb", // Web Version (Blue)
-          "#d97706", // Flipbook (Amber)
-          "#ff9900", // Kindle (Orange)
-          "#10b981", // Paperback (Green)
-          "#8b5cf6", // E-Book/PDF (Purple)
-          "#64748b"  // Other (Slate)
+          "#3b82f6", // Web Version
+          "#f59e0b", // Flipbook
+          "#ff9900", // Kindle
+          "#10b981", // Paperback
+          "#8b5cf6", // E-Book/PDF
+          "#64748b"  // Other
         ],
         borderWidth: 2,
-        borderColor: "var(--site-surface, #ffffff)"
+        borderColor: "var(--admin-surface, #ffffff)"
       }
     ]
   };
@@ -104,7 +104,7 @@ function AdminSalesDashboard() {
         label: "Units Sold",
         data: data?.topProducts?.map((p) => p.quantity) || [],
         backgroundColor: "rgba(217, 119, 6, 0.85)",
-        borderColor: "#d97706",
+        borderColor: "var(--admin-primary, #D97706)",
         borderWidth: 1,
         borderRadius: 4
       }
@@ -120,11 +120,11 @@ function AdminSalesDashboard() {
     scales: {
       y: {
         grid: { color: "rgba(209, 213, 219, 0.15)" },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       },
       x: {
         grid: { display: false },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       }
     }
   };
@@ -136,7 +136,7 @@ function AdminSalesDashboard() {
       legend: {
         position: "right",
         labels: {
-          color: "var(--site-text, #111827)",
+          color: "var(--admin-text, #0f172a)",
           font: { size: 11.5, weight: "bold" },
           padding: 14
         }
@@ -154,11 +154,11 @@ function AdminSalesDashboard() {
     scales: {
       x: {
         grid: { color: "rgba(209, 213, 219, 0.15)" },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       },
       y: {
         grid: { display: false },
-        ticks: { color: "#334155", font: { size: 11.5, weight: 600 } }
+        ticks: { color: "var(--admin-text)", font: { size: 11.5, weight: 600 } }
       }
     }
   };
@@ -167,60 +167,59 @@ function AdminSalesDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main sales-dashboard-page">
-        <header className="admin-orders-header">
+      <main className="admin-main">
+        <header className="admin-header">
           <div>
-            <p className="admin-orders-kicker">Analytics & Insights</p>
             <h1>Sales Dashboard</h1>
-            <p className="admin-orders-subtitle">
+            <p className="admin-orders-subtitle" style={{ margin: "6px 0 0", color: "var(--admin-muted)" }}>
               Monitor catalog orders growth, format distributions, and top-selling product assets.
             </p>
           </div>
         </header>
 
-        {error && <p className="admin-orders-feedback error">{error}</p>}
+        {error && <p className="pricing-message error" style={{ margin: "0 0 20px" }}>{error}</p>}
 
         {isLoading ? (
-          <div className="admin-dashboard-loading">
+          <div className="admin-dashboard-loading" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "40px" }}>
             <div className="admin-dashboard-spinner" />
-            <p>Gathering analytics data...</p>
+            <p style={{ marginTop: "12px", color: "var(--admin-muted)" }}>Gathering analytics data...</p>
           </div>
         ) : (
           <>
             {/* Sales Summary Statistics */}
-            <section className="admin-orders-overview" aria-label="Sales summary statistics">
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Gross Revenue</p>
-                <p className="admin-overview-value text-blue">
+            <div className="stats">
+              <div className="card analytics-card">
+                <span>Gross Revenue</span>
+                <p style={{ color: "#3b82f6" }}>
                   Rs {(data?.summary?.totalRevenue || 0).toLocaleString("en-IN")}
                 </p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Total Orders</p>
-                <p className="admin-overview-value">{data?.summary?.totalOrders}</p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Items Sold</p>
-                <p className="admin-overview-value">{data?.summary?.totalItemsSold}</p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Average Order Value</p>
-                <p className="admin-overview-value text-amber">
+              </div>
+              <div className="card analytics-card">
+                <span>Total Orders</span>
+                <p>{data?.summary?.totalOrders}</p>
+              </div>
+              <div className="card analytics-card">
+                <span>Items Sold</span>
+                <p>{data?.summary?.totalItemsSold}</p>
+              </div>
+              <div className="card analytics-card">
+                <span>Average Order Value</span>
+                <p style={{ color: "#f59e0b" }}>
                   Rs {(data?.summary?.averageOrderValue || 0).toLocaleString("en-IN")}
                 </p>
-              </article>
-            </section>
+              </div>
+            </div>
 
             {/* Dashboard Graphs Row 1 */}
             <div className="sales-dashboard-grid">
-              <div className="sales-dashboard-chart-card double-width">
+              <div className="card sales-dashboard-chart-card double-width">
                 <h3>📈 Monthly Sales Performance</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
-              <div className="sales-dashboard-chart-card">
+              <div className="card sales-dashboard-chart-card">
                 <h3>📖 Sales by Product Format</h3>
                 <div className="chart-container">
                   <Doughnut data={formatDistributionData} options={doughnutOptions} />
@@ -230,27 +229,27 @@ function AdminSalesDashboard() {
 
             {/* Dashboard Graphs Row 2 */}
             <div className="sales-dashboard-grid">
-              <div className="sales-dashboard-chart-card double-width">
+              <div className="card sales-dashboard-chart-card double-width">
                 <h3>🏆 Top 10 Best-Selling Products</h3>
                 <div className="chart-container">
                   <Bar data={topProductsData} options={barOptions} />
                 </div>
               </div>
 
-              <div className="sales-dashboard-chart-card">
+              <div className="card sales-dashboard-chart-card">
                 <h3>🌍 Geographic Sales Distribution</h3>
                 <div className="sales-geo-list">
                   {data?.geographicDistribution?.length > 0 ? (
                     data.geographicDistribution.map((geo, index) => (
-                      <div key={`${geo.name}-${index}`} className="sales-geo-row">
-                        <span className="sales-geo-name">📍 {geo.name}</span>
-                        <strong className="sales-geo-count">
+                      <div key={`${geo.name}-${index}`} className="sales-geo-row" style={{ background: "var(--admin-surface-2)", borderColor: "var(--admin-border)" }}>
+                        <span className="sales-geo-name" style={{ color: "var(--admin-text)" }}>📍 {geo.name}</span>
+                        <strong className="sales-geo-count" style={{ color: "var(--admin-primary)" }}>
                           {geo.count} order{geo.count === 1 ? "" : "s"}
                         </strong>
                       </div>
                     ))
                   ) : (
-                    <p style={{ margin: "20px 0", color: "#64748b", textAlign: "center" }}>
+                    <p style={{ margin: "20px 0", color: "var(--admin-muted)", textAlign: "center" }}>
                       No location data captured yet.
                     </p>
                   )}

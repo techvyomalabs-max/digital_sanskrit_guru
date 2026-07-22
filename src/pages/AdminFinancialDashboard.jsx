@@ -145,11 +145,11 @@ function AdminFinancialDashboard() {
       {
         label: "Gross Revenue",
         data: data?.monthlyTrends?.map((d) => d.gross) || [],
-        borderColor: "#2563eb",
+        borderColor: "#3b82f6",
         backgroundColor: "transparent",
         borderWidth: 2,
         tension: 0.3,
-        pointBackgroundColor: "#2563eb",
+        pointBackgroundColor: "#3b82f6",
         pointRadius: 3
       },
       {
@@ -177,9 +177,9 @@ function AdminFinancialDashboard() {
           data?.summary?.discountsGiven || 0
         ],
         backgroundColor: [
-          "#2563eb", // Subtotal
+          "#3b82f6", // Subtotal
           "#8b5cf6", // GST
-          "#d97706", // Delivery
+          "#f59e0b", // Delivery
           "#ef4444"  // Discounts
         ],
         borderRadius: 4
@@ -193,17 +193,17 @@ function AdminFinancialDashboard() {
     plugins: {
       legend: {
         position: "top",
-        labels: { color: "var(--site-text, #111827)", boxWidth: 12 }
+        labels: { color: "var(--admin-text, #0f172a)", boxWidth: 12 }
       }
     },
     scales: {
       y: {
         grid: { color: "rgba(209, 213, 219, 0.15)" },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       },
       x: {
         grid: { display: false },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       }
     }
   };
@@ -217,11 +217,11 @@ function AdminFinancialDashboard() {
     scales: {
       y: {
         grid: { color: "rgba(209, 213, 219, 0.15)" },
-        ticks: { color: "#64748b", font: { size: 11 } }
+        ticks: { color: "var(--admin-muted)", font: { size: 11 } }
       },
       x: {
         grid: { display: false },
-        ticks: { color: "#334155", font: { size: 12, weight: 600 } }
+        ticks: { color: "var(--admin-text)", font: { size: 12, weight: 600 } }
       }
     }
   };
@@ -230,12 +230,11 @@ function AdminFinancialDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main financial-dashboard-page">
-        <header className="admin-orders-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+      <main className="admin-main">
+        <header className="admin-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
           <div>
-            <p className="admin-orders-kicker">Accounting & Taxes</p>
             <h1>Financial Dashboard</h1>
-            <p className="admin-orders-subtitle">
+            <p className="admin-orders-subtitle" style={{ margin: "6px 0 0", color: "var(--admin-muted)" }}>
               GST compliance calculation, Place of Supply matching, and payment ledger reconciliation.
             </p>
           </div>
@@ -246,83 +245,83 @@ function AdminFinancialDashboard() {
           )}
         </header>
 
-        {error && <p className="admin-orders-feedback error">{error}</p>}
+        {error && <p className="pricing-message error" style={{ margin: "0 0 20px" }}>{error}</p>}
 
         {isLoading ? (
-          <div className="admin-dashboard-loading">
+          <div className="admin-dashboard-loading" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "40px" }}>
             <div className="admin-dashboard-spinner" />
-            <p>Processing financial registers...</p>
+            <p style={{ marginTop: "12px", color: "var(--admin-muted)" }}>Processing financial registers...</p>
           </div>
         ) : (
           <>
             {/* Financial Cards Grid */}
-            <section className="admin-orders-overview" aria-label="Financial summaries grid">
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Gross Revenue</p>
-                <p className="admin-overview-value text-blue">
+            <div className="stats">
+              <div className="card analytics-card">
+                <span>Gross Revenue</span>
+                <p style={{ color: "#3b82f6" }}>
                   Rs {(data?.summary?.grossRevenue || 0).toLocaleString("en-IN")}
                 </p>
-              </article>
-              <article className="admin-overview-card highlight-green">
-                <p className="admin-overview-label">Net Earnings</p>
-                <p className="admin-overview-value text-green">
+              </div>
+              <div className="card analytics-card highlight-green" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(16, 185, 129, 0.08) 100%)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
+                <span>Net Earnings</span>
+                <p style={{ color: "#10b981" }}>
                   Rs {(data?.summary?.netRevenue || 0).toLocaleString("en-IN")}
                 </p>
-                <small className="admin-overview-subnote">Gross Revenue - GST - Shipping</small>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">Total GST Tax</p>
-                <p className="admin-overview-value text-purple">
+                <small className="admin-overview-subnote">Gross - GST - Shipping</small>
+              </div>
+              <div className="card analytics-card">
+                <span>Total GST Tax</span>
+                <p style={{ color: "#8b5cf6" }}>
                   Rs {(data?.summary?.taxGST || 0).toLocaleString("en-IN")}
                 </p>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">CGST + SGST (Intra-state)</p>
-                <p className="admin-overview-value text-blue-muted">
+              </div>
+              <div className="card analytics-card">
+                <span>CGST + SGST (Intra-state)</span>
+                <p style={{ color: "#3b82f6" }}>
                   Rs {((data?.summary?.cgst || 0) + (data?.summary?.sgst || 0)).toLocaleString("en-IN")}
                 </p>
                 <small className="admin-overview-subnote">Warehouse State: {data?.warehouseState || "Karnataka"}</small>
-              </article>
-              <article className="admin-overview-card">
-                <p className="admin-overview-label">IGST (Inter-state)</p>
-                <p className="admin-overview-value text-indigo">
+              </div>
+              <div className="card analytics-card">
+                <span>IGST (Inter-state)</span>
+                <p style={{ color: "#6366f1" }}>
                   Rs {(data?.summary?.igst || 0).toLocaleString("en-IN")}
                 </p>
-              </article>
-            </section>
+              </div>
+            </div>
 
             {/* Reconciliation Tools Row */}
-            <section className="recon-tools-section">
-              <div className="recon-tools-header">
+            <div className="card recon-tools-section">
+              <div className="recon-tools-header" style={{ borderColor: "var(--admin-border)" }}>
                 <h3>🔄 Automated Payment Reconciliation Audit</h3>
                 <span className="recon-badge">Razorpay API Sync Status: Online</span>
               </div>
               <div className="recon-stats-grid">
-                <div className="recon-stat-box green">
-                  <strong>{reconStats.reconciled}</strong>
+                <div className="recon-stat-box green" style={{ background: "rgba(16, 185, 129, 0.03)", borderColor: "var(--admin-border)" }}>
+                  <strong style={{ color: "#10b981" }}>{reconStats.reconciled}</strong>
                   <span>Reconciled Transactions</span>
                 </div>
-                <div className="recon-stat-box orange">
-                  <strong>{reconStats.pending}</strong>
+                <div className="recon-stat-box orange" style={{ background: "rgba(245, 158, 11, 0.03)", borderColor: "var(--admin-border)" }}>
+                  <strong style={{ color: "#f59e0b" }}>{reconStats.pending}</strong>
                   <span>Pending Review</span>
                 </div>
-                <div className="recon-stat-box blue">
-                  <strong>{reconStats.total}</strong>
+                <div className="recon-stat-box blue" style={{ background: "rgba(59, 130, 246, 0.03)", borderColor: "var(--admin-border)" }}>
+                  <strong style={{ color: "#3b82f6" }}>{reconStats.total}</strong>
                   <span>Total Scanned Ledger Logs</span>
                 </div>
               </div>
-            </section>
+            </div>
 
             {/* Charts Row */}
             <div className="sales-dashboard-grid">
-              <div className="sales-dashboard-chart-card double-width">
+              <div className="card sales-dashboard-chart-card double-width">
                 <h3>📈 Revenue & Profit Growth</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
-              <div className="sales-dashboard-chart-card">
+              <div className="card sales-dashboard-chart-card">
                 <h3>📊 Fee Components Breakdown</h3>
                 <div className="chart-container">
                   <Bar data={feesBreakdownData} options={barOptions} />
@@ -331,8 +330,8 @@ function AdminFinancialDashboard() {
             </div>
 
             {/* Recent Transactions Ledger */}
-            <div className="financial-ledger-card">
-              <div className="ledger-card-header-row">
+            <div className="card financial-ledger-card">
+              <div className="ledger-card-header-row" style={{ borderColor: "var(--admin-border)" }}>
                 <h3>📒 Transaction Audit Ledger & GSTR Place of Supply</h3>
                 
                 {/* GST Place of Supply Filter */}
@@ -343,6 +342,7 @@ function AdminFinancialDashboard() {
                     value={gstFilter} 
                     onChange={(e) => setGstFilter(e.target.value)}
                     className="pos-filter-select"
+                    style={{ background: "var(--admin-surface)", color: "var(--admin-text)", borderColor: "var(--admin-border)" }}
                   >
                     <option value="all">All States</option>
                     <option value="intra">Intra-state (CGST + SGST)</option>
@@ -351,43 +351,53 @@ function AdminFinancialDashboard() {
                 </div>
               </div>
 
-              <div className="admin-orders-table-wrap">
-                <table className="admin-orders-table">
+              <div className="admin-table-wrap" style={{ borderColor: "var(--admin-border)" }}>
+                <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Order ID</th>
-                      <th>Date</th>
-                      <th>Place of Supply</th>
-                      <th>Taxable Subtotal</th>
-                      <th>CGST</th>
-                      <th>SGST</th>
-                      <th>IGST</th>
-                      <th>Discount</th>
-                      <th>Total Collected</th>
-                      <th>Reconciliation</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Order ID</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Date</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Place of Supply</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Taxable Subtotal</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>CGST</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>SGST</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>IGST</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Discount</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Total Collected</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Reconciliation</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredTransactions.length > 0 ? (
                       filteredTransactions.map((tx) => (
                         <tr key={tx._id}>
-                          <td className="order-code">#{tx._id.slice(-6).toUpperCase()}</td>
-                          <td>{new Date(tx.createdAt).toLocaleDateString("en-IN")}</td>
-                          <td>
-                            <strong>{tx.placeOfSupply}</strong>
-                            <small style={{ display: "block", color: "#64748b" }}>{tx.customer}</small>
+                          <td className="order-code" style={{ borderColor: "var(--admin-border-soft)", fontFamily: "monospace", fontWeight: "bold" }}>
+                            #{tx._id.slice(-6).toUpperCase()}
                           </td>
-                          <td>Rs {tx.subtotal.toFixed(2)}</td>
-                          <td>{tx.cgst > 0 ? `Rs ${tx.cgst.toFixed(2)}` : "—"}</td>
-                          <td>{tx.sgst > 0 ? `Rs ${tx.sgst.toFixed(2)}` : "—"}</td>
-                          <td>{tx.igst > 0 ? `Rs ${tx.igst.toFixed(2)}` : "—"}</td>
-                          <td className={tx.discount > 0 ? "text-red" : ""}>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            {new Date(tx.createdAt).toLocaleDateString("en-IN")}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            <strong>{tx.placeOfSupply}</strong>
+                            <small style={{ display: "block", color: "var(--admin-muted)" }}>{tx.customer}</small>
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>Rs {tx.subtotal.toFixed(2)}</td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            {tx.cgst > 0 ? `Rs ${tx.cgst.toFixed(2)}` : "—"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            {tx.sgst > 0 ? `Rs ${tx.sgst.toFixed(2)}` : "—"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            {tx.igst > 0 ? `Rs ${tx.igst.toFixed(2)}` : "—"}
+                          </td>
+                          <td className={tx.discount > 0 ? "text-red" : ""} style={{ borderColor: "var(--admin-border-soft)" }}>
                             {tx.discount > 0 ? `- Rs ${tx.discount.toFixed(2)}` : "—"}
                           </td>
-                          <td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
                             <strong>Rs {tx.total.toFixed(2)}</strong>
                           </td>
-                          <td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
                             <span className={`recon-status-badge ${tx.reconciliationStatus.toLowerCase().replace(" ", "-")}`}>
                               {tx.reconciliationStatus}
                             </span>
@@ -396,7 +406,7 @@ function AdminFinancialDashboard() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: "center", padding: "30px" }}>
+                        <td colSpan="10" style={{ textAlign: "center", padding: "30px", borderColor: "var(--admin-border-soft)" }}>
                           No transaction matches the filter option.
                         </td>
                       </tr>
