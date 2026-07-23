@@ -895,7 +895,7 @@ function Product() {
                   {product.stock === 0 ? "Out of Stock" : "Buy Now"}
                 </button>
 
-                {product.stock > 0 && (
+                {product.stock > 0 && product.productType !== "bulk" && (
                   <div style={{ marginTop: "14px", borderTop: "1px solid var(--border-color, #cbd5e1)", paddingTop: "12px", textAlign: "center" }}>
                     <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "var(--site-text-soft)" }}>
                       Planning to purchase in bulk for a school, class, or institution?
