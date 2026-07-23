@@ -322,7 +322,8 @@ router.post("/", protect, admin, largeJson, async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const images = normalizeImages(req.body.images, req.body.image);
-    const productType = String(req.body?.productType || "single").trim().toLowerCase() === "bundle" ? "bundle" : "single";
+    const typeCandidate = String(req.body?.productType || "single").trim().toLowerCase();
+    const productType = ["bundle", "bulk"].includes(typeCandidate) ? typeCandidate : "single";
     const bundleItems = productType === "bundle" ? normalizeBundleItems(req.body.bundleItems) : [];
     const relatedProducts = normalizeRelatedProducts(req.body.relatedProducts);
     const festiveOffer = req.body?.festiveOffer === true;
@@ -419,9 +420,8 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
     product.festiveDiscountPercent = product.festiveOffer
       ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent)
       : 0;
-    product.productType = String(req.body?.productType || product.productType || "single").trim().toLowerCase() === "bundle"
-      ? "bundle"
-      : "single";
+    const typeCandidateUpdate = String(req.body?.productType || product.productType || "single").trim().toLowerCase();
+    product.productType = ["bundle", "bulk"].includes(typeCandidateUpdate) ? typeCandidateUpdate : "single";
     product.bundleItems = product.productType === "bundle"
       ? normalizeBundleItems(req.body.bundleItems ?? product.bundleItems)
       : [];

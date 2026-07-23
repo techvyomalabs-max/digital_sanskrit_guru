@@ -14,7 +14,9 @@ const emailLogSchema = new mongoose.Schema(
         "wishlist-alert",
         "broadcast",
         "test",
-        "password-reset"
+        "password-reset",
+        "gift-pass",
+        "bulk-enquiry"
       ],
       default: "campaign"
     },
