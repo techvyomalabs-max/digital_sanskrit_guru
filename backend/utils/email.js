@@ -523,6 +523,55 @@ async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId
   });
 }
 
+async function sendBulkEnquiryEmail({ name, email, phone, quantity, productName, institution, message }) {
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@digitalsanskritguru.com";
+  const html = htmlWrapper(
+    "New Bulk Purchase Enquiry",
+    `
+    <h2 style="color: #1e293b; margin-top: 0;">New Wholesale/Bulk Enquiry</h2>
+    <p>A user has requested a bulk/wholesale quote for a product.</p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px;">
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; width: 180px; background-color: #f8fafc;">Product Name</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${productName}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Quantity Requested</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${quantity} units</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Name</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${name}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Email</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;"><a href="mailto:${email}">${email}</a></td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Phone Number</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${phone || "Not Provided"}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Institution / School</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${institution || "Not Provided"}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Message</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${message || "No message provided."}</td>
+      </tr>
+    </table>
+    <p>Please reply directly to the customer at <a href="mailto:${email}">${email}</a> to send the wholesale pricing and shipping details.</p>
+    `
+  );
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `✉️ New Wholesale Bulk Enquiry for ${productName} (${quantity} units)`,
+    html,
+    type: "bulk-enquiry"
+  });
+}
+
 module.exports = {
   sendEmail,
   sendOrderConfirmation,
@@ -531,5 +580,6 @@ module.exports = {
   sendWishlistLowStockAlert,
   sendBroadcastEmail,
   sendTestEmail,
-  sendGiftPassEmail
+  sendGiftPassEmail,
+  sendBulkEnquiryEmail
 };

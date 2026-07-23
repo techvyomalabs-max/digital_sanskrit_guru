@@ -927,4 +927,35 @@ router.delete("/:id", protect, admin, async (req, res) => {
   }
 });
 
+const { sendBulkEnquiryEmail } = require("../utils/email");
+
+// POST /api/products/:id/bulk-enquiry (PUBLIC)
+router.post("/:id/bulk-enquiry", async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const { name, email, phone, quantity, institution, message } = req.body;
+    if (!name || !email || !quantity) {
+      return res.status(400).json({ message: "Name, email, and quantity are required." });
+    }
+
+    await sendBulkEnquiryEmail({
+      name,
+      email,
+      phone,
+      quantity: Number(quantity),
+      productName: product.name,
+      institution,
+      message
+    });
+
+    res.json({ message: "Bulk enquiry submitted successfully. Our team will contact you soon." });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to submit enquiry", error: error.message });
+  }
+});
+
 module.exports = router;

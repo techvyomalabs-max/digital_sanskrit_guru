@@ -215,6 +215,18 @@ function Product() {
   const [purchasedProducts, setPurchasedProducts] = useState([]);
   const [purchaseAsGift, setPurchaseAsGift] = useState(false);
 
+  // Bulk Enquiry Form States
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkName, setBulkName] = useState("");
+  const [bulkEmail, setBulkEmail] = useState("");
+  const [bulkPhone, setBulkPhone] = useState("");
+  const [bulkQty, setBulkQty] = useState(20);
+  const [bulkInst, setBulkInst] = useState("");
+  const [bulkMsg, setBulkMsg] = useState("");
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkSuccess, setBulkSuccess] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+
   useEffect(() => {
     if (token) {
       axios.get("/api/orders/my", {
@@ -463,6 +475,48 @@ function Product() {
       showToast("Failed to load more reviews.");
     } finally {
       setIsLoadingMoreReviews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      setBulkName(user.name || "");
+      setBulkEmail(user.email || "");
+    }
+  }, [user, showBulkModal]);
+
+  const handleBulkSubmit = async (e) => {
+    e.preventDefault();
+    setBulkError("");
+    setBulkSuccess(false);
+
+    if (!bulkName || !bulkEmail || !bulkQty) {
+      setBulkError("Please fill in all required fields (Name, Email, and Quantity).");
+      return;
+    }
+
+    try {
+      setBulkSubmitting(true);
+      await axios.post(`/api/products/${product._id}/bulk-enquiry`, {
+        name: bulkName,
+        email: bulkEmail,
+        phone: bulkPhone,
+        quantity: Number(bulkQty),
+        institution: bulkInst,
+        message: bulkMsg
+      });
+      setBulkSuccess(true);
+      setBulkPhone("");
+      setBulkInst("");
+      setBulkMsg("");
+      setTimeout(() => {
+        setShowBulkModal(false);
+        setBulkSuccess(false);
+      }, 2500);
+    } catch (err) {
+      setBulkError(err.response?.data?.message || "Failed to submit wholesale quote request. Please try again.");
+    } finally {
+      setBulkSubmitting(false);
     }
   };
 
@@ -819,8 +873,12 @@ function Product() {
                     <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "var(--site-text-soft)" }}>
                       Planning to purchase in bulk for a school, class, or institution?
                     </p>
-                    <a
-                      href={`mailto:admin@digitalsanskritguru.com?subject=Bulk Enquiry: ${encodeURIComponent(product.name)}&body=Hello, I would like to request a wholesale bulk quote for ${product.name}. Quantity requested: `}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkQty(qty || 20);
+                        setShowBulkModal(true);
+                      }}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -829,16 +887,18 @@ function Product() {
                         fontSize: "13px",
                         fontWeight: "600",
                         color: "#2563eb",
-                        textDecoration: "none",
+                        background: "none",
+                        cursor: "pointer",
                         padding: "6px 12px",
                         border: "1px dashed #2563eb",
                         borderRadius: "6px",
-                        transition: "all 0.15s ease"
+                        transition: "all 0.15s ease",
+                        width: "100%"
                       }}
-                      className="bulk-quote-link"
+                      className="bulk-quote-btn"
                     >
                       ✉ Request Bulk / Wholesale Quote
-                    </a>
+                    </button>
                   </div>
                 )}
               </>
@@ -1042,6 +1102,252 @@ function Product() {
           )}
         </div>
       </div>
+      {/* ── Wholesale / Bulk Enquiry Modal Overlay ── */}
+      {showBulkModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.6)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          padding: "20px"
+        }}>
+          <div style={{
+            backgroundColor: "var(--site-bg-card, #ffffff)",
+            color: "var(--site-text, #1e293b)",
+            border: "1px solid var(--border-color, #cbd5e1)",
+            borderRadius: "12px",
+            width: "100%",
+            maxWidth: "500px",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
+            overflow: "hidden",
+            position: "relative",
+            animation: "modalFadeIn 0.2s ease"
+          }}>
+            <div style={{
+              padding: "18px 24px",
+              borderBottom: "1px solid var(--border-color, #cbd5e1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "var(--site-bg, #f8fafc)"
+            }}>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>Request Wholesale / Bulk Quote</h3>
+              <button
+                type="button"
+                onClick={() => setShowBulkModal(false)}
+                style={{
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  fontSize: "20px",
+                  color: "var(--site-text-soft, #64748b)",
+                  lineHeight: 1
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleBulkSubmit} style={{ padding: "24px" }}>
+              {bulkSuccess ? (
+                <div style={{
+                  textAlign: "center",
+                  padding: "16px 0",
+                  color: "#16a34a"
+                }}>
+                  <span style={{ fontSize: "40px" }}>✅</span>
+                  <h4 style={{ margin: "12px 0 6px", fontSize: "16px" }}>Enquiry Submitted Successfully!</h4>
+                  <p style={{ margin: 0, fontSize: "13.5px", color: "var(--site-text-soft)" }}>
+                    We have logged your wholesale enquiry. Our administrative team will get back to you with custom rates within 24 hours.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--site-text-soft)" }}>
+                    Interested in bulk copies of <strong>{product.name}</strong>? Submitting this form alerts our team to contact you with wholesale pricing.
+                  </p>
+
+                  {bulkError && (
+                    <div style={{
+                      backgroundColor: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      color: "#991b1b",
+                      fontSize: "13px",
+                      marginBottom: "14px"
+                    }}>
+                      ⚠️ {bulkError}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Name <span style={{ color: "#dc2626" }}>*</span></label>
+                      <input
+                        type="text"
+                        required
+                        value={bulkName}
+                        onChange={(e) => setBulkName(e.target.value)}
+                        placeholder="Your Name"
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid var(--border-color, #cbd5e1)",
+                          borderRadius: "6px",
+                          fontSize: "13.5px",
+                          backgroundColor: "transparent",
+                          color: "inherit"
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Email <span style={{ color: "#dc2626" }}>*</span></label>
+                      <input
+                        type="email"
+                        required
+                        value={bulkEmail}
+                        onChange={(e) => setBulkEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid var(--border-color, #cbd5e1)",
+                          borderRadius: "6px",
+                          fontSize: "13.5px",
+                          backgroundColor: "transparent",
+                          color: "inherit"
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Phone</label>
+                      <input
+                        type="tel"
+                        value={bulkPhone}
+                        onChange={(e) => setBulkPhone(e.target.value)}
+                        placeholder="Phone number"
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid var(--border-color, #cbd5e1)",
+                          borderRadius: "6px",
+                          fontSize: "13.5px",
+                          backgroundColor: "transparent",
+                          color: "inherit"
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Quantity Needed <span style={{ color: "#dc2626" }}>*</span></label>
+                      <input
+                        type="number"
+                        required
+                        min="5"
+                        value={bulkQty}
+                        onChange={(e) => setBulkQty(Math.max(1, parseInt(e.target.value) || ""))}
+                        placeholder="Quantity (e.g. 20)"
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid var(--border-color, #cbd5e1)",
+                          borderRadius: "6px",
+                          fontSize: "13.5px",
+                          backgroundColor: "transparent",
+                          color: "inherit"
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Institution / School Name</label>
+                    <input
+                      type="text"
+                      value={bulkInst}
+                      onChange={(e) => setBulkInst(e.target.value)}
+                      placeholder="e.g. Sanskrit Academy / Public School"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: "1px solid var(--border-color, #cbd5e1)",
+                        borderRadius: "6px",
+                        fontSize: "13.5px",
+                        backgroundColor: "transparent",
+                        color: "inherit"
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: "20px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Special Requirements / Message</label>
+                    <textarea
+                      value={bulkMsg}
+                      onChange={(e) => setBulkMsg(e.target.value)}
+                      rows={3}
+                      placeholder="Specify if you require bulk shipping outside India, custom print format, or specific delivery timelines."
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: "1px solid var(--border-color, #cbd5e1)",
+                        borderRadius: "6px",
+                        fontSize: "13.5px",
+                        backgroundColor: "transparent",
+                        color: "inherit",
+                        resize: "none"
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkModal(false)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border-color, #cbd5e1)",
+                        background: "transparent",
+                        fontSize: "13.5px",
+                        cursor: "pointer",
+                        color: "inherit"
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={bulkSubmitting}
+                      style={{
+                        padding: "8px 20px",
+                        borderRadius: "6px",
+                        border: "none",
+                        backgroundColor: "#2563eb",
+                        color: "#fff",
+                        fontSize: "13.5px",
+                        fontWeight: "600",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {bulkSubmitting ? "Submitting..." : "Submit Enquiry"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
