@@ -1,5 +1,11 @@
 const mongoose = require("mongoose");
 
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 }
+});
+const Counter = mongoose.model("Counter", counterSchema);
+
 // const orderSchema = new mongoose.Schema(
 //   {
 //     user: {
@@ -228,10 +234,41 @@ const orderSchema = new mongoose.Schema(
     lastUpdatedAt: {
       type: Date,
       default: null
+    },
+    invoiceNumber: {
+      type: String,
+      unique: true,
+      sparse: true
+    },
+    taxDetails: {
+      hsnCode: { type: String, default: "4901" },
+      sacCode: { type: String, default: "9984" },
+      cgstPercent: { type: Number, default: 0 },
+      sgstPercent: { type: Number, default: 0 },
+      igstPercent: { type: Number, default: 0 },
+      cgstAmount: { type: Number, default: 0 },
+      sgstAmount: { type: Number, default: 0 },
+      igstAmount: { type: Number, default: 0 }
     }
   },
   { timestamps: true }
 );
+
+orderSchema.pre("save", function() {
+  const self = this;
+  if (self.isNew && !self.invoiceNumber) {
+    return Counter.findByIdAndUpdate(
+      { _id: "orderInvoice" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    )
+      .then((counter) => {
+        const year = new Date().getFullYear();
+        const seqStr = String(counter.seq).padStart(4, "0");
+        self.invoiceNumber = `DSG-${year}-${seqStr}`;
+      });
+  }
+});
 
 // ── Indexes (Tier-1 performance) ──────────────────────────────────────────────
 

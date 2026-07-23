@@ -41,6 +41,19 @@ const couponSchema = new mongoose.Schema(
         ref: "User"
       }
     ],
+    usageLimit: {
+      type: Number,
+      default: null
+    },
+    usageCount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    },
     lastUpdatedByName: {
       type: String,
       default: ""

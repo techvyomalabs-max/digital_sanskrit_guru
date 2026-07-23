@@ -163,6 +163,16 @@ router.post("/apply", protect, async (req, res) => {
     return res.status(400).json({ message: "Coupon expired" });
   }
 
+  // Check if active
+  if (coupon.isActive === false) {
+    return res.status(400).json({ message: "Coupon is inactive" });
+  }
+
+  // Check usage limit
+  if (coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.usageCount >= coupon.usageLimit) {
+    return res.status(400).json({ message: "Coupon usage limit has been reached" });
+  }
+
   // 1. Check if user already used this coupon
   if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
     return res.status(400).json({ message: "You have already used this coupon code" });

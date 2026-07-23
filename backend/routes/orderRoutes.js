@@ -660,6 +660,18 @@ router.post("/", protect, async (req, res) => {
   if (couponCode) {
     const coupon = await Coupon.findOne({ code: couponCode });
     if (coupon && (!coupon.expiresAt || new Date() <= coupon.expiresAt)) {
+      // Check if active
+      if (coupon.isActive === false) {
+        await restoreStockForOrder({ items: normalizedItems });
+        return res.status(400).json({ message: "Coupon is inactive." });
+      }
+
+      // Check if usage limit is reached
+      if (coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.usageCount >= coupon.usageLimit) {
+        await restoreStockForOrder({ items: normalizedItems });
+        return res.status(400).json({ message: "Coupon usage limit has been reached." });
+      }
+
       // 1. Check if user already used this coupon
       if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
         await restoreStockForOrder({ items: normalizedItems });
@@ -802,6 +814,27 @@ router.post("/", protect, async (req, res) => {
     ? "Pending"
     : "On Hold";
 
+  const warehouseState = String(settings?.warehouseAddress?.state || "Karnataka").trim().toLowerCase();
+  const billingState = String(requestedBilling?.state || shipping?.state || "Karnataka").trim().toLowerCase();
+  const isLocal = billingState === warehouseState;
+
+  let cgstPercent = 0;
+  let sgstPercent = 0;
+  let igstPercent = 0;
+  let cgstAmount = 0;
+  let sgstAmount = 0;
+  let igstAmount = 0;
+
+  if (isLocal) {
+    cgstPercent = gstPercent / 2;
+    sgstPercent = gstPercent / 2;
+    cgstAmount = roundMoney(gstAmount / 2);
+    sgstAmount = roundMoney(gstAmount / 2);
+  } else {
+    igstPercent = gstPercent;
+    igstAmount = gstAmount;
+  }
+
   let order;
   try {
     order = await Order.create({
@@ -849,6 +882,16 @@ router.post("/", protect, async (req, res) => {
         country: shipping.country || "",
         latitude: shipping.latitude === null || shipping.latitude === undefined ? null : Number(shipping.latitude),
         longitude: shipping.longitude === null || shipping.longitude === undefined ? null : Number(shipping.longitude)
+      },
+      taxDetails: {
+        hsnCode: "4901",
+        sacCode: "9984",
+        cgstPercent,
+        sgstPercent,
+        igstPercent,
+        cgstAmount,
+        sgstAmount,
+        igstAmount
       }
     });
   } catch (createErr) {
@@ -861,7 +904,10 @@ router.post("/", protect, async (req, res) => {
   if (order && appliedCouponCode) {
     await Coupon.updateOne(
       { code: appliedCouponCode },
-      { $addToSet: { usedBy: req.user } }
+      { 
+        $addToSet: { usedBy: req.user },
+        $inc: { usageCount: 1 }
+      }
     );
   }
 

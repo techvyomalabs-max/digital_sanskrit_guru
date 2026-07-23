@@ -79,12 +79,14 @@ const productSchema = new mongoose.Schema(
 
     price: {
       type: Number,
-      required: true
+      required: true,
+      min: 0
     },
 
     internationalPrice: {
       type: Number,
-      default: null
+      default: null,
+      min: 0
     },
 
     internationalCountryPrices: {
@@ -186,12 +188,21 @@ const productSchema = new mongoose.Schema(
 
     stock: {
       type: Number,
-      default: 1
+      default: 1,
+      min: 0
     },
 
     rating: {
       type: Number,
-      default: 0
+      default: 0,
+      min: 0,
+      max: 5
+    },
+
+    reviewsCount: {
+      type: Number,
+      default: 0,
+      min: 0
     },
 
     reviews: [reviewSchema],

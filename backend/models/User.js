@@ -62,6 +62,18 @@ const userSchema = mongoose.Schema({
     unique: true
   },
   password: String,
+  phone: {
+    type: String,
+    default: ""
+  },
+  isEmailVerified: {
+    type: Boolean,
+    default: false
+  },
+  isBlocked: {
+    type: Boolean,
+    default: false
+  },
   isAdmin: {
     type: Boolean,
     default: false
