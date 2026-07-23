@@ -582,12 +582,21 @@ router.post("/", protect, async (req, res) => {
       matchedMarket: pricing.matchedMarket || "",
       productType: String(product?.productType || "single"),
       bundleItems: Array.isArray(product?.bundleItems)
-        ? product.bundleItems.map((bi) => ({
-            product: bi.product?._id ? String(bi.product._id) : String(bi.product),
-            name: bi.product?.name || "Product",
-            image: bi.product?.image || "",
-            quantity: Number(bi.quantity || 1)
-          }))
+        ? product.bundleItems.map((bi) => {
+            const bp = bi.product;
+            return {
+              product: bp?._id ? String(bp._id) : String(bp),
+              name: bp?.name || "Product",
+              image: bp?.image || "",
+              quantity: Number(bi.quantity || 1),
+              isDigital: Boolean(bp?.isDigital),
+              digitalType: String(bp?.digitalType || "Web Version").trim(),
+              webReaderLink: String(bp?.webReaderLink || "").trim(),
+              kindleLink: String(bp?.kindleLink || "").trim(),
+              kindleAsin: String(bp?.kindleAsin || "").trim(),
+              digitalInstructions: String(bp?.digitalInstructions || "").trim()
+            };
+          })
         : [],
       deliveredAt: null,
       returnRequest: {

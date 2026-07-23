@@ -98,42 +98,85 @@ function MyLibrary() {
       if (!isPaid || !Array.isArray(order.items)) return;
 
       order.items.forEach((item) => {
-        const nameLower = String(item.name || "").toLowerCase();
-        const formatLower = String(item.format || "").toLowerCase();
-        const isDigital = Boolean(
-          item.isDigital ||
-          item.webReaderLink ||
-          item.kindleLink ||
-          nameLower.includes("web") ||
-          nameLower.includes("flipbook") ||
-          nameLower.includes("kindle") ||
-          nameLower.includes("e-book") ||
-          formatLower.includes("web") ||
-          formatLower.includes("flipbook")
-        );
+        const isBundle = String(item.productType || "").toLowerCase() === "bundle" || (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
 
-        if (isDigital) {
-          const isGiftItem = Boolean(order.isGift || item.giftCode);
-          if (isGiftItem && !order.isRedeemedGift) {
-            return;
-          }
+        if (isBundle && Array.isArray(item.bundleItems)) {
+          // Iterate over individual bundle items
+          item.bundleItems.forEach((subItem) => {
+            const subNameLower = String(subItem.name || "").toLowerCase();
+            const isSubDigital = Boolean(
+              subItem.isDigital ||
+              subItem.webReaderLink ||
+              subItem.kindleLink ||
+              subNameLower.includes("web") ||
+              subNameLower.includes("flipbook") ||
+              subNameLower.includes("kindle") ||
+              subNameLower.includes("e-book")
+            );
 
-          const key = String(item.product || item._id || item.name).trim();
-          if (seenMap.has(key)) {
-            const existing = seenMap.get(key);
-            existing.copies += Number(item.quantity || 1);
-          } else {
-            const entry = {
-              ...item,
-              orderId: order._id,
-              orderDate: order.createdAt,
-              orderNumber: order._id,
-              copies: Number(item.quantity || 1),
-              webReaderLink: item.webReaderLink || item.product?.webReaderLink || "",
-              kindleLink: item.kindleLink || item.product?.kindleLink || ""
-            };
-            seenMap.set(key, entry);
-            list.push(entry);
+            if (isSubDigital) {
+              const subKey = String(subItem.product || subItem._id || subItem.name).trim();
+              const subQty = Number(subItem.quantity || 1) * Number(item.quantity || 1);
+
+              if (seenMap.has(subKey)) {
+                const existing = seenMap.get(subKey);
+                existing.copies += subQty;
+              } else {
+                const entry = {
+                  ...subItem,
+                  _id: subItem.product || subItem._id,
+                  orderId: order._id,
+                  orderDate: order.createdAt,
+                  orderNumber: order._id,
+                  copies: subQty,
+                  webReaderLink: subItem.webReaderLink || "",
+                  kindleLink: subItem.kindleLink || "",
+                  digitalInstructions: subItem.digitalInstructions || ""
+                };
+                seenMap.set(subKey, entry);
+                list.push(entry);
+              }
+            }
+          });
+        } else {
+          // Handle standard single product
+          const nameLower = String(item.name || "").toLowerCase();
+          const formatLower = String(item.format || "").toLowerCase();
+          const isDigital = Boolean(
+            item.isDigital ||
+            item.webReaderLink ||
+            item.kindleLink ||
+            nameLower.includes("web") ||
+            nameLower.includes("flipbook") ||
+            nameLower.includes("kindle") ||
+            nameLower.includes("e-book") ||
+            formatLower.includes("web") ||
+            formatLower.includes("flipbook")
+          );
+
+          if (isDigital) {
+            const isGiftItem = Boolean(order.isGift || item.giftCode);
+            if (isGiftItem && !order.isRedeemedGift) {
+              return;
+            }
+
+            const key = String(item.product || item._id || item.name).trim();
+            if (seenMap.has(key)) {
+              const existing = seenMap.get(key);
+              existing.copies += Number(item.quantity || 1);
+            } else {
+              const entry = {
+                ...item,
+                orderId: order._id,
+                orderDate: order.createdAt,
+                orderNumber: order._id,
+                copies: Number(item.quantity || 1),
+                webReaderLink: item.webReaderLink || item.product?.webReaderLink || "",
+                kindleLink: item.kindleLink || item.product?.kindleLink || ""
+              };
+              seenMap.set(key, entry);
+              list.push(entry);
+            }
           }
         }
       });
