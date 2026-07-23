@@ -137,7 +137,7 @@ const productSchema = new mongoose.Schema(
 
     productType: {
       type: String,
-      enum: ["single", "bundle"],
+      enum: ["single", "bundle", "bulk"],
       default: "single"
     },
 
