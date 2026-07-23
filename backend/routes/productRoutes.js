@@ -4,6 +4,7 @@ const Product = require("../models/Product");
 const Order = require("../models/Order");
 const StoreSettings = require("../models/StoreSettings");
 const User = require("../models/User");
+const Review = require("../models/Review");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
@@ -219,7 +220,7 @@ const getAverageRating = (product) => {
 
 const HOME_PRODUCT_SELECT =
   "_id name image images category price internationalPrice internationalCountryPrices marketPrices stock " +
-  "festiveOffer festiveDiscountPercent productType bundleItems rating reviews createdAt relatedProducts";
+  "festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
   "name image price internationalPrice internationalCountryPrices marketPrices category stock";
@@ -742,6 +743,22 @@ router.get("/:id/reviews", async (req, res) => {
     const skip = Math.max(0, parseInt(req.query.skip) || 0);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
 
+    // Try fetching from the new standalone Reviews collection first
+    const reviews = await Review.find({ product: req.params.id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    if (reviews.length > 0) {
+      const formattedReviews = reviews.map((r) => ({
+        ...r,
+        user: r.userName
+      }));
+      return res.json(formattedReviews);
+    }
+
+    // Fallback to embedded array if standalone collection is empty (e.g. unmigrated)
     const product = await Product.findById(req.params.id)
       .select({ reviews: { $slice: [skip, limit] } })
       .lean();
@@ -764,31 +781,34 @@ router.get("/:id", async (req, res) => {
     const cached = appCache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    // Get count of total reviews using fast aggregation
-    let reviewsCount = 0;
-    try {
-      if (mongoose.Types.ObjectId.isValid(req.params.id)) {
-        const countResult = await Product.aggregate([
-          { $match: { _id: new mongoose.Types.ObjectId(req.params.id) } },
-          { $project: { reviewsCount: { $size: { $ifNull: ["$reviews", []] } } } }
-        ]);
-        reviewsCount = countResult[0]?.reviewsCount || 0;
-      }
-    } catch (err) {
-      // Fallback if aggregation fails
-    }
-
     const product = await Product.findById(req.params.id)
       .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
-      .select({ reviews: { $slice: 5 } }) // Only return first 5 reviews initially
       .lean();
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    product.reviewsCount = reviewsCount;
+    // Try loading reviews from the new standalone collection
+    const reviewsCount = await Review.countDocuments({ product: req.params.id });
+    const latestReviews = await Review.find({ product: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+
+    if (latestReviews.length > 0) {
+      product.reviews = latestReviews.map((r) => ({
+        ...r,
+        user: r.userName
+      }));
+      product.reviewsCount = reviewsCount;
+    } else {
+      // Fallback: use old embedded reviews array if standalone is empty
+      const embeddedReviews = Array.isArray(product.reviews) ? product.reviews : [];
+      product.reviews = embeddedReviews.slice(0, 5);
+      product.reviewsCount = product.reviewsCount !== undefined ? product.reviewsCount : embeddedReviews.length;
+    }
 
     appCache.set(cacheKey, product, TTL.PRODUCT_SINGLE);
     res.json(product);
@@ -815,21 +835,61 @@ router.post("/:id/reviews", protect, async (req, res) => {
     const user = await User.findById(req.user).select("name");
     const userName = user?.name || "User";
 
-    const review = {
-      user: userName,
+    // 1. Create review document in standalone collection
+    await Review.create({
+      product: req.params.id,
+      user: req.user,
+      userName: userName,
       rating,
       comment
-    };
+    });
 
-    product.reviews.push(review);
-    product.rating =
-      product.reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
-      product.reviews.length;
+    // 2. Recalculate average rating & reviews count using MongoDB aggregation
+    const stats = await Review.aggregate([
+      { $match: { product: product._id } },
+      {
+        $group: {
+          _id: "$product",
+          avgRating: { $avg: "$rating" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const avgRating = stats[0] ? Math.round(stats[0].avgRating * 10) / 10 : 0;
+    const reviewsCount = stats[0] ? stats[0].count : 0;
+
+    // 3. Keep embedded array updated alongside cached stats for safety/dual-write
+    if (Array.isArray(product.reviews)) {
+      product.reviews.push({
+        user: userName,
+        rating,
+        comment,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+    product.rating = avgRating;
+    product.reviewsCount = reviewsCount;
 
     await product.save();
+
+    // 4. Retrieve latest 5 reviews to send back as expected shape
+    const latestReviews = await Review.find({ product: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+
+    const returnedProduct = product.toObject();
+    returnedProduct.reviews = latestReviews.map((r) => ({
+      ...r,
+      user: r.userName
+    }));
+    returnedProduct.reviewsCount = reviewsCount;
+
     // Invalidate single product cache after review
     appCache.del(`product:${req.params.id}`);
-    res.status(201).json(product);
+    res.status(201).json(returnedProduct);
   } catch (error) {
     res.status(500).json({ message: "Failed to submit review", error: error.message });
   }

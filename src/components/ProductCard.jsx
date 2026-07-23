@@ -10,10 +10,10 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
 
   const reviews = Array.isArray(product?.reviews) ? product.reviews : [];
-  const reviewCount = reviews.length;
+  const reviewCount = product?.reviewsCount !== undefined ? product.reviewsCount : reviews.length;
   const averageFromReviews =
-    reviewCount > 0
-      ? reviews.reduce((sum, r) => sum + Number(r?.rating || 0), 0) / reviewCount
+    reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + Number(r?.rating || 0), 0) / reviews.length
       : 0;
   const displayRating = Number(product?.rating || averageFromReviews || 0);
   const roundedStars = Math.max(0, Math.min(5, Math.round(displayRating)));
