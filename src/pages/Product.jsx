@@ -754,12 +754,35 @@ function Product() {
                   </div>
                 ) : null}
 
-                <div className="qty-box">
-                  <button className="qty-btn" onClick={() => setQty(qty > 1 ? qty - 1 : 1)}>-</button>
-                  <span className="qty-number">{qty}</span>
+                <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
+                  <button type="button" className="qty-btn" onClick={() => setQty(qty > 1 ? qty - 1 : 1)}>-</button>
+                  <input
+                    type="number"
+                    className="qty-input"
+                    value={qty}
+                    min="1"
+                    max={product.stock || 100}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(product.stock || 100, parseInt(e.target.value) || 1));
+                      setQty(val);
+                    }}
+                    style={{
+                      width: "60px",
+                      textAlign: "center",
+                      border: "1px solid var(--border-color, #cbd5e1)",
+                      borderRadius: "6px",
+                      height: "36px",
+                      fontSize: "15px",
+                      fontWeight: "bold",
+                      margin: "0 8px",
+                      backgroundColor: "transparent",
+                      color: "inherit"
+                    }}
+                  />
                   <button
+                    type="button"
                     className="qty-btn"
-                    onClick={() => setQty(qty < (product.stock || 10) ? qty + 1 : qty)}
+                    onClick={() => setQty(qty < (product.stock || 100) ? qty + 1 : qty)}
                   >+</button>
                 </div>
 
@@ -777,6 +800,34 @@ function Product() {
                 >
                   {product.stock === 0 ? "Out of Stock" : "Buy Now"}
                 </button>
+
+                {product.stock > 0 && (
+                  <div style={{ marginTop: "14px", borderTop: "1px solid var(--border-color, #cbd5e1)", paddingTop: "12px", textAlign: "center" }}>
+                    <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "var(--site-text-soft)" }}>
+                      Planning to purchase in bulk for a school, class, or institution?
+                    </p>
+                    <a
+                      href={`mailto:admin@digitalsanskritguru.com?subject=Bulk Enquiry: ${encodeURIComponent(product.name)}&body=Hello, I would like to request a wholesale bulk quote for ${product.name}. Quantity requested: `}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        color: "#2563eb",
+                        textDecoration: "none",
+                        padding: "6px 12px",
+                        border: "1px dashed #2563eb",
+                        borderRadius: "6px",
+                        transition: "all 0.15s ease"
+                      }}
+                      className="bulk-quote-link"
+                    >
+                      ✉ Request Bulk / Wholesale Quote
+                    </a>
+                  </div>
+                )}
               </>
             )}
 

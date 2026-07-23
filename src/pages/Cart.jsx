@@ -188,12 +188,33 @@ function Cart() {
                       <h3>{item.name}</h3>
                       <p className="cart-item-price-mobile">{formatCurrencyExact(lineTotal, displayCurrency)}</p>
 
-                      <div className="qty-box">
-                        <button onClick={() => updateQty(item._id || item.id, qty > 1 ? qty - 1 : 1)}>
+                      <div className="qty-box" style={{ display: "flex", alignItems: "center" }}>
+                        <button type="button" onClick={() => updateQty(item._id || item.id, qty > 1 ? qty - 1 : 1)}>
                           -
                         </button>
-                        <span>{qty}</span>
-                        <button onClick={() => updateQty(item._id || item.id, qty + 1)}>+</button>
+                        <input
+                          type="number"
+                          value={qty}
+                          min="1"
+                          max={item.stock || 100}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(item.stock || 100, parseInt(e.target.value) || 1));
+                            updateQty(item._id || item.id, val);
+                          }}
+                          style={{
+                            width: "50px",
+                            textAlign: "center",
+                            border: "1px solid var(--border-color, #cbd5e1)",
+                            borderRadius: "4px",
+                            height: "26px",
+                            fontSize: "13.5px",
+                            fontWeight: "bold",
+                            margin: "0 6px",
+                            backgroundColor: "transparent",
+                            color: "inherit"
+                          }}
+                        />
+                        <button type="button" onClick={() => updateQty(item._id || item.id, qty + 1)}>+</button>
                       </div>
                     </div>
 
