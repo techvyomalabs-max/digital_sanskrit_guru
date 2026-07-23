@@ -743,9 +743,6 @@ function Navbar({ bannerActive = false }) {
           <NavLink className={linkClassName} to="/my-library" onClick={() => setIsMenuOpen(false)}>
             📚 My Digital Library
           </NavLink>
-          <NavLink className={linkClassName} to="/redeem-gift" onClick={() => setIsMenuOpen(false)}>
-            🎟️ Redeem Gift Pass
-          </NavLink>
           {user ? (
             <NavLink className={linkClassName} to="/account" onClick={() => setIsMenuOpen(false)}>
               My Account
