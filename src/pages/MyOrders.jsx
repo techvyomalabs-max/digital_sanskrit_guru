@@ -413,9 +413,9 @@ function MyOrders() {
           )
         );
         const canDownloadInvoice = isPaid && (
-          status === "Shipped" || 
-          status === "Delivered" || 
-          status === "Completed" || 
+          status === "Shipped" ||
+          status === "Delivered" ||
+          status === "Completed" ||
           isDigitalOnly
         );
         const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
@@ -615,7 +615,7 @@ function MyOrders() {
                 )}
               </div>
 
-               <div className="my-order-actions">
+              <div className="my-order-actions">
                 <button
                   className="my-order-invoice-btn"
                   disabled={!canDownloadInvoice || generatingInvoiceOrderId === order._id}

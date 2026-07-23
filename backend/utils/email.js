@@ -339,6 +339,24 @@ async function sendOrderConfirmation(order, user) {
   });
 }
 
+function getCourierTrackingUrl(courierName, trackingId) {
+  if (!trackingId) return "";
+  const name = String(courierName || "").trim().toLowerCase();
+  const trId = String(trackingId).trim();
+  if (name.includes("delhivery")) {
+    return `https://www.delhivery.com/track/package/${trId}`;
+  } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
+    return "https://www.indiapost.gov.in/";
+  } else if (name.includes("dtdc")) {
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${trId}`;
+  } else if (name.includes("professional") || name.includes("tpc")) {
+    return "https://www.tpcindia.com/";
+  } else if (name.includes("shiprocket")) {
+    return `https://www.shiprocket.in/shipment-tracking/${trId}`;
+  }
+  return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
+}
+
 async function sendOrderStatusUpdate(order, user, newStatus) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
@@ -352,10 +370,29 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   const info = statusMessages[newStatus] || { emoji: "📦", title: `Order status: ${newStatus}`, body: `Your order status has been updated to ${newStatus}.` };
   const badgeClass = `badge-${newStatus.toLowerCase()}`;
 
+  let emailBody = info.body;
+  if (newStatus === "Shipped" && order.trackingId) {
+    const courier = order.courierPartner || "Delhivery";
+    const trackingUrl = getCourierTrackingUrl(courier, order.trackingId);
+    emailBody = `
+      Your order is on its way and will reach you soon.<br/><br/>
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; font-family: sans-serif;">
+        <h4 style="margin: 0 0 8px; color: #1e293b; font-size: 14px;">📦 Shipping Details</h4>
+        <p style="margin: 0 0 6px; font-size: 13px; color: #475569;">
+          <strong>Courier Partner:</strong> ${courier}
+        </p>
+        <p style="margin: 0 0 12px; font-size: 13px; color: #475569;">
+          <strong>Tracking ID:</strong> <code>${order.trackingId}</code>
+        </p>
+        <a href="${trackingUrl}" style="display: inline-block; padding: 8px 16px; background-color: #1e293b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12.5px; margin-top: 4px;" target="_blank">🔗 Track Consignment ↗</a>
+      </div>
+    `;
+  }
+
   const html = htmlWrapper(info.title, `
     <h2>${info.emoji} ${info.title}</h2>
     <p>Hi <strong>${String(user?.name || "Customer")}</strong>,</p>
-    <p>${info.body}</p>
+    <p>${emailBody}</p>
     <p>
       <strong>Order ID:</strong> ${String(order._id || "").slice(-8).toUpperCase()}&nbsp;&nbsp;
       <span class="badge ${badgeClass}">${newStatus}</span>
