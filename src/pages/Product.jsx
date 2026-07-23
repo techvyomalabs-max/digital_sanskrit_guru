@@ -331,7 +331,7 @@ function Product() {
           }
           : null
       );
-      setQty(found && found.productType === "bulk" ? 10 : 1);
+      setQty(1);
       setManagedRelatedProducts(
         Array.isArray(found?.relatedProducts)
           ? found.relatedProducts.filter((p) => String(p?._id || "") !== String(id)).slice(0, 8)
@@ -808,77 +808,50 @@ function Product() {
                   </div>
                 ) : null}
 
-                {product.productType === "bulk" ? (
-                  <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0", gap: "8px" }}>
-                    <span style={{ fontSize: "14px", fontWeight: "600" }}>Select Quantity:</span>
-                    <select
-                      value={qty}
-                      onChange={(e) => setQty(Number(e.target.value))}
-                      style={{
-                        padding: "8px 12px",
-                        border: "1px solid var(--border-color, #cbd5e1)",
-                        borderRadius: "6px",
-                        height: "36px",
-                        fontSize: "15px",
-                        fontWeight: "bold",
-                        backgroundColor: "transparent",
-                        color: "inherit",
-                        cursor: "pointer"
-                      }}
-                    >
-                      {[10, 20, 30, 40, 50, 100].map((num) => (
-                        <option key={num} value={num} disabled={product.stock > 0 && num > product.stock}>
-                          {num} copies
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
-                    <button type="button" className="qty-btn" onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}>-</button>
-                    <input
-                      type="number"
-                      className="qty-input"
-                      value={qty}
-                      min="1"
-                      max={product.stock || 100}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "") {
-                          setQty("");
-                        } else {
-                          const num = parseInt(val, 10);
-                          if (!isNaN(num)) {
-                            setQty(Math.max(1, Math.min(product.stock || 100, num)));
-                          }
+                <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
+                  <button type="button" className="qty-btn" onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}>-</button>
+                  <input
+                    type="number"
+                    className="qty-input"
+                    value={qty}
+                    min="1"
+                    max={product.stock || 100}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setQty("");
+                      } else {
+                        const num = parseInt(val, 10);
+                        if (!isNaN(num)) {
+                          setQty(Math.max(1, Math.min(product.stock || 100, num)));
                         }
-                      }}
-                      onBlur={() => {
-                        const num = parseInt(qty, 10);
-                        if (qty === "" || isNaN(num) || num < 1) {
-                          setQty(1);
-                        }
-                      }}
-                      style={{
-                        width: "60px",
-                        textAlign: "center",
-                        border: "1px solid var(--border-color, #cbd5e1)",
-                        borderRadius: "6px",
-                        height: "36px",
-                        fontSize: "15px",
-                        fontWeight: "bold",
-                        margin: "0 8px",
-                        backgroundColor: "transparent",
-                        color: "inherit"
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="qty-btn"
-                      onClick={() => setQty(Number(qty || 1) < (product.stock || 100) ? Number(qty || 1) + 1 : Number(qty || 1))}
-                    >+</button>
-                  </div>
-                )}
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(qty, 10);
+                      if (qty === "" || isNaN(num) || num < 1) {
+                        setQty(1);
+                      }
+                    }}
+                    style={{
+                      width: "60px",
+                      textAlign: "center",
+                      border: "1px solid var(--border-color, #cbd5e1)",
+                      borderRadius: "6px",
+                      height: "36px",
+                      fontSize: "15px",
+                      fontWeight: "bold",
+                      margin: "0 8px",
+                      backgroundColor: "transparent",
+                      color: "inherit"
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="qty-btn"
+                    onClick={() => setQty(Number(qty || 1) < (product.stock || 100) ? Number(qty || 1) + 1 : Number(qty || 1))}
+                  >+</button>
+                </div>
 
                 <button
                   className="add-cart-btn"

@@ -59,36 +59,6 @@ function CartQtyInput({ item, currentQty, updateQty }) {
     setLocalVal(currentQty);
   }, [currentQty]);
 
-  const isBulk = String(item.productType || item.product?.productType || "").toLowerCase() === "bulk";
-
-  if (isBulk) {
-    return (
-      <div className="qty-box" style={{ display: "flex", alignItems: "center" }}>
-        <select
-          value={currentQty}
-          onChange={(e) => updateQty(item._id || item.id, Number(e.target.value))}
-          style={{
-            padding: "4px 8px",
-            border: "1px solid var(--border-color, #cbd5e1)",
-            borderRadius: "4px",
-            height: "28px",
-            fontSize: "13px",
-            fontWeight: "bold",
-            backgroundColor: "transparent",
-            color: "inherit",
-            cursor: "pointer"
-          }}
-        >
-          {[10, 20, 30, 40, 50, 100].map((num) => (
-            <option key={num} value={num} disabled={item.stock > 0 && num > item.stock}>
-              {num} copies
-            </option>
-          ))}
-        </select>
-      </div>
-    );
-  }
-
   const handleChange = (e) => {
     const val = e.target.value;
     setLocalVal(val);

@@ -979,7 +979,7 @@ function AdminAddProducts() {
     setAboutProduct(Array.isArray(product.aboutProduct) ? product.aboutProduct.join("\n") : "");
     setFestiveOffer(product.festiveOffer === true);
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
-    setProductType(product.productType || "single");
+    setProductType(String(product.productType || "single") === "bundle" ? "bundle" : "single");
     setIsDigital(product.isDigital === true);
     setDigitalType(product.digitalType || "Web Version");
     setWebReaderLink(product.webReaderLink || "");
@@ -1330,10 +1330,9 @@ function AdminAddProducts() {
                   </label>
                   <label className="admin-field">
                     <span>Product Type</span>
-                    <select value={productType} onChange={(e) => setProductType(e.target.value)}>
+                    <select value={productType} onChange={(e) => setProductType(e.target.value === "bundle" ? "bundle" : "single")}>
                       <option value="single">Single Product</option>
                       <option value="bundle">Bundle</option>
-                      <option value="bulk">Bulk Product</option>
                     </select>
                   </label>
                   <label className="admin-field">
