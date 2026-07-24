@@ -510,6 +510,7 @@ html.banner-active .navbar {
 
 .navbar-cart:hover {
   background: rgba(255, 255, 255, 0.06);
+  color: var(--site-header-text);
 }
 
 .navbar-cart-icon {
