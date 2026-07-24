@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const SITE_THEMES = ["sunrise", "forest", "midnight"];
+const SITE_THEMES = ["sunrise", "forest", "midnight", "skyblue"];
 const DEFAULT_PRODUCT_CATEGORIES = [
   "General",
   "Dharma",

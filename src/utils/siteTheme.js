@@ -55,6 +55,24 @@ const BUILT_IN_THEME_DEFINITIONS = [
       sectionBg: "#111827",
       sectionText: "#f8fafc"
     }
+  },
+  {
+    value: "skyblue",
+    label: "Sky Blue",
+    description: "Premium azure sky and cloud theme",
+    palette: {
+      bg: "#f0f9ff",
+      surface: "#ffffff",
+      text: "#0369a1",
+      header: "#0284c7",
+      accent: "#0ea5e9",
+      button: "#0284c7",
+      navBottom: "#0c4a6e",
+      footerBg: "#075985",
+      footerText: "#ffffff",
+      sectionBg: "#e0f2fe",
+      sectionText: "#0369a1"
+    }
   }
 ];
 
