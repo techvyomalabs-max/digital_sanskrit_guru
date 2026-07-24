@@ -61,17 +61,17 @@ const BUILT_IN_THEME_DEFINITIONS = [
     label: "Sky Blue",
     description: "Premium azure sky and cloud theme",
     palette: {
-      bg: "#0284c7",
-      surface: "#0277af",
-      text: "#ffffff",
+      bg: "#ffffff",
+      surface: "#ffffff",
+      text: "#0f172a",
       header: "#0284c7",
-      accent: "#ffffff",
-      button: "#ffffff",
-      navBottom: "#075985",
-      footerBg: "#0369a1",
+      accent: "#0284c7",
+      button: "#0284c7",
+      navBottom: "#0c4a6e",
+      footerBg: "#075985",
       footerText: "#ffffff",
-      sectionBg: "#0277af",
-      sectionText: "#ffffff"
+      sectionBg: "#ffffff",
+      sectionText: "#0f172a"
     }
   },
   {
