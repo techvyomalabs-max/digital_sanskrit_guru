@@ -192,20 +192,21 @@ html.banner-active .navbar {
   min-height: 32px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-full);
-  border: 1px solid var(--site-badge-bg);
-  background: linear-gradient(135deg, var(--site-badge-bg), var(--site-button-hover));
-  color: var(--site-badge-text);
+  border: 1px solid var(--site-button-bg);
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
   text-decoration: none;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   transition: all 0.2s ease;
 }
 
 .navbar-ondemand-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.35);
+  background: var(--site-button-hover);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
   filter: brightness(1.05);
 }
 
