@@ -1,7 +1,7 @@
 export const DEFAULT_SITE_THEME = "sunrise";
 const SITE_THEME_STORAGE_KEY = "site-theme-settings";
 
-const BUILT_IN_THEME_DEFINITIONS = [
+export const BUILT_IN_THEME_DEFINITIONS = [
   {
     value: "sunrise",
     label: "Sunrise",
@@ -252,8 +252,10 @@ export function getSiteThemeOptions(customThemes = []) {
     ? customThemes.map(normalizeCustomTheme).filter(Boolean)
     : [];
 
+  const customThemeValues = new Set(normalizedCustomThemes.map((theme) => theme.value));
+
   return [
-    ...BUILT_IN_THEME_DEFINITIONS.map((theme) => ({ ...theme, isCustom: false })),
+    ...BUILT_IN_THEME_DEFINITIONS.filter((theme) => !customThemeValues.has(theme.value)).map((theme) => ({ ...theme, isCustom: false })),
     ...normalizedCustomThemes
   ];
 }

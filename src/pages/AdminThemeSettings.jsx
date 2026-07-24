@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
-import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions } from "../utils/siteTheme";
+import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
 import "./AdminThemeSettings.css";
 
@@ -51,6 +51,7 @@ function AdminThemeSettings() {
   const [siteTheme, setSiteTheme] = useState(DEFAULT_SITE_THEME);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
+  const [editingThemeId, setEditingThemeId] = useState(null);
   const [isLoadingTheme, setIsLoadingTheme] = useState(true);
   const [isSavingTheme, setIsSavingTheme] = useState(false);
   const [isCreatingTheme, setIsCreatingTheme] = useState(false);
@@ -328,9 +329,14 @@ function AdminThemeSettings() {
       return;
     }
 
-    if (themeOptions.some((option) => option.value === nextThemeId)) {
-      setThemeMessage("Theme name already exists. Choose a different name.");
-      return;
+    if (!editingThemeId || editingThemeId !== nextThemeId) {
+      const duplicateExists = themeOptions.some(
+        (option) => option.value === nextThemeId && option.value !== editingThemeId
+      );
+      if (duplicateExists) {
+        setThemeMessage("Theme name already exists. Choose a different name.");
+        return;
+      }
     }
 
     const nextCustomTheme = {
@@ -355,12 +361,16 @@ function AdminThemeSettings() {
     setIsCreatingTheme(true);
     setThemeMessage("");
 
+    const cleanCustomThemes = customThemes.filter(
+      (t) => t.id !== editingThemeId && t.id !== nextThemeId
+    );
+
     try {
       const res = await axios.put(
         "/api/settings",
         {
           siteTheme: nextThemeId,
-          customThemes: [...customThemes, nextCustomTheme]
+          customThemes: [...cleanCustomThemes, nextCustomTheme]
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -370,11 +380,12 @@ function AdminThemeSettings() {
       setCustomThemes(nextCustomThemes);
       setSiteTheme(nextTheme);
       setThemeForm(EMPTY_THEME_FORM);
+      setEditingThemeId(null);
       applySiteTheme(nextTheme, nextCustomThemes);
-      setThemeMessage("Custom theme created and selected.");
+      setThemeMessage(editingThemeId ? "Theme updated and selected." : "Custom theme created and selected.");
       window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
     } catch (err) {
-      setThemeMessage(err?.response?.data?.message || "Could not create custom theme.");
+      setThemeMessage(err?.response?.data?.message || (editingThemeId ? "Could not update theme." : "Could not create custom theme."));
     } finally {
       setIsCreatingTheme(false);
     }
@@ -383,6 +394,11 @@ function AdminThemeSettings() {
   const deleteCustomTheme = async (themeId) => {
     if (!window.confirm("Are you sure you want to delete this custom theme?")) {
       return;
+    }
+
+    if (editingThemeId === themeId) {
+      setEditingThemeId(null);
+      setThemeForm(EMPTY_THEME_FORM);
     }
 
     const updatedThemes = customThemes.filter((t) => t.id !== themeId);
@@ -471,17 +487,52 @@ function AdminThemeSettings() {
                       <strong>{option.label}</strong>
                       <span>{option.description}</span>
                     </button>
-                    {option.isCustom && (
+                    <button
+                      type="button"
+                      className="theme-edit-btn"
+                      style={{ right: option.isCustom || BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value && customThemes.some(ct => ct.id === t.value)) ? "38px" : "8px" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingThemeId(option.value);
+                        setThemeForm({
+                          name: option.label,
+                          description: option.description || "",
+                          bg: option.palette.bg,
+                          surface: option.palette.surface,
+                          text: option.palette.text,
+                          header: option.palette.header,
+                          accent: option.palette.accent,
+                          button: option.palette.button,
+                          navBottom: option.palette.navBottom || "#1c2735",
+                          footerBg: option.palette.footerBg || "",
+                          footerText: option.palette.footerText || "",
+                          sectionBg: option.palette.sectionBg || "",
+                          sectionText: option.palette.sectionText || ""
+                        });
+                        const element = document.getElementById("theme-customizer-card");
+                        if (element) {
+                          element.scrollIntoView({ behavior: "smooth" });
+                        }
+                      }}
+                      title="Edit theme colors"
+                    >
+                      ✏️
+                    </button>
+                    {(option.isCustom || BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value && customThemes.some(ct => ct.id === t.value))) && (
                       <button
                         type="button"
                         className="theme-delete-btn"
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (editingThemeId === option.value) {
+                            setEditingThemeId(null);
+                            setThemeForm(EMPTY_THEME_FORM);
+                          }
                           deleteCustomTheme(option.value);
                         }}
-                        title="Delete custom theme"
+                        title={BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value) ? "Reset to default colors" : "Delete custom theme"}
                       >
-                        ✕
+                        {BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value) ? "🔄" : "✕"}
                       </button>
                     )}
                   </div>
@@ -938,13 +989,13 @@ function AdminThemeSettings() {
           )}
         </section>
 
-        <section className="card">
+        <section id="theme-customizer-card" className="card">
           <div className="pricing-controls-header">
             <div>
-              <h3>Create Custom Theme</h3>
-              <p>Add a new theme by defining the core storefront colors.</p>
+              <h3>{editingThemeId ? `Modify Theme: ${themeForm.name}` : "Create Custom Theme"}</h3>
+              <p>{editingThemeId ? "Update colors for this theme preset." : "Add a new theme by defining the core storefront colors."}</p>
             </div>
-            <span className="pricing-badge">Custom</span>
+            <span className="pricing-badge">{editingThemeId ? "Editing" : "Custom"}</span>
           </div>
 
           <div className="theme-creator-grid">
@@ -1089,9 +1140,26 @@ function AdminThemeSettings() {
 
           <div className="pricing-actions-row">
             <button className="pricing-save-btn" onClick={createCustomTheme} disabled={isCreatingTheme}>
-              {isCreatingTheme ? "Creating..." : "Add New Theme"}
+              {isCreatingTheme ? "Saving..." : (editingThemeId ? "Update Theme" : "Add New Theme")}
             </button>
-            <span>New custom themes are saved to store settings and become selectable immediately.</span>
+            {editingThemeId && (
+              <button 
+                type="button" 
+                className="pricing-link-btn" 
+                onClick={() => {
+                  setEditingThemeId(null);
+                  setThemeForm(EMPTY_THEME_FORM);
+                }}
+                style={{ background: "transparent", border: "1px solid var(--admin-border)", color: "var(--admin-text)" }}
+              >
+                Cancel Edit
+              </button>
+            )}
+            <span>
+              {editingThemeId 
+                ? "Modifying this theme preset updates its configuration across the storefront." 
+                : "New custom themes are saved to store settings and become selectable immediately."}
+            </span>
           </div>
         </section>
       </main>
