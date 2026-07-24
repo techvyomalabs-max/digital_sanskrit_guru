@@ -899,10 +899,11 @@
 /* ── Scale & Experience Stats Section ── */
 .home-stats-section {
   padding: var(--space-6) !important;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(217, 119, 6, 0.03) 100%);
+  background: var(--site-section-bg, linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(217, 119, 6, 0.03) 100%));
   border-radius: var(--radius-xl);
   margin: var(--space-6) auto;
-  border: 1px solid rgba(209, 213, 219, 0.4);
+  border: 1px solid var(--site-border, rgba(209, 213, 219, 0.4));
+  color: var(--site-section-text, inherit);
 }
 
 .home-stats-grid {

@@ -36,7 +36,11 @@ const customThemeSchema = new mongoose.Schema(
       header: { type: String, required: true, trim: true },
       accent: { type: String, required: true, trim: true },
       button: { type: String, required: true, trim: true },
-      navBottom: { type: String, default: "#1c2735", trim: true }
+      navBottom: { type: String, default: "#1c2735", trim: true },
+      footerBg: { type: String, default: "", trim: true },
+      footerText: { type: String, default: "", trim: true },
+      sectionBg: { type: String, default: "", trim: true },
+      sectionText: { type: String, default: "", trim: true }
     }
   },
   { _id: false }

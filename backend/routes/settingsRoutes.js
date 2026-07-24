@@ -51,11 +51,26 @@ function normalizeCustomThemes(input) {
       header: String(item?.palette?.header || "").trim(),
       accent: String(item?.palette?.accent || "").trim(),
       button: String(item?.palette?.button || "").trim(),
-      navBottom: String(item?.palette?.navBottom || "").trim() || "#1c2735"
+      navBottom: String(item?.palette?.navBottom || "").trim() || "#1c2735",
+      footerBg: String(item?.palette?.footerBg || "").trim(),
+      footerText: String(item?.palette?.footerText || "").trim(),
+      sectionBg: String(item?.palette?.sectionBg || "").trim(),
+      sectionText: String(item?.palette?.sectionText || "").trim()
     };
 
-    const paletteValid = Object.values(palette).every((color) => HEX_COLOR_REGEX.test(color));
-    if (!paletteValid) {
+    const coreColors = [palette.bg, palette.surface, palette.text, palette.header, palette.accent, palette.button];
+    const coreValid = coreColors.every((color) => HEX_COLOR_REGEX.test(color));
+
+    const optionalColors = [
+      palette.navBottom,
+      palette.footerBg,
+      palette.footerText,
+      palette.sectionBg,
+      palette.sectionText
+    ].filter(Boolean);
+    const optionalValid = optionalColors.every((color) => HEX_COLOR_REGEX.test(color));
+
+    if (!coreValid || !optionalValid) {
       return acc;
     }
 

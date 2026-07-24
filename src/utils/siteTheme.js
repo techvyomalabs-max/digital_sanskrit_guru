@@ -13,7 +13,11 @@ const BUILT_IN_THEME_DEFINITIONS = [
       header: "#0f172a",
       accent: "#d97706",
       button: "#d97706",
-      navBottom: "#1e293b"
+      navBottom: "#1e293b",
+      footerBg: "#0f172a",
+      footerText: "#ffffff",
+      sectionBg: "#f1f5f9",
+      sectionText: "#0f172a"
     }
   },
   {
@@ -27,7 +31,11 @@ const BUILT_IN_THEME_DEFINITIONS = [
       header: "#064e3b",
       accent: "#059669",
       button: "#059669",
-      navBottom: "#022c22"
+      navBottom: "#022c22",
+      footerBg: "#022c22",
+      footerText: "#ffffff",
+      sectionBg: "#eef7f2",
+      sectionText: "#064e3b"
     }
   },
   {
@@ -41,7 +49,11 @@ const BUILT_IN_THEME_DEFINITIONS = [
       header: "#0f172a",
       accent: "#f59e0b",
       button: "#38bdf8",
-      navBottom: "#020617"
+      navBottom: "#020617",
+      footerBg: "#020617",
+      footerText: "#ffffff",
+      sectionBg: "#111827",
+      sectionText: "#f8fafc"
     }
   }
 ];
@@ -102,6 +114,11 @@ function buildThemeVariables(theme) {
   const navBottomBg = palette.navBottom || "#1c2735";
   const navBottomText = getReadableTextColor(navBottomBg);
 
+  const footerBgColor = palette.footerBg || darken(palette.header, 0.24);
+  const footerTextColor = palette.footerText || getReadableTextColor(footerBgColor);
+  const sectionBgColor = palette.sectionBg || mixColors(palette.surface, palette.bg, 0.4);
+  const sectionTextColor = palette.sectionText || palette.text;
+
   return {
     "--site-bg": palette.bg,
     "--site-surface": palette.surface,
@@ -122,9 +139,11 @@ function buildThemeVariables(theme) {
     "--site-button-bg": palette.button,
     "--site-button-hover": darken(palette.button, 0.12),
     "--site-button-text": buttonText,
-    "--site-footer-bg": darken(palette.header, 0.24),
-    "--site-footer-border": darken(palette.header, 0.12),
-    "--site-footer-text": getReadableTextColor(darken(palette.header, 0.24)),
+    "--site-footer-bg": footerBgColor,
+    "--site-footer-border": darken(footerBgColor, 0.12),
+    "--site-footer-text": footerTextColor,
+    "--site-section-bg": sectionBgColor,
+    "--site-section-text": sectionTextColor,
     "--site-hero-start": palette.header,
     "--site-hero-end": palette.button,
     "--site-card-shadow": `0 16px 40px ${toRgba(palette.header, 0.14)}`,
@@ -135,18 +154,46 @@ function buildThemeVariables(theme) {
 }
 
 function normalizeCustomTheme(theme) {
+  const bg = String(theme?.palette?.bg || "").trim();
+  const surface = String(theme?.palette?.surface || "").trim();
+  const text = String(theme?.palette?.text || "").trim();
+  const header = String(theme?.palette?.header || "").trim();
+  const accent = String(theme?.palette?.accent || "").trim();
+  const button = String(theme?.palette?.button || "").trim();
+  const navBottom = String(theme?.palette?.navBottom || "").trim() || "#1c2735";
+
+  const footerBg = String(theme?.palette?.footerBg || "").trim() || darken(header, 0.24);
+  const footerText = String(theme?.palette?.footerText || "").trim() || getReadableTextColor(footerBg);
+  const sectionBg = String(theme?.palette?.sectionBg || "").trim() || mixColors(surface, bg, 0.4);
+  const sectionText = String(theme?.palette?.sectionText || "").trim() || text;
+
   const palette = {
-    bg: String(theme?.palette?.bg || "").trim(),
-    surface: String(theme?.palette?.surface || "").trim(),
-    text: String(theme?.palette?.text || "").trim(),
-    header: String(theme?.palette?.header || "").trim(),
-    accent: String(theme?.palette?.accent || "").trim(),
-    button: String(theme?.palette?.button || "").trim(),
-    navBottom: String(theme?.palette?.navBottom || "").trim() || "#1c2735"
+    bg,
+    surface,
+    text,
+    header,
+    accent,
+    button,
+    navBottom,
+    footerBg,
+    footerText,
+    sectionBg,
+    sectionText
   };
 
-  const paletteValid = Object.values(palette).every((color) => HEX_COLOR_REGEX.test(color));
-  if (!paletteValid) {
+  const coreColors = [palette.bg, palette.surface, palette.text, palette.header, palette.accent, palette.button];
+  const coreValid = coreColors.every((color) => HEX_COLOR_REGEX.test(color));
+
+  const optionalColors = [
+    palette.navBottom,
+    palette.footerBg,
+    palette.footerText,
+    palette.sectionBg,
+    palette.sectionText
+  ].filter(Boolean);
+  const optionalValid = optionalColors.every((color) => HEX_COLOR_REGEX.test(color));
+
+  if (!coreValid || !optionalValid) {
     return null;
   }
 

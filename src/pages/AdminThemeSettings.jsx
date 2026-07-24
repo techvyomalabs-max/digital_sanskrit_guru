@@ -16,7 +16,11 @@ const EMPTY_THEME_FORM = {
   header: "#7c2d12",
   accent: "#9a3412",
   button: "#fb923c",
-  navBottom: "#1c2735"
+  navBottom: "#1c2735",
+  footerBg: "#1c1c1e",
+  footerText: "#ffffff",
+  sectionBg: "#f2f2f7",
+  sectionText: "#1c1c1e"
 };
 
 const ANIMATION_TYPES = [
@@ -340,7 +344,11 @@ function AdminThemeSettings() {
         header: themeForm.header,
         accent: themeForm.accent,
         button: themeForm.button,
-        navBottom: themeForm.navBottom || "#1c2735"
+        navBottom: themeForm.navBottom || "#1c2735",
+        footerBg: themeForm.footerBg,
+        footerText: themeForm.footerText,
+        sectionBg: themeForm.sectionBg,
+        sectionText: themeForm.sectionText
       }
     };
 
@@ -1031,6 +1039,50 @@ function AdminThemeSettings() {
                   onChange={(e) => setThemeForm((prev) => ({ ...prev, navBottom: e.target.value }))}
                 />
                 <span>{themeForm.navBottom || "#1c2735"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Footer Background</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.footerBg || "#1c1c1e"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerBg: e.target.value }))}
+                />
+                <span>{themeForm.footerBg || "#1c1c1e"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Footer Text</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.footerText || "#ffffff"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerText: e.target.value }))}
+                />
+                <span>{themeForm.footerText || "#ffffff"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Secondary Section Background</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.sectionBg || "#f2f2f7"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionBg: e.target.value }))}
+                />
+                <span>{themeForm.sectionBg || "#f2f2f7"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Secondary Section Text</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.sectionText || "#1c1c1e"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionText: e.target.value }))}
+                />
+                <span>{themeForm.sectionText || "#1c1c1e"}</span>
               </div>
             </label>
           </div>
