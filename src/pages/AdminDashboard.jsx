@@ -31,6 +31,7 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  MessageSquare,
   X
 } from "lucide-react";
 import "./AdminShared.css";
@@ -268,6 +269,15 @@ function AdminDashboard() {
           },
           homeSectionVisibility: { festiveOffers: true },
           collectionFilterVisibility: { festiveOffers: true },
+          whatsappSettings: {
+            mode: "free",
+            phoneNumber: "919999999999",
+            welcomeMessage: "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.",
+            metaPhoneNumberId: "",
+            metaAccessToken: "",
+            metaWabaId: "",
+            autoSendOrderConfirmation: true
+          },
           lastUpdatedByName: "",
           lastUpdatedByEmail: "",
           lastUpdatedAt: null
@@ -316,7 +326,8 @@ function AdminDashboard() {
         },
         collectionFilterVisibility: {
           festiveOffers: pricingSettings.collectionFilterVisibility.festiveOffers
-        }
+        },
+        whatsappSettings: pricingSettings.whatsappSettings
       };
 
       const res = await axios.put("/api/settings", payload, {
@@ -1285,6 +1296,177 @@ function AdminDashboard() {
                 </select>
               </label>
             </div>
+          </div>
+
+          {/* Section 7: WhatsApp Integration */}
+          <div className="pricing-panel">
+            <div className="pricing-panel-header">
+              <MessageSquare size={16} className="pricing-panel-icon pricing-panel-icon--teal" />
+              <div>
+                <h4>WhatsApp Integration & Mode Controls</h4>
+                <p>Choose between Free Click-to-Chat Widget, Automated Meta Cloud API, or Disabled.</p>
+              </div>
+            </div>
+
+            <div className="pricing-panel-grid pricing-panel-grid--2" style={{ marginBottom: "16px" }}>
+              <label className="pricing-field">
+                <span className="pricing-label">WhatsApp Integration Mode</span>
+                <select
+                  className="pricing-text-input"
+                  value={pricingSettings.whatsappSettings?.mode || "free"}
+                  onChange={(e) =>
+                    setPricingSettings((prev) => ({
+                      ...prev,
+                      whatsappSettings: { ...prev.whatsappSettings, mode: e.target.value }
+                    }))
+                  }
+                >
+                  <option value="disabled">Disabled (Hide WhatsApp Features)</option>
+                  <option value="free">Free Mode (Click-to-Chat Widget - 100% Free)</option>
+                  <option value="api">Automated API Mode (Meta Cloud API / Interakt)</option>
+                </select>
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Business WhatsApp Phone Number</span>
+                <input
+                  type="text"
+                  className="pricing-text-input"
+                  placeholder="e.g. 919480865623 (with country code)"
+                  value={pricingSettings.whatsappSettings?.phoneNumber || ""}
+                  onChange={(e) =>
+                    setPricingSettings((prev) => ({
+                      ...prev,
+                      whatsappSettings: { ...prev.whatsappSettings, phoneNumber: e.target.value }
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="pricing-field" style={{ marginBottom: "16px" }}>
+              <span className="pricing-label">Welcome / Pre-filled Chat Message</span>
+              <input
+                type="text"
+                className="pricing-text-input"
+                placeholder="e.g. Hello! I have a question about your courses."
+                value={pricingSettings.whatsappSettings?.welcomeMessage || ""}
+                onChange={(e) =>
+                  setPricingSettings((prev) => ({
+                    ...prev,
+                    whatsappSettings: { ...prev.whatsappSettings, welcomeMessage: e.target.value }
+                  }))
+                }
+              />
+            </div>
+
+            {pricingSettings.whatsappSettings?.mode === "api" && (
+              <div
+                style={{
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  padding: "16px",
+                  borderRadius: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px"
+                }}
+              >
+                <h5 style={{ margin: 0, color: "#166534", fontSize: "14px", fontWeight: "700" }}>
+                  🔑 Meta WhatsApp Cloud API Credentials
+                </h5>
+                <p style={{ margin: 0, fontSize: "12.5px", color: "#15803d" }}>
+                  Enter your official Meta Developer Cloud API credentials to enable automated WhatsApp order receipts.
+                </p>
+
+                <div className="pricing-panel-grid pricing-panel-grid--3">
+                  <label className="pricing-field">
+                    <span className="pricing-label">Phone Number ID</span>
+                    <input
+                      type="text"
+                      className="pricing-text-input"
+                      placeholder="e.g. 10482910482019"
+                      value={pricingSettings.whatsappSettings?.metaPhoneNumberId || ""}
+                      onChange={(e) =>
+                        setPricingSettings((prev) => ({
+                          ...prev,
+                          whatsappSettings: {
+                            ...prev.whatsappSettings,
+                            metaPhoneNumberId: e.target.value
+                          }
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="pricing-field">
+                    <span className="pricing-label">Permanent Access Token</span>
+                    <input
+                      type="password"
+                      className="pricing-text-input"
+                      placeholder="EAAG..."
+                      value={pricingSettings.whatsappSettings?.metaAccessToken || ""}
+                      onChange={(e) =>
+                        setPricingSettings((prev) => ({
+                          ...prev,
+                          whatsappSettings: {
+                            ...prev.whatsappSettings,
+                            metaAccessToken: e.target.value
+                          }
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="pricing-field">
+                    <span className="pricing-label">WhatsApp Business Account ID (WABA)</span>
+                    <input
+                      type="text"
+                      className="pricing-text-input"
+                      placeholder="Optional WABA ID"
+                      value={pricingSettings.whatsappSettings?.metaWabaId || ""}
+                      onChange={(e) =>
+                        setPricingSettings((prev) => ({
+                          ...prev,
+                          whatsappSettings: {
+                            ...prev.whatsappSettings,
+                            metaWabaId: e.target.value
+                          }
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    color: "#166534",
+                    marginTop: "4px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={pricingSettings.whatsappSettings?.autoSendOrderConfirmation !== false}
+                    onChange={(e) =>
+                      setPricingSettings((prev) => ({
+                        ...prev,
+                        whatsappSettings: {
+                          ...prev.whatsappSettings,
+                          autoSendOrderConfirmation: e.target.checked
+                        }
+                      }))
+                    }
+                  />
+                  Automatically send WhatsApp Order Confirmation on successful checkout
+                </label>
+              </div>
+            )}
           </div>
 
           {/* Save Row */}

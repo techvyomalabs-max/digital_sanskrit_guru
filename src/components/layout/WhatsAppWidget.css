@@ -1,0 +1,100 @@
+.whatsapp-widget-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+  pointer-events: auto;
+}
+
+.whatsapp-widget-button {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #25d366;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  position: relative;
+  border: none;
+  outline: none;
+}
+
+.whatsapp-widget-button:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 25px rgba(37, 211, 102, 0.55);
+}
+
+.whatsapp-widget-button:active {
+  transform: scale(0.95);
+}
+
+.whatsapp-widget-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  background: #25d366;
+  opacity: 0.7;
+  z-index: -1;
+  animation: whatsappPulse 2.2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes whatsappPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.whatsapp-widget-tooltip {
+  background: #1e293b;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(10px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.whatsapp-widget-container:hover .whatsapp-widget-tooltip {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+@media (max-width: 768px) {
+  .whatsapp-widget-container {
+    bottom: 80px; /* Elevated on mobile to clear bottom nav bar */
+    right: 16px;
+  }
+  .whatsapp-widget-button {
+    width: 52px;
+    height: 52px;
+  }
+  .whatsapp-widget-tooltip {
+    display: none; /* Hide text tooltip on mobile */
+  }
+}

@@ -349,6 +349,20 @@ function normalizeSettings(settings) {
     lastUpdatedByName: String(settings?.lastUpdatedByName || "").trim(),
     lastUpdatedByEmail: String(settings?.lastUpdatedByEmail || "").trim().toLowerCase(),
     lastUpdatedAt: settings?.lastUpdatedAt || null,
+    whatsappSettings: {
+      mode: ["disabled", "free", "api"].includes(settings?.whatsappSettings?.mode)
+        ? settings.whatsappSettings.mode
+        : "free",
+      phoneNumber: String(settings?.whatsappSettings?.phoneNumber || "919999999999").trim(),
+      welcomeMessage: String(
+        settings?.whatsappSettings?.welcomeMessage ||
+        "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."
+      ).trim(),
+      metaPhoneNumberId: String(settings?.whatsappSettings?.metaPhoneNumberId || "").trim(),
+      metaAccessToken: String(settings?.whatsappSettings?.metaAccessToken || "").trim(),
+      metaWabaId: String(settings?.whatsappSettings?.metaWabaId || "").trim(),
+      autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false
+    },
     sponsors: normalizeSponsors(settings?.sponsors || []),
     storeIcons: {
       home: String(settings?.storeIcons?.home || "🏠").trim(),
@@ -377,6 +391,12 @@ function buildPublicSettingsPayload(settings) {
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
+    whatsappSettings: {
+      mode: normalized.whatsappSettings.mode,
+      phoneNumber: normalized.whatsappSettings.phoneNumber,
+      welcomeMessage: normalized.whatsappSettings.welcomeMessage,
+      autoSendOrderConfirmation: normalized.whatsappSettings.autoSendOrderConfirmation
+    },
     sponsors:         normalized.sponsors,
     storeIcons:       normalized.storeIcons
   };
@@ -509,6 +529,25 @@ router.put("/", protect, admin, async (req, res) => {
   const sponsors = hasSponsors
     ? normalizeSponsors(req.body?.sponsors)
     : normalizeSponsors(settings.sponsors || []);
+
+  const hasWhatsappSettings = Boolean(req.body?.whatsappSettings && typeof req.body.whatsappSettings === "object");
+  if (hasWhatsappSettings) {
+    settings.whatsappSettings = {
+      mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
+        ? req.body.whatsappSettings.mode
+        : "free",
+      phoneNumber: String(req.body.whatsappSettings.phoneNumber || "919999999999").trim(),
+      welcomeMessage: String(
+        req.body.whatsappSettings.welcomeMessage ||
+        "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."
+      ).trim(),
+      metaPhoneNumberId: String(req.body.whatsappSettings.metaPhoneNumberId || "").trim(),
+      metaAccessToken: String(req.body.whatsappSettings.metaAccessToken || "").trim(),
+      metaWabaId: String(req.body.whatsappSettings.metaWabaId || "").trim(),
+      autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false
+    };
+    settings.markModified("whatsappSettings");
+  }
 
   const hasStoreIcons = Boolean(req.body?.storeIcons && typeof req.body.storeIcons === "object");
   if (hasStoreIcons) {
