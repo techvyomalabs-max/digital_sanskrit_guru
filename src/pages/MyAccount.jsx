@@ -8,6 +8,7 @@ import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyForUser } from "../utils/currency";
 import { formatDate } from "../utils/date";
+import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import "./MyAccount.css";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { Bell, BellOff } from "lucide-react";
@@ -237,6 +238,50 @@ function MyAccount() {
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [country, setCountry] = useState("India");
+  const [enableCurrentLocation, setEnableCurrentLocation] = useState(true);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationStatusMessage, setLocationStatusMessage] = useState("");
+
+  useEffect(() => {
+    axios
+      .get("/api/settings/public")
+      .then((res) => {
+        if (res.data?.enableCurrentLocation !== undefined) {
+          setEnableCurrentLocation(res.data.enableCurrentLocation);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleUseCurrentLocation = async () => {
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    setLocationStatusMessage("Detecting your location...");
+
+    try {
+      const position = await getCurrentDevicePosition();
+      const latitude = Number(position?.coords?.latitude);
+      const longitude = Number(position?.coords?.longitude);
+
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        throw new Error("Could not read coordinates from device.");
+      }
+
+      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
+      if (resolved.address) setAddress(resolved.address);
+      if (resolved.landmark) setLandmark(resolved.landmark);
+      if (resolved.city) setCity(resolved.city);
+      if (resolved.state) setState(resolved.state);
+      if (resolved.pincode) setPincode(resolved.pincode);
+      if (resolved.country) setCountry(resolved.country);
+
+      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
+    } catch (err) {
+      setLocationStatusMessage(err?.message || "Could not detect current location.");
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   // Profile Edit states
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -865,14 +910,33 @@ function MyAccount() {
                   ? `✏️ Edit Address: ${addresses[editingIndex]?.name || name || "Address"}`
                   : "➕ Add New Address"}
               </h3>
-              <button
-                type="button"
-                className="my-account-form-close-btn"
-                onClick={closeAddressForm}
-              >
-                ✕ Close
-              </button>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {enableCurrentLocation && (
+                  <button
+                    type="button"
+                    className="my-account-form-close-btn"
+                    onClick={handleUseCurrentLocation}
+                    disabled={isDetectingLocation}
+                    style={{ background: "var(--site-link)", color: "#fff", borderColor: "var(--site-link)" }}
+                  >
+                    📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="my-account-form-close-btn"
+                  onClick={closeAddressForm}
+                >
+                  ✕ Close
+                </button>
+              </div>
             </div>
+
+            {locationStatusMessage ? (
+              <p style={{ fontSize: "13px", color: "var(--site-link)", marginBottom: "12px", fontWeight: "600" }}>
+                {locationStatusMessage}
+              </p>
+            ) : null}
 
             <div className="my-account-label-row">
               {["Home", "Work", "Other"].map((option) => (

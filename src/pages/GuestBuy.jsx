@@ -5,6 +5,7 @@ import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import { formatResolvedPrice, convertCurrencyAmount } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
+import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import "./Checkout.css";
 
 function GuestBuy() {
@@ -36,6 +37,38 @@ function GuestBuy() {
 
   const [isPaying, setIsPaying] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationStatusMessage, setLocationStatusMessage] = useState("");
+
+  const handleUseCurrentLocation = async () => {
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    setLocationStatusMessage("Detecting location...");
+
+    try {
+      const position = await getCurrentDevicePosition();
+      const latitude = Number(position?.coords?.latitude);
+      const longitude = Number(position?.coords?.longitude);
+
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        throw new Error("Could not read coordinates from device.");
+      }
+
+      setCoords({ latitude, longitude });
+      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
+      if (resolved.address) setAddress(resolved.address);
+      if (resolved.city) setCity(resolved.city);
+      if (resolved.state) setState(resolved.state);
+      if (resolved.pincode) setPincode(resolved.pincode);
+      if (resolved.country) setCountry(resolved.country);
+
+      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
+    } catch (err) {
+      setLocationStatusMessage(err?.message || "Could not detect current location.");
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   // Success state
   const [orderSuccess, setOrderSuccess] = useState(null);
@@ -694,7 +727,36 @@ function GuestBuy() {
               {/* Address fields ONLY shown for non-digital products */}
               {!isDigital && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #e2e8f0", paddingTop: "12px" }}>
-                  <h4 style={{ fontWeight: "700", fontSize: "13px", color: "#475569", margin: 0 }}>Shipping Address</h4>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h4 style={{ fontWeight: "700", fontSize: "13px", color: "#475569", margin: 0 }}>Shipping Address</h4>
+                    {settings?.enableCurrentLocation !== false && (
+                      <button
+                        type="button"
+                        onClick={handleUseCurrentLocation}
+                        disabled={isDetectingLocation}
+                        style={{
+                          background: "var(--site-link, #2563eb)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "4px",
+                          padding: "4px 10px",
+                          fontSize: "11.5px",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px"
+                        }}
+                      >
+                        📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
+                      </button>
+                    )}
+                  </div>
+                  {locationStatusMessage ? (
+                    <p style={{ fontSize: "12px", color: "var(--site-link, #2563eb)", margin: 0, fontWeight: "500" }}>
+                      {locationStatusMessage}
+                    </p>
+                  ) : null}
                   
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Street Address <span style={{ color: "#ef4444" }}>*</span></label>

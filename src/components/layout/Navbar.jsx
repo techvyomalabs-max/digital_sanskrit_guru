@@ -25,6 +25,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
+import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../../utils/geoAddress";
 import "./Navbar.css";
 
 const onDemandUrl = String(
@@ -49,6 +50,17 @@ function Navbar({ bannerActive = false }) {
   const [isManagingAddresses, setIsManagingAddresses] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationStatusMessage, setLocationStatusMessage] = useState("");
+  const [showModalAddressForm, setShowModalAddressForm] = useState(false);
+  const [modalName, setModalName] = useState("");
+  const [modalPhone, setModalPhone] = useState("");
+  const [modalAddress, setModalAddress] = useState("");
+  const [modalLandmark, setModalLandmark] = useState("");
+  const [modalCity, setModalCity] = useState("");
+  const [modalState, setModalState] = useState("");
+  const [modalPincode, setModalPincode] = useState("");
+  const [modalCountry, setModalCountry] = useState("India");
+  const [modalLabel, setModalLabel] = useState("Home");
+  const [modalFormError, setModalFormError] = useState("");
   const [collectionCategories, setCollectionCategories] = useState(["All"]);
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
@@ -261,114 +273,18 @@ function Navbar({ bannerActive = false }) {
   const getAddressLocationText = (item) =>
     [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
 
-  const getCurrentPosition = () =>
-    new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error("Geolocation is not supported by this browser."));
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-      });
-    });
-
-  const buildStreetAddress = (address = {}) => {
-    const parts = [address?.house_number, address?.road, address?.neighbourhood, address?.suburb]
-      .map((item) => String(item || "").trim())
-      .filter(Boolean);
-    return parts.join(", ");
-  };
-
-  const firstAddressValue = (address = {}, keys = []) => {
-    for (const key of keys) {
-      const value = String(address?.[key] || "").trim();
-      if (value) return value;
-    }
-    return "";
-  };
-
-  const fetchAddressFromCoordinates = async (latitude, longitude) => {
-    const radarKey = import.meta.env.VITE_RADAR_PUBLISHABLE_KEY;
-
-    if (radarKey) {
-      try {
-        const response = await fetch(
-          `https://api.radar.io/v1/geocode/reverse?coordinates=${latitude},${longitude}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: radarKey
-            }
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const addressObj = data?.addresses?.[0] || {};
-          return {
-            name: String(user?.name || "Current Location").trim(),
-            phone: "",
-            label: "Home",
-            address: addressObj.formattedAddress || "Current location",
-            landmark: addressObj.placeLabel || "",
-            city: addressObj.city || addressObj.sublocality || "",
-            state: addressObj.state || addressObj.stateCode || "",
-            pincode: addressObj.postalCode || "",
-            country: addressObj.country || "India",
-            latitude: Number(latitude),
-            longitude: Number(longitude),
-            isDefault: addresses.length === 0
-          };
-        }
-      } catch (err) {
-        console.warn("Radar reverse geocoding failed, falling back to Nominatim", err);
-      }
-    }
-
-    // Fallback to Nominatim
-    const params = new URLSearchParams({
-      lat: String(latitude),
-      lon: String(longitude),
-      format: "jsonv2",
-      addressdetails: "1"
-    });
-
-    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json"
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error("Could not resolve your location.");
-    }
-
-    const data = await response.json();
-    const address = data?.address || {};
-    const streetAddress = buildStreetAddress(address) || String(data?.name || "").trim();
-    const city = firstAddressValue(address, ["city", "town", "village", "municipality", "county"]);
-    const state = firstAddressValue(address, ["state", "region", "state_district"]);
-    const pincode = firstAddressValue(address, ["postcode"]);
-    const country = firstAddressValue(address, ["country"]) || "India";
-
-    return {
-      name: String(user?.name || "Current Location").trim(),
-      phone: "",
-      label: "Home",
-      address: streetAddress || String(data?.display_name || "").trim() || "Current location",
-      landmark: firstAddressValue(address, ["building", "amenity", "shop"]),
-      city,
-      state,
-      pincode,
-      country,
-      latitude: Number(latitude),
-      longitude: Number(longitude),
-      isDefault: addresses.length === 0
-    };
+  const handleOpenInlineAddForm = () => {
+    setModalName(user?.name || "");
+    setModalPhone(user?.phone || "");
+    setModalAddress("");
+    setModalLandmark("");
+    setModalCity("");
+    setModalState("");
+    setModalPincode("");
+    setModalCountry("India");
+    setModalLabel("Home");
+    setModalFormError("");
+    setShowModalAddressForm(true);
   };
 
   const handleUseCurrentLocation = async () => {
@@ -376,9 +292,10 @@ function Navbar({ bannerActive = false }) {
 
     setIsDetectingLocation(true);
     setLocationStatusMessage("Detecting your current location...");
+    setModalFormError("");
 
     try {
-      const position = await getCurrentPosition();
+      const position = await getCurrentDevicePosition();
       const latitude = Number(position?.coords?.latitude);
       const longitude = Number(position?.coords?.longitude);
 
@@ -386,14 +303,66 @@ function Navbar({ bannerActive = false }) {
         throw new Error("Could not read coordinates from your device.");
       }
 
-      const payload = await fetchAddressFromCoordinates(latitude, longitude);
-      addAddress(payload);
-      setLocationStatusMessage("Current location saved as an address.");
+      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
+
+      // Pre-fill modal form fields and open completion form
+      setModalName(user?.name || "");
+      setModalPhone(user?.phone || "");
+      setModalAddress(resolved.address || "");
+      setModalLandmark(resolved.landmark || "");
+      setModalCity(resolved.city || "");
+      setModalState(resolved.state || "");
+      setModalPincode(resolved.pincode || "");
+      setModalCountry(resolved.country || "India");
+      setModalLabel("Home");
+      setShowModalAddressForm(true);
+
+      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
     } catch (error) {
       setLocationStatusMessage(error?.message || "Could not use current location.");
     } finally {
       setIsDetectingLocation(false);
     }
+  };
+
+  const handleSaveModalAddress = (e) => {
+    e.preventDefault();
+    setModalFormError("");
+
+    if (!modalName.trim()) {
+      setModalFormError("Please enter your full name.");
+      return;
+    }
+    if (!modalPhone.trim()) {
+      setModalFormError("Please enter your phone number.");
+      return;
+    }
+    if (!modalAddress.trim()) {
+      setModalFormError("Please enter your street address / House No.");
+      return;
+    }
+    if (!modalCity.trim() || !modalState.trim() || !modalPincode.trim()) {
+      setModalFormError("Please complete City, State, and Pincode.");
+      return;
+    }
+
+    const payload = {
+      label: modalLabel,
+      name: modalName.trim(),
+      phone: modalPhone.trim(),
+      address: modalAddress.trim(),
+      landmark: modalLandmark.trim(),
+      city: modalCity.trim(),
+      state: modalState.trim(),
+      pincode: modalPincode.trim(),
+      country: modalCountry.trim() || "India",
+      isDefault: addresses.length === 0
+    };
+
+    addAddress(payload);
+    setShowModalAddressForm(false);
+    setIsAddressModalOpen(false);
+    setLocationStatusMessage("");
   };
 
   return (
@@ -601,7 +570,10 @@ function Navbar({ bannerActive = false }) {
         {isAddressModalOpen && (
           <div
             className="navbar-address-modal-backdrop"
-            onClick={() => setIsAddressModalOpen(false)}
+            onClick={() => {
+              setIsAddressModalOpen(false);
+              setShowModalAddressForm(false);
+            }}
             role="presentation"
           >
             <div
@@ -611,132 +583,295 @@ function Navbar({ bannerActive = false }) {
               aria-labelledby="navbar-address-modal-title"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="navbar-address-modal-head">
-                <h3 id="navbar-address-modal-title">
-                  <span className="navbar-address-modal-head-icon" aria-hidden="true">
-                    📍
-                  </span>
-                  Select delivery address
-                </h3>
-                <button type="button" onClick={() => setIsAddressModalOpen(false)}>
-                  Close
-                </button>
-              </div>
+              {showModalAddressForm ? (
+                <div>
+                  <div className="navbar-address-modal-head">
+                    <h3 id="navbar-address-modal-title">
+                      <span className="navbar-address-modal-head-icon" aria-hidden="true">
+                        📍
+                      </span>
+                      {modalAddress ? "Complete & Save Location" : "Add New Address"}
+                    </h3>
+                    <button type="button" onClick={() => setShowModalAddressForm(false)}>
+                      ✕ Back
+                    </button>
+                  </div>
 
-              {enableCurrentLocation && (
-                <div className="navbar-address-current-location">
-                  <button
-                    type="button"
-                    className="navbar-address-current-location-btn"
-                    onClick={handleUseCurrentLocation}
-                    disabled={isDetectingLocation}
-                  >
-                    {isDetectingLocation ? "Fetching location..." : "Use Current Location"}
-                  </button>
-                  {locationStatusMessage ? (
-                    <p className="navbar-address-current-location-note">{locationStatusMessage}</p>
-                  ) : null}
-                </div>
-              )}
+                  <form onSubmit={handleSaveModalAddress} style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {locationStatusMessage ? (
+                      <p style={{ fontSize: "12.5px", color: "var(--site-link)", margin: 0, fontWeight: "600" }}>
+                        {locationStatusMessage}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: "12px", color: "#64748b", margin: 0 }}>
+                        Please enter your Flat / House number and Phone number to complete your address.
+                      </p>
+                    )}
+                    {modalFormError && (
+                      <p style={{ fontSize: "12.5px", color: "#ef4444", margin: 0, fontWeight: "600" }}>
+                        {modalFormError}
+                      </p>
+                    )}
 
-              {addresses.length > 0 ? (
-                <div className="navbar-address-options">
-                  {addresses.map((item, index) => (
-                    <article
-                      key={`${item.name}-${item.pincode}-${index}`}
-                      className={selectedIndex === index ? "navbar-address-option active" : "navbar-address-option"}
-                    >
-                      <div className="navbar-address-option-top">
-                        <label className="navbar-address-radio">
-                          <input
-                            type="radio"
-                            name="navbar-selected-address"
-                            checked={selectedIndex === index}
-                            onChange={() => selectAddress(index)}
-                          />
-                          <strong>{item.name || "Address"}</strong>
-                        </label>
-                        <span>{item.label || "Saved address"}</span>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {["Home", "Work", "Other"].map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setModalLabel(opt)}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "999px",
+                            border: "1px solid var(--site-border)",
+                            background: modalLabel === opt ? "var(--site-link)" : "var(--site-surface)",
+                            color: modalLabel === opt ? "#fff" : "var(--site-text)",
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            cursor: "pointer"
+                          }}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Full Name *</label>
+                        <input
+                          type="text"
+                          value={modalName}
+                          onChange={(e) => setModalName(e.target.value)}
+                          placeholder="e.g. Rohan Sharma"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
                       </div>
-                      {item.phone ? <p>{item.phone}</p> : null}
-                      <p>{item.address}</p>
-                      <p>{getAddressLocationText(item) || "Location details not available"}</p>
-                      {item.isDefault ? <span className="navbar-address-default-pill">Default address</span> : null}
-
-                      <div className="navbar-address-option-actions">
-                        {selectedIndex !== index ? (
-                          <button
-                            type="button"
-                            className="navbar-address-action primary"
-                            onClick={() => {
-                              selectAddress(index);
-                              setIsAddressModalOpen(false);
-                            }}
-                          >
-                            Deliver to this address
-                          </button>
-                        ) : (
-                          <span className="navbar-address-selected-pill">Currently selected</span>
-                        )}
-                        {!item.isDefault ? (
-                          <button
-                            type="button"
-                            className="navbar-address-action"
-                            onClick={() => {
-                              setDefaultAddress(index);
-                            }}
-                          >
-                            Set Default
-                          </button>
-                        ) : null}
-                        {isManagingAddresses ? (
-                          confirmDeleteIndex === index ? (
-                            <div className="navbar-address-delete-confirm">
-                              <span>Delete?</span>
-                              <button
-                                type="button"
-                                className="navbar-confirm-yes"
-                                onClick={() => {
-                                  removeAddress(index);
-                                  setConfirmDeleteIndex(null);
-                                }}
-                              >
-                                Yes
-                              </button>
-                              <button
-                                type="button"
-                                className="navbar-confirm-no"
-                                onClick={() => setConfirmDeleteIndex(null)}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="navbar-address-action danger"
-                              onClick={() => setConfirmDeleteIndex(index)}
-                            >
-                              Delete
-                            </button>
-                          )
-                        ) : null}
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Phone Number *</label>
+                        <input
+                          type="tel"
+                          value={modalPhone}
+                          onChange={(e) => setModalPhone(e.target.value)}
+                          placeholder="e.g. 9876543210"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
                       </div>
-                    </article>
-                  ))}
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Flat / House No. & Street Address *</label>
+                      <input
+                        type="text"
+                        value={modalAddress}
+                        onChange={(e) => setModalAddress(e.target.value)}
+                        placeholder="e.g. Flat 302, Royal Residency, 10th Main"
+                        style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Landmark</label>
+                        <input
+                          type="text"
+                          value={modalLandmark}
+                          onChange={(e) => setModalLandmark(e.target.value)}
+                          placeholder="Optional landmark"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>City *</label>
+                        <input
+                          type="text"
+                          value={modalCity}
+                          onChange={(e) => setModalCity(e.target.value)}
+                          placeholder="City"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>State *</label>
+                        <input
+                          type="text"
+                          value={modalState}
+                          onChange={(e) => setModalState(e.target.value)}
+                          placeholder="State"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Pincode *</label>
+                        <input
+                          type="text"
+                          value={modalPincode}
+                          onChange={(e) => setModalPincode(e.target.value)}
+                          placeholder="Pincode"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "11.5px", fontWeight: "600", marginBottom: "2px" }}>Country *</label>
+                        <input
+                          type="text"
+                          value={modalCountry}
+                          onChange={(e) => setModalCountry(e.target.value)}
+                          placeholder="Country"
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--site-border)", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "4px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowModalAddressForm(false)}
+                        style={{ padding: "6px 12px", border: "1px solid var(--site-border)", background: "transparent", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        style={{ padding: "6px 16px", border: "none", background: "var(--site-link)", color: "#fff", borderRadius: "6px", cursor: "pointer", fontWeight: "600", fontSize: "13px" }}
+                      >
+                        Save & Select Address
+                      </button>
+                    </div>
+                  </form>
                 </div>
               ) : (
-                <p className="navbar-address-empty">No saved address yet. Add one to enable quick selection.</p>
-              )}
+                <>
+                  <div className="navbar-address-modal-head">
+                    <h3 id="navbar-address-modal-title">
+                      <span className="navbar-address-modal-head-icon" aria-hidden="true">
+                        📍
+                      </span>
+                      Select delivery address
+                    </h3>
+                    <button type="button" onClick={() => setIsAddressModalOpen(false)}>
+                      Close
+                    </button>
+                  </div>
 
-              <div className="navbar-address-modal-actions">
-                <Link to="/account?openAddressForm=1#manage-address" onClick={() => setIsAddressModalOpen(false)}>
-                  Add Address
-                </Link>
-                <button type="button" onClick={() => setIsManagingAddresses((current) => !current)}>
-                  {isManagingAddresses ? "Done Managing" : "Manage Addresses"}
-                </button>
-              </div>
+                  {enableCurrentLocation && (
+                    <div className="navbar-address-current-location">
+                      <button
+                        type="button"
+                        className="navbar-address-current-location-btn"
+                        onClick={handleUseCurrentLocation}
+                        disabled={isDetectingLocation}
+                      >
+                        {isDetectingLocation ? "Fetching location..." : "Use Current Location"}
+                      </button>
+                      {locationStatusMessage ? (
+                        <p className="navbar-address-current-location-note">{locationStatusMessage}</p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {addresses.length > 0 ? (
+                    <div className="navbar-address-options">
+                      {addresses.map((item, index) => (
+                        <article
+                          key={`${item.name}-${item.pincode}-${index}`}
+                          className={selectedIndex === index ? "navbar-address-option active" : "navbar-address-option"}
+                        >
+                          <div className="navbar-address-option-top">
+                            <label className="navbar-address-radio">
+                              <input
+                                type="radio"
+                                name="navbar-selected-address"
+                                checked={selectedIndex === index}
+                                onChange={() => selectAddress(index)}
+                              />
+                              <strong>{item.name || "Address"}</strong>
+                            </label>
+                            <span>{item.label || "Saved address"}</span>
+                          </div>
+                          {item.phone ? <p>{item.phone}</p> : null}
+                          <p>{item.address}</p>
+                          <p>{getAddressLocationText(item) || "Location details not available"}</p>
+                          {item.isDefault ? <span className="navbar-address-default-pill">Default address</span> : null}
+
+                          <div className="navbar-address-option-actions">
+                            {selectedIndex !== index ? (
+                              <button
+                                type="button"
+                                className="navbar-address-action primary"
+                                onClick={() => {
+                                  selectAddress(index);
+                                  setIsAddressModalOpen(false);
+                                }}
+                              >
+                                Deliver to this address
+                              </button>
+                            ) : (
+                              <span className="navbar-address-selected-pill">Currently selected</span>
+                            )}
+                            {!item.isDefault ? (
+                              <button
+                                type="button"
+                                className="navbar-address-action"
+                                onClick={() => {
+                                  setDefaultAddress(index);
+                                }}
+                              >
+                                Set Default
+                              </button>
+                            ) : null}
+                            {isManagingAddresses ? (
+                              confirmDeleteIndex === index ? (
+                                <div className="navbar-address-delete-confirm">
+                                  <span>Delete?</span>
+                                  <button
+                                    type="button"
+                                    className="navbar-confirm-yes"
+                                    onClick={() => {
+                                      removeAddress(index);
+                                      setConfirmDeleteIndex(null);
+                                    }}
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="navbar-confirm-no"
+                                    onClick={() => setConfirmDeleteIndex(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="navbar-address-action danger"
+                                  onClick={() => setConfirmDeleteIndex(index)}
+                                >
+                                  Delete
+                                </button>
+                              )
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="navbar-address-empty">No saved address yet. Add one to enable quick selection.</p>
+                  )}
+
+                  <div className="navbar-address-modal-actions">
+                    <button type="button" onClick={handleOpenInlineAddForm} style={{ border: "none", background: "none", color: "var(--site-link)", cursor: "pointer", fontWeight: "600", fontSize: "13px" }}>
+                      ➕ Add New Address
+                    </button>
+                    <button type="button" onClick={() => setIsManagingAddresses((current) => !current)}>
+                      {isManagingAddresses ? "Done Managing" : "Manage Addresses"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

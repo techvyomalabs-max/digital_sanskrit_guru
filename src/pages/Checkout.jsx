@@ -8,6 +8,7 @@ import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from 
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
+import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import "./Checkout.css";
 
 const getAddressLocationText = (item) => {
@@ -202,6 +203,38 @@ function Checkout() {
   const [newCountry, setNewCountry] = useState("India");
   const [addressError, setAddressError] = useState("");
   const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationStatusMessage, setLocationStatusMessage] = useState("");
+
+  const handleUseCurrentLocation = async () => {
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    setLocationStatusMessage("Detecting your location...");
+
+    try {
+      const position = await getCurrentDevicePosition();
+      const latitude = Number(position?.coords?.latitude);
+      const longitude = Number(position?.coords?.longitude);
+
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        throw new Error("Could not read coordinates from device.");
+      }
+
+      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
+      if (resolved.address) setNewAddressText(resolved.address);
+      if (resolved.landmark) setNewLandmark(resolved.landmark);
+      if (resolved.city) setNewCity(resolved.city);
+      if (resolved.state) setNewState(resolved.state);
+      if (resolved.pincode) setNewPincode(resolved.pincode);
+      if (resolved.country) setNewCountry(resolved.country);
+
+      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
+    } catch (err) {
+      setLocationStatusMessage(err?.message || "Could not detect current location.");
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   useEffect(() => {
     if (!isBillingSame) {
@@ -364,7 +397,8 @@ function Checkout() {
           deliveryCharge: Number(res.data?.deliveryCharge || 0),
           warehouseLocation: res.data?.warehouseLocation || {},
           distancePricing: res.data?.distancePricing || {},
-          internationalDelivery: res.data?.internationalDelivery || {}
+          internationalDelivery: res.data?.internationalDelivery || {},
+          enableCurrentLocation: res.data?.enableCurrentLocation !== false
         });
       })
       .catch(() => {
@@ -875,14 +909,40 @@ function Checkout() {
             <div className="checkout-address-form-container">
               <div className="checkout-section-head" style={{ marginBottom: '16px' }}>
                 <h2>Add a New Address</h2>
-                <button
-                  type="button"
-                  className="checkout-compact-address-change-btn"
-                  onClick={() => setShowNewAddressForm(false)}
-                >
-                  Back to List
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {charges.enableCurrentLocation !== false && (
+                    <button
+                      type="button"
+                      className="checkout-compact-address-change-btn"
+                      onClick={handleUseCurrentLocation}
+                      disabled={isDetectingLocation}
+                      style={{
+                        background: 'var(--site-link)',
+                        color: '#fff',
+                        borderColor: 'var(--site-link)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="checkout-compact-address-change-btn"
+                    onClick={() => setShowNewAddressForm(false)}
+                  >
+                    Back to List
+                  </button>
+                </div>
               </div>
+
+              {locationStatusMessage ? (
+                <p style={{ fontSize: '13px', color: 'var(--site-link)', marginBottom: '12px', fontWeight: '500' }}>
+                  {locationStatusMessage}
+                </p>
+              ) : null}
 
               <div className="checkout-address-form-grid" style={{ display: 'grid', gap: '14px' }}>
                 <div className="checkout-address-form-labels" style={{ display: 'flex', gap: '8px' }}>
