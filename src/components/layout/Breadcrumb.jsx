@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import "./Breadcrumb.css";
 
@@ -44,6 +44,24 @@ const ROUTE_MAP = {
 
 export default function Breadcrumb() {
   const location = useLocation();
+  const [currentTitle, setCurrentTitle] = useState(typeof document !== "undefined" ? document.title : "");
+
+  // Listen for dynamic page/document title changes (e.g., after product or async metadata loads)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    setCurrentTitle(document.title);
+
+    const titleElement = document.querySelector("title");
+    if (!titleElement) return;
+
+    const observer = new MutationObserver(() => {
+      setCurrentTitle(document.title);
+    });
+
+    observer.observe(titleElement, { childList: true, characterData: true, subtree: true });
+    return () => observer.disconnect();
+  }, [location.pathname]);
 
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
@@ -87,11 +105,12 @@ export default function Breadcrumb() {
     if (segments[0] === "product") {
       items.push({ label: "Store Catalog", path: "/collection" });
       
-      // Clean product title from document.title if available
+      // Clean product title from current document title if available
       let productTitle = "Product Details";
-      if (document.title && !document.title.toLowerCase().includes("loading")) {
-        const rawTitle = document.title.split("|")[0].split("—")[0].trim();
-        if (rawTitle && rawTitle.toLowerCase() !== "digital sanskrit guru") {
+      if (currentTitle && !currentTitle.toLowerCase().includes("loading")) {
+        const rawTitle = currentTitle.split("|")[0].split("—")[0].trim();
+        const ignoredTitles = ["home", "collection", "digital sanskrit guru", "loading...", "store catalog"];
+        if (rawTitle && !ignoredTitles.includes(rawTitle.toLowerCase())) {
           productTitle = rawTitle;
         }
       }
@@ -136,7 +155,7 @@ export default function Breadcrumb() {
     }
 
     return items;
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, currentTitle]);
 
   // Inject Structured Data (JSON-LD BreadcrumbList) for SEO
   useEffect(() => {
