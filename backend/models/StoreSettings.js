@@ -268,8 +268,60 @@ const DEFAULT_SPONSORS = [
   }
 ];
 
+const whatsappSettingsSchema = new mongoose.Schema(
+  {
+    mode: {
+      type: String,
+      enum: ["disabled", "free", "api"],
+      default: "free"
+    },
+    phoneNumber: {
+      type: String,
+      default: "919999999999",
+      trim: true
+    },
+    welcomeMessage: {
+      type: String,
+      default: "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.",
+      trim: true
+    },
+    metaPhoneNumberId: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    metaAccessToken: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    metaWabaId: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    autoSendOrderConfirmation: {
+      type: Boolean,
+      default: true
+    }
+  },
+  { _id: false }
+);
+
 const storeSettingsSchema = new mongoose.Schema(
   {
+    whatsappSettings: {
+      type: whatsappSettingsSchema,
+      default: () => ({
+        mode: "free",
+        phoneNumber: "919999999999",
+        welcomeMessage: "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.",
+        metaPhoneNumberId: "",
+        metaAccessToken: "",
+        metaWabaId: "",
+        autoSendOrderConfirmation: true
+      })
+    },
     enableCurrentLocation: {
       type: Boolean,
       default: true

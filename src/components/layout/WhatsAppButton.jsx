@@ -1,11 +1,36 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import axios from "axios";
 import "./WhatsAppButton.css";
 
 function WhatsAppButton() {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [whatsappSettings, setWhatsappSettings] = useState(null);
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchWhatsappSettings = () => {
+      axios
+        .get("/api/settings/public")
+        .then((res) => {
+          if (active && res.data?.whatsappSettings) {
+            setWhatsappSettings(res.data.whatsappSettings);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchWhatsappSettings();
+    window.addEventListener("siteSettingsUpdated", fetchWhatsappSettings);
+
+    return () => {
+      active = false;
+      window.removeEventListener("siteSettingsUpdated", fetchWhatsappSettings);
+    };
+  }, []);
 
   useEffect(() => {
     if (isAdminRoute) return undefined;
@@ -15,7 +40,7 @@ function WhatsAppButton() {
       setShowTooltip(true);
     }, 2000);
 
-    // Hide tooltip after 8 seconds
+    // Hide tooltip after 10 seconds
     const hideTimer = setTimeout(() => {
       setShowTooltip(false);
     }, 10000);
@@ -26,9 +51,20 @@ function WhatsAppButton() {
     };
   }, [isAdminRoute]);
 
-  if (isAdminRoute) {
+  // Hide widget if on admin route OR if mode is explicitly set to "disabled"
+  if (isAdminRoute || whatsappSettings?.mode === "disabled") {
     return null;
   }
+
+  const rawPhone = String(
+    whatsappSettings?.phoneNumber || "919480865623"
+  ).replace(/\D/g, "");
+  const welcomeText = encodeURIComponent(
+    whatsappSettings?.welcomeMessage ||
+      "Hello Digital Sanskrit Guru Support, I have a question."
+  );
+
+  const whatsappUrl = `https://wa.me/${rawPhone}?text=${welcomeText}`;
 
   return (
     <div className="whatsapp-float-container">
@@ -46,7 +82,7 @@ function WhatsAppButton() {
       )}
 
       <a
-        href="https://wa.me/919480865623?text=Hello%20Digital%20Sanskrit%20Guru%20Support,%20I%20have%20a%20question."
+        href={whatsappUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="whatsapp-float-button"

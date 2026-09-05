@@ -335,6 +335,18 @@ async function sendOrderConfirmation(order, user) {
 
   const html = htmlWrapper("Order Confirmed", substitutedBody, headerBgColor, accentColor, headerText, headerSubtext, logoUrl);
 
+  // Trigger WhatsApp order confirmation asynchronously (non-blocking)
+  try {
+    const { sendWhatsAppOrderConfirmation } = require("./whatsapp");
+    sendWhatsAppOrderConfirmation({
+      ...order,
+      userName: userName,
+      userPhone: user?.phone || order?.shippingAddress?.phone
+    }).catch((err) => console.error("[WhatsApp] Async dispatch error:", err?.message || err));
+  } catch (err) {
+    console.error("[WhatsApp] Utility load error:", err?.message || err);
+  }
+
   return sendEmail({
     to,
     subject: substitutedSubject,
