@@ -2421,7 +2421,13 @@ function AdminAddProducts() {
               <div className="product-composer-side-card">
                 <span className="product-composer-side-kicker">Live Preview</span>
                 <h4 style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "14.5px" }}>{name.trim() || "New product preview"}</h4>
-                <p style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "12px" }}>{description.trim() || "Your description, pricing, and image choices will show here as you build the product."}</p>
+                <div
+                  className="product-composer-preview-description"
+                  style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "12px", color: "#555", lineHeight: "1.5" }}
+                  dangerouslySetInnerHTML={{
+                    __html: description.trim() || "Your description, pricing, and image choices will show here as you build the product."
+                  }}
+                />
                 <div className="product-composer-price-line">
                   <strong>Rs {formSummary.numericPrice || 0}</strong>
                   <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
