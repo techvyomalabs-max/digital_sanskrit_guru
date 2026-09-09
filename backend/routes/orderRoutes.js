@@ -1901,33 +1901,77 @@ router.get("/my", protect, async (req, res) => {
     }
 
     const productIds = [];
+    const productNames = [];
     orders.forEach((order) => {
       if (Array.isArray(order.items)) {
         order.items.forEach((item) => {
           const pId = String(item.product || item._id || item.id || "").trim();
-          if (pId) productIds.push(pId);
+          if (mongoose.Types.ObjectId.isValid(pId)) {
+            productIds.push(pId);
+          }
+          if (item.name) {
+            productNames.push(String(item.name).trim());
+          }
+          if (Array.isArray(item.bundleItems)) {
+            item.bundleItems.forEach((subItem) => {
+              const subPId = String(subItem.product || subItem._id || subItem.id || "").trim();
+              if (mongoose.Types.ObjectId.isValid(subPId)) {
+                productIds.push(subPId);
+              }
+              if (subItem.name) {
+                productNames.push(String(subItem.name).trim());
+              }
+            });
+          }
         });
       }
     });
 
-    if (productIds.length > 0) {
-      const products = await Product.find({ _id: { $in: productIds } })
-        .select("isDigital digitalType webReaderLink kindleLink kindleAsin digitalInstructions")
+    const queryConditions = [];
+    if (productIds.length > 0) queryConditions.push({ _id: { $in: productIds } });
+    if (productNames.length > 0) queryConditions.push({ name: { $in: productNames } });
+
+    if (queryConditions.length > 0) {
+      const products = await Product.find({ $or: queryConditions })
+        .select("name isDigital digitalType webReaderLink kindleLink kindleAsin digitalInstructions")
         .lean();
-      const productMap = new Map(products.map((p) => [String(p._id), p]));
+
+      const productMapById = new Map();
+      const productMapByName = new Map();
+      products.forEach((p) => {
+        productMapById.set(String(p._id), p);
+        if (p.name) productMapByName.set(String(p.name).trim().toLowerCase(), p);
+      });
 
       orders.forEach((order) => {
         if (Array.isArray(order.items)) {
           order.items.forEach((item) => {
             const pId = String(item.product || item._id || item.id || "").trim();
-            const prod = productMap.get(pId);
+            const pName = String(item.name || "").trim().toLowerCase();
+            const prod = productMapById.get(pId) || productMapByName.get(pName);
             if (prod) {
-              if (!item.isDigital && prod.isDigital) item.isDigital = true;
-              if (!item.webReaderLink && prod.webReaderLink) item.webReaderLink = prod.webReaderLink;
-              if (!item.kindleLink && prod.kindleLink) item.kindleLink = prod.kindleLink;
-              if (!item.kindleAsin && prod.kindleAsin) item.kindleAsin = prod.kindleAsin;
-              if (!item.digitalInstructions && prod.digitalInstructions) item.digitalInstructions = prod.digitalInstructions;
-              if (!item.digitalType && prod.digitalType) item.digitalType = prod.digitalType;
+              if (prod.isDigital !== undefined) item.isDigital = prod.isDigital;
+              if (prod.webReaderLink) item.webReaderLink = prod.webReaderLink;
+              if (prod.kindleLink) item.kindleLink = prod.kindleLink;
+              if (prod.kindleAsin) item.kindleAsin = prod.kindleAsin;
+              if (prod.digitalInstructions) item.digitalInstructions = prod.digitalInstructions;
+              if (prod.digitalType) item.digitalType = prod.digitalType;
+            }
+
+            if (Array.isArray(item.bundleItems)) {
+              item.bundleItems.forEach((subItem) => {
+                const subPId = String(subItem.product || subItem._id || subItem.id || "").trim();
+                const subPName = String(subItem.name || "").trim().toLowerCase();
+                const subProd = productMapById.get(subPId) || productMapByName.get(subPName);
+                if (subProd) {
+                  if (subProd.isDigital !== undefined) subItem.isDigital = subProd.isDigital;
+                  if (subProd.webReaderLink) subItem.webReaderLink = subProd.webReaderLink;
+                  if (subProd.kindleLink) subItem.kindleLink = subProd.kindleLink;
+                  if (subProd.kindleAsin) subItem.kindleAsin = subProd.kindleAsin;
+                  if (subProd.digitalInstructions) subItem.digitalInstructions = subProd.digitalInstructions;
+                  if (subProd.digitalType) subItem.digitalType = subProd.digitalType;
+                }
+              });
             }
           });
         }
