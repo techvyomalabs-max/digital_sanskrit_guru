@@ -293,8 +293,8 @@ function Product() {
   const handleShare = async () => {
     if (!product) return;
     const origin = window.location.origin;
-    const pathname = window.location.pathname.endsWith("/") 
-      ? window.location.pathname.slice(0, -1) 
+    const pathname = window.location.pathname.endsWith("/")
+      ? window.location.pathname.slice(0, -1)
       : window.location.pathname;
     const shareUrl = `${origin}${pathname}/#/product/${product._id}`;
 
@@ -303,7 +303,7 @@ function Product() {
       try {
         await navigator.share({
           title: product.name,
-          text: product.description 
+          text: product.description
             ? `${product.name} - ${product.description.substring(0, 80).replace(/\n/g, " ")}...`
             : `Check out ${product.name} on Digital Sanskrit Guru!`,
           url: shareUrl
@@ -380,7 +380,7 @@ function Product() {
       if (found) {
         setReviews(found.reviews || []);
         setHasMoreReviews((found.reviewsCount || 0) > (found.reviews?.length || 0));
-        axios.post(`/api/products/${found._id}/view`).catch(() => {});
+        axios.post(`/api/products/${found._id}/view`).catch(() => { });
       } else {
         setReviews([]);
         setHasMoreReviews(false);
@@ -1023,7 +1023,7 @@ function Product() {
                 ) : isDigitalItem(product) ? (
                   <div style={{ margin: "14px 0", textAlign: "center" }}>
                     <p style={{ margin: 0, fontSize: "13px", fontWeight: "600", color: "#166534", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", padding: "8px 12px", borderRadius: "6px", display: "inline-block" }}>
-                      💻 Digital Format — 1 License Per Order
+                      💻 Web Version - 1 License Per User
                     </p>
                   </div>
                 ) : (
@@ -1227,7 +1227,7 @@ function Product() {
                         <strong>{includedName}</strong>
                         <span className="bundle-item-qty-badge">x{qty}</span>
                       </div>
-                      
+
                       <div className="bundle-item-meta">
                         {isDigitalItem ? (
                           <span className="bundle-format-tag bundle-format-tag--digital">💻 Digital Version</span>
