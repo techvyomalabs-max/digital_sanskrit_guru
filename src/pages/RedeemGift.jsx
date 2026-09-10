@@ -91,14 +91,14 @@ function RedeemGift() {
 
       {redeemedProduct && (
         <div className="review-redirect-modal-backdrop" onClick={() => setRedeemedProduct(null)}>
-          <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "480px", textAlign: "center" }}>
-            <div style={{ fontSize: "48px", marginBottom: "10px" }}>🎉</div>
-            <h3 style={{ margin: "0 0 8px", color: "var(--site-text)" }}>Gift Unlocked Successfully!</h3>
-            <p style={{ margin: "0 0 16px", fontSize: "14px", color: "var(--site-text-soft)" }}>
+          <div className="review-redirect-modal redeem-success-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="redeem-success-icon">🎉</div>
+            <h3 className="redeem-success-title">Gift Unlocked Successfully!</h3>
+            <p className="redeem-success-desc">
               You now have full access to <strong>{redeemedProduct.name}</strong>.
             </p>
 
-            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "20px" }}>
+            <div className="redeem-success-actions">
               <button
                 type="button"
                 className="review-redirect-btn-primary"

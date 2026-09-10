@@ -44,6 +44,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   dotenv.config({ path: path.join(__dirname, ".env") });
 
   const express = require("express");
+  const helmet = require("helmet");
   const compression = require("compression");
   const mongoose = require("mongoose");
   const cors = require("cors");
@@ -64,6 +65,10 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
 
   const app = express();
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+  }));
   app.set("trust proxy", 1); // Trust Render's load balancer for rate limiting client IPs
 
   const PORT = process.env.PORT || 5001;

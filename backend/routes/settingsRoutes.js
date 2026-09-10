@@ -435,7 +435,7 @@ async function getOrCreateSettings() {
 }
 
 // Admin: full settings (no cache for admin panel to prevent config lag)
-router.get("/", async (req, res) => {
+router.get("/", protect, admin, async (req, res) => {
   const settings = await getOrCreateSettings();
   res.json(normalizeSettings(settings));
 });
