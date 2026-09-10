@@ -66,16 +66,16 @@ function ResetPassword() {
           
           {errorMessage && <p className="login-error">{errorMessage}</p>}
           {message && (
-            <p style={{ color: "#2e7d32", backgroundColor: "#e8f5e9", padding: "10px", borderRadius: "10px", marginBottom: "15px", fontSize: "0.9rem", textAlign: "center" }}>
+            <p className="login-success-msg">
               {message}
             </p>
           )}
 
           {!token ? (
-            <div style={{ textAlign: "center", margin: "20px 0" }}>
-              <p style={{ color: "#d32f2f", fontWeight: "bold" }}>Invalid link.</p>
+            <div className="login-invalid-link-box">
+              <p className="login-invalid-link-title">Invalid link.</p>
               <p>The password reset link is invalid or expired. Please request another one.</p>
-              <Link to="/login" style={{ display: "inline-block", marginTop: "15px", color: "#e94560", textDecoration: "underline" }}>
+              <Link to="/login" className="login-back-link">
                 Back to Login
               </Link>
             </div>

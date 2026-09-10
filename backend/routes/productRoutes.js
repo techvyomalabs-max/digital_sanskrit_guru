@@ -670,8 +670,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Quick DB diagnostic for products
-router.get("/debug/summary", async (req, res) => {
+// Quick DB diagnostic for products (Admin only)
+router.get("/debug/summary", protect, admin, async (req, res) => {
   try {
     const count = await Product.countDocuments();
     const sample = await Product.findOne().select("_id name category").lean();
@@ -680,8 +680,8 @@ router.get("/debug/summary", async (req, res) => {
     res.status(500).json({ message: "Failed to load product summary", error: error.message });
   }
 });
-// GET /api/products/cleanup-imported-data (PUBLIC/SYSTEM UTILITY)
-router.get("/cleanup-imported-data", async (req, res) => {
+// GET /api/products/cleanup-imported-data (Admin only)
+router.get("/cleanup-imported-data", protect, admin, async (req, res) => {
   try {
     const products = await Product.find({});
     let updatedCount = 0;

@@ -12,6 +12,7 @@ import { getProductPriceDetails, isInternationalCountry } from "../utils/product
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import DOMPurify from "dompurify";
 
 const PRODUCT_EXTRA_DETAILS = {
   soundaryalahari: {
@@ -144,7 +145,7 @@ function buildProductMediaItems(product, galleryImages, trailerVideo) {
 // ── Skeleton loader for product page ─────────────────────────────────────────
 function ProductSkeleton() {
   return (
-    <div className="product-skeleton-wrap" aria-label="Loading product" aria-busy="true" style={{ padding: "60px 0" }}>
+    <div className="product-skeleton-wrap product-skeleton-wrap-pad" aria-label="Loading product" aria-busy="true">
       <LoadingSpinner text="Loading product details..." minHeight="300px" size="44px" />
     </div>
   );
@@ -931,7 +932,7 @@ function Product() {
               <span className="out-stock">Out of Stock</span>
             )}
           </p>
-          <div className="description" dangerouslySetInnerHTML={{ __html: product.description }} />
+          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || "") }} />
         </div>
 
         <div className="product-right">
@@ -939,7 +940,7 @@ function Product() {
             <p className="buy-price">
               {formatCurrencyExact(calculatedTotalPrice, displayCurrency)}
               {currentQty > 1 ? (
-                <span style={{ display: "block", fontSize: "13px", fontWeight: "normal", color: "var(--site-text-soft)", marginTop: "4px" }}>
+                <span className="product-buy-price-multiplier">
                   ({formatResolvedPrice(pricing)} × {currentQty} copies)
                 </span>
               ) : null}
@@ -948,47 +949,32 @@ function Product() {
             <p className="buy-box-note">Fast delivery available at your selected location.</p>
 
             {isKindleBook ? (
-              <div style={{ marginTop: "12px" }}>
+              <div className="product-kindle-btn-wrap">
                 <a
                   href={product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "14px 18px",
-                    borderRadius: "8px",
-                    backgroundColor: "#ff9900",
-                    color: "#111",
-                    fontWeight: 700,
-                    fontSize: "15px",
-                    textDecoration: "none",
-                    boxShadow: "0 4px 12px rgba(255, 153, 0, 0.35)",
-                    transition: "transform 0.15s ease"
-                  }}
+                  className="product-kindle-cta-btn"
                 >
                   📱 Buy Kindle Edition on Amazon ↗
                 </a>
-                <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--site-text-soft)", textAlign: "center" }}>
+                <p className="product-kindle-note">
                   Kindle books are sold and fulfilled directly on Amazon Kindle Store.
                 </p>
               </div>
             ) : (
               <>
                 {hasPurchasedWebVersion ? (
-                  <div style={{ margin: "10px 0 16px", padding: "12px", borderRadius: "8px", border: "1px solid #dc2626", backgroundColor: "#fef2f2", color: "#991b1b", fontSize: "13px", lineHeight: "1.4", textAlign: "left" }}>
-                    <p style={{ margin: 0, fontWeight: "bold", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div className="product-purchased-alert">
+                    <p className="product-purchased-alert-title">
                       <span>⚠️</span> You have already purchased this web version.
                     </p>
-                    <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", color: "var(--site-text)", cursor: "pointer", fontSize: "12.5px", fontWeight: "600" }}>
+                    <label className="product-purchased-gift-label">
                       <input
                         type="checkbox"
                         checked={purchaseAsGift}
                         onChange={(e) => setPurchaseAsGift(e.target.checked)}
-                        style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                        className="product-purchased-checkbox"
                       />
                       🎁 Purchase as a gift for someone else
                     </label>
@@ -996,22 +982,12 @@ function Product() {
                 ) : null}
 
                 {product.productType === "bulk" ? (
-                  <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0", gap: "8px" }}>
-                    <span style={{ fontSize: "14px", fontWeight: "600" }}>Select Quantity:</span>
+                  <div className="qty-box product-bulk-select-wrap">
+                    <span className="product-bulk-select-label">Select Quantity:</span>
                     <select
                       value={qty}
                       onChange={(e) => setQty(Number(e.target.value))}
-                      style={{
-                        padding: "8px 12px",
-                        border: "1px solid var(--border-color, #cbd5e1)",
-                        borderRadius: "6px",
-                        height: "36px",
-                        fontSize: "15px",
-                        fontWeight: "bold",
-                        backgroundColor: "transparent",
-                        color: "inherit",
-                        cursor: "pointer"
-                      }}
+                      className="product-bulk-select-input"
                     >
                       {[10, 20, 30, 40, 50, 100].map((num) => (
                         <option key={num} value={num} disabled={product.stock > 0 && num > product.stock}>
@@ -1021,18 +997,18 @@ function Product() {
                     </select>
                   </div>
                 ) : isDigitalItem(product) ? (
-                  <div style={{ margin: "14px 0", textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: "13px", fontWeight: "600", color: "#166534", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", padding: "8px 12px", borderRadius: "6px", display: "inline-block" }}>
+                  <div className="product-digital-badge-wrap">
+                    <p className="product-digital-badge-pill">
                       💻 Web Version - 1 License Per User
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <div className="qty-box" style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0 6px" }}>
+                    <div className="qty-box product-retail-qty-wrap">
                       <button type="button" className="qty-btn" onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}>-</button>
                       <input
                         type="number"
-                        className="qty-input"
+                        className="qty-input product-retail-qty-input"
                         value={qty}
                         min="1"
                         max={Math.min(5, product.stock || 5)}
@@ -1053,18 +1029,6 @@ function Product() {
                             setQty(1);
                           }
                         }}
-                        style={{
-                          width: "60px",
-                          textAlign: "center",
-                          border: "1px solid var(--border-color, #cbd5e1)",
-                          borderRadius: "6px",
-                          height: "36px",
-                          fontSize: "15px",
-                          fontWeight: "bold",
-                          margin: "0 8px",
-                          backgroundColor: "transparent",
-                          color: "inherit"
-                        }}
                       />
                       <button
                         type="button"
@@ -1072,23 +1036,14 @@ function Product() {
                         onClick={() => setQty(Number(qty || 1) < Math.min(5, product.stock || 5) ? Number(qty || 1) + 1 : Number(qty || 1))}
                       >+</button>
                     </div>
-                    <p style={{ margin: "0 0 14px", fontSize: "11.5px", color: "var(--site-text-soft)", textAlign: "center" }}>
+                    <p className="product-retail-qty-note">
                       Standard retail order limit: Maximum 5 units.
                     </p>
                   </div>
                 )}
 
                 {isIntlPhysicalRestricted && (
-                  <div style={{
-                    margin: "10px 0 14px",
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    backgroundColor: "#fff3cd",
-                    border: "1px solid #ffeeba",
-                    color: "#856404",
-                    fontSize: "12.5px",
-                    lineHeight: "1.4"
-                  }}>
+                  <div className="product-intl-restricted-alert">
                     <strong>⚠️ International Delivery Unavailable:</strong> Physical product shipping to {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally.
                   </div>
                 )}
@@ -1111,8 +1066,8 @@ function Product() {
                 </button>
 
                 {product.stock > 0 && product.productType !== "bulk" && (
-                  <div style={{ marginTop: "14px", borderTop: "1px solid var(--border-color, #cbd5e1)", paddingTop: "12px", textAlign: "center" }}>
-                    <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "var(--site-text-soft)" }}>
+                  <div className="product-bulk-quote-section">
+                    <p className="product-bulk-quote-hint">
                       Planning to purchase in bulk for a school, class, or institution?
                     </p>
                     <button
@@ -1121,23 +1076,7 @@ function Product() {
                         setBulkQty(qty || 20);
                         setShowBulkModal(true);
                       }}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        fontSize: "13px",
-                        fontWeight: "600",
-                        color: "#2563eb",
-                        background: "none",
-                        cursor: "pointer",
-                        padding: "6px 12px",
-                        border: "1px dashed #2563eb",
-                        borderRadius: "6px",
-                        transition: "all 0.15s ease",
-                        width: "100%"
-                      }}
-                      className="bulk-quote-btn"
+                      className="bulk-quote-btn product-bulk-quote-btn"
                     >
                       ✉ Request Bulk / Wholesale Quote
                     </button>
@@ -1148,7 +1087,7 @@ function Product() {
 
 
             {product?.courseLink ? (
-              <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid var(--border-color, #e2e8f0)" }}>
+              <div className="product-course-link-section">
                 <a
                   href={
                     /^https?:\/\//i.test(String(product.courseLink).trim())
@@ -1399,152 +1338,78 @@ function Product() {
       </div>
       {/* ── Wholesale / Bulk Enquiry Modal Overlay ── */}
       {showBulkModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.6)",
-          backdropFilter: "blur(4px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 9999,
-          padding: "20px"
-        }}>
-          <div style={{
-            backgroundColor: "var(--site-bg-card, #ffffff)",
-            color: "var(--site-text, #1e293b)",
-            border: "1px solid var(--border-color, #cbd5e1)",
-            borderRadius: "12px",
-            width: "100%",
-            maxWidth: "500px",
-            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
-            overflow: "hidden",
-            position: "relative",
-            animation: "modalFadeIn 0.2s ease"
-          }}>
-            <div style={{
-              padding: "18px 24px",
-              borderBottom: "1px solid var(--border-color, #cbd5e1)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: "var(--site-bg, #f8fafc)"
-            }}>
-              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>Request Wholesale / Bulk Quote</h3>
+        <div className="product-bulk-modal-backdrop">
+          <div className="product-bulk-modal-card">
+            <div className="product-bulk-modal-header">
+              <h3>Request Wholesale / Bulk Quote</h3>
               <button
                 type="button"
                 onClick={() => setShowBulkModal(false)}
-                style={{
-                  border: "none",
-                  background: "none",
-                  cursor: "pointer",
-                  fontSize: "20px",
-                  color: "var(--site-text-soft, #64748b)",
-                  lineHeight: 1
-                }}
+                className="product-bulk-modal-close"
               >
                 &times;
               </button>
             </div>
 
-            <form onSubmit={handleBulkSubmit} style={{ padding: "24px" }}>
+            <form onSubmit={handleBulkSubmit} className="product-bulk-modal-form">
               {bulkSuccess ? (
-                <div style={{
-                  textAlign: "center",
-                  padding: "16px 0",
-                  color: "#16a34a"
-                }}>
-                  <span style={{ fontSize: "40px" }}>✅</span>
-                  <h4 style={{ margin: "12px 0 6px", fontSize: "16px" }}>Enquiry Submitted Successfully!</h4>
-                  <p style={{ margin: 0, fontSize: "13.5px", color: "var(--site-text-soft)" }}>
+                <div className="product-bulk-modal-success">
+                  <span className="product-bulk-modal-success-icon">✅</span>
+                  <h4 className="product-bulk-modal-success-title">Enquiry Submitted Successfully!</h4>
+                  <p className="product-bulk-modal-success-desc">
                     We have logged your wholesale enquiry. Our administrative team will get back to you with custom rates within 24 hours.
                   </p>
                 </div>
               ) : (
                 <>
-                  <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--site-text-soft)" }}>
+                  <p className="product-bulk-modal-intro">
                     Interested in bulk copies of <strong>{product.name}</strong>? Submitting this form alerts our team to contact you with wholesale pricing.
                   </p>
 
                   {bulkError && (
-                    <div style={{
-                      backgroundColor: "#fef2f2",
-                      border: "1px solid #fecaca",
-                      borderRadius: "6px",
-                      padding: "10px",
-                      color: "#991b1b",
-                      fontSize: "13px",
-                      marginBottom: "14px"
-                    }}>
+                    <div className="product-bulk-modal-error">
                       ⚠️ {bulkError}
                     </div>
                   )}
 
-                  <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Name <span style={{ color: "#dc2626" }}>*</span></label>
+                  <div className="product-bulk-modal-row">
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Name <span className="product-bulk-modal-req">*</span></label>
                       <input
                         type="text"
                         required
                         value={bulkName}
                         onChange={(e) => setBulkName(e.target.value)}
                         placeholder="Your Name"
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid var(--border-color, #cbd5e1)",
-                          borderRadius: "6px",
-                          fontSize: "13.5px",
-                          backgroundColor: "transparent",
-                          color: "inherit"
-                        }}
+                        className="product-bulk-modal-input"
                       />
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Email <span style={{ color: "#dc2626" }}>*</span></label>
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Email <span className="product-bulk-modal-req">*</span></label>
                       <input
                         type="email"
                         required
                         value={bulkEmail}
                         onChange={(e) => setBulkEmail(e.target.value)}
                         placeholder="your@email.com"
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid var(--border-color, #cbd5e1)",
-                          borderRadius: "6px",
-                          fontSize: "13.5px",
-                          backgroundColor: "transparent",
-                          color: "inherit"
-                        }}
+                        className="product-bulk-modal-input"
                       />
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: "12px", marginBottom: "12px" }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Phone</label>
+                  <div className="product-bulk-modal-row">
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Phone</label>
                       <input
                         type="tel"
                         value={bulkPhone}
                         onChange={(e) => setBulkPhone(e.target.value)}
                         placeholder="Phone number"
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid var(--border-color, #cbd5e1)",
-                          borderRadius: "6px",
-                          fontSize: "13.5px",
-                          backgroundColor: "transparent",
-                          color: "inherit"
-                        }}
+                        className="product-bulk-modal-input"
                       />
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Quantity Needed <span style={{ color: "#dc2626" }}>*</span></label>
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Quantity Needed <span className="product-bulk-modal-req">*</span></label>
                       <input
                         type="number"
                         required
@@ -1552,55 +1417,30 @@ function Product() {
                         value={bulkQty}
                         onChange={(e) => setBulkQty(Math.max(1, parseInt(e.target.value) || ""))}
                         placeholder="Quantity (e.g. 20)"
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          border: "1px solid var(--border-color, #cbd5e1)",
-                          borderRadius: "6px",
-                          fontSize: "13.5px",
-                          backgroundColor: "transparent",
-                          color: "inherit"
-                        }}
+                        className="product-bulk-modal-input"
                       />
                     </div>
                   </div>
 
                   <div style={{ marginBottom: "12px" }}>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Institution / School Name</label>
+                    <label className="product-bulk-modal-label">Institution / School Name</label>
                     <input
                       type="text"
                       value={bulkInst}
                       onChange={(e) => setBulkInst(e.target.value)}
                       placeholder="e.g. Sanskrit Academy / Public School"
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        border: "1px solid var(--border-color, #cbd5e1)",
-                        borderRadius: "6px",
-                        fontSize: "13.5px",
-                        backgroundColor: "transparent",
-                        color: "inherit"
-                      }}
+                      className="product-bulk-modal-input"
                     />
                   </div>
 
                   <div style={{ marginBottom: "20px" }}>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Special Requirements / Message</label>
+                    <label className="product-bulk-modal-label">Special Requirements / Message</label>
                     <textarea
                       value={bulkMsg}
                       onChange={(e) => setBulkMsg(e.target.value)}
                       rows={3}
                       placeholder="Specify if you require bulk shipping outside India, custom print format, or specific delivery timelines."
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        border: "1px solid var(--border-color, #cbd5e1)",
-                        borderRadius: "6px",
-                        fontSize: "13.5px",
-                        backgroundColor: "transparent",
-                        color: "inherit",
-                        resize: "none"
-                      }}
+                      className="product-bulk-modal-textarea"
                     />
                   </div>
 

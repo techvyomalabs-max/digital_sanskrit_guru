@@ -830,3 +830,54 @@
   line-height: 1.3;
   animation: fadeIn 0.2s ease;
 }
+
+.my-account-panel-head-flex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.my-account-bell-active {
+  color: #059669;
+}
+
+.my-account-bell-inactive {
+  color: #64748b;
+}
+
+.my-account-push-hint-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--site-text-soft);
+}
+
+.my-account-profile-form-wrap {
+  margin-top: 14px;
+}
+
+.my-account-profile-success-msg {
+  margin: 14px 0 0;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.my-account-address-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.my-account-loc-btn {
+  background: var(--site-link) !important;
+  color: #fff !important;
+  border-color: var(--site-link) !important;
+}
+
+.my-account-loc-status-msg {
+  font-size: 13px;
+  color: var(--site-link);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+

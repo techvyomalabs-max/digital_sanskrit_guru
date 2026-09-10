@@ -1223,4 +1223,339 @@
   cursor: not-allowed;
 }
 
+/* Product Skeleton & Buy Box Helpers */
+.product-skeleton-wrap-pad {
+  padding: 60px 0;
+}
+
+.product-buy-price-multiplier {
+  display: block;
+  font-size: 13px;
+  font-weight: normal;
+  color: var(--site-text-soft);
+  margin-top: 4px;
+}
+
+.product-kindle-btn-wrap {
+  margin-top: 12px;
+}
+
+.product-kindle-cta-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 8px;
+  background-color: #ff9900;
+  color: #111;
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(255, 153, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.product-kindle-cta-btn:hover {
+  transform: translateY(-1px);
+}
+
+.product-kindle-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--site-text-soft);
+  text-align: center;
+}
+
+.product-purchased-alert {
+  margin: 10px 0 16px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #dc2626;
+  background-color: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.product-purchased-alert-title {
+  margin: 0;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.product-purchased-gift-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--site-text);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.product-purchased-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.product-bulk-select-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 0;
+  gap: 8px;
+}
+
+.product-bulk-select-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.product-bulk-select-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  height: 36px;
+  font-size: 15px;
+  font-weight: bold;
+  background-color: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.product-digital-badge-wrap {
+  margin: 14px 0;
+  text-align: center;
+}
+
+.product-digital-badge-pill {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #166534;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.product-retail-qty-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 16px 0 6px;
+}
+
+.product-retail-qty-input {
+  width: 60px;
+  text-align: center;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  height: 36px;
+  font-size: 15px;
+  font-weight: bold;
+  margin: 0 8px;
+  background-color: transparent;
+  color: inherit;
+}
+
+.product-retail-qty-note {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  color: var(--site-text-soft);
+  text-align: center;
+}
+
+.product-intl-restricted-alert {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  color: #856404;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.product-bulk-quote-section {
+  margin-top: 14px;
+  border-top: 1px solid var(--border-color, #cbd5e1);
+  padding-top: 12px;
+  text-align: center;
+}
+
+.product-bulk-quote-hint {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: var(--site-text-soft);
+}
+
+.product-bulk-quote-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  background: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border: 1px dashed #2563eb;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.product-bulk-quote-btn:hover {
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.product-course-link-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+/* Bulk Modal */
+.product-bulk-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.product-bulk-modal-card {
+  background-color: var(--site-bg-card, #ffffff);
+  color: var(--site-text, #1e293b);
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+  overflow: hidden;
+  position: relative;
+  animation: modalFadeIn 0.2s ease;
+}
+
+.product-bulk-modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-color, #cbd5e1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--site-bg, #f8fafc);
+}
+
+.product-bulk-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.product-bulk-modal-close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 20px;
+  color: var(--site-text-soft, #64748b);
+  line-height: 1;
+}
+
+.product-bulk-modal-form {
+  padding: 24px;
+}
+
+.product-bulk-modal-success {
+  text-align: center;
+  padding: 16px 0;
+  color: #16a34a;
+}
+
+.product-bulk-modal-success-icon {
+  font-size: 40px;
+}
+
+.product-bulk-modal-success-title {
+  margin: 12px 0 6px;
+  font-size: 16px;
+}
+
+.product-bulk-modal-success-desc {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--site-text-soft);
+}
+
+.product-bulk-modal-intro {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--site-text-soft);
+}
+
+.product-bulk-modal-error {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px;
+  color: #991b1b;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.product-bulk-modal-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.product-bulk-modal-col {
+  flex: 1;
+}
+
+.product-bulk-modal-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.product-bulk-modal-req {
+  color: #dc2626;
+}
+
+.product-bulk-modal-input,
+.product-bulk-modal-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  font-size: 13.5px;
+  background-color: transparent;
+  color: inherit;
+}
+
+.product-bulk-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+
 
