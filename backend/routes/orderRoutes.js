@@ -52,16 +52,6 @@ async function fireNotifications(fn) {
 }
 
 function verifyRazorpayPaymentSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
-  const isDummyPaymentEnabled = String(process.env.ALLOW_DUMMY_PAYMENT || "").toLowerCase() === "true";
-  if (
-    isDummyPaymentEnabled &&
-    (String(razorpayOrderId || "").startsWith("dummy_order_") ||
-      String(razorpayPaymentId || "").startsWith("dummy_pay_") ||
-      razorpaySignature === "dummy_signature")
-  ) {
-    return true;
-  }
-
   if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
     return false;
   }
