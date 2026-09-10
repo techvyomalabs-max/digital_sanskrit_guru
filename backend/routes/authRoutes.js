@@ -30,6 +30,14 @@ const registerLimiter = rateLimit({
   message: { message: "Too many accounts created. Please try again later." }
 });
 
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,                   // max 5 password reset attempts per IP per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many password reset attempts. Please try again in an hour." }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const getTokenExpiry = (rememberMe) => (rememberMe ? "30d" : "12h");
 
@@ -612,7 +620,7 @@ router.put("/addresses", protect, async (req, res) => {
 });
 
 // ── Password Reset Flow ──────────────────────────────────────────────────────
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (!isValidEmail(email)) {
@@ -662,7 +670,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!token) {

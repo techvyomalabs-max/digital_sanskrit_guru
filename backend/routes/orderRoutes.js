@@ -51,8 +51,35 @@ async function fireNotifications(fn) {
   }
 }
 
-// GET /api/orders/audit-migration (SYSTEM UTILITY)
-router.get("/audit-migration", async (req, res) => {
+function verifyRazorpayPaymentSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
+  const isDummyPaymentEnabled = String(process.env.ALLOW_DUMMY_PAYMENT || "").toLowerCase() === "true";
+  if (
+    isDummyPaymentEnabled &&
+    (String(razorpayOrderId || "").startsWith("dummy_order_") ||
+      String(razorpayPaymentId || "").startsWith("dummy_pay_") ||
+      razorpaySignature === "dummy_signature")
+  ) {
+    return true;
+  }
+
+  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    return false;
+  }
+
+  const body = `${razorpayOrderId}|${razorpayPaymentId}`;
+  const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
+  if (!razorpaySecret) return false;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", razorpaySecret)
+    .update(body)
+    .digest("hex");
+
+  return expectedSignature === razorpaySignature;
+}
+
+// GET /api/orders/audit-migration (Admin only)
+router.get("/audit-migration", protect, admin, async (req, res) => {
   try {
     const total = await Order.countDocuments();
     const emptyItemsCount = await Order.countDocuments({ items: { $size: 0 } });
@@ -834,10 +861,29 @@ router.post("/", protect, async (req, res) => {
 
   const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
   const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
-  if (rawPaymentStatus === "Paid" && (!razorpayOrderId || !razorpayPaymentId)) {
-    // Roll back stock since we already decremented it
-    await restoreStockForOrder({ items: normalizedItems });
-    return res.status(400).json({ message: "Payment reference is required to place paid order." });
+  const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
+
+  if (rawPaymentStatus === "Paid") {
+    if (!razorpayOrderId || !razorpayPaymentId) {
+      await restoreStockForOrder({ items: normalizedItems });
+      return res.status(400).json({ message: "Payment reference is required to place paid order." });
+    }
+
+    const userDoc = await User.findById(req.user).select("isAdmin").lean();
+    const isAdmin = Boolean(userDoc?.isAdmin);
+
+    if (!isAdmin) {
+      const isValid = verifyRazorpayPaymentSignature({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature
+      });
+
+      if (!isValid) {
+        await restoreStockForOrder({ items: normalizedItems });
+        return res.status(400).json({ message: "Payment verification signature is invalid." });
+      }
+    }
   }
 
   const requestedCurrency = String(req.body?.currencyDisplay?.currency || "")
@@ -1651,8 +1697,27 @@ router.put("/:id/payment-status", protect, async (req, res) => {
   }
 
   const isOwner = String(order.user) === String(req.user);
-  if (!isOwner) {
+  const userDoc = await User.findById(req.user).select("isAdmin").lean();
+  const isAdmin = Boolean(userDoc?.isAdmin);
+
+  if (!isOwner && !isAdmin) {
     return res.status(403).json({ message: "You can only update your own orders." });
+  }
+
+  if (rawPaymentStatus === "Paid" && !isAdmin) {
+    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
+
+    const isValid = verifyRazorpayPaymentSignature({
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature
+    });
+
+    if (!isValid) {
+      return res.status(400).json({ message: "Invalid payment verification signature." });
+    }
   }
 
   order.paymentStatus = rawPaymentStatus;

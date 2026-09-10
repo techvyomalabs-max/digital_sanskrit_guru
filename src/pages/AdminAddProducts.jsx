@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
@@ -1527,10 +1528,10 @@ function AdminAddProducts() {
       <AdminSidebar />
 
       <main className="admin-main">
-        <div className="admin-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+        <div className="admin-header admin-header-flex">
           <div>
             <h1>Add Products</h1>
-            <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
+            <p className="admin-header-muted-desc">
               Add one product quickly, or switch into edit mode from the list below.
             </p>
           </div>
@@ -1629,37 +1630,18 @@ function AdminAddProducts() {
                   boxSizing: "border-box"
                 }}
               >
-                <div style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}>
+                <div className="admin-toast-text-wrap">
                   <h3
-                    style={{
-                      margin: 0,
-                      fontSize: "17px",
-                      fontWeight: 700,
-                      color: "var(--site-text, #0f172a)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: "100%"
-                    }}
+                    className="admin-toast-text-title"
                     title={editingProduct ? `Edit Product: ${editingProduct.name}` : "Add New Product"}
                   >
                     {editingProduct ? `Edit Product: ${editingProduct.name}` : "Add New Product"}
                   </h3>
-                  <p
-                    style={{
-                      margin: "2px 0 0",
-                      fontSize: "12px",
-                      color: "var(--site-text-soft, #64748b)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: "100%"
-                    }}
-                  >
+                  <p className="admin-toast-text-subtitle">
                     {editingProduct ? "Update product details and save changes." : "Fill in basic product info, media, and pricing overrides."}
                   </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+                <div className="admin-toast-actions">
                   <div className="add-product-status-badges">
                     <span className={formSummary.isNameValid ? "status-badge valid" : "status-badge"}>Name</span>
                     <span className={formSummary.isPriceValid ? "status-badge valid" : "status-badge"}>Price</span>
@@ -1958,17 +1940,17 @@ function AdminAddProducts() {
                   </div>
                 </div>
                 <div className="product-composer-panel-body">
-                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontWeight: 600, fontSize: "14px", color: "var(--admin-text)", marginBottom: "14px" }}>
+                  <label className="admin-digital-toggle-label">
                     <input
                       type="checkbox"
                       checked={isDigital}
                       onChange={(e) => setIsDigital(e.target.checked)}
                     />
-                    This product includes Digital Content (Web Version / Kindle / E-Book / PDF)
+                    <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
                   </label>
 
                   {isDigital && (
-                    <div style={{ display: "grid", gap: "14px", padding: "16px", borderRadius: "10px", backgroundColor: "var(--admin-input-bg, #f9fafb)", border: "1px solid var(--admin-border)" }}>
+                    <div className="admin-digital-fields-box">
                       <div className="admin-field-grid">
                         <label className="admin-field">
                           <span>Digital Format Type</span>
@@ -2021,7 +2003,7 @@ function AdminAddProducts() {
                     </div>
                   )}
 
-                  <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
+                  <div className="admin-course-link-box">
                     <label className="admin-field admin-field-wide">
                       <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
                       <input
@@ -2425,7 +2407,7 @@ function AdminAddProducts() {
                   className="product-composer-preview-description"
                   style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "12px", color: "#555", lineHeight: "1.5" }}
                   dangerouslySetInnerHTML={{
-                    __html: description.trim() || "Your description, pricing, and image choices will show here as you build the product."
+                    __html: DOMPurify.sanitize(description.trim() || "Your description, pricing, and image choices will show here as you build the product.")
                   }}
                 />
                 <div className="product-composer-price-line">
@@ -2532,50 +2514,35 @@ function AdminAddProducts() {
           </div>
         )}
 
-        <section className="card upload-card-compact" style={{ padding: "12px 18px", marginBottom: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+        <section className="card upload-card-compact admin-upload-compact-section">
+          <div className="admin-upload-compact-row">
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ width: "34px", height: "34px", borderRadius: "8px", backgroundColor: "rgba(2, 132, 199, 0.1)", color: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0 }}>
+              <div className="admin-upload-icon-wrap">
                 📤
               </div>
               <div>
-                <h4 style={{ margin: 0, fontSize: "13.5px", fontWeight: 600 }}>Bulk Import Products</h4>
-                <p style={{ margin: "1px 0 0", fontSize: "11.5px", color: "var(--site-text-soft)" }}>
+                <h4 className="admin-upload-text-title">Bulk Import Products</h4>
+                <p className="admin-upload-text-desc">
                   Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>)
                 </p>
               </div>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <label
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--site-bg-soft, #f1f5f9)",
-                  border: "1px solid var(--site-border, #cbd5e1)",
-                  color: "var(--site-text, #334155)",
-                  fontSize: "12.5px",
-                  fontWeight: 600,
-                  cursor: uploading ? "not-allowed" : "pointer",
-                  transition: "all 0.15s ease"
-                }}
-              >
+              <label className="admin-upload-template-btn">
                 <span>{uploading ? "Uploading..." : "📄 Choose CSV / JSON File"}</span>
                 <input
                   type="file"
                   accept=".csv,.json,application/json,text/csv"
                   onChange={handleFileUpload}
                   disabled={uploading}
-                  style={{ display: "none" }}
+                  className="admin-file-hidden-input"
                 />
               </label>
             </div>
           </div>
           {uploadMessage && (
-            <p className={`upload-message ${uploadMessage.includes("failed") ? "error" : "success"}`} style={{ marginTop: "8px", marginBottom: 0, fontSize: "12px" }}>
+            <p className={`upload-message ${uploadMessage.includes("failed") ? "error" : "success"} admin-upload-message-pad`}>
               {uploadMessage}
             </p>
           )}

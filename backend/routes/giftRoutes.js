@@ -1,4 +1,6 @@
 const express = require("express");
+const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
 const GiftPass = require("../models/GiftPass");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
@@ -6,14 +8,22 @@ const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// Helper to generate a unique Gift Pass Code (e.g. GIFT-DSG-849201)
+const giftRedeemLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                  // max 10 attempts per IP per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many gift pass redemption attempts. Please try again later." }
+});
+
+// Helper to generate a cryptographically secure Gift Pass Code (e.g. GIFT-DSG-849201)
 const generateGiftCode = () => {
-  const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const randomStr = crypto.randomBytes(4).toString("hex").toUpperCase();
   return `GIFT-DSG-${randomStr}`;
 };
 
 // Redeem a Gift Pass Code (logged-in recipient)
-router.post("/redeem", protect, async (req, res) => {
+router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
   try {
     const rawCode = String(req.body?.code || "").trim().toUpperCase();
     if (!rawCode) {

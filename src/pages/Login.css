@@ -257,3 +257,32 @@
   border-style: solid;
 }
 
+.login-success-msg {
+  color: #166534;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.login-invalid-link-box {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.login-invalid-link-title {
+  color: #d32f2f;
+  font-weight: bold;
+}
+
+.login-back-link {
+  display: inline-block;
+  margin-top: 15px;
+  color: var(--site-link, #e94560);
+  text-decoration: underline;
+}
+
+

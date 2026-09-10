@@ -97,7 +97,7 @@ function PushSubscribeSection({ token }) {
   return (
     <section className="my-account-panel my-account-panel-compact">
       <div className="my-account-panel-head">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="my-account-panel-head-flex">
           <div className={`my-account-bell-icon-badge ${isGranted ? "active" : ""}`}>
             {isGranted ? <Bell size={20} /> : <BellOff size={20} />}
           </div>
@@ -142,9 +142,9 @@ function PushSubscribeSection({ token }) {
               {isSubscribing ? (
                 <span className="notifications-spinner-dot" />
               ) : isGranted ? (
-                <Bell size={12} style={{ color: "#059669" }} />
+                <Bell size={12} className="my-account-bell-active" />
               ) : (
-                <BellOff size={12} style={{ color: "#64748b" }} />
+                <BellOff size={12} className="my-account-bell-inactive" />
               )}
             </span>
           </button>
@@ -153,7 +153,7 @@ function PushSubscribeSection({ token }) {
         {status && <p className="my-account-push-msg">{status}</p>}
 
         {permission === "denied" && (
-          <p className="my-account-push-hint" style={{ marginTop: "8px", fontSize: "13px", color: "var(--site-text-soft)" }}>
+          <p className="my-account-push-hint my-account-push-hint-text">
             🔒 To re-enable, click the lock icon in your browser address bar → Notifications → Allow.
           </p>
         )}
@@ -722,7 +722,7 @@ function MyAccount() {
         </div>
 
         {isEditingProfile ? (
-          <form onSubmit={handleProfileSave} className="my-account-address-form" style={{ marginTop: "14px" }}>
+          <form onSubmit={handleProfileSave} className="my-account-address-form my-account-profile-form-wrap">
             <label>
               <span>Full Name</span>
               <input value={profileName} onChange={(e) => setProfileName(e.target.value)} required />
@@ -782,7 +782,7 @@ function MyAccount() {
               <strong>{cartItems.length}</strong>
             </div>
             {profileMessage && (
-              <p style={{ margin: "14px 0 0", color: "#15803d", fontWeight: "700", fontSize: "13px" }}>
+              <p className="my-account-profile-success-msg">
                 {profileMessage}
               </p>
             )}
@@ -796,7 +796,7 @@ function MyAccount() {
             <p className="my-account-section-kicker">Address Book</p>
             <h2>Manage addresses</h2>
           </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div className="my-account-address-head-actions">
             {showAddressForm ? (
               <button
                 type="button"
@@ -827,7 +827,7 @@ function MyAccount() {
                   className={`my-account-address-item ${isEditingThisCard ? "editing-active" : ""}`}
                 >
                   <div className="my-account-address-top">
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div className="my-account-address-head-actions">
                       <strong>{item.name || "Address"}</strong>
                       {isEditingThisCard && (
                         <span className="my-account-editing-badge">✏️ Editing Now</span>
@@ -910,14 +910,13 @@ function MyAccount() {
                   ? `✏️ Edit Address: ${addresses[editingIndex]?.name || name || "Address"}`
                   : "➕ Add New Address"}
               </h3>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div className="my-account-address-head-actions">
                 {enableCurrentLocation && (
                   <button
                     type="button"
-                    className="my-account-form-close-btn"
+                    className="my-account-form-close-btn my-account-loc-btn"
                     onClick={handleUseCurrentLocation}
                     disabled={isDetectingLocation}
-                    style={{ background: "var(--site-link)", color: "#fff", borderColor: "var(--site-link)" }}
                   >
                     📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
                   </button>
@@ -933,7 +932,7 @@ function MyAccount() {
             </div>
 
             {locationStatusMessage ? (
-              <p style={{ fontSize: "13px", color: "var(--site-link)", marginBottom: "12px", fontWeight: "600" }}>
+              <p className="my-account-loc-status-msg">
                 {locationStatusMessage}
               </p>
             ) : null}
