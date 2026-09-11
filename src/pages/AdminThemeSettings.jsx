@@ -216,59 +216,92 @@ function AdminThemeSettings() {
       })
       .catch(() => {});
 
+    const authHeaders = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+    const handleSettingsResponse = (res) => {
+      if (!active || !res?.data) return;
+      const nextCustomThemes = Array.isArray(res.data?.customThemes) ? res.data.customThemes : [];
+      const nextTheme = String(res.data?.siteTheme || DEFAULT_SITE_THEME);
+      setCustomThemes(nextCustomThemes);
+      setSiteTheme(nextTheme);
+      applySiteTheme(nextTheme, nextCustomThemes);
+      const options = getSiteThemeOptions(nextCustomThemes);
+      const activeOpt = options.find((o) => o.value === nextTheme) || options[0];
+      if (activeOpt) {
+        setEditingThemeId(activeOpt.value);
+        setThemeForm({
+          name: activeOpt.label,
+          description: activeOpt.description || "",
+          bg: activeOpt.palette.bg,
+          surface: activeOpt.palette.surface,
+          text: activeOpt.palette.text,
+          header: activeOpt.palette.header,
+          accent: activeOpt.palette.accent,
+          button: activeOpt.palette.button,
+          navBottom: activeOpt.palette.navBottom || "#1c2735",
+          footerBg: activeOpt.palette.footerBg || "",
+          footerText: activeOpt.palette.footerText || "",
+          sectionBg: activeOpt.palette.sectionBg || "",
+          sectionText: activeOpt.palette.sectionText || ""
+        });
+      }
+      if (res.data?.heroBanners) {
+        setHeroBanners(normalizeHeroBanners(res.data.heroBanners));
+      }
+      // Load festive animation settings
+      if (res.data?.festiveAnimation) {
+        setFestiveEnabled(Boolean(res.data.festiveAnimation.enabled));
+        setFestiveType(String(res.data.festiveAnimation.type      || "diwali"));
+        setFestiveIntensity(String(res.data.festiveAnimation.intensity || "subtle"));
+        const loaded = Array.isArray(res.data.festiveAnimation.customColors)
+          ? res.data.festiveAnimation.customColors.slice(0, 6)
+          : [];
+        setFestiveCustomColors([...loaded, ...Array(6).fill("")].slice(0, 6));
+        setFestiveCustomAnims(
+          Array.isArray(res.data.festiveAnimation.customAnimations)
+            ? res.data.festiveAnimation.customAnimations
+            : []
+        );
+      }
+      // Load festive banner settings
+      if (res.data?.festiveBanner) {
+        setBannerEnabled(Boolean(res.data.festiveBanner.enabled));
+        setBannerText(String(res.data.festiveBanner.text      || "🎉 Festive Sale is Live!"));
+        setBannerBgFrom(String(res.data.festiveBanner.bgFrom  || "#FF6B00"));
+        setBannerBgTo(String(res.data.festiveBanner.bgTo      || "#FFD700"));
+        setBannerTextColor(String(res.data.festiveBanner.textColor || "#ffffff"));
+        setBannerLinkUrl(String(res.data.festiveBanner.linkUrl || ""));
+        setBannerLinkText(String(res.data.festiveBanner.linkText || "Shop Now"));
+      }
+      // Load store icons
+      if (res.data?.storeIcons) {
+        setStoreIcons({
+          home: String(res.data.storeIcons.home || "🏠"),
+          categories: String(res.data.storeIcons.categories || "📚"),
+          wishlist: String(res.data.storeIcons.wishlist || "❤️"),
+          cart: String(res.data.storeIcons.cart || "🛒"),
+          profile: String(res.data.storeIcons.profile || "👤"),
+          search: String(res.data.storeIcons.search || "🔍")
+        });
+      }
+    };
+
     axios
-      .get("/api/settings")
-      .then((res) => {
-        if (!active) return;
-        const nextCustomThemes = Array.isArray(res.data?.customThemes) ? res.data.customThemes : [];
-        const nextTheme = String(res.data?.siteTheme || DEFAULT_SITE_THEME);
-        setCustomThemes(nextCustomThemes);
-        setSiteTheme(nextTheme);
-        applySiteTheme(nextTheme, nextCustomThemes);
-        if (res.data?.heroBanners) {
-          setHeroBanners(normalizeHeroBanners(res.data.heroBanners));
-        }
-        // Load festive animation settings
-        if (res.data?.festiveAnimation) {
-          setFestiveEnabled(Boolean(res.data.festiveAnimation.enabled));
-          setFestiveType(String(res.data.festiveAnimation.type      || "diwali"));
-          setFestiveIntensity(String(res.data.festiveAnimation.intensity || "subtle"));
-          const loaded = Array.isArray(res.data.festiveAnimation.customColors)
-            ? res.data.festiveAnimation.customColors.slice(0, 6)
-            : [];
-          setFestiveCustomColors([...loaded, ...Array(6).fill("")].slice(0, 6));
-          setFestiveCustomAnims(
-            Array.isArray(res.data.festiveAnimation.customAnimations)
-              ? res.data.festiveAnimation.customAnimations
-              : []
-          );
-        }
-        // Load festive banner settings
-        if (res.data?.festiveBanner) {
-          setBannerEnabled(Boolean(res.data.festiveBanner.enabled));
-          setBannerText(String(res.data.festiveBanner.text      || "🎉 Festive Sale is Live!"));
-          setBannerBgFrom(String(res.data.festiveBanner.bgFrom  || "#FF6B00"));
-          setBannerBgTo(String(res.data.festiveBanner.bgTo      || "#FFD700"));
-          setBannerTextColor(String(res.data.festiveBanner.textColor || "#ffffff"));
-          setBannerLinkUrl(String(res.data.festiveBanner.linkUrl  || ""));
-          setBannerLinkText(String(res.data.festiveBanner.linkText || "Shop Now"));
-        }
-        // Load website icons settings
-        if (res.data?.storeIcons) {
-          setStoreIcons({
-            home: String(res.data.storeIcons.home || "🏠"),
-            categories: String(res.data.storeIcons.categories || "📚"),
-            wishlist: String(res.data.storeIcons.wishlist || "❤️"),
-            cart: String(res.data.storeIcons.cart || "🛒"),
-            profile: String(res.data.storeIcons.profile || "👤"),
-            search: String(res.data.storeIcons.search || "🔍")
-          });
-        }
-      })
+      .get("/api/settings", authHeaders)
+      .then(handleSettingsResponse)
       .catch(() => {
-        if (!active) return;
-        setSiteTheme(DEFAULT_SITE_THEME);
-        setCustomThemes([]);
+        axios
+          .get("/api/settings/public")
+          .then(handleSettingsResponse)
+          .catch(() => {
+            if (!active) return;
+            setSiteTheme(DEFAULT_SITE_THEME);
+            setCustomThemes([]);
+          })
+          .finally(() => {
+            if (!active) return;
+            setIsLoadingTheme(false);
+          });
       })
       .finally(() => {
         if (!active) return;
@@ -276,7 +309,7 @@ function AdminThemeSettings() {
       });
 
     return () => { active = false; };
-  }, []);
+  }, [token]);
 
   const updateHeroBanner = (index, field, value) => {
     setHeroBanners((current) =>
@@ -431,7 +464,7 @@ function AdminThemeSettings() {
     try {
       const res = await axios.put(
         "/api/settings",
-        { siteTheme },
+        { siteTheme, customThemes },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -586,7 +619,7 @@ function AdminThemeSettings() {
       return;
     }
 
-    const nextThemeId = toThemeId(name);
+    const nextThemeId = editingThemeId || toThemeId(name);
     if (!nextThemeId) {
       setThemeMessage("Theme name must include letters or numbers.");
       return;
@@ -1050,6 +1083,22 @@ function AdminThemeSettings() {
                       onClick={() => {
                         setSiteTheme(option.value);
                         applySiteTheme(option.value, customThemes);
+                        setEditingThemeId(option.value);
+                        setThemeForm({
+                          name: option.label,
+                          description: option.description || "",
+                          bg: option.palette.bg,
+                          surface: option.palette.surface,
+                          text: option.palette.text,
+                          header: option.palette.header,
+                          accent: option.palette.accent,
+                          button: option.palette.button,
+                          navBottom: option.palette.navBottom || "#1c2735",
+                          footerBg: option.palette.footerBg || "",
+                          footerText: option.palette.footerText || "",
+                          sectionBg: option.palette.sectionBg || "",
+                          sectionText: option.palette.sectionText || ""
+                        });
                       }}
                     >
                       <strong>{option.label}</strong>
@@ -1122,6 +1171,196 @@ function AdminThemeSettings() {
               {themeMessage}
             </p>
           )}
+        </section>
+
+        {/* ── Custom Theme Creator / Editor ── */}
+        <section id="theme-customizer-card" className="card">
+          <div className="pricing-controls-header">
+            <div>
+              <h3>{editingThemeId ? `Modify Theme: ${themeForm.name || activeTheme?.label}` : "Create Custom Theme"}</h3>
+              <p>{editingThemeId ? "Update colors for this theme preset." : "Add a new theme by defining the core storefront colors."}</p>
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {editingThemeId && (
+                <button
+                  type="button"
+                  className="pricing-link-btn"
+                  style={{ fontSize: "12px", padding: "6px 12px" }}
+                  onClick={() => {
+                    setEditingThemeId(null);
+                    setThemeForm(EMPTY_THEME_FORM);
+                  }}
+                >
+                  ➕ Create New Theme
+                </button>
+              )}
+              <span className="pricing-badge">{editingThemeId ? "Editing" : "Custom"}</span>
+            </div>
+          </div>
+
+          <div className="theme-creator-grid">
+            <label className="pricing-field">
+              <span className="pricing-label">Theme Name</span>
+              <input
+                value={themeForm.name}
+                onChange={(e) => setThemeForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g. Lotus"
+              />
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Description</span>
+              <input
+                value={themeForm.description}
+                onChange={(e) => setThemeForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Short theme description"
+              />
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Page Background</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.bg}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, bg: e.target.value }))}
+                />
+                <span>{themeForm.bg}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Surface</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.surface}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, surface: e.target.value }))}
+                />
+                <span>{themeForm.surface}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Text</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.text}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, text: e.target.value }))}
+                />
+                <span>{themeForm.text}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Header</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.header}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, header: e.target.value }))}
+                />
+                <span>{themeForm.header}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Accent</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.accent}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, accent: e.target.value }))}
+                />
+                <span>{themeForm.accent}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Button</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.button}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, button: e.target.value }))}
+                />
+                <span>{themeForm.button}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Navbar Bottom Bar</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.navBottom || "#1c2735"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, navBottom: e.target.value }))}
+                />
+                <span>{themeForm.navBottom || "#1c2735"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Footer Background</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.footerBg || "#1c1c1e"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerBg: e.target.value }))}
+                />
+                <span>{themeForm.footerBg || "#1c1c1e"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Footer Text</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.footerText || "#ffffff"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerText: e.target.value }))}
+                />
+                <span>{themeForm.footerText || "#ffffff"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Secondary Section Background</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.sectionBg || "#f2f2f7"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionBg: e.target.value }))}
+                />
+                <span>{themeForm.sectionBg || "#f2f2f7"}</span>
+              </div>
+            </label>
+            <label className="pricing-field">
+              <span className="pricing-label">Secondary Section Text</span>
+              <div className="theme-color-input">
+                <input
+                  type="color"
+                  value={themeForm.sectionText || "#1c1c1e"}
+                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionText: e.target.value }))}
+                />
+                <span>{themeForm.sectionText || "#1c1c1e"}</span>
+              </div>
+            </label>
+          </div>
+
+          <div className="pricing-actions-row">
+            <button className="pricing-save-btn" onClick={createCustomTheme} disabled={isCreatingTheme}>
+              {isCreatingTheme ? "Saving..." : (editingThemeId ? "Update Theme" : "Add New Theme")}
+            </button>
+            {editingThemeId && (
+              <button 
+                type="button" 
+                className="pricing-link-btn" 
+                onClick={() => {
+                  setEditingThemeId(null);
+                  setThemeForm(EMPTY_THEME_FORM);
+                }}
+                style={{ background: "transparent", border: "1px solid var(--admin-border)", color: "var(--admin-text)" }}
+              >
+                Cancel Edit
+              </button>
+            )}
+            <span>
+              {editingThemeId 
+                ? "Modifying this theme preset updates its configuration across the storefront." 
+                : "New custom themes are saved to store settings and become selectable immediately."}
+            </span>
+          </div>
         </section>
 
         {/* ── Festive Animation ── */}
@@ -1555,180 +1794,6 @@ function AdminThemeSettings() {
               {iconsMessage}
             </p>
           )}
-        </section>
-
-        <section id="theme-customizer-card" className="card">
-          <div className="pricing-controls-header">
-            <div>
-              <h3>{editingThemeId ? `Modify Theme: ${themeForm.name}` : "Create Custom Theme"}</h3>
-              <p>{editingThemeId ? "Update colors for this theme preset." : "Add a new theme by defining the core storefront colors."}</p>
-            </div>
-            <span className="pricing-badge">{editingThemeId ? "Editing" : "Custom"}</span>
-          </div>
-
-          <div className="theme-creator-grid">
-            <label className="pricing-field">
-              <span className="pricing-label">Theme Name</span>
-              <input
-                value={themeForm.name}
-                onChange={(e) => setThemeForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g. Lotus"
-              />
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Description</span>
-              <input
-                value={themeForm.description}
-                onChange={(e) => setThemeForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Short theme description"
-              />
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Page Background</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.bg}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, bg: e.target.value }))}
-                />
-                <span>{themeForm.bg}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Surface</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.surface}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, surface: e.target.value }))}
-                />
-                <span>{themeForm.surface}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Text</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.text}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, text: e.target.value }))}
-                />
-                <span>{themeForm.text}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Header</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.header}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, header: e.target.value }))}
-                />
-                <span>{themeForm.header}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Accent</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.accent}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, accent: e.target.value }))}
-                />
-                <span>{themeForm.accent}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Button</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.button}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, button: e.target.value }))}
-                />
-                <span>{themeForm.button}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Navbar Bottom Bar</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.navBottom || "#1c2735"}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, navBottom: e.target.value }))}
-                />
-                <span>{themeForm.navBottom || "#1c2735"}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Footer Background</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.footerBg || "#1c1c1e"}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerBg: e.target.value }))}
-                />
-                <span>{themeForm.footerBg || "#1c1c1e"}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Footer Text</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.footerText || "#ffffff"}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, footerText: e.target.value }))}
-                />
-                <span>{themeForm.footerText || "#ffffff"}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Secondary Section Background</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.sectionBg || "#f2f2f7"}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionBg: e.target.value }))}
-                />
-                <span>{themeForm.sectionBg || "#f2f2f7"}</span>
-              </div>
-            </label>
-            <label className="pricing-field">
-              <span className="pricing-label">Secondary Section Text</span>
-              <div className="theme-color-input">
-                <input
-                  type="color"
-                  value={themeForm.sectionText || "#1c1c1e"}
-                  onChange={(e) => setThemeForm((prev) => ({ ...prev, sectionText: e.target.value }))}
-                />
-                <span>{themeForm.sectionText || "#1c1c1e"}</span>
-              </div>
-            </label>
-          </div>
-
-          <div className="pricing-actions-row">
-            <button className="pricing-save-btn" onClick={createCustomTheme} disabled={isCreatingTheme}>
-              {isCreatingTheme ? "Saving..." : (editingThemeId ? "Update Theme" : "Add New Theme")}
-            </button>
-            {editingThemeId && (
-              <button 
-                type="button" 
-                className="pricing-link-btn" 
-                onClick={() => {
-                  setEditingThemeId(null);
-                  setThemeForm(EMPTY_THEME_FORM);
-                }}
-                style={{ background: "transparent", border: "1px solid var(--admin-border)", color: "var(--admin-text)" }}
-              >
-                Cancel Edit
-              </button>
-            )}
-            <span>
-              {editingThemeId 
-                ? "Modifying this theme preset updates its configuration across the storefront." 
-                : "New custom themes are saved to store settings and become selectable immediately."}
-            </span>
-          </div>
         </section>
       </main>
     </div>
