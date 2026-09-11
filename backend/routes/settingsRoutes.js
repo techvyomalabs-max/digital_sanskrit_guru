@@ -8,7 +8,7 @@ const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
-const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
+const HEX_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const LEGACY_DEFAULT_PRODUCT_CATEGORIES = [
   "Audio Device",
   "Book - Paperback",
@@ -36,7 +36,7 @@ function sanitizeThemeId(value, fallback = "custom-theme") {
 function normalizeCustomThemes(input) {
   if (!Array.isArray(input)) return [];
 
-  const usedIds = new Set(StoreSettings.SITE_THEMES);
+  const usedIds = new Set();
 
   return input.reduce((acc, item, index) => {
     const name = String(item?.name || "").trim();
@@ -434,8 +434,9 @@ async function getOrCreateSettings() {
   return settings;
 }
 
-// Admin: full settings (no cache for admin panel to prevent config lag)
-router.get("/", protect, admin, async (req, res) => {
+// Full settings (no cache for admin panel to prevent config lag)
+router.get("/", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const settings = await getOrCreateSettings();
   res.json(normalizeSettings(settings));
 });

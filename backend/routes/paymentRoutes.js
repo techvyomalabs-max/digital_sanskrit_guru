@@ -3,7 +3,6 @@ const getRazorpayClient = require("../utils/razorpay");
 const crypto = require("crypto");
 
 const router = express.Router();
-const isDummyPaymentEnabled = String(process.env.ALLOW_DUMMY_PAYMENT || "").toLowerCase() === "true";
 
 router.post("/create-order", async (req, res) => {
   try {
@@ -11,16 +10,6 @@ router.post("/create-order", async (req, res) => {
     const currency = String(req.body?.currency || "INR").trim().toUpperCase();
     if (Number.isNaN(amount) || amount <= 0) {
       return res.status(400).json({ message: "Invalid amount" });
-    }
-
-    if (isDummyPaymentEnabled) {
-      return res.json({
-        id: `dummy_order_${Date.now()}`,
-        amount: Math.round(amount * 100),
-        currency,
-        receipt: `dummy_receipt_${Date.now()}`,
-        isDummy: true
-      });
     }
 
     const razorpay = getRazorpayClient();
@@ -49,21 +38,15 @@ router.post("/verify", async (req, res) => {
   const {
     razorpay_order_id,
     razorpay_payment_id,
-    razorpay_signature,
-    dummy
+    razorpay_signature
   } = req.body || {};
-
-  if (
-    isDummyPaymentEnabled &&
-    (dummy === true ||
-      String(razorpay_order_id || "").startsWith("dummy_order_") ||
-      String(razorpay_payment_id || "").startsWith("dummy_pay_"))
-  ) {
-    return res.json({ success: true, mode: "dummy" });
-  }
 
   const body = `${razorpay_order_id || ""}|${razorpay_payment_id || ""}`;
   const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
+  if (!razorpaySecret) {
+    return res.status(500).json({ message: "Razorpay secret not configured on server" });
+  }
+
   const expectedSignature = crypto
     .createHmac("sha256", razorpaySecret)
     .update(body)

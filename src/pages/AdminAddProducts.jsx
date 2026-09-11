@@ -349,9 +349,10 @@ function AdminAddProducts() {
 
   useEffect(() => {
     let active = true;
+    const authHeaders = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 
     axios
-      .get("/api/settings")
+      .get("/api/settings", authHeaders)
       .then((res) => {
         if (!active) return;
         const nextCategories = Array.isArray(res.data?.productCategories) && res.data.productCategories.length > 0
@@ -377,6 +378,14 @@ function AdminAddProducts() {
         setActiveHeroBannerIndex(0);
       })
       .catch(() => {
+        axios.get("/api/settings/public").then((res) => {
+          if (!active) return;
+          const nextCategories = Array.isArray(res.data?.productCategories) && res.data.productCategories.length > 0
+            ? res.data.productCategories
+            : DEFAULT_CATEGORY_OPTIONS;
+          setCategoryOptions(nextCategories);
+          setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
+        }).catch(() => {});
         if (!active) return;
         setCategoryOptions(DEFAULT_CATEGORY_OPTIONS);
         setPricingMarkets([]);
@@ -405,7 +414,9 @@ function AdminAddProducts() {
   }, []);
 
   const saveCategoryOptions = async (nextCategories) => {
-    const { data: currentSettings } = await axios.get("/api/settings");
+    const { data: currentSettings } = await axios.get("/api/settings", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     const payload = {
       gstPercent: currentSettings?.gstPercent ?? 0,
       deliveryCharge: currentSettings?.deliveryCharge ?? 0,

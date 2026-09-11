@@ -113,11 +113,14 @@ export function findThemeOption(themeOptions, themeValue) {
   });
 }
 
-const HEX_COLOR_REGEX = /^#([0-9a-f]{6})$/i;
+const HEX_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 function hexToRgb(hex) {
-  const normalized = String(hex || "").replace("#", "");
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) {
+  let normalized = String(hex || "").replace("#", "").trim();
+  if (normalized.length === 3) {
+    normalized = normalized.split("").map((c) => c + c).join("");
+  }
+  if (!/^[0-9a-f]{6}/i.test(normalized)) {
     return { r: 0, g: 0, b: 0 };
   }
 
