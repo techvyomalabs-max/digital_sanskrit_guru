@@ -608,12 +608,14 @@
   transition: all 0.2s ease;
 }
 
-.add-cart-btn {
-  background: var(--site-badge-bg);
-  color: var(--site-badge-text);
+.add-cart-btn,
+.view-btn {
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
 }
 
-.add-cart-btn:hover {
+.add-cart-btn:hover,
+.view-btn:hover {
   background: var(--site-button-hover);
   transform: translateY(-1px);
 }
@@ -1047,16 +1049,16 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
   border-radius: 6px;
-  background: var(--site-badge-bg);
-  color: #ffffff;
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
   border: none;
   margin-top: auto;
   transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
 .related-card .view-btn:hover {
-  background: var(--site-link-hover, #c2410c);
-  color: #ffffff;
+  background: var(--site-button-hover);
+  color: var(--site-button-text);
 }
 
 .related-empty {

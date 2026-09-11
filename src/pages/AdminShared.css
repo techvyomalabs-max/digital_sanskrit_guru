@@ -27,7 +27,7 @@ html.banner-active.navbar-attached-hidden {
 
 body{
 margin:0;
-font-family:"Inter","Segoe UI",system-ui,sans-serif;
+font-family:"Source Sans 3","Tiro Devanagari Sanskrit","Segoe UI",system-ui,sans-serif;
 background:var(--admin-bg);
 color:var(--admin-text);
 }
