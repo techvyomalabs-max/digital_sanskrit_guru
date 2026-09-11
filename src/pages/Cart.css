@@ -153,8 +153,8 @@
 
 .cart-bundle-buy-btn {
   border: none;
-  background: var(--site-badge-bg);
-  color: var(--site-badge-text);
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
   border-radius: var(--radius-full);
   min-height: 30px;
   padding: 0 var(--space-3);
@@ -420,13 +420,13 @@
   width: 100%;
   min-height: 42px;
   padding: 0 var(--space-4);
-  background: var(--site-badge-bg);
+  background: var(--site-button-bg);
   border: none;
   border-radius: var(--radius-full);
   cursor: pointer;
   font-weight: 600;
   font-size: 14px;
-  color: var(--site-badge-text);
+  color: var(--site-button-text);
   transition: background 0.2s ease, transform 0.15s ease;
 }
 

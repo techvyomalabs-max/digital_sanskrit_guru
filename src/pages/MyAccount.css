@@ -457,9 +457,9 @@
 
 .my-account-label-chip.active,
 .my-account-address-form-actions button.primary{
-  background:var(--site-badge-bg);
-  border-color:var(--site-badge-bg);
-  color:var(--site-badge-text);
+  background:var(--site-button-bg);
+  border-color:var(--site-button-bg);
+  color:var(--site-button-text);
 }
 
 .my-account-address-form label{

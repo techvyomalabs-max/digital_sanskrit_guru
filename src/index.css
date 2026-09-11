@@ -1,12 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    DESIGN SYSTEM — Digital Sanskrit Guru
    Premium ecommerce marketplace tokens
-   Font: Inter | Palette: Deep Navy + Saffron Gold + Warm Off-White
+   Font: Source Sans 3 + Tiro Devanagari Sanskrit | Palette: Deep Navy + Saffron Gold + Warm Off-White
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Typography ────────────────────────────────────────────────────────── */
-  font-family: "Inter", "Poppins", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-primary: "Source Sans 3", "Tiro Devanagari Sanskrit", system-ui, -apple-system, sans-serif;
+  --font-sanskrit: "Tiro Devanagari Sanskrit", serif;
+  font-family: var(--font-primary);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -221,7 +223,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  font-family: "Inter", "Poppins", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-primary);
   background: var(--site-bg);
   color: var(--site-text);
 }

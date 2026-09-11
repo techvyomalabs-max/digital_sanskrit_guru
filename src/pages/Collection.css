@@ -219,8 +219,9 @@
 }
 
 .collection-category-row button.active {
-  background: var(--site-badge-bg);
-  border-color: var(--site-badge-bg);
+  background: var(--site-button-bg);
+  border-color: var(--site-button-bg);
+  color: var(--site-button-text);
 }
 
 .collection-sort-box {

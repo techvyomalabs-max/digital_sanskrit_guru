@@ -717,9 +717,9 @@ html.banner-active .navbar {
 .navbar-address-current-location-btn {
   width: fit-content;
   border-radius: var(--radius-full);
-  border: 1px solid var(--site-badge-bg);
-  background: var(--site-badge-bg);
-  color: var(--site-badge-text);
+  border: 1px solid var(--site-button-bg);
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -829,9 +829,9 @@ html.banner-active .navbar {
 }
 
 .navbar-address-action.primary {
-  border-color: var(--site-badge-bg);
-  background: var(--site-badge-bg);
-  color: var(--site-badge-text);
+  border-color: var(--site-button-bg);
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
 }
 
 .navbar-address-action.primary:hover {
@@ -886,9 +886,9 @@ html.banner-active .navbar {
   display: inline-flex;
   text-decoration: none;
   border-radius: var(--radius-full);
-  border: 1px solid var(--site-badge-bg);
-  color: var(--site-badge-text);
-  background: var(--site-badge-bg);
+  border: 1px solid var(--site-button-bg);
+  color: var(--site-button-text);
+  background: var(--site-button-bg);
   padding: 8px 16px;
   font-weight: 600;
   transition: background 0.2s ease;
