@@ -409,9 +409,9 @@
 .checkout-address-empty a{
   margin-top:4px;
   border-radius:999px;
-  background:var(--site-badge-bg);
-  border:1px solid var(--site-badge-bg);
-  color:var(--site-text);
+  background:var(--site-button-bg);
+  border:1px solid var(--site-button-bg);
+  color:var(--site-button-text);
   font-size:13px;
   font-weight:800;
   padding:10px 14px;
@@ -601,8 +601,9 @@
 
 .place-order-btn{
   margin-top:14px;
-  border-color:var(--site-badge-bg);
-  background:var(--site-badge-bg);
+  border-color:var(--site-button-bg);
+  background:var(--site-button-bg);
+  color:var(--site-button-text);
 }
 
 .place-order-btn:hover{
