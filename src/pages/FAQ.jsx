@@ -31,12 +31,12 @@ function FAQ() {
         {
           id: "g4",
           question: "How do we know more about the organisation?",
-          answer: "You can read about our mission, vision, and operational history directly on our corporate page: https://www.vyomalabs.in/aboutus/"
+          answer: "You can read about our mission, vision, and operational history directly on our corporate page: https://vyoma.org/about/"
         },
         {
           id: "g5",
           question: "Who are the people behind these products?",
-          answer: "Our core team consists of Sanskrit scholars, educators, software engineers, and passionate volunteers. You can meet our leadership and advisors at: https://www.vyomalabs.in/aboutus/"
+          answer: "Our core team consists of Sanskrit scholars, educators, software engineers, and passionate volunteers. You can meet our leadership and advisors at: https://vyoma.org/about/"
         },
         {
           id: "g6",
@@ -237,9 +237,41 @@ function FAQ() {
                       </button>
                       <div className="faq-answer" style={{ maxHeight: isExpanded ? "500px" : "0px" }}>
                         <div className="faq-answer-content">
-                          {item.answer.split("\n").map((line, idx) => (
-                            <p key={idx}>{line}</p>
-                          ))}
+                          {item.answer.split("\n").map((line, idx) => {
+                            const urlOrEmailRegex = /(https?:\/\/[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+                            const parts = line.split(urlOrEmailRegex);
+                            return (
+                              <p key={idx}>
+                                {parts.map((part, pIdx) => {
+                                  if (/^https?:\/\//.test(part)) {
+                                    return (
+                                      <a
+                                        key={pIdx}
+                                        href={part}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ color: "var(--site-link, #2563eb)", textDecoration: "underline", wordBreak: "break-word" }}
+                                      >
+                                        {part}
+                                      </a>
+                                    );
+                                  }
+                                  if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(part)) {
+                                    return (
+                                      <a
+                                        key={pIdx}
+                                        href={`mailto:${part}`}
+                                        style={{ color: "var(--site-link, #2563eb)", textDecoration: "underline" }}
+                                      >
+                                        {part}
+                                      </a>
+                                    );
+                                  }
+                                  return part;
+                                })}
+                              </p>
+                            );
+                          })}
                         </div>
                       </div>
                     </article>
