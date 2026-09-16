@@ -44,6 +44,30 @@ const getTokenExpiry = (rememberMe) => (rememberMe ? "30d" : "12h");
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || "").trim().toLowerCase());
 
+const validatePassword = (value) => {
+  const password = typeof value === "string" ? value : "";
+  if (!password) {
+    return { isValid: false, message: "Password is required." };
+  }
+  if (password.startsWith(" ") || password.endsWith(" ")) {
+    return { isValid: false, message: "Password cannot start or end with a space." };
+  }
+  const trimmed = password.trim();
+  if (trimmed.length < 8) {
+    return { isValid: false, message: "Password must be at least 8 characters (excluding spaces)." };
+  }
+  if (password.length > 128) {
+    return { isValid: false, message: "Password must be 128 characters or fewer." };
+  }
+  if (/^\s+$/.test(password)) {
+    return { isValid: false, message: "Password cannot consist only of spaces." };
+  }
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return { isValid: false, message: "Password must contain at least one letter and one number." };
+  }
+  return { isValid: true };
+};
+
 const normalizeAddress = (item = {}, index = 0) => {
   const normalizedLabel = ["Home", "Work", "Other"].includes(String(item?.label || "").trim())
     ? String(item.label).trim()
@@ -117,11 +141,9 @@ router.post("/register", registerLimiter, async (req, res) => {
     if (phone && !/^[+\d\s\-()]{5,20}$/.test(phone)) {
       return res.status(400).json({ message: "Please enter a valid phone number." });
     }
-    if (!password || password.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters." });
-    }
-    if (password.length > 128) {
-      return res.status(400).json({ message: "Password must be 128 characters or fewer." });
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     const userExists = await User.findOne({ email });
@@ -676,11 +698,9 @@ router.post("/reset-password", passwordResetLimiter, async (req, res) => {
     if (!token) {
       return res.status(400).json({ message: "Password reset token is required." });
     }
-    if (!password || password.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters." });
-    }
-    if (password.length > 128) {
-      return res.status(400).json({ message: "Password must be 128 characters or fewer." });
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ message: passwordValidation.message });
     }
 
     const user = await User.findOne({
@@ -715,7 +735,7 @@ router.put("/profile", protect, async (req, res) => {
 
     const name = String(req.body.name || "").trim();
     const email = String(req.body.email || "").trim().toLowerCase();
-    const password = String(req.body.password || "").trim();
+    const password = req.body.password;
 
     if (name) {
       if (name.length < 2) {
@@ -736,8 +756,9 @@ router.put("/profile", protect, async (req, res) => {
     }
 
     if (password) {
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters long." });
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.isValid) {
+        return res.status(400).json({ message: passwordValidation.message });
       }
       user.password = await bcrypt.hash(password, 12);
     }

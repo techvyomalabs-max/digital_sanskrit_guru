@@ -958,24 +958,21 @@ function Navbar({ bannerActive = false }) {
             <span>Wishlist</span>
             <span className="navbar-inline-count">{wishlist.length}</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/my-orders" onClick={() => setIsMenuOpen(false)}>
-            <Package size={18} className="navbar-link-icon" />
-            <span>My Orders</span>
-          </NavLink>
-          <NavLink className={linkClassName} to="/my-library" onClick={() => setIsMenuOpen(false)}>
-            <BookOpen size={18} className="navbar-link-icon" />
-            <span>My Digital Library</span>
-          </NavLink>
-          {user ? (
-            <NavLink className={linkClassName} to="/account" onClick={() => setIsMenuOpen(false)}>
-              <User size={18} className="navbar-link-icon" />
-              <span>My Account</span>
-            </NavLink>
-          ) : (
-            <NavLink className={linkClassName} to="/login" onClick={() => setIsMenuOpen(false)}>
-              <LogIn size={18} className="navbar-link-icon" />
-              <span>Login</span>
-            </NavLink>
+          {user && (
+            <>
+              <NavLink className={linkClassName} to="/my-orders" onClick={() => setIsMenuOpen(false)}>
+                <Package size={18} className="navbar-link-icon" />
+                <span>My Orders</span>
+              </NavLink>
+              <NavLink className={linkClassName} to="/my-library" onClick={() => setIsMenuOpen(false)}>
+                <BookOpen size={18} className="navbar-link-icon" />
+                <span>My Digital Library</span>
+              </NavLink>
+              <NavLink className={linkClassName} to="/account" onClick={() => setIsMenuOpen(false)}>
+                <User size={18} className="navbar-link-icon" />
+                <span>My Account</span>
+              </NavLink>
+            </>
           )}
           <NavLink className={linkClassName} to="/faq" onClick={() => setIsMenuOpen(false)}>
             <HelpCircle size={18} className="navbar-link-icon" />
@@ -1004,10 +1001,16 @@ function Navbar({ bannerActive = false }) {
               <span>Sign Out</span>
             </button>
           ) : (
-            <NavLink className={linkClassName} to="/register" onClick={() => setIsMenuOpen(false)}>
-              <UserPlus size={18} className="navbar-link-icon" />
-              <span>New Customer? Register</span>
-            </NavLink>
+            <>
+              <NavLink className={linkClassName} to="/login" onClick={() => setIsMenuOpen(false)}>
+                <LogIn size={18} className="navbar-link-icon" />
+                <span>Login</span>
+              </NavLink>
+              <NavLink className={linkClassName} to="/register" onClick={() => setIsMenuOpen(false)}>
+                <UserPlus size={18} className="navbar-link-icon" />
+                <span>New Customer? Register</span>
+              </NavLink>
+            </>
           )}
         </div>
       </div>

@@ -313,9 +313,23 @@ function MyAccount() {
       setProfileError("Email is required.");
       return;
     }
-    if (profilePassword && profilePassword !== profilePasswordConfirm) {
-      setProfileError("Passwords do not match.");
-      return;
+    if (profilePassword) {
+      if (profilePassword.startsWith(" ") || profilePassword.endsWith(" ")) {
+        setProfileError("Password cannot start or end with a space.");
+        return;
+      }
+      if (profilePassword.trim().length < 8) {
+        setProfileError("Password must be at least 8 characters long.");
+        return;
+      }
+      if (!/[A-Za-z]/.test(profilePassword) || !/\d/.test(profilePassword)) {
+        setProfileError("Password must contain at least one letter and one number.");
+        return;
+      }
+      if (profilePassword !== profilePasswordConfirm) {
+        setProfileError("Passwords do not match.");
+        return;
+      }
     }
 
     setIsSavingProfile(true);
@@ -733,7 +747,7 @@ function MyAccount() {
             </label>
             <label>
               <span>New Password (Leave blank to keep current)</span>
-              <input type="password" value={profilePassword} onChange={(e) => setProfilePassword(e.target.value)} placeholder="Minimum 6 characters" />
+              <input type="password" value={profilePassword} onChange={(e) => setProfilePassword(e.target.value)} placeholder="At least 8 chars with letter & number" />
             </label>
             {profilePassword && (
               <label>

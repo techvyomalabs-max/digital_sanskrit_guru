@@ -14,12 +14,14 @@ function Register() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setPhoneError("");
+    setPasswordError("");
 
     const digits = String(phone || "").replace(/\D/g, "");
     if (!digits) {
@@ -29,6 +31,23 @@ function Register() {
 
     if (!/^[6-9]\d{9}$/.test(digits) && (digits.length < 7 || digits.length > 15)) {
       setPhoneError("Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).");
+      return;
+    }
+
+    if (!password) {
+      setPasswordError("Password is required.");
+      return;
+    }
+    if (password.startsWith(" ") || password.endsWith(" ")) {
+      setPasswordError("Password cannot start or end with a space.");
+      return;
+    }
+    if (password.trim().length < 8) {
+      setPasswordError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setPasswordError("Password must contain at least one letter and one number.");
       return;
     }
 
@@ -106,11 +125,20 @@ function Register() {
             <input
               id="register-password"
               type="password"
-              placeholder="Create a password"
+              placeholder="At least 8 characters with letter & number"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              className={passwordError ? "invalid-input" : ""}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError) setPasswordError("");
+              }}
               required
             />
+            {passwordError && (
+              <span className="register-field-error" style={{ color: "#dc2626", fontSize: "12px", fontWeight: "600", marginTop: "4px", display: "block" }}>
+                ⚠️ {passwordError}
+              </span>
+            )}
 
             <label className="register-remember">
               <input

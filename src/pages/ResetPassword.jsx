@@ -23,8 +23,20 @@ function ResetPassword() {
       setErrorMessage("Reset token is missing from the URL.");
       return;
     }
-    if (password.length < 8) {
-      setErrorMessage("Password must be at least 8 characters.");
+    if (!password) {
+      setErrorMessage("Password is required.");
+      return;
+    }
+    if (password.startsWith(" ") || password.endsWith(" ")) {
+      setErrorMessage("Password cannot start or end with a space.");
+      return;
+    }
+    if (password.trim().length < 8) {
+      setErrorMessage("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setErrorMessage("Password must contain at least one letter and one number.");
       return;
     }
     if (password !== confirmPassword) {
