@@ -105,6 +105,7 @@ export function CartProvider({ children }) {
   const [savedForLaterItems, setSavedForLaterItems] = useState(() => readSavedForLater());
   const [addedItem, setAddedItem] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const pendingDeletions = useRef(new Set());
 
   const getCartHeaders = () => ({
     headers: {
@@ -304,25 +305,38 @@ export function CartProvider({ children }) {
   };
 
   const removeFromCart = async (id) => {
+    const targetId = String(id || "");
+    if (!targetId) return false;
+
+    if (pendingDeletions.current.has(targetId)) {
+      return true;
+    }
+    pendingDeletions.current.add(targetId);
+
+    // Optimistically update UI
+    setCartItems((current) => current.filter((item) => String(item?.id || item?._id || "") !== targetId));
+
     if (!token) {
-      const targetId = String(id || "");
-      setCartItems((current) => current.filter((item) => String(item?.id || item?._id || "") !== targetId));
+      pendingDeletions.current.delete(targetId);
       return true;
     }
 
     try {
-      const targetId = String(id || "");
-      if (!targetId) return;
       const res = await axios.delete(`/api/cart/${targetId}`, getCartHeaders());
-      setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      if (res.data?.items) {
+        setCartItems(Array.isArray(res.data.items) ? res.data.items : []);
+      }
       return true;
     } catch (err) {
       const status = Number(err?.response?.status || 0);
       const message =
         err?.response?.data?.message ||
         (status === 401 ? "Session expired. Please login again." : "Could not remove item.");
+      await loadCart();
       showToast(message, "error");
       return false;
+    } finally {
+      pendingDeletions.current.delete(targetId);
     }
   };
 
