@@ -165,6 +165,7 @@ function Cart() {
     moveToCartFromSaved,
     removeSavedForLater
   } = useCart();
+  const [removingId, setRemovingId] = useState(null);
   const { selectedAddress } = useDeliveryLocation();
   const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
   const displayCurrency =
@@ -327,8 +328,17 @@ function Cart() {
                     </div>
 
                     <div className="cart-item-actions">
-                      <button className="remove-btn" onClick={() => removeFromCart(item._id || item.id)}>
-                        Delete
+                      <button
+                        className="remove-btn"
+                        disabled={removingId === (item._id || item.id)}
+                        onClick={async () => {
+                          const id = item._id || item.id;
+                          setRemovingId(id);
+                          await removeFromCart(id);
+                          setRemovingId(null);
+                        }}
+                      >
+                        {removingId === (item._id || item.id) ? "Removing..." : "Delete"}
                       </button>
                       <button className="save-later-btn" onClick={() => saveForLater(item)}>
                         Save for later

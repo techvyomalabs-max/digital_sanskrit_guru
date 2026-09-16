@@ -296,7 +296,13 @@
   font-weight: 500;
 }
 
-.cart-item-actions .remove-btn:hover,
+.cart-item-actions .remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.cart-item-actions .remove-btn:hover:not(:disabled),
 .cart-item-actions .save-later-btn:hover {
   background: transparent;
   color: var(--site-link-hover);

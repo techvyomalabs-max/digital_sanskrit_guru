@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 const protect = require("../middleware/authMiddleware");
@@ -152,31 +153,43 @@ router.put("/:productId", protect, async (req, res) => {
 });
 
 router.delete("/:productId", protect, async (req, res) => {
-  const { productId } = req.params;
+  try {
+    const { productId } = req.params;
+    let queryProductId = productId;
+    if (mongoose.Types.ObjectId.isValid(productId)) {
+      queryProductId = new mongoose.Types.ObjectId(productId);
+    }
 
-  const cart = await getCartByUser(req.user);
-  if (!cart) {
-    return res.json({ items: [] });
+    const cart = await Cart.findOneAndUpdate(
+      { user: req.user },
+      { $pull: { items: { product: queryProductId } } },
+      { new: true }
+    ).populate("items.product");
+
+    if (!cart) {
+      return res.json({ items: [] });
+    }
+
+    res.json({ items: formatCart(cart) });
+  } catch (err) {
+    console.error("Error removing cart item:", err);
+    res.status(500).json({ message: "Could not remove item" });
   }
-
-  const targetProductId = String(productId);
-  cart.items = cart.items.filter((item) => getProductId(item.product) !== targetProductId);
-  await cart.save();
-  await cart.populate("items.product");
-
-  res.json({ items: formatCart(cart) });
 });
 
 router.delete("/", protect, async (req, res) => {
-  const cart = await getCartByUser(req.user);
-  if (!cart) {
-    return res.json({ items: [] });
+  try {
+    await Cart.findOneAndUpdate(
+      { user: req.user },
+      { $set: { items: [] } },
+      { new: true }
+    );
+
+    res.json({ items: [] });
+  } catch (err) {
+    console.error("Error clearing cart:", err);
+    res.status(500).json({ message: "Could not clear cart" });
   }
-
-  cart.items = [];
-  await cart.save();
-
-  res.json({ items: [] });
 });
 
 module.exports = router;
