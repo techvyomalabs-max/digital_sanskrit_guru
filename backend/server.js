@@ -63,6 +63,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
+  const { globalApiLimiter } = require("./utils/spamFilter");
 
   const app = express();
   app.use(helmet({
@@ -103,6 +104,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use(express.json({ limit: "25mb" }));
   app.use(express.urlencoded({ extended: true, limit: "25mb" }));
   app.use(vulnerabilityGuard);
+  app.use("/api", globalApiLimiter);
 
   // ── Health check ────────────────────────────────────────────────────────────
   app.get("/api/health", (req, res) => {

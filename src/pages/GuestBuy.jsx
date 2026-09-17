@@ -27,6 +27,7 @@ function GuestBuy() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [honeyPot, setHoneyPot] = useState("");
 
   // Shipping details (only required for physical products)
   const [address, setAddress] = useState("");
@@ -263,7 +264,8 @@ function GuestBuy() {
       });
 
       const { data: rpOrder } = await axios.post("/api/payment/create-order", {
-        amount: Math.round(amountInInr * 100) / 100
+        amount: Math.round(amountInInr * 100) / 100,
+        honey_pot_field: honeyPot
       });
 
       // 2. Process payment (Dummy / Live)
@@ -312,6 +314,7 @@ function GuestBuy() {
           shipping: shippingInfo,
           billing: shippingInfo,
           paymentStatus: "Paid",
+          honey_pot_field: honeyPot,
           razorpayOrderId: response.razorpay_order_id,
           razorpayPaymentId: response.razorpay_payment_id,
           currencyDisplay: {
@@ -376,6 +379,7 @@ function GuestBuy() {
               shipping: shippingInfo,
               billing: shippingInfo,
               paymentStatus: "Paid",
+              honey_pot_field: honeyPot,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               currencyDisplay: {
@@ -685,6 +689,17 @@ function GuestBuy() {
 
             {/* Right Side: Simple Guest Checkout Form */}
             <form onSubmit={handlePayment} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Invisible Honeypot field */}
+              <input
+                type="text"
+                name="honey_pot_field"
+                value={honeyPot}
+                onChange={(e) => setHoneyPot(e.target.value)}
+                style={{ display: "none", position: "absolute", left: "-9999px" }}
+                tabIndex="-1"
+                autoComplete="off"
+              />
+
               <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#475569" }}>Checkout Details</h3>
               
               <div>

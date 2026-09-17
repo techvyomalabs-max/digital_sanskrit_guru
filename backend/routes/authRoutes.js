@@ -10,6 +10,7 @@ const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { logAdminAction } = require("../utils/adminAudit");
 const { sendEmail } = require("../utils/email");
+const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
 
@@ -121,7 +122,7 @@ router.get("/register", (_req, res) => {
   res.status(405).json({ message: "Use POST /api/auth/register with name, email, and password." });
 });
 
-router.post("/register", registerLimiter, async (req, res) => {
+router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
@@ -182,7 +183,7 @@ router.get("/login", (_req, res) => {
   res.status(405).json({ message: "Use POST /api/auth/login with email and password." });
 });
 
-router.post("/login", authLimiter, async (req, res) => {
+router.post("/login", authLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
@@ -642,7 +643,7 @@ router.put("/addresses", protect, async (req, res) => {
 });
 
 // ── Password Reset Flow ──────────────────────────────────────────────────────
-router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (!isValidEmail(email)) {
@@ -692,7 +693,7 @@ router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   }
 });
 
-router.post("/reset-password", passwordResetLimiter, async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
     const { token, password } = req.body;
     if (!token) {

@@ -911,3 +911,180 @@
 .pagination-info strong {
   color: var(--orders-text);
 }
+
+/* ── Order Action Modals (Dispatch / Cancellation / Rejection) ───────────── */
+.admin-action-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.admin-action-modal {
+  background: var(--admin-surface, #ffffff);
+  color: var(--admin-text, #0f172a);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--admin-border, #e2e8f0);
+  overflow: hidden;
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-action-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--admin-border, #e2e8f0);
+  background: var(--admin-surface-2, #f8fafc);
+}
+
+.admin-action-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--admin-text, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-action-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--admin-muted, #64748b);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.admin-action-modal-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--admin-text, #0f172a);
+}
+
+.admin-action-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-action-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-action-modal-field label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--admin-text, #0f172a);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin-action-modal-field input,
+.admin-action-modal-field select,
+.admin-action-modal-field textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border, #cbd5e1);
+  background: var(--admin-surface, #ffffff);
+  color: var(--admin-text, #0f172a);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.admin-action-modal-field input:focus,
+.admin-action-modal-field select:focus,
+.admin-action-modal-field textarea:focus {
+  outline: none;
+  border-color: var(--admin-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.admin-action-modal-error {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.admin-action-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--admin-border, #e2e8f0);
+  background: var(--admin-surface-2, #f8fafc);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.admin-action-modal-btn {
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.admin-action-modal-btn.secondary {
+  background: var(--admin-surface, #ffffff);
+  border-color: var(--admin-border, #cbd5e1);
+  color: var(--admin-text, #0f172a);
+}
+
+.admin-action-modal-btn.secondary:hover {
+  background: var(--admin-surface-2, #f1f5f9);
+}
+
+.admin-action-modal-btn.primary {
+  background: var(--admin-primary, #2563eb);
+  color: #ffffff;
+}
+
+.admin-action-modal-btn.primary:hover {
+  filter: brightness(0.92);
+}
+
+.admin-action-modal-btn.danger {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.admin-action-modal-btn.danger:hover {
+  background: #b91c1c;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}

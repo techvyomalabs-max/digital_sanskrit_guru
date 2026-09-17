@@ -113,6 +113,7 @@ function Checkout() {
   const [selectedBillingIndex, setSelectedBillingIndex] = useState(0);
   const [isGift, setIsGift] = useState(false);
   const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
+  const [honeyPot, setHoneyPot] = useState("");
   const selectedBillingAddress = addresses[selectedBillingIndex];
   const navigate = useNavigate();
 
@@ -616,6 +617,7 @@ function Checkout() {
         isGift,
         giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
         paymentStatus,
+        honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
         currencyDisplay: {
@@ -702,7 +704,8 @@ function Checkout() {
             sourceCurrency: displayCurrency,
             currency: "INR"
           })
-        )
+        ),
+        honey_pot_field: honeyPot
       });
 
       const isOrderDummy =

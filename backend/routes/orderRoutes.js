@@ -32,6 +32,7 @@ const {
 } = require("../utils/webPush");
 
 const { getTrackingDetails } = require("../utils/trackingService");
+const { orderRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
 
@@ -552,7 +553,7 @@ const ensureGiftPassesForOrder = async (order) => {
 };
 
 // Create order (logged-in user)
-router.post("/", protect, async (req, res) => {
+router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res) => {
   const shipping = req.body.shipping || {};
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   const couponCode = String(req.body?.couponCode || "").trim().toUpperCase();
@@ -2074,7 +2075,7 @@ router.get("/:id/tracking", protect, async (req, res) => {
 });
 
 // POST /api/orders/direct-buy (PUBLIC)
-router.post("/direct-buy", async (req, res) => {
+router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res) => {
   const shipping = req.body.shipping || {};
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   const shippingCountry = String(shipping?.country || "").trim();

@@ -1,10 +1,11 @@
 const express = require("express");
 const getRazorpayClient = require("../utils/razorpay");
 const crypto = require("crypto");
+const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
 
-router.post("/create-order", async (req, res) => {
+router.post("/create-order", paymentRateLimiter, honeypotMiddleware, async (req, res) => {
   try {
     const amount = Number(req.body?.amount || 0);
     const currency = String(req.body?.currency || "INR").trim().toUpperCase();
