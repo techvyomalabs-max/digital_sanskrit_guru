@@ -17,6 +17,18 @@ export default function TurnstileWidget({ onVerify, onExpire, onError, theme = "
   const widgetIdRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Check .env master switch first
+  const envEnabled = import.meta.env.VITE_TURNSTILE_ENABLED !== "false";
+
+  const [isEnabled, setIsEnabled] = useState(() => {
+    if (!envEnabled) return false;
+    try {
+      const cached = localStorage.getItem("dsg-turnstile-enabled");
+      if (cached !== null) return cached === "true";
+    } catch {}
+    return true;
+  });
+
   const onVerifyRef = useRef(onVerify);
   const onExpireRef = useRef(onExpire);
   const onErrorRef = useRef(onError);
@@ -27,10 +39,48 @@ export default function TurnstileWidget({ onVerify, onExpire, onError, theme = "
     onErrorRef.current = onError;
   });
 
+  // Check if Turnstile is enabled by admin in Store Settings
+  useEffect(() => {
+    if (!envEnabled) {
+      setIsEnabled(false);
+      if (onVerifyRef.current) {
+        onVerifyRef.current("bypass");
+      }
+      return;
+    }
+
+    let isMounted = true;
+    fetch("/api/settings/public")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        const enabled = data?.turnstileEnabled !== false;
+        try {
+          localStorage.setItem("dsg-turnstile-enabled", String(enabled));
+        } catch {}
+        setIsEnabled(enabled);
+        if (!enabled && onVerifyRef.current) {
+          onVerifyRef.current("bypass");
+        }
+      })
+      .catch(() => {
+        // Default on network error
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [envEnabled]);
+
   const siteKey =
     import.meta.env.VITE_TURNSTILE_SITE_KEY || CLOUDFLARE_TEST_SITE_KEY;
 
   useEffect(() => {
+    if (!isEnabled) {
+      if (onVerifyRef.current) {
+        onVerifyRef.current("bypass");
+      }
+      return;
+    }
     let isMounted = true;
 
     const renderWidget = () => {
@@ -104,7 +154,11 @@ export default function TurnstileWidget({ onVerify, onExpire, onError, theme = "
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey, theme]);
+  }, [siteKey, theme, isEnabled]);
+
+  if (!isEnabled) {
+    return null;
+  }
 
   return (
     <div style={{ margin: "14px 0", minHeight: "65px", display: "flex", justifyContent: "center" }}>

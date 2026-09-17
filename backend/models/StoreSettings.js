@@ -547,6 +547,10 @@ const storeSettingsSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    turnstileEnabled: {
+      type: Boolean,
+      default: true
+    },
     sponsors: {
       type: [sponsorSchema],
       default: DEFAULT_SPONSORS

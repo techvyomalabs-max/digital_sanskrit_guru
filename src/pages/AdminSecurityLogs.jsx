@@ -14,6 +14,51 @@ function AdminSecurityLogs() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedThreat, setSelectedThreat] = useState(null);
 
+  // Turnstile switch state
+  const [turnstileEnabled, setTurnstileEnabled] = useState(true);
+  const [savingTurnstile, setSavingTurnstile] = useState(false);
+  const [turnstileMessage, setTurnstileMessage] = useState("");
+
+  const fetchSettings = async () => {
+    try {
+      const res = await axios.get("/api/settings", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data) {
+        setTurnstileEnabled(res.data.turnstileEnabled !== false);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch settings:", err);
+    }
+  };
+
+  const toggleTurnstile = async () => {
+    const nextState = !turnstileEnabled;
+    setSavingTurnstile(true);
+    setTurnstileMessage("");
+    try {
+      await axios.put(
+        "/api/settings",
+        { turnstileEnabled: nextState },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setTurnstileEnabled(nextState);
+      try {
+        localStorage.setItem("dsg-turnstile-enabled", String(nextState));
+      } catch {}
+      setTurnstileMessage(
+        nextState
+          ? "✅ Cloudflare Turnstile is now ACTIVE across all forms."
+          : "⚠️ Cloudflare Turnstile is now DISABLED (forms will submit directly)."
+      );
+      setTimeout(() => setTurnstileMessage(""), 5000);
+    } catch (err) {
+      setTurnstileMessage("❌ Failed to update Turnstile setting.");
+    } finally {
+      setSavingTurnstile(false);
+    }
+  };
+
   const fetchLogs = async () => {
     setLoading(true);
     try {
@@ -31,6 +76,7 @@ function AdminSecurityLogs() {
 
   useEffect(() => {
     fetchLogs();
+    fetchSettings();
   }, [token]);
 
   // Stats calculation
@@ -74,6 +120,52 @@ function AdminSecurityLogs() {
             style={{ padding: "8px 16px", borderRadius: "6px" }}
           >
             Refresh Logs
+          </button>
+        </div>
+
+        {/* Cloudflare Turnstile Bot Protection Master Switch */}
+        <div className="card" style={{ marginBottom: "24px", padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", border: turnstileEnabled ? "1px solid #10b981" : "1px solid #f59e0b" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px" }}>🛡️ Cloudflare Turnstile Bot Protection</h3>
+              <span style={{ 
+                padding: "3px 10px", 
+                borderRadius: "20px", 
+                fontSize: "12px", 
+                fontWeight: "700",
+                backgroundColor: turnstileEnabled ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                color: turnstileEnabled ? "#10b981" : "#ef4444"
+              }}>
+                {turnstileEnabled ? "ENABLED" : "DISABLED"}
+              </span>
+            </div>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)", maxWidth: "600px" }}>
+              Protects Login, Registration, and Password Reset forms against brute-force bot scripts and spam. When turned OFF, security challenges are bypassed immediately.
+            </p>
+            {turnstileMessage && (
+              <p style={{ margin: "8px 0 0 0", fontSize: "13px", fontWeight: "600", color: turnstileEnabled ? "#10b981" : "#f59e0b" }}>
+                {turnstileMessage}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={toggleTurnstile}
+            disabled={savingTurnstile}
+            style={{
+              padding: "10px 20px",
+              borderRadius: "8px",
+              fontWeight: "700",
+              fontSize: "14px",
+              cursor: "pointer",
+              border: "none",
+              backgroundColor: turnstileEnabled ? "#ef4444" : "#10b981",
+              color: "#ffffff",
+              transition: "all 0.2s ease",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+            }}
+          >
+            {savingTurnstile ? "Updating..." : turnstileEnabled ? "Disable Turnstile" : "Enable Turnstile"}
           </button>
         </div>
 
