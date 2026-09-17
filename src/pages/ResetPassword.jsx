@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Login.css";
 
 function ResetPassword() {
@@ -10,6 +11,8 @@ function ResetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [honeyPot, setHoneyPot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -44,11 +47,18 @@ function ResetPassword() {
       return;
     }
 
+    if (!turnstileToken) {
+      setErrorMessage("Please complete the security verification before resetting your password.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await axios.post("/api/auth/reset-password", {
         token,
-        password
+        password,
+        honey_pot_field: honeyPot,
+        turnstileToken
       });
       setMessage(res.data?.message || "Password reset successfully!");
       setPassword("");
@@ -93,6 +103,17 @@ function ResetPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="login-form">
+              {/* Invisible Honeypot field */}
+              <input
+                type="text"
+                name="honey_pot_field"
+                value={honeyPot}
+                onChange={(e) => setHoneyPot(e.target.value)}
+                style={{ display: "none", position: "absolute", left: "-9999px" }}
+                tabIndex="-1"
+                autoComplete="off"
+              />
+
               <label htmlFor="reset-password">New Password</label>
               <input
                 id="reset-password"
@@ -113,8 +134,14 @@ function ResetPassword() {
                 required
               />
 
-              <button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Updating..." : "Update Password"}
+              {/* Cloudflare Turnstile Bot Verification */}
+              <TurnstileWidget
+                onVerify={(tok) => setTurnstileToken(tok)}
+                onExpire={() => setTurnstileToken("")}
+              />
+
+              <button type="submit" disabled={isSubmitting || !turnstileToken}>
+                {isSubmitting ? "Updating..." : !turnstileToken ? "Verifying Security..." : "Update Password"}
               </button>
             </form>
           )}

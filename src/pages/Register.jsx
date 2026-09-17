@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Register.css";
 
 function Register() {
@@ -12,6 +13,8 @@ function Register() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [honeyPot, setHoneyPot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -51,10 +54,19 @@ function Register() {
       return;
     }
 
+    if (!turnstileToken) {
+      setError("Please complete the security verification before creating an account.");
+      return;
+    }
+
     setIsSubmitting(true);
+    setError("");
 
     try {
-      await register(name, email, password, phone, rememberMe);
+      await register(name, email, password, phone, rememberMe, {
+        honey_pot_field: honeyPot,
+        turnstileToken
+      });
       navigate("/");
     } catch (err) {
       setError(err?.response?.data?.message || "Registration failed");
@@ -80,6 +92,17 @@ function Register() {
           {error && <p className="register-error">{error}</p>}
 
           <form onSubmit={handleSubmit} className="register-form">
+            {/* Invisible Honeypot field for bot trapping */}
+            <input
+              type="text"
+              name="honey_pot_field"
+              value={honeyPot}
+              onChange={(e) => setHoneyPot(e.target.value)}
+              style={{ display: "none", position: "absolute", left: "-9999px" }}
+              tabIndex="-1"
+              autoComplete="off"
+            />
+
             <label htmlFor="register-name">Full Name</label>
             <input
               id="register-name"
@@ -149,8 +172,14 @@ function Register() {
               <span>Remember me on this device</span>
             </label>
 
-            <button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Register"}
+            {/* Cloudflare Turnstile Bot Verification */}
+            <TurnstileWidget
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken("")}
+            />
+
+            <button type="submit" disabled={isSubmitting || !turnstileToken}>
+              {isSubmitting ? "Creating..." : !turnstileToken ? "Verifying Security..." : "Register"}
             </button>
           </form>
 

@@ -58,6 +58,19 @@ function AdminOrders() {
   const [generatingInvoiceOrderId, setGeneratingInvoiceOrderId] = useState("");
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [pageMessage, setPageMessage] = useState("");
+  const [actionModal, setActionModal] = useState({
+    isOpen: false,
+    type: "",
+    orderId: "",
+    itemId: "",
+    orderNumber: "",
+    title: "",
+    courierPartner: "Delhivery",
+    customPartner: "",
+    trackingId: "",
+    reason: "",
+    error: ""
+  });
   const statusStep = {
     "On Hold": 0,
     Pending: 1,
@@ -180,40 +193,57 @@ function AdminOrders() {
       (apiStatus === "Pending" || apiStatus === "Shipped" || apiStatus === "Delivered") &&
       paymentStatus !== "Paid"
     ) {
-      window.alert("Payment is not completed. Keep this order On Hold.");
+      setPageMessage("Payment is not completed. Keep this order On Hold.");
       return;
     }
 
     if (!BACKEND_STATUSES.includes(apiStatus)) {
-      window.alert("Invalid status selected.");
+      setPageMessage("Invalid status selected.");
       return;
     }
 
-    let reason = "";
-    let trackingId = "";
-    let courierPartner = "";
+    const currentOrder = orders.find((o) => o._id === orderId);
+    const orderNumber = currentOrder?.orderNumber || (orderId ? orderId.slice(-6).toUpperCase() : "");
 
     if (apiStatus === "Cancelled") {
-      const cancellationReason = window.prompt("Reason for cancelling this order?", "Cancelled by admin");
-      if (cancellationReason === null) return;
-      reason = cancellationReason;
+      setActionModal({
+        isOpen: true,
+        type: "cancelled",
+        orderId,
+        itemId: "",
+        orderNumber,
+        title: "Cancel Order",
+        courierPartner: "",
+        customPartner: "",
+        trackingId: "",
+        reason: "Cancelled by admin",
+        error: ""
+      });
+      return;
     }
 
     if (apiStatus === "Shipped") {
-      const partner = window.prompt("Enter Courier Partner (Delhivery / India Post / Other):", "Delhivery");
-      if (partner === null) return; // user cancelled
-      const tracking = window.prompt("Enter Tracking ID / Waybill Number:");
-      if (tracking === null) return; // user cancelled
-
-      courierPartner = partner.trim();
-      trackingId = tracking.trim();
+      setActionModal({
+        isOpen: true,
+        type: "shipped",
+        orderId,
+        itemId: "",
+        orderNumber,
+        title: "Dispatch Order",
+        courierPartner: "Delhivery",
+        customPartner: "",
+        trackingId: "",
+        reason: "",
+        error: ""
+      });
+      return;
     }
 
     setUpdatingOrderId(orderId);
     try {
       await axios.put(
         `/api/orders/${orderId}/status`,
-        { status: apiStatus, reason, trackingId, courierPartner },
+        { status: apiStatus },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -229,22 +259,28 @@ function AdminOrders() {
   };
 
   const updateReturnStatus = async (orderId, itemId, returnStatus) => {
-    let adminReason = "";
     if (returnStatus === "Rejected") {
-      const rejectionReason = window.prompt("Reason for rejecting this return request?", "Return request rejected by admin");
-      if (rejectionReason === null) return;
-      adminReason = rejectionReason.trim();
-      if (!adminReason) {
-        window.alert("Please enter a rejection reason.");
-        return;
-      }
+      setActionModal({
+        isOpen: true,
+        type: "rejectReturn",
+        orderId,
+        itemId,
+        orderNumber: "",
+        title: "Reject Return Request",
+        courierPartner: "",
+        customPartner: "",
+        trackingId: "",
+        reason: "Return request rejected by admin",
+        error: ""
+      });
+      return;
     }
 
     setUpdatingOrderId(orderId);
     try {
       await axios.put(
         `/api/orders/${orderId}/items/${itemId}/return-status`,
-        { returnStatus, adminReason },
+        { returnStatus },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -256,6 +292,98 @@ function AdminOrders() {
       setPageMessage(err?.response?.data?.message || "Unable to update the return request.");
     } finally {
       setUpdatingOrderId("");
+    }
+  };
+
+  const handleModalSubmit = async (e) => {
+    if (e) e.preventDefault();
+
+    if (actionModal.type === "shipped") {
+      const finalPartner =
+        actionModal.courierPartner === "Other"
+          ? actionModal.customPartner.trim()
+          : actionModal.courierPartner.trim();
+
+      if (!finalPartner) {
+        setActionModal((prev) => ({ ...prev, error: "Please specify a courier partner." }));
+        return;
+      }
+      if (!actionModal.trackingId.trim()) {
+        setActionModal((prev) => ({ ...prev, error: "Please enter a Tracking ID / Waybill number." }));
+        return;
+      }
+
+      const orderId = actionModal.orderId;
+      setActionModal((prev) => ({ ...prev, isOpen: false }));
+      setUpdatingOrderId(orderId);
+      try {
+        await axios.put(
+          `/api/orders/${orderId}/status`,
+          {
+            status: "Shipped",
+            courierPartner: finalPartner,
+            trackingId: actionModal.trackingId.trim()
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        await loadOrders();
+        setPageMessage("Order marked as Shipped and tracking details saved.");
+      } catch (err) {
+        setPageMessage(err?.response?.data?.message || "Unable to update order.");
+      } finally {
+        setUpdatingOrderId("");
+      }
+      return;
+    }
+
+    if (actionModal.type === "cancelled") {
+      if (!actionModal.reason.trim()) {
+        setActionModal((prev) => ({ ...prev, error: "Please provide a reason for cancellation." }));
+        return;
+      }
+
+      const orderId = actionModal.orderId;
+      setActionModal((prev) => ({ ...prev, isOpen: false }));
+      setUpdatingOrderId(orderId);
+      try {
+        await axios.put(
+          `/api/orders/${orderId}/status`,
+          { status: "Cancelled", reason: actionModal.reason.trim() },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        await loadOrders();
+        setPageMessage("Order cancelled successfully.");
+      } catch (err) {
+        setPageMessage(err?.response?.data?.message || "Unable to cancel order.");
+      } finally {
+        setUpdatingOrderId("");
+      }
+      return;
+    }
+
+    if (actionModal.type === "rejectReturn") {
+      if (!actionModal.reason.trim()) {
+        setActionModal((prev) => ({ ...prev, error: "Please enter a rejection reason." }));
+        return;
+      }
+
+      const { orderId, itemId, reason } = actionModal;
+      setActionModal((prev) => ({ ...prev, isOpen: false }));
+      setUpdatingOrderId(orderId);
+      try {
+        await axios.put(
+          `/api/orders/${orderId}/items/${itemId}/return-status`,
+          { returnStatus: "Rejected", adminReason: reason.trim() },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        await loadOrders();
+        setPageMessage("Return request rejected successfully.");
+      } catch (err) {
+        setPageMessage(err?.response?.data?.message || "Unable to update return request.");
+      } finally {
+        setUpdatingOrderId("");
+      }
+      return;
     }
   };
 
@@ -965,6 +1093,173 @@ function AdminOrders() {
             >
               Next
             </button>
+          </div>
+        )}
+
+        {actionModal.isOpen && (
+          <div
+            className="admin-action-modal-backdrop"
+            onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
+            role="presentation"
+          >
+            <div
+              className="admin-action-modal"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="admin-action-modal-header">
+                <h3>
+                  {actionModal.type === "shipped" && "📦"}
+                  {actionModal.type === "cancelled" && "❌"}
+                  {actionModal.type === "rejectReturn" && "⚠️"}
+                  {actionModal.title} {actionModal.orderNumber ? `#${actionModal.orderNumber}` : ""}
+                </h3>
+                <button
+                  type="button"
+                  className="admin-action-modal-close"
+                  onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleModalSubmit}>
+                <div className="admin-action-modal-body">
+                  {actionModal.error && (
+                    <p className="admin-action-modal-error">⚠️ {actionModal.error}</p>
+                  )}
+
+                  {actionModal.type === "shipped" && (
+                    <>
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-courier">Courier Partner</label>
+                        <select
+                          id="modal-courier"
+                          value={actionModal.courierPartner}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              courierPartner: e.target.value,
+                              error: ""
+                            }))
+                          }
+                        >
+                          <option value="Delhivery">Delhivery</option>
+                          <option value="India Post">India Post</option>
+                          <option value="Blue Dart">Blue Dart</option>
+                          <option value="DTDC">DTDC</option>
+                          <option value="Shiprocket">Shiprocket</option>
+                          <option value="Other">Other (Specify below)</option>
+                        </select>
+                      </div>
+
+                      {actionModal.courierPartner === "Other" && (
+                        <div className="admin-action-modal-field">
+                          <label htmlFor="modal-custom-courier">Specify Courier Name</label>
+                          <input
+                            id="modal-custom-courier"
+                            type="text"
+                            placeholder="e.g. Professional Couriers"
+                            value={actionModal.customPartner}
+                            onChange={(e) =>
+                              setActionModal((prev) => ({
+                                ...prev,
+                                customPartner: e.target.value,
+                                error: ""
+                              }))
+                            }
+                            required
+                          />
+                        </div>
+                      )}
+
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-tracking">Tracking ID / Waybill Number *</label>
+                        <input
+                          id="modal-tracking"
+                          type="text"
+                          placeholder="e.g. DEL123456789"
+                          value={actionModal.trackingId}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              trackingId: e.target.value,
+                              error: ""
+                            }))
+                          }
+                          autoFocus
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {actionModal.type === "cancelled" && (
+                    <div className="admin-action-modal-field">
+                      <label htmlFor="modal-reason">Reason for Cancellation *</label>
+                      <textarea
+                        id="modal-reason"
+                        rows={3}
+                        placeholder="e.g. Customer requested cancellation / Item damaged"
+                        value={actionModal.reason}
+                        onChange={(e) =>
+                          setActionModal((prev) => ({
+                            ...prev,
+                            reason: e.target.value,
+                            error: ""
+                          }))
+                        }
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {actionModal.type === "rejectReturn" && (
+                    <div className="admin-action-modal-field">
+                      <label htmlFor="modal-reject-reason">Reason for Rejecting Return *</label>
+                      <textarea
+                        id="modal-reject-reason"
+                        rows={3}
+                        placeholder="e.g. Item opened / seal broken / outside return window"
+                        value={actionModal.reason}
+                        onChange={(e) =>
+                          setActionModal((prev) => ({
+                            ...prev,
+                            reason: e.target.value,
+                            error: ""
+                          }))
+                        }
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="admin-action-modal-footer">
+                  <button
+                    type="button"
+                    className="admin-action-modal-btn secondary"
+                    onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={`admin-action-modal-btn ${
+                      actionModal.type === "shipped" ? "primary" : "danger"
+                    }`}
+                  >
+                    {actionModal.type === "shipped" && "Confirm Dispatch"}
+                    {actionModal.type === "cancelled" && "Confirm Cancel"}
+                    {actionModal.type === "rejectReturn" && "Reject Request"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </main>

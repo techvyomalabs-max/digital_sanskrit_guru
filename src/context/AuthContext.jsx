@@ -199,8 +199,16 @@ export function AuthProvider({ children }) {
     };
   }, [token]);
 
-  const register = async (name, email, password, phone = "", nextRememberMe = false) => {
-    const res = await axios.post("/api/auth/register", { name, email, password, phone, rememberMe: nextRememberMe });
+  const register = async (name, email, password, phone = "", nextRememberMe = false, extra = {}) => {
+    const res = await axios.post("/api/auth/register", {
+      name,
+      email,
+      password,
+      phone,
+      rememberMe: nextRememberMe,
+      honey_pot_field: extra?.honey_pot_field || "",
+      turnstileToken: extra?.turnstileToken || ""
+    });
     const nextUser = normalizeUser(res.data);
 
     setUser(nextUser);
@@ -209,8 +217,14 @@ export function AuthProvider({ children }) {
     persistAuth({ token: res.data.token, user: nextUser, rememberMe: nextRememberMe });
   };
 
-  const login = async (email, password, nextRememberMe = false) => {
-    const res = await axios.post("/api/auth/login", { email, password, rememberMe: nextRememberMe });
+  const login = async (email, password, nextRememberMe = false, extra = {}) => {
+    const res = await axios.post("/api/auth/login", {
+      email,
+      password,
+      rememberMe: nextRememberMe,
+      honey_pot_field: extra?.honey_pot_field || "",
+      turnstileToken: extra?.turnstileToken || ""
+    });
     const nextUser = normalizeUser(res.data);
 
     setUser(nextUser);

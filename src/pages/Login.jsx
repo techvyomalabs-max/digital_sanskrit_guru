@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
+import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Login.css";
 
 function Login() {
@@ -11,6 +12,8 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [honeyPot, setHoneyPot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -21,9 +24,17 @@ function Login() {
   const [forgotError, setForgotError] = useState("");
   const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
 
-  // Dynamically load Google Client library
+  // Dynamically load Google Client library if configured
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const isGoogleConfigured = Boolean(
+    googleClientId &&
+    !googleClientId.includes("your-google-client-id") &&
+    googleClientId.includes(".apps.googleusercontent.com")
+  );
+
   useEffect(() => {
-    // Avoid double loading if already present
+    if (!isGoogleConfigured) return;
+
     if (window.google?.accounts?.id) {
       initializeGoogleButton();
       return;
@@ -39,27 +50,29 @@ function Login() {
     document.body.appendChild(script);
 
     return () => {
-      // Cleanup script if component unmounts
       try {
         document.body.removeChild(script);
       } catch (e) {
         // Ignore if already removed
       }
     };
-  }, []);
+  }, [isGoogleConfigured]);
 
   const initializeGoogleButton = () => {
     try {
-      if (window.google?.accounts?.id) {
+      if (window.google?.accounts?.id && isGoogleConfigured) {
         window.google.accounts.id.initialize({
-          // Mock / placeholder client ID. User can replace with their real client ID.
-          client_id: "your-google-client-id.apps.googleusercontent.com",
+          client_id: googleClientId,
           callback: handleGoogleCredentialResponse
         });
-        window.google.accounts.id.renderButton(
-          document.getElementById("google-signin-btn"),
-          { theme: "outline", size: "large", width: "100%" }
-        );
+        const container = document.getElementById("google-signin-btn");
+        if (container) {
+          window.google.accounts.id.renderButton(container, {
+            theme: "outline",
+            size: "large",
+            width: 300
+          });
+        }
       }
     } catch (err) {
       console.warn("Failed to initialize Google Login button:", err);
@@ -83,11 +96,18 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!turnstileToken) {
+      setErrorMessage("Please complete the security verification before logging in.");
+      return;
+    }
     setIsSubmitting(true);
     setErrorMessage("");
 
     try {
-      await login(email, password, rememberMe);
+      await login(email, password, rememberMe, {
+        honey_pot_field: honeyPot,
+        turnstileToken
+      });
       navigate("/");
     } catch (err) {
       const message = err?.response?.data?.message || "Login failed";
@@ -99,13 +119,19 @@ function Login() {
 
   const handleForgotPasswordSubmit = async (e) => {
     e.preventDefault();
+    if (!turnstileToken) {
+      setForgotError("Please complete the security verification.");
+      return;
+    }
     setIsForgotSubmitting(true);
     setForgotError("");
     setForgotSuccess("");
 
     try {
       const res = await axios.post("/api/auth/forgot-password", {
-        email: forgotEmail
+        email: forgotEmail,
+        honey_pot_field: honeyPot,
+        turnstileToken
       });
       setForgotSuccess(res.data?.message || "Reset link sent successfully.");
       setForgotEmail("");
@@ -142,6 +168,17 @@ function Login() {
               )}
 
               <form onSubmit={handleForgotPasswordSubmit} className="login-form">
+                {/* Invisible Honeypot field */}
+                <input
+                  type="text"
+                  name="honey_pot_field"
+                  value={honeyPot}
+                  onChange={(e) => setHoneyPot(e.target.value)}
+                  style={{ display: "none", position: "absolute", left: "-9999px" }}
+                  tabIndex="-1"
+                  autoComplete="off"
+                />
+
                 <label htmlFor="forgot-email">Email Address</label>
                 <input
                   id="forgot-email"
@@ -152,8 +189,14 @@ function Login() {
                   required
                 />
 
-                <button type="submit" disabled={isForgotSubmitting}>
-                  {isForgotSubmitting ? "Sending Reset Link..." : "Send Reset Link"}
+                {/* Cloudflare Turnstile Bot Verification */}
+                <TurnstileWidget
+                  onVerify={(token) => setTurnstileToken(token)}
+                  onExpire={() => setTurnstileToken("")}
+                />
+
+                <button type="submit" disabled={isForgotSubmitting || !turnstileToken}>
+                  {isForgotSubmitting ? "Sending Reset Link..." : !turnstileToken ? "Verifying Security..." : "Send Reset Link"}
                 </button>
               </form>
 
@@ -177,6 +220,17 @@ function Login() {
               {errorMessage && <p className="login-error">{errorMessage}</p>}
 
               <form onSubmit={handleSubmit} className="login-form">
+                {/* Invisible Honeypot field */}
+                <input
+                  type="text"
+                  name="honey_pot_field"
+                  value={honeyPot}
+                  onChange={(e) => setHoneyPot(e.target.value)}
+                  style={{ display: "none", position: "absolute", left: "-9999px" }}
+                  tabIndex="-1"
+                  autoComplete="off"
+                />
+
                 <label htmlFor="login-email">Email</label>
                 <input
                   id="login-email"
@@ -216,17 +270,25 @@ function Login() {
                   <span>Remember me on this device</span>
                 </label>
 
-                <button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Signing in..." : "Login"}
+                {/* Cloudflare Turnstile Bot Verification */}
+                <TurnstileWidget
+                  onVerify={(token) => setTurnstileToken(token)}
+                  onExpire={() => setTurnstileToken("")}
+                />
+
+                <button type="submit" disabled={isSubmitting || !turnstileToken}>
+                  {isSubmitting ? "Signing in..." : !turnstileToken ? "Verifying Security..." : "Login"}
                 </button>
               </form>
 
-              <div className="login-divider">or</div>
-
-              <div className="google-signin-container">
-                {/* Official Google Sign-In button container */}
-                <div id="google-signin-btn"></div>
-              </div>
+              {isGoogleConfigured && (
+                <>
+                  <div className="login-divider">or</div>
+                  <div className="google-signin-container">
+                    <div id="google-signin-btn"></div>
+                  </div>
+                </>
+              )}
 
               <p className="login-footer-text">
                 New here? <Link to="/register">Create an account</Link>
