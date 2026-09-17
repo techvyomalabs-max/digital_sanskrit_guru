@@ -363,6 +363,7 @@ function normalizeSettings(settings) {
       metaWabaId: String(settings?.whatsappSettings?.metaWabaId || "").trim(),
       autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false
     },
+    turnstileEnabled: settings?.turnstileEnabled !== false,
     sponsors: normalizeSponsors(settings?.sponsors || []),
     storeIcons: {
       home: String(settings?.storeIcons?.home || "🏠").trim(),
@@ -391,6 +392,7 @@ function buildPublicSettingsPayload(settings) {
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
+    turnstileEnabled: normalized.turnstileEnabled,
     whatsappSettings: {
       mode: normalized.whatsappSettings.mode,
       phoneNumber: normalized.whatsappSettings.phoneNumber,
@@ -422,6 +424,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
   if (JSON.stringify(previousSettings?.sponsors || []) !== JSON.stringify(nextSettings?.sponsors || [])) changes.push("sponsors");
   if (JSON.stringify(previousSettings?.storeIcons || {}) !== JSON.stringify(nextSettings?.storeIcons || {})) changes.push("store icons");
+  if (Boolean(previousSettings?.turnstileEnabled) !== Boolean(nextSettings?.turnstileEnabled)) changes.push("turnstile bot protection");
 
   return changes;
 }
@@ -667,6 +670,9 @@ router.put("/", protect, admin, async (req, res) => {
       headerSubtext: String(req.body.orderConfirmationEmail.headerSubtext || "Spreading the wisdom of Sanskrit").trim(),
       logoUrl: String(req.body.orderConfirmationEmail.logoUrl || "").trim()
     };
+  }
+  if (req.body?.turnstileEnabled !== undefined) {
+    settings.turnstileEnabled = Boolean(req.body.turnstileEnabled);
   }
   settings.siteTheme = hasSiteTheme && allowedThemeIds.has(rawTheme)
     ? rawTheme

@@ -85,8 +85,12 @@ async function verifyTurnstileToken(token, remoteip) {
     return true; // Graceful fallback so legitimate users are not locked out
   }
 
-  // Always-pass test secret key support
-  if (secretKey.startsWith("1x0000000000000000000000000000000AA") || token === "1x00000000000000000000AA") {
+  // Always-pass test secret key support or disabled bypass
+  if (
+    secretKey.startsWith("1x0000000000000000000000000000000AA") ||
+    token === "1x00000000000000000000AA" ||
+    token === "bypass"
+  ) {
     return true;
   }
 
@@ -121,6 +125,20 @@ async function verifyTurnstileToken(token, remoteip) {
  * Turnstile Express Middleware
  */
 const turnstileMiddleware = async (req, res, next) => {
+  if (process.env.TURNSTILE_ENABLED === "false") {
+    return next(); // Disabled in .env
+  }
+
+  try {
+    const StoreSettings = require("../models/StoreSettings");
+    const settings = await StoreSettings.findOne().select("turnstileEnabled").lean();
+    if (settings && settings.turnstileEnabled === false) {
+      return next(); // Disabled by admin in Store Settings
+    }
+  } catch (err) {
+    // If database check fails, continue with normal flow
+  }
+
   const secretKey = process.env.TURNSTILE_SECRET_KEY || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
   
   // If secret key is not set, skip verification
@@ -132,6 +150,10 @@ const turnstileMiddleware = async (req, res, next) => {
     req.body?.turnstileToken ||
     req.body?.["cf-turnstile-response"] ||
     req.headers["x-turnstile-token"];
+
+  if (token === "bypass") {
+    return next();
+  }
 
   const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
 
