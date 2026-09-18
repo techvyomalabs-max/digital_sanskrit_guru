@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Register.css";
@@ -12,6 +13,7 @@ function Register() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [honeyPot, setHoneyPot] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -145,18 +147,30 @@ function Register() {
             )}
 
             <label htmlFor="register-password">Password</label>
-            <input
-              id="register-password"
-              type="password"
-              placeholder="At least 8 characters with letter & number"
-              value={password}
-              className={passwordError ? "invalid-input" : ""}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (passwordError) setPasswordError("");
-              }}
-              required
-            />
+            <div className="password-input-wrapper">
+              <input
+                id="register-password"
+                type={showPassword ? "text" : "password"}
+                placeholder="At least 8 characters with letter & number"
+                value={password}
+                className={passwordError ? "invalid-input" : ""}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                }}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+                tabIndex="-1"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             {passwordError && (
               <span className="register-field-error" style={{ color: "#dc2626", fontSize: "12px", fontWeight: "600", marginTop: "4px", display: "block" }}>
                 ⚠️ {passwordError}

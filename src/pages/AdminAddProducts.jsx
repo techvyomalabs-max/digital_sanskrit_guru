@@ -299,6 +299,7 @@ function AdminAddProducts() {
   const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [aboutProduct, setAboutProduct] = useState("");
+  const [discountType, setDiscountType] = useState("none");
   const [festiveOffer, setFestiveOffer] = useState(false);
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
   const [productType, setProductType] = useState("single");
@@ -593,6 +594,7 @@ function AdminAddProducts() {
     setTrailerVideoUrl("");
     setDescription("");
     setAboutProduct("");
+    setDiscountType("none");
     setFestiveOffer(false);
     setFestiveDiscountPercent("0");
     setProductType("single");
@@ -1149,8 +1151,9 @@ function AdminAddProducts() {
       trailerVideoUrl: trailerVideoUrl.trim(),
       description: description.trim(),
       aboutProduct,
-      festiveOffer,
-      festiveDiscountPercent: festiveOffer ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
+      discountType,
+      festiveOffer: discountType !== "none",
+      festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
       productType: productType,
       isDigital,
       digitalType,
@@ -1245,7 +1248,9 @@ function AdminAddProducts() {
     setTrailerVideoUrl(String(product.trailerVideoUrl || ""));
     setDescription(product.description || "");
     setAboutProduct(Array.isArray(product.aboutProduct) ? product.aboutProduct.join("\n") : "");
-    setFestiveOffer(product.festiveOffer === true);
+    const resolvedDiscountType = product.discountType || (product.festiveOffer === true ? "festive" : "none");
+    setDiscountType(resolvedDiscountType);
+    setFestiveOffer(resolvedDiscountType !== "none");
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
     setIsDigital(product.isDigital === true);
@@ -1823,15 +1828,26 @@ function AdminAddProducts() {
                     />
                   </label>
                   <label className="admin-field">
-                    <span>Festive Offer</span>
-                    <select value={festiveOffer ? "yes" : "no"} onChange={(e) => setFestiveOffer(e.target.value === "yes")}>
-                      <option value="no">Regular Product</option>
-                      <option value="yes">Festive Offer</option>
+                    <span>Discount / Offer Type</span>
+                    <select
+                      value={discountType}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDiscountType(val);
+                        setFestiveOffer(val !== "none");
+                      }}
+                    >
+                      <option value="none">Regular Product (No Special Discount)</option>
+                      <option value="new_launch">New Launch Offer</option>
+                      <option value="weekly">Weekly Discount</option>
+                      <option value="monthly">Monthly Discount</option>
+                      <option value="combo">Combo Discount</option>
+                      <option value="festive">Festive Offer</option>
                     </select>
                   </label>
-                  {festiveOffer ? (
+                  {discountType !== "none" ? (
                     <label className="admin-field">
-                      <span>Festive Discount %</span>
+                      <span>Discount %</span>
                       <input
                         type="number"
                         min="0"

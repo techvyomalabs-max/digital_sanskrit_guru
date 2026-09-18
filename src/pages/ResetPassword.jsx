@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import axios from "axios";
 import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Login.css";
@@ -11,6 +12,8 @@ function ResetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [honeyPot, setHoneyPot] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,7 +88,7 @@ function ResetPassword() {
 
         <div className="login-card">
           <h2>Reset Password</h2>
-          
+
           {errorMessage && <p className="login-error">{errorMessage}</p>}
           {message && (
             <p className="login-success-msg">
@@ -115,24 +118,48 @@ function ResetPassword() {
               />
 
               <label htmlFor="reset-password">New Password</label>
-              <input
-                id="reset-password"
-                type="password"
-                placeholder="At least 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="password-input-wrapper">
+                <input
+                  id="reset-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  tabIndex="-1"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
 
               <label htmlFor="reset-confirm-password">Confirm Password</label>
-              <input
-                id="reset-confirm-password"
-                type="password"
-                placeholder="Re-enter password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
+              <div className="password-input-wrapper">
+                <input
+                  id="reset-confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Re-enter password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  title={showConfirmPassword ? "Hide password" : "Show password"}
+                  tabIndex="-1"
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
 
               {/* Cloudflare Turnstile Bot Verification */}
               <TurnstileWidget

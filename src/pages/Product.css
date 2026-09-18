@@ -437,6 +437,30 @@
   color: #9f1239;
 }
 
+.product-festive-pill.pill-new-launch {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+  color: #065f46;
+}
+
+.product-festive-pill.pill-weekly {
+  background: #f5f3ff;
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
+.product-festive-pill.pill-monthly {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.product-festive-pill.pill-combo {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .product-center hr {
   border: none;
   border-top: 1px solid var(--site-border);

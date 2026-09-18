@@ -13,6 +13,7 @@ function AdminSecurityLogs() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedThreat, setSelectedThreat] = useState(null);
+  const [copiedPayload, setCopiedPayload] = useState(false);
 
   // Turnstile switch state
   const [turnstileEnabled, setTurnstileEnabled] = useState(true);
@@ -287,84 +288,161 @@ function AdminSecurityLogs() {
             style={{
               position: "fixed",
               top: 0, right: 0, bottom: 0, left: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.6)",
+              backgroundColor: "rgba(0, 0, 0, 0.65)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               zIndex: 1100,
-              backdropFilter: "blur(4px)"
+              padding: "16px",
+              backdropFilter: "blur(6px)"
             }}
             onClick={() => setSelectedThreat(null)}
           >
             <div 
               style={{
-                width: "90%",
-                maxWidth: "600px",
+                width: "100%",
+                maxWidth: "750px",
+                maxHeight: "88vh",
                 backgroundColor: "var(--bg-card, #ffffff)",
                 border: "1px solid var(--border-color, #e2e8f0)",
-                borderRadius: "12px",
-                padding: "24px",
+                borderRadius: "14px",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
                 color: "var(--text-primary, #0f172a)"
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700 }}>Inspect Blocked Payload</h3>
+              {/* Modal Header */}
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center", 
+                padding: "18px 24px",
+                borderBottom: "1px solid var(--border-color, #e2e8f0)",
+                backgroundColor: "var(--bg-surface, #f8fafc)"
+              }}>
+                <div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>Inspect Blocked Payload</h3>
+                  <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "var(--text-muted)" }}>
+                    Security threat interception details & parameter audit
+                  </p>
+                </div>
                 <button 
                   onClick={() => setSelectedThreat(null)} 
                   style={{
-                    fontSize: "20px",
-                    fontWeight: 300,
+                    fontSize: "24px",
+                    lineHeight: 1,
+                    fontWeight: 400,
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "inherit"
+                    color: "var(--text-muted)",
+                    padding: "4px 8px"
                   }}
+                  title="Close Modal"
                 >
                   &times;
                 </button>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-                <div>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Timestamp</span>
-                  <strong style={{ fontSize: "14px" }}>{formatDate(selectedThreat.timestamp || selectedThreat.TIMESTAMP)} at {formatTime(selectedThreat.timestamp || selectedThreat.TIMESTAMP)}</strong>
+              {/* Modal Body (Scrollable) */}
+              <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", backgroundColor: "var(--bg-surface, #f8fafc)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-color, #e2e8f0)" }}>
+                  <div>
+                    <span style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", display: "block" }}>Timestamp</span>
+                    <strong style={{ fontSize: "13px" }}>{formatDate(selectedThreat.timestamp || selectedThreat.TIMESTAMP)} {formatTime(selectedThreat.timestamp || selectedThreat.TIMESTAMP)}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", display: "block" }}>Threat Type</span>
+                    <span style={{ 
+                      display: "inline-block", 
+                      fontSize: "12px", 
+                      fontWeight: 700,
+                      color: (selectedThreat.threat || selectedThreat.THREAT) === "NoSQL_INJECTION" ? "#ef4444" : "#f97316",
+                      marginTop: "2px"
+                    }}>
+                      {(selectedThreat.threat || selectedThreat.THREAT).replace("_", " ")}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", display: "block" }}>Target Path</span>
+                    <code style={{ fontSize: "12px", color: "inherit", wordBreak: "break-all" }}>{selectedThreat.path || selectedThreat.PATH}</code>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "11px", textTransform: "uppercase", fontWeight: 700, color: "var(--text-muted)", display: "block" }}>Source IP</span>
+                    <code style={{ fontSize: "12px", color: "inherit" }}>{selectedThreat.ip || selectedThreat.IP}</code>
+                  </div>
                 </div>
+
                 <div>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Threat Type</span>
-                  <strong style={{ fontSize: "14px" }}>{(selectedThreat.threat || selectedThreat.THREAT).replace("_", " ")}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Target Path URL</span>
-                  <strong style={{ fontSize: "14px", fontFamily: "monospace" }}>{selectedThreat.path || selectedThreat.PATH}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>Client IP Source</span>
-                  <strong style={{ fontSize: "14px", fontFamily: "monospace" }}>{selectedThreat.ip || selectedThreat.IP}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>Exploit Payload Details</span>
-                  <pre 
-                    style={{
-                      backgroundColor: "rgba(0,0,0,0.05)",
-                      padding: "12px",
-                      borderRadius: "6px",
-                      fontFamily: "monospace",
-                      fontSize: "13px",
-                      overflowX: "auto",
-                      whiteSpace: "pre-wrap"
-                    }}
-                  >
-                    {JSON.stringify(selectedThreat.details || selectedThreat.DETAILS || {}, null, 2)}
-                  </pre>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)" }}>
+                      Payload & Parameter Content
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const content = JSON.stringify(selectedThreat.details || selectedThreat.DETAILS || {}, null, 2);
+                        navigator.clipboard.writeText(content);
+                        setCopiedPayload(true);
+                        setTimeout(() => setCopiedPayload(false), 2000);
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        borderRadius: "6px",
+                        border: "1px solid var(--border-color, #cbd5e1)",
+                        backgroundColor: copiedPayload ? "#10b981" : "transparent",
+                        color: copiedPayload ? "#ffffff" : "inherit",
+                        cursor: "pointer",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      {copiedPayload ? "✓ Copied!" : "📋 Copy Payload"}
+                    </button>
+                  </div>
+                  <div style={{
+                    backgroundColor: "rgba(15, 23, 42, 0.05)",
+                    border: "1px solid var(--border-color, #e2e8f0)",
+                    borderRadius: "8px",
+                    overflow: "hidden"
+                  }}>
+                    <pre 
+                      style={{
+                        margin: 0,
+                        padding: "16px",
+                        fontFamily: "'Fira Code', 'Consolas', monospace",
+                        fontSize: "12.5px",
+                        lineHeight: 1.6,
+                        maxHeight: "360px",
+                        overflowX: "auto",
+                        overflowY: "auto",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        color: "inherit"
+                      }}
+                    >
+                      {JSON.stringify(selectedThreat.details || selectedThreat.DETAILS || {}, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {/* Modal Footer */}
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "flex-end", 
+                padding: "14px 24px", 
+                borderTop: "1px solid var(--border-color, #e2e8f0)",
+                backgroundColor: "var(--bg-surface, #f8fafc)"
+              }}>
                 <button 
                   onClick={() => setSelectedThreat(null)} 
                   className="action-btn"
-                  style={{ padding: "8px 16px", borderRadius: "6px" }}
+                  style={{ padding: "8px 20px", borderRadius: "8px", fontWeight: 600 }}
                 >
                   Close Details
                 </button>

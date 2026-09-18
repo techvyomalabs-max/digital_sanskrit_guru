@@ -58,7 +58,16 @@ const isBundleProduct = (product) =>
   String(product?.productType || "single") === "bundle" ||
   (Array.isArray(product?.bundleItems) && product.bundleItems.length > 0);
 
-const isFestiveOfferProduct = (product) => product?.festiveOffer === true;
+const isFestiveOfferProduct = (product) =>
+  product?.discountType === "festive" ||
+  (product?.festiveOffer === true && (!product?.discountType || product?.discountType === "festive"));
+
+const normalizeDiscountType = (val, isFestiveOffer) => {
+  const t = String(val || "").trim().toLowerCase();
+  if (["festive", "new_launch", "weekly", "monthly", "combo"].includes(t)) return t;
+  if (isFestiveOffer) return "festive";
+  return "none";
+};
 
 const normalizeFestiveDiscountPercent = (value) => {
   const parsed = Number(value);
@@ -248,7 +257,7 @@ const getAverageRating = (product) => {
 
 const HOME_PRODUCT_SELECT =
   "_id name image images category price internationalPrice internationalCountryPrices marketPrices stock " +
-  "festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
+  "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
   "name image price internationalPrice internationalCountryPrices marketPrices category stock";
@@ -277,7 +286,7 @@ const buildHomePayload = (products = [], settings = {}) => {
     .filter((product) => isBundleProduct(product))
     .slice(0, 8);
   const festiveOfferProducts = products
-    .filter((product) => product?.festiveOffer === true)
+    .filter((product) => isFestiveOfferProduct(product))
     .slice(0, 8);
   const catalogPreviewProducts = products.slice(0, 8);
 
@@ -356,8 +365,9 @@ router.post("/", protect, admin, largeJson, async (req, res) => {
     const typeCandidate = String(req.body?.productType || "single").trim().toLowerCase();
     const productType = typeCandidate === "bundle" ? "bundle" : (["single", "bulk"].includes(typeCandidate) ? typeCandidate : "single");
     const bundleItems = productType === "bundle" ? rawBundleItems : [];
-    const relatedProducts = normalizeRelatedProducts(req.body.relatedProducts);
-    const festiveOffer = req.body?.festiveOffer === true;
+    const rawDiscountType = normalizeDiscountType(req.body?.discountType, req.body?.festiveOffer);
+    const festiveOffer = rawDiscountType !== "none" || req.body?.festiveOffer === true;
+    const discountType = festiveOffer ? rawDiscountType : "none";
     const price = normalizeProductPrice(req.body?.price);
     const internationalPrice = normalizeInternationalPrice(req.body?.internationalPrice, null);
     const internationalCountryPrices = normalizeInternationalCountryPrices(req.body?.internationalCountryPrices);
@@ -375,6 +385,7 @@ router.post("/", protect, admin, largeJson, async (req, res) => {
       image: images[0] || String(req.body.image || "").trim(),
       images,
       trailerVideoUrl: normalizeTrailerVideoUrl(req.body?.trailerVideoUrl),
+      discountType,
       festiveOffer,
       festiveDiscountPercent: festiveOffer ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent) : 0,
       productType,
@@ -447,10 +458,14 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
     product.height = req.body.height !== undefined ? Math.max(0, Number(req.body.height)) : product.height;
     product.width = req.body.width !== undefined ? Math.max(0, Number(req.body.width)) : product.width;
     product.length = req.body.length !== undefined ? Math.max(0, Number(req.body.length)) : product.length;
-    product.festiveOffer = req.body?.festiveOffer === true;
-    product.festiveDiscountPercent = product.festiveOffer
-      ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent)
-      : 0;
+    if (req.body?.discountType !== undefined || req.body?.festiveOffer !== undefined) {
+      const rawDiscountType = normalizeDiscountType(req.body?.discountType, req.body?.festiveOffer);
+      product.festiveOffer = rawDiscountType !== "none" || req.body?.festiveOffer === true;
+      product.discountType = product.festiveOffer ? rawDiscountType : "none";
+      product.festiveDiscountPercent = product.festiveOffer
+        ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent)
+        : 0;
+    }
     const rawBundleItemsUpdate = req.body.bundleItems !== undefined
       ? normalizeBundleItems(req.body.bundleItems)
       : normalizeBundleItems(product.bundleItems);

@@ -157,6 +157,12 @@ const productSchema = new mongoose.Schema(
       default: "General"
     },
 
+    discountType: {
+      type: String,
+      enum: ["none", "festive", "new_launch", "weekly", "monthly", "combo"],
+      default: "none"
+    },
+
     festiveOffer: {
       type: Boolean,
       default: false

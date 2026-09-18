@@ -86,8 +86,16 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   return (
     <div className={cardClassName}>
       {isFestiveOffer ? (
-        <span className="product-badge festive">
-          {festiveDiscountPercent > 0 ? `${festiveDiscountPercent}% OFF` : "Festive Offer"}
+        <span className={`product-badge ${product?.discountType === "new_launch" ? "new-launch" : product?.discountType === "weekly" ? "weekly" : product?.discountType === "monthly" ? "monthly" : product?.discountType === "combo" ? "combo" : "festive"}`}>
+          {product?.discountType === "new_launch" 
+            ? (festiveDiscountPercent > 0 ? `New Launch • ${festiveDiscountPercent}% OFF` : "New Launch")
+            : product?.discountType === "weekly"
+              ? (festiveDiscountPercent > 0 ? `Weekly Deal • ${festiveDiscountPercent}% OFF` : "Weekly Deal")
+              : product?.discountType === "monthly"
+                ? (festiveDiscountPercent > 0 ? `Monthly Offer • ${festiveDiscountPercent}% OFF` : "Monthly Offer")
+                : product?.discountType === "combo"
+                  ? (festiveDiscountPercent > 0 ? `Combo Deal • ${festiveDiscountPercent}% OFF` : "Combo Deal")
+                  : (festiveDiscountPercent > 0 ? `${festiveDiscountPercent}% OFF` : "Festive Offer")}
         </span>
       ) : null}
       {!isFestiveOffer && isBundle ? <span className="product-badge bundle">Bundle</span> : null}
@@ -151,12 +159,12 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
         {isFestiveOffer && festiveSavings > 0 ? (
           <div className="product-festive-savings">
-            <span>Festive deal</span>
+            <span>
+              {product?.discountType === "new_launch" ? "Launch deal" : product?.discountType === "weekly" ? "Weekly deal" : product?.discountType === "monthly" ? "Monthly deal" : product?.discountType === "combo" ? "Combo deal" : "Festive deal"}
+            </span>
             <strong>Save {formatCurrencyExact(festiveSavings, displayCurrency)}</strong>
           </div>
-        ) : null}
-
-        {isBundle && bundleOriginalTotal > displayPrice ? (
+        ) : isBundle && bundleOriginalTotal > displayPrice ? (
           <div className="product-bundle-savings">
             <span>Individual total {formatCurrencyExact(bundleOriginalTotal, displayCurrency)}</span>
             <strong>Save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
