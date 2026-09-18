@@ -460,11 +460,30 @@ router.get("/admin/security-logs", protect, admin, async (req, res) => {
     const data = fs.readFileSync(logFile, "utf8");
     const lines = data.split("\n").filter(line => line.trim().length > 0);
     const parsedLogs = lines.map(line => {
+      // 1. Try standard JSON parse
       try {
         return JSON.parse(line);
-      } catch (e) {
-        return null;
+      } catch (e) {}
+
+      // 2. Parse text log format: [ISO_DATE] IP=xxx PATH=xxx THREAT=xxx DETAILS={...}
+      const match = line.match(/^\[(.*?)\]\s+IP=(.*?)\s+PATH=(.*?)\s+THREAT=(.*?)\s+DETAILS=(.*)$/);
+      if (match) {
+        let details = {};
+        try {
+          details = JSON.parse(match[5]);
+        } catch (e) {
+          details = { raw: match[5] };
+        }
+        return {
+          timestamp: match[1],
+          ip: match[2],
+          path: match[3],
+          threat: match[4],
+          details
+        };
       }
+
+      return null;
     }).filter(log => log !== null).reverse();
 
     res.json({ logs: parsedLogs });

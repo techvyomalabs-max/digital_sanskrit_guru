@@ -896,10 +896,16 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title product-detail-title">{product.name}</h1>
-          {isBundle ? <p className="product-bundle-pill">Bundle offer</p> : null}
+          {isBundle ? <p className="product-bundle-pill">Combo</p> : null}
           {isFestiveOffer ? (
-            <p className="product-bundle-pill product-festive-pill">
-              {festiveDiscountPercent > 0 ? `Festive offer • ${festiveDiscountPercent}% off` : "Festive offer"}
+            <p className={`product-bundle-pill product-festive-pill ${product?.discountType === "new_launch" ? "pill-new-launch" : product?.discountType === "combo" ? "pill-combo" : product?.discountType === "monthly" ? "pill-monthly" : ""}`}>
+              {product?.discountType === "new_launch"
+                ? (festiveDiscountPercent > 0 ? `New launch offer • ${festiveDiscountPercent}% off` : "New launch offer")
+                : product?.discountType === "combo"
+                  ? (festiveDiscountPercent > 0 ? `combo discount • ${festiveDiscountPercent}% off` : "combo discount")
+                  : product?.discountType === "monthly"
+                    ? (festiveDiscountPercent > 0 ? `Monthly discount • ${festiveDiscountPercent}% off` : "Monthly discount")
+                    : (festiveDiscountPercent > 0 ? `Festive offer • ${festiveDiscountPercent}% off` : "Festive offer")}
             </p>
           ) : null}
           {/* <p className="product-store-link">Visit the Digital Sanskrit Guru Store</p> */}
