@@ -5,14 +5,30 @@ const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const axios = require("axios");
 const User = require("../models/User");
+const PhoneOtp = require("../models/PhoneOtp");
+const StoreSettings = require("../models/StoreSettings");
 const AdminAuditLog = require("../models/AdminAuditLog");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { logAdminAction } = require("../utils/adminAudit");
 const { sendEmail } = require("../utils/email");
+const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
+
+const isWhatsAppOtpRequired = async () => {
+  try {
+    const settings = await StoreSettings.findOne();
+    if (!settings || !settings.whatsappSettings) return false;
+    const mode = settings.whatsappSettings.mode;
+    const enableOtp = settings.whatsappSettings.enableOtpVerification !== false;
+    return mode === "api" && enableOtp;
+  } catch (err) {
+    console.error("[Auth] Error checking WhatsApp OTP setting:", err.message);
+    return false;
+  }
+};
 
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
@@ -39,11 +55,97 @@ const passwordResetLimiter = rateLimit({
   message: { message: "Too many password reset attempts. Please try again in an hour." }
 });
 
+const otpLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 6,               // max 6 OTP requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many OTP attempts. Please wait a minute before trying again." }
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const getTokenExpiry = (rememberMe) => (rememberMe ? "30d" : "12h");
 
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || "").trim().toLowerCase());
+
+const validatePhoneNumber = (rawPhone, country = "India") => {
+  const trimmed = String(rawPhone || "").trim();
+  if (!trimmed) {
+    return { isValid: false, message: "Phone number is required.", cleanPhone: "" };
+  }
+
+  const cleaned = trimmed.replace(/[\s\-()]/g, "");
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  if (cleaned.startsWith("+")) {
+    if (cleaned.startsWith("+91")) {
+      const indianDigits = cleaned.slice(3).replace(/\D/g, "");
+      if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+        return {
+          isValid: false,
+          message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+          cleanPhone: indianDigits
+        };
+      }
+      return { isValid: true, message: "", cleanPhone: indianDigits };
+    }
+
+    if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid international phone number with country code (e.g. +1 2025550143).",
+        cleanPhone: cleaned
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: cleaned };
+  }
+
+  if (digitsOnly.length === 10) {
+    if (!/^[6-9]\d{9}$/.test(digitsOnly)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).",
+        cleanPhone: digitsOnly
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: digitsOnly };
+  }
+
+  if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
+    const indianDigits = digitsOnly.slice(2);
+    if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+        cleanPhone: indianDigits
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: indianDigits };
+  }
+
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
+    const indianDigits = digitsOnly.slice(1);
+    if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+        cleanPhone: indianDigits
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: indianDigits };
+  }
+
+  if (country && country.toLowerCase() !== "india" && digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return { isValid: true, message: "", cleanPhone: digitsOnly };
+  }
+
+  return {
+    isValid: false,
+    message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).",
+    cleanPhone: digitsOnly
+  };
+};
 
 const validatePassword = (value) => {
   const password = typeof value === "string" ? value : "";
@@ -116,7 +218,136 @@ const normalizeAddressList = (rawAddresses = []) => {
   });
 };
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── WhatsApp OTP Endpoints ───────────────────────────────────────────────────
+
+router.post("/send-whatsapp-otp", otpLimiter, async (req, res) => {
+  try {
+    const otpRequired = await isWhatsAppOtpRequired();
+    if (!otpRequired) {
+      return res.status(400).json({
+        message: "WhatsApp OTP verification is currently disabled in store settings."
+      });
+    }
+
+    const rawPhone = String(req.body?.phone || "").trim();
+    if (!rawPhone) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+
+    const phoneValidation = validatePhoneNumber(rawPhone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ message: phoneValidation.message });
+    }
+
+    const cleanPhone = phoneValidation.cleanPhone;
+
+    // Check if OTP was requested within last 30s
+    const existingOtp = await PhoneOtp.findOne({
+      phone: cleanPhone,
+      expiresAt: { $gt: new Date() },
+      verified: false
+    }).sort({ createdAt: -1 });
+
+    if (existingOtp && Date.now() - new Date(existingOtp.createdAt).getTime() < 30 * 1000) {
+      return res.status(429).json({
+        message: "Please wait 30 seconds before requesting a new OTP."
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    // Invalidate previous unverified OTPs for this phone
+    await PhoneOtp.deleteMany({ phone: cleanPhone, verified: false });
+
+    // Save new OTP record
+    await PhoneOtp.create({
+      phone: cleanPhone,
+      otpHash,
+      expiresAt
+    });
+
+    // Dispatch via WhatsApp
+    const dispatchResult = await sendWhatsAppOtp(cleanPhone, otp);
+
+    return res.json({
+      success: true,
+      message: `OTP sent to your WhatsApp (+${cleanPhone.replace(/^\+/, "")}) successfully.`,
+      phone: cleanPhone,
+      devMode: Boolean(dispatchResult?.devMode),
+      note: dispatchResult?.note || ""
+    });
+  } catch (error) {
+    console.error("[Auth] Send WhatsApp OTP error:", error);
+    return res.status(500).json({ message: "Failed to send WhatsApp OTP. Please try again." });
+  }
+});
+
+router.post("/verify-whatsapp-otp", otpLimiter, async (req, res) => {
+  try {
+    const rawPhone = String(req.body?.phone || "").trim();
+    const otp = String(req.body?.otp || "").trim();
+
+    if (!rawPhone || !otp) {
+      return res.status(400).json({ message: "Phone number and OTP code are required." });
+    }
+
+    const phoneValidation = validatePhoneNumber(rawPhone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ message: phoneValidation.message });
+    }
+
+    const cleanPhone = phoneValidation.cleanPhone;
+
+    const record = await PhoneOtp.findOne({
+      phone: cleanPhone,
+      verified: false,
+      expiresAt: { $gt: new Date() }
+    }).sort({ createdAt: -1 });
+
+    if (!record) {
+      return res.status(400).json({
+        message: "OTP expired or not found. Please request a new verification code."
+      });
+    }
+
+    if (record.attempts >= 5) {
+      await PhoneOtp.deleteOne({ _id: record._id });
+      return res.status(400).json({
+        message: "Too many incorrect attempts. Please request a new OTP code."
+      });
+    }
+
+    const isMatch = await bcrypt.compare(otp, record.otpHash);
+    if (!isMatch) {
+      record.attempts = (record.attempts || 0) + 1;
+      await record.save();
+      const remaining = Math.max(0, 5 - record.attempts);
+      return res.status(400).json({
+        message: `Incorrect OTP. ${remaining} ${remaining === 1 ? "attempt" : "attempts"} remaining.`
+      });
+    }
+
+    // Generate phone verification token
+    const verificationToken = crypto.randomBytes(24).toString("hex");
+    record.verified = true;
+    record.verificationToken = verificationToken;
+    record.expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+    await record.save();
+
+    return res.json({
+      success: true,
+      message: "Phone number verified successfully!",
+      phone: cleanPhone,
+      phoneVerificationToken: verificationToken
+    });
+  } catch (error) {
+    console.error("[Auth] Verify WhatsApp OTP error:", error);
+    return res.status(500).json({ message: "Failed to verify OTP. Please try again." });
+  }
+});
 
 router.get("/register", (_req, res) => {
   res.status(405).json({ message: "Use POST /api/auth/register with name, email, and password." });
@@ -139,8 +370,29 @@ router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddlewar
     if (!isValidEmail(email)) {
       return res.status(400).json({ message: "Please enter a valid email address." });
     }
-    if (phone && !/^[+\d\s\-()]{5,20}$/.test(phone)) {
-      return res.status(400).json({ message: "Please enter a valid phone number." });
+    let cleanPhone = "";
+    if (phone) {
+      const phoneValidation = validatePhoneNumber(phone);
+      if (!phoneValidation.isValid) {
+        return res.status(400).json({ message: phoneValidation.message });
+      }
+      cleanPhone = phoneValidation.cleanPhone;
+
+      const otpRequired = await isWhatsAppOtpRequired();
+      if (otpRequired) {
+        if (!req.body?.phoneVerificationToken) {
+          return res.status(400).json({ message: "Please verify your phone number via WhatsApp OTP before registering." });
+        }
+        const otpRecord = await PhoneOtp.findOne({
+          phone: cleanPhone,
+          verificationToken: req.body.phoneVerificationToken,
+          verified: true,
+          expiresAt: { $gt: new Date() }
+        });
+        if (!otpRecord) {
+          return res.status(400).json({ message: "WhatsApp verification token expired or invalid. Please verify phone number again." });
+        }
+      }
     }
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
@@ -153,7 +405,7 @@ router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddlewar
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, password: hashedPassword, phone });
+    const user = await User.create({ name, email, password: hashedPassword, phone: cleanPhone || phone });
 
     const token = jwt.sign(
       { id: user._id },
@@ -217,6 +469,7 @@ router.post("/login", authLimiter, honeypotMiddleware, turnstileMiddleware, asyn
         _id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || "",
         isAdmin: user.isAdmin,
         adminLevel,
         adminRole: user.adminRole || (adminLevel === 1 ? "Super Admin" : "Page Level Sub-Admin"),
@@ -617,13 +870,14 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
 
 router.get("/me", protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user).select("_id name email isAdmin adminLevel adminRole allowedPages addresses");
+    const user = await User.findById(req.user).select("_id name email phone isAdmin adminLevel adminRole allowedPages addresses");
     if (!user) return res.status(404).json({ message: "User not found" });
     const adminLevel = Number(user.adminLevel || 1);
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       adminLevel,
       adminRole: user.adminRole || (adminLevel === 1 ? "Super Admin" : "Page Level Sub-Admin"),
@@ -755,6 +1009,7 @@ router.put("/profile", protect, async (req, res) => {
 
     const name = String(req.body.name || "").trim();
     const email = String(req.body.email || "").trim().toLowerCase();
+    const phone = req.body.phone !== undefined ? String(req.body.phone || "").trim() : undefined;
     const password = req.body.password;
 
     if (name) {
@@ -762,6 +1017,34 @@ router.put("/profile", protect, async (req, res) => {
         return res.status(400).json({ message: "Name must be at least 2 characters." });
       }
       user.name = name;
+    }
+
+    if (phone !== undefined) {
+      if (phone) {
+        const phoneValidation = validatePhoneNumber(phone);
+        if (!phoneValidation.isValid) {
+          return res.status(400).json({ message: phoneValidation.message });
+        }
+        const cleanPhone = phoneValidation.cleanPhone;
+        const otpRequired = await isWhatsAppOtpRequired();
+        if (otpRequired && cleanPhone !== user.phone) {
+          if (!req.body?.phoneVerificationToken) {
+            return res.status(400).json({ message: "Please verify your new phone number via WhatsApp OTP." });
+          }
+          const otpRecord = await PhoneOtp.findOne({
+            phone: cleanPhone,
+            verificationToken: req.body.phoneVerificationToken,
+            verified: true,
+            expiresAt: { $gt: new Date() }
+          });
+          if (!otpRecord) {
+            return res.status(400).json({ message: "WhatsApp verification token expired or invalid. Please verify phone number again." });
+          }
+        }
+        user.phone = cleanPhone;
+      } else {
+        user.phone = "";
+      }
     }
 
     if (email) {
@@ -796,6 +1079,7 @@ router.put("/profile", protect, async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       token,
       message: "Profile details updated successfully."
@@ -859,6 +1143,7 @@ router.post("/google", async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       token
     });

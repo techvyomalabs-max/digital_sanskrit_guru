@@ -226,6 +226,7 @@ function Product() {
   const [bulkSuccess, setBulkSuccess] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const [honeyValue, setHoneyValue] = useState("");
+  const [showReviewSuccessModal, setShowReviewSuccessModal] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -513,7 +514,7 @@ function Product() {
       setRating("5");
       setComment("");
       setReviewError("");
-      showToast("Review submitted!");
+      setShowReviewSuccessModal(true);
       await loadData();
     } catch (err) {
       const message = err?.response?.data?.message || "Failed to submit review";
@@ -909,7 +910,7 @@ function Product() {
             </p>
           ) : null}
           {/* <p className="product-store-link">Visit the Digital Sanskrit Guru Store</p> */}
-          <p className="rating">{renderStars(product.rating)} <span>{Number(product.rating || 0).toFixed(1)} | {reviewCount} ratings</span></p>
+          <p className="rating">{renderStars(product.rating)} <span>{Number(product.rating || 0).toFixed(1)} | {reviewCount} review</span></p>
           <hr />
           <div className="price-block">
             <p className="price">
@@ -1545,6 +1546,25 @@ function Product() {
               style={{ position: "absolute", bottom: "-36px", right: "50%", transform: "translateX(50%)" }}
             >
               {currentMediaNum} / {mediaItems.length}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReviewSuccessModal && (
+        <div className="review-redirect-modal-backdrop" onClick={() => setShowReviewSuccessModal(false)}>
+          <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="review-success-popup-icon">✓</div>
+            <h2>Review Added Successfully!</h2>
+            <p>Thank you for sharing your feedback. Your review has been added to this product.</p>
+            <div className="review-redirect-modal-actions">
+              <button
+                type="button"
+                className="review-redirect-btn-primary"
+                onClick={() => setShowReviewSuccessModal(false)}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

@@ -361,7 +361,8 @@ function normalizeSettings(settings) {
       metaPhoneNumberId: String(settings?.whatsappSettings?.metaPhoneNumberId || "").trim(),
       metaAccessToken: String(settings?.whatsappSettings?.metaAccessToken || "").trim(),
       metaWabaId: String(settings?.whatsappSettings?.metaWabaId || "").trim(),
-      autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false
+      autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false,
+      enableOtpVerification: settings?.whatsappSettings?.enableOtpVerification !== false
     },
     turnstileEnabled: settings?.turnstileEnabled !== false,
     sponsors: normalizeSponsors(settings?.sponsors || []),
@@ -397,7 +398,8 @@ function buildPublicSettingsPayload(settings) {
       mode: normalized.whatsappSettings.mode,
       phoneNumber: normalized.whatsappSettings.phoneNumber,
       welcomeMessage: normalized.whatsappSettings.welcomeMessage,
-      autoSendOrderConfirmation: normalized.whatsappSettings.autoSendOrderConfirmation
+      autoSendOrderConfirmation: normalized.whatsappSettings.autoSendOrderConfirmation,
+      enableOtpVerification: normalized.whatsappSettings.mode === "api" && normalized.whatsappSettings.enableOtpVerification !== false
     },
     sponsors:         normalized.sponsors,
     storeIcons:       normalized.storeIcons
@@ -548,7 +550,8 @@ router.put("/", protect, admin, async (req, res) => {
       metaPhoneNumberId: String(req.body.whatsappSettings.metaPhoneNumberId || "").trim(),
       metaAccessToken: String(req.body.whatsappSettings.metaAccessToken || "").trim(),
       metaWabaId: String(req.body.whatsappSettings.metaWabaId || "").trim(),
-      autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false
+      autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false,
+      enableOtpVerification: req.body.whatsappSettings.enableOtpVerification !== false
     };
     settings.markModified("whatsappSettings");
   }

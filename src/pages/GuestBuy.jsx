@@ -77,8 +77,6 @@ function GuestBuy() {
   const [settings, setSettings] = useState(null);
   const [coords, setCoords] = useState({ latitude: null, longitude: null });
 
-  const isDummyPaymentEnabled =
-    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   useEffect(() => {
@@ -251,11 +249,14 @@ function GuestBuy() {
     });
     const grandTotal = finalTotal + deliveryCharge;
 
+    if (!razorpayKey) {
+      setCheckoutMessage("Payment gateway key is missing. Please contact support.");
+      setIsPaying(false);
+      return;
+    }
+
     try {
-      let RazorpayConstructor = window.Razorpay;
-      if (!isDummyPaymentEnabled) {
-        RazorpayConstructor = await loadRazorpayCheckout();
-      }
+      const RazorpayConstructor = await loadRazorpayCheckout();
 
       // 1. Create Razorpay Order (converting to INR paise)
       const amountInInr = convertCurrencyAmount(grandTotal, {
@@ -267,68 +268,6 @@ function GuestBuy() {
         amount: Math.round(amountInInr * 100) / 100,
         honey_pot_field: honeyPot
       });
-
-      // 2. Process payment (Dummy / Live)
-      const isOrderDummy =
-        isDummyPaymentEnabled ||
-        Boolean(rpOrder?.isDummy) ||
-        String(rpOrder?.id || "").startsWith("dummy_order_");
-
-      if (isOrderDummy) {
-        const wantsToProceed = window.confirm(
-          "Dummy payment mode is enabled. Click OK to simulate a successful payment."
-        );
-
-        if (!wantsToProceed) {
-          setIsPaying(false);
-          setCheckoutMessage("Payment was cancelled.");
-          return;
-        }
-
-        const response = {
-          razorpay_order_id: rpOrder.id || `dummy_order_${Date.now()}`,
-          razorpay_payment_id: `dummy_pay_${Date.now()}`,
-          razorpay_signature: "dummy_signature",
-          dummy: true
-        };
-
-        const verify = await axios.post("/api/payment/verify", response);
-        if (!verify.data?.success) {
-          setIsPaying(false);
-          setCheckoutMessage("Payment verification failed.");
-          return;
-        }
-
-        // 3. Create Direct Buy Order on Backend
-        const orderRes = await axios.post("/api/orders/direct-buy", {
-          items: [{
-            product: product._id,
-            _id: product._id,
-            id: product._id,
-            name: product.name,
-            image: product.image,
-            price: unitPrice,
-            quantity: buyQuantity,
-            isDigital
-          }],
-          shipping: shippingInfo,
-          billing: shippingInfo,
-          paymentStatus: "Paid",
-          honey_pot_field: honeyPot,
-          razorpayOrderId: response.razorpay_order_id,
-          razorpayPaymentId: response.razorpay_payment_id,
-          currencyDisplay: {
-            currency: displayCurrency,
-            amount: grandTotal,
-            detectedCountry: isDigital ? "India" : country.trim()
-          }
-        });
-
-        setOrderSuccess(orderRes.data?.order);
-        setCredentialsSent(orderRes.data?.accountCreated);
-        setIsPaying(false);
-        return;
-      }
 
       const cleanPhone = String(phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(email || "").trim().toLowerCase();
@@ -382,6 +321,7 @@ function GuestBuy() {
               honey_pot_field: honeyPot,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
               currencyDisplay: {
                 currency: displayCurrency,
                 amount: grandTotal,

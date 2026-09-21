@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import axios from "axios";
+import { Eye, EyeOff, CheckCircle2, MessageCircle } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import TurnstileWidget from "../components/common/TurnstileWidget";
+import { validatePhoneNumber } from "../utils/phoneValidation";
+import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import "./Register.css";
 
 function Register() {
@@ -22,20 +25,68 @@ function Register() {
   const [passwordError, setPasswordError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Store WhatsApp settings
+  const [whatsappSettings, setWhatsappSettings] = useState(null);
+
+  // WhatsApp OTP states
+  const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const fetchSettings = () => {
+      axios
+        .get("/api/settings/public")
+        .then((res) => {
+          if (active && res.data?.whatsappSettings) {
+            setWhatsappSettings(res.data.whatsappSettings);
+          }
+        })
+        .catch(() => {});
+    };
+    fetchSettings();
+    window.addEventListener("siteSettingsUpdated", fetchSettings);
+    return () => {
+      active = false;
+      window.removeEventListener("siteSettingsUpdated", fetchSettings);
+    };
+  }, []);
+
+  const isOtpRequired = Boolean(
+    whatsappSettings?.mode === "api" && whatsappSettings?.enableOtpVerification !== false
+  );
+
+  const handleOpenOtpModal = () => {
+    const phoneValidation = validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      setPhoneError(phoneValidation.message);
+      return;
+    }
+    setPhoneError("");
+    setIsOtpModalOpen(true);
+  };
+
+  const handleOtpVerified = ({ phone: verifiedPhone, phoneVerificationToken: token }) => {
+    setIsPhoneVerified(true);
+    setPhoneVerificationToken(token);
+    setPhone(verifiedPhone);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setPhoneError("");
     setPasswordError("");
 
-    const digits = String(phone || "").replace(/\D/g, "");
-    if (!digits) {
-      setPhoneError("Phone number is required.");
+    const phoneValidation = validatePhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      setPhoneError(phoneValidation.message);
       return;
     }
 
-    if (!/^[6-9]\d{9}$/.test(digits) && (digits.length < 7 || digits.length > 15)) {
-      setPhoneError("Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).");
+    if (isOtpRequired && !isPhoneVerified) {
+      setIsOtpModalOpen(true);
       return;
     }
 
@@ -65,9 +116,10 @@ function Register() {
     setError("");
 
     try {
-      await register(name, email, password, phone, rememberMe, {
+      await register(name, email, password, phoneValidation.cleanPhone || phone, rememberMe, {
         honey_pot_field: honeyPot,
-        turnstileToken
+        turnstileToken,
+        phoneVerificationToken
       });
       navigate("/");
     } catch (err) {
@@ -124,22 +176,61 @@ function Register() {
               required
             />
 
-            <label htmlFor="register-phone">
-              Phone Number <span style={{ color: "#ef4444" }}>*</span>
-            </label>
-            <input
-              id="register-phone"
-              type="tel"
-              maxLength={15}
-              placeholder="e.g. 9876543210"
-              value={phone}
-              className={phoneError ? "invalid-input" : ""}
-              onChange={(e) => {
-                setPhone(e.target.value.replace(/[^\d+]/g, ""));
-                if (phoneError) setPhoneError("");
-              }}
-              required
-            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <label htmlFor="register-phone" style={{ margin: 0 }}>
+                Phone Number <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              {isOtpRequired && isPhoneVerified ? (
+                <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <CheckCircle2 size={13} /> Verified on WhatsApp
+                </span>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                id="register-phone"
+                type="tel"
+                maxLength={15}
+                placeholder="e.g. 9876543210"
+                value={phone}
+                className={phoneError ? "invalid-input" : ""}
+                onChange={(e) => {
+                  setPhone(e.target.value.replace(/[^\d+]/g, ""));
+                  if (phoneError) setPhoneError("");
+                  if (isPhoneVerified) {
+                    setIsPhoneVerified(false);
+                    setPhoneVerificationToken("");
+                  }
+                }}
+                required
+                style={{ flex: 1 }}
+              />
+              {isOtpRequired && !isPhoneVerified && (
+                <button
+                  type="button"
+                  onClick={handleOpenOtpModal}
+                  style={{
+                    padding: "10px 14px",
+                    background: "#ecfdf5",
+                    border: "1.5px solid #a7f3d0",
+                    color: "#047857",
+                    borderRadius: "8px",
+                    fontWeight: "700",
+                    fontSize: "12.5px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s ease"
+                  }}
+                  title="Verify phone number via WhatsApp OTP"
+                >
+                  <MessageCircle size={15} /> Verify via WhatsApp
+                </button>
+              )}
+            </div>
             {phoneError && (
               <span className="register-field-error" style={{ color: "#dc2626", fontSize: "12px", fontWeight: "600", marginTop: "4px", display: "block" }}>
                 ⚠️ {phoneError}
@@ -202,6 +293,14 @@ function Register() {
           </p>
         </section>
       </div>
+
+      {/* WhatsApp OTP Verification Modal */}
+      <WhatsAppOtpModal
+        isOpen={isOtpModalOpen}
+        phone={phone}
+        onClose={() => setIsOtpModalOpen(false)}
+        onVerified={handleOtpVerified}
+      />
     </div>
   );
 }

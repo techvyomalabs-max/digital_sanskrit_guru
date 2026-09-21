@@ -143,9 +143,10 @@ function AdminProducts() {
   };
 
   const restockCritical = async () => {
-    const critical = warehouseAnalytics.restockQueue.filter((product) => Number(product?.stock || 0) === 0);
+    // Find ALL products with 0 stock across entire catalog
+    const critical = products.filter((product) => Number(product?.stock || 0) === 0);
     if (critical.length === 0) {
-      setWarehouseMessage("No critical products to restock.");
+      setWarehouseMessage("No out-of-stock (0 units) products to restock. All items have available inventory.");
       return;
     }
 
@@ -161,10 +162,39 @@ function AdminProducts() {
           )
         )
       );
-      setWarehouseMessage(`Restocked ${critical.length} critical product(s) to 10 units.`);
+      setWarehouseMessage(`✓ Successfully restocked ${critical.length} critical product(s) to 10 units!`);
       await loadProducts();
     } catch {
-      setWarehouseMessage("Bulk restock failed. Please retry.");
+      setWarehouseMessage("Bulk restock failed. Please check network connection and retry.");
+    } finally {
+      setStockActionLoading("");
+    }
+  };
+
+  const restockAllLowStock = async () => {
+    // Find ALL products with <= 5 stock across entire catalog
+    const lowStockItems = products.filter((product) => Number(product?.stock || 0) <= 5);
+    if (lowStockItems.length === 0) {
+      setWarehouseMessage("All products have healthy inventory levels (> 5 units).");
+      return;
+    }
+
+    setStockActionLoading("bulk-low");
+    setWarehouseMessage("");
+    try {
+      await Promise.all(
+        lowStockItems.map((product) =>
+          axios.put(
+            `/api/products/${product._id}`,
+            { stock: Math.max(10, Number(product?.stock || 0) + 10) },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+        )
+      );
+      setWarehouseMessage(`✓ Added +10 units to ${lowStockItems.length} low-stock product(s)!`);
+      await loadProducts();
+    } catch {
+      setWarehouseMessage("Low-stock restock failed. Please retry.");
     } finally {
       setStockActionLoading("");
     }
@@ -175,37 +205,59 @@ function AdminProducts() {
       <AdminSidebar />
 
       <main className="admin-main">
-        <div className="admin-header">
-          <h1>Warehouse Management</h1>
+        <div className="admin-header" style={{ marginBottom: "20px" }}>
+          <div>
+            <h1>Warehouse Management</h1>
+            <p style={{ margin: "4px 0 0", color: "var(--admin-muted)", fontSize: "13.5px" }}>
+              Live inventory tracking, storage zone capacity, and restock queue automation.
+            </p>
+          </div>
         </div>
 
+        {/* Top 4 Inventory KPI Cards */}
         <section className="inventory-analytics-grid">
-          <div className="card analytics-card">
-            <h3>Total Stock Units</h3>
-            <p>{inventoryAnalytics.totalStockUnits}</p>
-            <span>Across all products</span>
+          <div className="inv-kpi-card blue">
+            <div className="inv-kpi-top">
+              <span className="inv-kpi-label">Total Stock Units</span>
+              <div className="inv-kpi-icon-wrap">📦</div>
+            </div>
+            <div className="inv-kpi-amount">{inventoryAnalytics.totalStockUnits}</div>
+            <span className="inv-kpi-subtext">Across {products.length} products</span>
           </div>
-          <div className="card analytics-card">
-            <h3>Inventory Value</h3>
-            <p>Rs {Math.round(inventoryAnalytics.inventoryValue).toLocaleString("en-IN")}</p>
-            <span>Stock x price estimate</span>
+
+          <div className="inv-kpi-card green">
+            <div className="inv-kpi-top">
+              <span className="inv-kpi-label">Inventory Value</span>
+              <div className="inv-kpi-icon-wrap green">💰</div>
+            </div>
+            <div className="inv-kpi-amount">₹{Math.round(inventoryAnalytics.inventoryValue).toLocaleString("en-IN")}</div>
+            <span className="inv-kpi-subtext">Estimated stock valuation</span>
           </div>
-          <div className="card analytics-card">
-            <h3>Out of Stock</h3>
-            <p>{inventoryAnalytics.outOfStockCount}</p>
-            <span>Needs immediate restock</span>
+
+          <div className="inv-kpi-card red">
+            <div className="inv-kpi-top">
+              <span className="inv-kpi-label">Out of Stock</span>
+              <div className="inv-kpi-icon-wrap red">⚠️</div>
+            </div>
+            <div className="inv-kpi-amount">{inventoryAnalytics.outOfStockCount}</div>
+            <span className="inv-kpi-subtext">Needs immediate restocking</span>
           </div>
-          <div className="card analytics-card">
-            <h3>Low Stock</h3>
-            <p>{inventoryAnalytics.lowStockCount}</p>
-            <span>Items with 1-5 units left</span>
+
+          <div className="inv-kpi-card amber">
+            <div className="inv-kpi-top">
+              <span className="inv-kpi-label">Low Stock</span>
+              <div className="inv-kpi-icon-wrap amber">⏱</div>
+            </div>
+            <div className="inv-kpi-amount">{inventoryAnalytics.lowStockCount}</div>
+            <span className="inv-kpi-subtext">Items with 1-5 units remaining</span>
           </div>
         </section>
 
+        {/* Category Distribution Analytics */}
         <section className="card">
-          <h3>Inventory Analytics</h3>
+          <h3 style={{ margin: "0 0 14px", fontSize: "16px", fontWeight: 700 }}>📊 Category Inventory Distribution</h3>
           {inventoryAnalytics.categoryStock.length === 0 ? (
-            <p>No inventory data available.</p>
+            <p style={{ color: "var(--admin-muted)" }}>No inventory data available.</p>
           ) : (
             <div className="inventory-bars">
               {inventoryAnalytics.categoryStock.map(([category, units]) => {
@@ -217,7 +269,7 @@ function AdminProducts() {
                     <div className="inventory-bar-track">
                       <div className="inventory-bar-fill" style={{ width: `${widthPercent}%` }} />
                     </div>
-                    <strong>{units} units</strong>
+                    <strong style={{ color: "var(--admin-text)", fontSize: "13px" }}>{units} units</strong>
                   </div>
                 );
               })}
@@ -225,8 +277,9 @@ function AdminProducts() {
           )}
         </section>
 
+        {/* Storage Zones & Restock Queue */}
         <section className="card">
-          <h3>Warehouse Management</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>🏭 Warehouse Capacity & Restock Queue</h3>
           <div className="warehouse-summary-grid">
             <div className="warehouse-metric">
               <span>Total Stored Units</span>
@@ -237,21 +290,25 @@ function AdminProducts() {
               <strong>{warehouseAnalytics.totalCapacity}</strong>
             </div>
             <div className="warehouse-metric">
-              <span>Utilization</span>
-              <strong>{warehouseAnalytics.warehouseUtilization}%</strong>
+              <span>Overall Utilization</span>
+              <strong style={{ color: warehouseAnalytics.warehouseUtilization > 85 ? "#dc2626" : "#2563eb" }}>
+                {warehouseAnalytics.warehouseUtilization}%
+              </strong>
             </div>
             <div className="warehouse-metric">
               <span>Restock Queue</span>
-              <strong>{warehouseAnalytics.restockQueue.length}</strong>
+              <strong style={{ color: warehouseAnalytics.restockQueue.length > 0 ? "#d97706" : "#059669" }}>
+                {warehouseAnalytics.restockQueue.length}
+              </strong>
             </div>
           </div>
 
           <div className="warehouse-zones-grid">
             <div>
-              <h4 className="warehouse-subheading">Storage Zones</h4>
+              <h4 className="warehouse-subheading">📍 Storage Zones</h4>
               <div className="warehouse-zone-list">
                 {warehouseAnalytics.zones.length === 0 ? (
-                  <p>No zone data available.</p>
+                  <p style={{ color: "var(--admin-muted)" }}>No zone data available.</p>
                 ) : (
                   warehouseAnalytics.zones.map((zone) => (
                     <div key={zone.zone} className="warehouse-zone-row">
@@ -265,7 +322,7 @@ function AdminProducts() {
                           style={{ width: `${Math.min(100, zone.utilization)}%` }}
                         />
                       </div>
-                      <p>
+                      <p style={{ fontWeight: 700, color: "var(--admin-text)" }}>
                         {zone.units}/{zone.capacity}
                       </p>
                     </div>
@@ -275,62 +332,63 @@ function AdminProducts() {
             </div>
 
             <div>
-              <h4 className="warehouse-subheading">Restock Queue</h4>
-              <div className="warehouse-restock-tools">
-                <button
-                  className="warehouse-action-btn"
-                  disabled={stockActionLoading === "bulk-critical"}
-                  onClick={restockCritical}
-                >
-                  {stockActionLoading === "bulk-critical" ? "Restocking..." : "Restock Critical"}
-                </button>
-                {warehouseMessage && <span>{warehouseMessage}</span>}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                <h4 className="warehouse-subheading" style={{ margin: 0 }}>⚡ Priority Restock Queue</h4>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <button
+                    className="warehouse-action-btn"
+                    disabled={Boolean(stockActionLoading) || inventoryAnalytics.outOfStockCount === 0}
+                    onClick={restockCritical}
+                    title="Restock all 0-stock products to 10 units"
+                    style={{ background: inventoryAnalytics.outOfStockCount > 0 ? "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)" : undefined, borderColor: inventoryAnalytics.outOfStockCount > 0 ? "#b91c1c" : undefined }}
+                  >
+                    {stockActionLoading === "bulk-critical" ? "Restocking..." : `Restock 0-Stock (${inventoryAnalytics.outOfStockCount})`}
+                  </button>
+                  <button
+                    className="warehouse-action-btn"
+                    disabled={Boolean(stockActionLoading) || warehouseAnalytics.restockQueue.length === 0}
+                    onClick={restockAllLowStock}
+                    title="Add +10 units to all products with <= 5 stock"
+                  >
+                    {stockActionLoading === "bulk-low" ? "Restocking..." : `Restock All Low (${warehouseAnalytics.restockQueue.length})`}
+                  </button>
+                </div>
               </div>
+
+              {warehouseMessage && (
+                <div style={{ padding: "8px 12px", background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.25)", borderRadius: "8px", marginBottom: "12px", color: "#059669", fontSize: "13px", fontWeight: 600 }}>
+                  {warehouseMessage}
+                </div>
+              )}
+
               <div className="warehouse-restock-list">
                 {warehouseAnalytics.restockQueue.length === 0 ? (
-                  <p>All products are sufficiently stocked.</p>
+                  <p style={{ color: "var(--admin-muted)", padding: "20px 0", textAlign: "center" }}>
+                    ✓ All products are sufficiently stocked. No items in restock queue.
+                  </p>
                 ) : (
                   warehouseAnalytics.restockQueue.map((product) => (
                     <div key={product._id} className="warehouse-restock-row">
                       <div className="warehouse-info-col">
                         <strong>{product.name}</strong>
-                        <span>{product.category || "General"}</span>
+                        <span>{product.category || "General"} • ₹{(product.price || 0).toLocaleString("en-IN")}</span>
                       </div>
                       <span className={product.priority === "Critical" ? "restock-tag critical" : "restock-tag"}>
-                        {product.priority}
+                        {product.priority === "Critical" ? "⚠️ Out of Stock" : "⏱ Low Stock"}
                       </span>
                       <div className="warehouse-stock-actions">
-                        <p>{product.stock} left</p>
+                        <p style={{ fontWeight: 800, color: product.stock === 0 ? "#dc2626" : "#d97706", margin: 0 }}>
+                          {product.stock} units
+                        </p>
                         <div className="warehouse-stock-controls">
                           <button
                             disabled={stockActionLoading === product._id}
-                            onClick={() => adjustStock(product, -getAdjustmentValue(product))}
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            value={warehouseAdjustments[product._id] ?? "10"}
-                            onChange={(e) =>
-                              setWarehouseAdjustments((prev) => ({
-                                ...prev,
-                                [product._id]: e.target.value
-                              }))
-                            }
-                          />
-                          <button
-                            disabled={stockActionLoading === product._id}
-                            onClick={() => adjustStock(product, getAdjustmentValue(product))}
-                          >
-                            +
-                          </button>
-                          <button
+                            onClick={() => adjustStock(product, 10)}
+                            title="Quick add +10 units"
                             className="set-btn"
-                            disabled={stockActionLoading === product._id}
-                            onClick={() => applySetStock(product)}
+                            style={{ padding: "6px 10px", fontSize: "12px" }}
                           >
-                            {stockActionLoading === product._id ? "..." : "Set"}
+                            {stockActionLoading === product._id ? "..." : "+10 Restock"}
                           </button>
                         </div>
                       </div>
@@ -342,11 +400,12 @@ function AdminProducts() {
           </div>
         </section>
 
+        {/* Stock Manager with Search & Zone Filtering */}
         <section className="card">
-          <h3>Warehouse Stock Manager</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>📦 Warehouse Stock Inventory</h3>
           <div className="warehouse-manager-tools">
             <input
-              placeholder="Search stock by product or category..."
+              placeholder="🔍 Search product name or category..."
               value={warehouseSearch}
               onChange={(e) => setWarehouseSearch(e.target.value)}
             />
@@ -354,10 +413,10 @@ function AdminProducts() {
               value={warehouseZoneFilter}
               onChange={(e) => setWarehouseZoneFilter(e.target.value)}
             >
-              <option value="All">All Zones</option>
+              <option value="All">🌐 All Storage Zones</option>
               {warehouseAnalytics.zones.map((zone) => (
                 <option key={zone.category} value={zone.category}>
-                  {zone.zone} - {zone.category}
+                  {zone.zone} ({zone.category})
                 </option>
               ))}
             </select>
@@ -365,49 +424,60 @@ function AdminProducts() {
 
           <div className="warehouse-manager-list">
             {warehouseStockRows.length === 0 ? (
-              <p>No products match current warehouse filters.</p>
+              <p style={{ padding: "20px 0", color: "var(--admin-muted)", textAlign: "center" }}>
+                No products match the current search or zone filters.
+              </p>
             ) : (
-              warehouseStockRows.map((product) => (
-                <div key={product._id} className="warehouse-manager-row">
-                  <div className="warehouse-info-col">
-                    <strong>{product.name}</strong>
-                    <span>{product.category || "General"}</span>
+              warehouseStockRows.map((product) => {
+                const stock = Number(product.stock || 0);
+                const pillClass = stock === 0 ? "stock-pill-critical" : stock <= 5 ? "stock-pill-warning" : "stock-pill-ok";
+                const pillText = stock === 0 ? "Out of Stock" : stock <= 5 ? `Low (${stock})` : `In Stock (${stock})`;
+
+                return (
+                  <div key={product._id} className="warehouse-manager-row">
+                    <div className="warehouse-info-col">
+                      <strong>{product.name}</strong>
+                      <span>{product.category || "General"} • ₹{(product.price || 0).toLocaleString("en-IN")}</span>
+                    </div>
+                    <span className={`stock-pill ${pillClass}`}>{pillText}</span>
+                    <div className="warehouse-stock-controls">
+                      <button
+                        disabled={stockActionLoading === product._id}
+                        onClick={() => adjustStock(product, -getAdjustmentValue(product))}
+                        title="Subtract units"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        value={warehouseAdjustments[product._id] ?? "10"}
+                        onChange={(e) =>
+                          setWarehouseAdjustments((prev) => ({
+                            ...prev,
+                            [product._id]: e.target.value
+                          }))
+                        }
+                      />
+                      <button
+                        disabled={stockActionLoading === product._id}
+                        onClick={() => adjustStock(product, getAdjustmentValue(product))}
+                        title="Add units"
+                      >
+                        +
+                      </button>
+                      <button
+                        className="set-btn"
+                        disabled={stockActionLoading === product._id}
+                        onClick={() => applySetStock(product)}
+                        title="Set exact stock"
+                      >
+                        {stockActionLoading === product._id ? "..." : "Set"}
+                      </button>
+                    </div>
                   </div>
-                  <p>{product.stock} units</p>
-                  <div className="warehouse-stock-controls">
-                    <button
-                      disabled={stockActionLoading === product._id}
-                      onClick={() => adjustStock(product, -getAdjustmentValue(product))}
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      value={warehouseAdjustments[product._id] ?? "10"}
-                      onChange={(e) =>
-                        setWarehouseAdjustments((prev) => ({
-                          ...prev,
-                          [product._id]: e.target.value
-                        }))
-                      }
-                    />
-                    <button
-                      disabled={stockActionLoading === product._id}
-                      onClick={() => adjustStock(product, getAdjustmentValue(product))}
-                    >
-                      +
-                    </button>
-                    <button
-                      className="set-btn"
-                      disabled={stockActionLoading === product._id}
-                      onClick={() => applySetStock(product)}
-                    >
-                      {stockActionLoading === product._id ? "..." : "Set"}
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

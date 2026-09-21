@@ -377,80 +377,86 @@ function Home() {
           <LoadingSpinner text="Loading banner..." minHeight="220px" />
         </section>
       ) : activeHeroBanner ? (
-        activeHeroBanner.productId ? (
-          <Link
-            to={
-              activeHeroBanner.productId.startsWith("/")
-                ? activeHeroBanner.productId
-                : `/product/${activeHeroBanner.productId}`
-            }
-            className="home-banner home-banner-has-media"
-          >
-            <picture style={{ display: "block", width: "100%" }}>
-              <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
-              <img
-                src={activeHeroBanner.image}
-                alt="Homepage banner"
-                className="home-banner-image"
-                width="1600"
-                height="520"
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-              />
-            </picture>
-            {heroBanners.length > 1 ? (
-              <>
-                <button type="button" className="home-banner-nav prev" onClick={(e) => { e.preventDefault(); showPreviousHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <ChevronLeft size={24} />
-                  <span className="sr-only">Previous banner</span>
-                </button>
-                <button type="button" className="home-banner-nav next" onClick={(e) => { e.preventDefault(); showNextHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <ChevronRight size={24} />
-                  <span className="sr-only">Next banner</span>
-                </button>
-                <div className="home-banner-dots">
-                  {heroBanners.map((banner, index) => (
-                    <span key={`${banner.image}-${index}`} className={index === activeHeroBannerIndex ? "active" : ""} />
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </Link>
-        ) : (
-          <section className="home-banner home-banner-has-media">
-            <picture style={{ display: "block", width: "100%" }}>
-              <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
-              <img
-                src={activeHeroBanner.image}
-                alt="Homepage banner"
-                className="home-banner-image"
-                width="1600"
-                height="520"
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-              />
-            </picture>
-            {heroBanners.length > 1 ? (
-              <>
-                <button type="button" className="home-banner-nav prev" onClick={showPreviousHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <ChevronLeft size={24} />
-                  <span className="sr-only">Previous banner</span>
-                </button>
-                <button type="button" className="home-banner-nav next" onClick={showNextHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  <ChevronRight size={24} />
-                  <span className="sr-only">Next banner</span>
-                </button>
-                <div className="home-banner-dots">
-                  {heroBanners.map((banner, index) => (
-                    <span key={`${banner.image}-${index}`} className={index === activeHeroBannerIndex ? "active" : ""} />
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </section>
-        )
+        <div className="home-banner-container">
+          {activeHeroBanner.productId ? (
+            <Link
+              to={
+                activeHeroBanner.productId.startsWith("/")
+                  ? activeHeroBanner.productId
+                  : `/product/${activeHeroBanner.productId}`
+              }
+              className="home-banner home-banner-has-media"
+            >
+              <picture style={{ display: "block", width: "100%" }}>
+                <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
+                <img
+                  src={activeHeroBanner.image}
+                  alt="Homepage banner"
+                  className="home-banner-image"
+                  width="1600"
+                  height="520"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                />
+              </picture>
+              {heroBanners.length > 1 ? (
+                <>
+                  <button type="button" className="home-banner-nav prev" onClick={(e) => { e.preventDefault(); showPreviousHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ChevronLeft size={52} strokeWidth={3.5} />
+                    <span className="sr-only">Previous banner</span>
+                  </button>
+                  <button type="button" className="home-banner-nav next" onClick={(e) => { e.preventDefault(); showNextHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ChevronRight size={52} strokeWidth={3.5} />
+                    <span className="sr-only">Next banner</span>
+                  </button>
+                </>
+              ) : null}
+            </Link>
+          ) : (
+            <section className="home-banner home-banner-has-media">
+              <picture style={{ display: "block", width: "100%" }}>
+                <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
+                <img
+                  src={activeHeroBanner.image}
+                  alt="Homepage banner"
+                  className="home-banner-image"
+                  width="1600"
+                  height="520"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                />
+              </picture>
+              {heroBanners.length > 1 ? (
+                <>
+                  <button type="button" className="home-banner-nav prev" onClick={showPreviousHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ChevronLeft size={52} strokeWidth={3.5} />
+                    <span className="sr-only">Previous banner</span>
+                  </button>
+                  <button type="button" className="home-banner-nav next" onClick={showNextHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <ChevronRight size={52} strokeWidth={3.5} />
+                    <span className="sr-only">Next banner</span>
+                  </button>
+                </>
+              ) : null}
+            </section>
+          )}
+
+          {heroBanners.length > 1 ? (
+            <div className="home-banner-dots" role="tablist" aria-label="Banner indicators">
+              {heroBanners.map((banner, index) => (
+                <button
+                  key={`${banner.image}-${index}`}
+                  type="button"
+                  className={`home-banner-dot ${index === activeHeroBannerIndex ? "active" : ""}`}
+                  onClick={() => setActiveHeroBannerIndex(index)}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <section className="home-feature-shell">

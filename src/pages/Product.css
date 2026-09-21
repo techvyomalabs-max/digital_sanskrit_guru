@@ -1583,5 +1583,88 @@
   justify-content: flex-end;
 }
 
+/* Review Success Modal */
+.review-redirect-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: var(--space-4, 16px);
+  animation: modal-fade-in 0.25s ease-out;
+}
+
+.review-redirect-modal {
+  background: var(--site-surface, #ffffff);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  padding: var(--space-8, 32px);
+  max-width: 460px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  text-align: center;
+  animation: modal-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.review-redirect-modal h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--site-text, #0f172a);
+  margin: 0 0 10px 0;
+}
+
+.review-redirect-modal p {
+  font-size: 14.5px;
+  color: var(--site-text-soft, #64748b);
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+}
+
+.review-redirect-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-redirect-btn-primary {
+  border: 1px solid var(--site-button-bg, #b45309);
+  background: var(--site-button-bg, #b45309);
+  color: var(--site-button-text, #ffffff);
+  border-radius: var(--radius-full, 999px);
+  min-height: 44px;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.review-redirect-btn-primary:hover {
+  background: var(--site-button-hover, #92400e);
+}
+
+.review-success-popup-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  border: 2px solid #a7f3d0;
+}
+
 
 

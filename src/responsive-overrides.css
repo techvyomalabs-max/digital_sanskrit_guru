@@ -467,7 +467,11 @@ img, video, iframe, embed, object {
   .collection-kicker,
   .default-badge,
   .checkout-address-label,
-  .navbar-badge {
+  .navbar-badge,
+  .home-banner-dot,
+  .home-banner-dots,
+  .home-banner-dots span,
+  .home-banner-dots button {
     min-height: 0 !important;
   }
 }
@@ -528,6 +532,8 @@ input[type="reset"],
 .mkt-status-dot,
 .tracker-dot,
 .home-banner-dots span,
+.home-banner-dot,
+.home-banner-dots button,
 .theme-preset-card-circle,
 .theme-color-item,
 .theme-particle-swatch,
@@ -537,6 +543,12 @@ input[type="reset"],
 .address-avatar,
 .ui-avatar {
   border-radius: 50% !important;
+}
+
+.home-banner-dot.active,
+.home-banner-dots span.active,
+.home-banner-dots button.active {
+  border-radius: 4px !important;
 }
 
 /* Keep toggle tracks as pill shapes */

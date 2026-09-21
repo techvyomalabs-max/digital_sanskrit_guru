@@ -13,6 +13,15 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, async (req,
       return res.status(400).json({ message: "Invalid amount" });
     }
 
+    const keyId = process.env.RAZORPAY_KEY_ID || "";
+    const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
+
+    if (!keyId || !razorpaySecret) {
+      return res.status(500).json({
+        message: "Razorpay credentials not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in backend/.env."
+      });
+    }
+
     const razorpay = getRazorpayClient();
     const order = await razorpay.orders.create({
       amount: Math.round(amount * 100),
@@ -42,12 +51,16 @@ router.post("/verify", async (req, res) => {
     razorpay_signature
   } = req.body || {};
 
-  const body = `${razorpay_order_id || ""}|${razorpay_payment_id || ""}`;
-  const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
-  if (!razorpaySecret) {
-    return res.status(500).json({ message: "Razorpay secret not configured on server" });
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ success: false, message: "Missing Razorpay payment verification details" });
   }
 
+  const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
+  if (!razorpaySecret) {
+    return res.status(500).json({ success: false, message: "Razorpay secret not configured on server" });
+  }
+
+  const body = `${razorpay_order_id}|${razorpay_payment_id}`;
   const expectedSignature = crypto
     .createHmac("sha256", razorpaySecret)
     .update(body)
@@ -57,7 +70,7 @@ router.post("/verify", async (req, res) => {
     return res.json({ success: true });
   }
 
-  return res.status(400).json({ success: false });
+  return res.status(400).json({ success: false, message: "Invalid signature" });
 });
 
 module.exports = router;

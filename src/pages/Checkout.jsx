@@ -171,8 +171,6 @@ function Checkout() {
     }
   }, [hasAlreadyPurchasedItemInCart]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const isDummyPaymentEnabled =
-    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
 
   const [charges, setCharges] = useState({
     gstPercent: 0,
@@ -296,6 +294,7 @@ function Checkout() {
 
   const handleSaveNewAddress = async () => {
     const digits = String(newPhone || "").replace(/\D/g, "");
+    const cleanPhone = String(newPhone || "").trim();
     const cleanPincode = String(newPincode || "").trim();
     const cleanCountry = String(newCountry || "").trim();
 
@@ -620,6 +619,7 @@ function Checkout() {
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
+        razorpaySignature: paymentInfo?.razorpaySignature || "",
         currencyDisplay: {
           currency: displayCurrency,
           amount: finalTotal,
@@ -676,7 +676,7 @@ function Checkout() {
       return;
     }
 
-    if (!isDummyPaymentEnabled && !razorpayKey) {
+    if (!razorpayKey) {
       setCheckoutMessage("Payment gateway key is missing. Please contact support.");
       return;
     }
@@ -693,10 +693,7 @@ function Checkout() {
     };
 
     try {
-      let RazorpayConstructor = window.Razorpay;
-      if (!isDummyPaymentEnabled) {
-        RazorpayConstructor = await loadRazorpayCheckout();
-      }
+      const RazorpayConstructor = await loadRazorpayCheckout();
 
       const { data } = await axios.post("/api/payment/create-order", {
         amount: roundMoney(
@@ -707,82 +704,6 @@ function Checkout() {
         ),
         honey_pot_field: honeyPot
       });
-
-      const isOrderDummy =
-        isDummyPaymentEnabled ||
-        Boolean(data?.isDummy) ||
-        String(data?.id || "").startsWith("dummy_order_");
-
-      if (isOrderDummy) {
-        const wantsToProceed = window.confirm(
-          "Dummy payment mode is enabled. Click OK to simulate a successful payment."
-        );
-
-        if (!wantsToProceed) {
-          setIsPaying(false);
-          await recordFailedAttempt(
-            "Payment was cancelled. Failed order saved in My Orders. You can retry payment there."
-          );
-          return;
-        }
-
-        const response = {
-          razorpay_order_id: data.id || `dummy_order_${Date.now()}`,
-          razorpay_payment_id: `dummy_pay_${Date.now()}`,
-          razorpay_signature: "dummy_signature",
-          dummy: true
-        };
-
-        const verify = await axios.post("/api/payment/verify", response);
-        if (!verify.data?.success) {
-          setIsPaying(false);
-          await recordFailedAttempt("Payment verification failed. Retry from My Orders.");
-          return;
-        }
-
-        await createOrderWithPaymentStatus(selected, "Paid", {
-          razorpayOrderId: response.razorpay_order_id,
-          razorpayPaymentId: response.razorpay_payment_id
-        });
-
-        // Track purchase event for GTM and Facebook Pixel
-        const orderId = response.razorpay_order_id || `order_${Date.now()}`;
-        if (window.fbq && window.fbqInitialized) {
-          window.fbq("track", "Purchase", {
-            value: Number(finalTotal || 0),
-            currency: displayCurrency || "INR",
-            content_type: "product",
-            content_ids: cartItems.map((item) => item.id || item._id).filter(Boolean)
-          });
-        }
-        if (window.dataLayer) {
-          window.dataLayer.push({
-            event: "purchase",
-            ecommerce: {
-              transaction_id: orderId,
-              value: Number(finalTotal || 0),
-              currency: displayCurrency || "INR",
-              coupon: couponCode || "",
-              items: cartItems.map((item) => ({
-                item_name: item.name,
-                item_id: item.id || item._id,
-                price: Number(item.price || 0),
-                quantity: Number(item.quantity || 1)
-              }))
-            }
-          });
-        }
-
-        await clearCart();
-        navigate("/my-orders", {
-          state: {
-            message: "Payment successful. Your order has been placed.",
-            showReviewPrompt: true
-          }
-        });
-        setIsPaying(false);
-        return;
-      }
 
       const cleanPhone = String(selected.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(user?.email || selected?.email || "").trim();
@@ -821,7 +742,8 @@ function Checkout() {
 
             await createOrderWithPaymentStatus(selected, "Paid", {
               razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature
             });
 
             // Track purchase event for GTM and Facebook Pixel
@@ -898,12 +820,7 @@ function Checkout() {
       <h1 className="checkout-title">
         Checkout <span>({itemCount} items)</span>
       </h1>
-      <p className="checkout-lead">Select a delivery address and review your order before payment.</p>
-      {isDummyPaymentEnabled ? (
-        <p className="checkout-mode-badge">Test mode enabled: payments are simulated.</p>
-      ) : (
-        <p className="checkout-mode-badge live">Secure live payment mode.</p>
-      )}
+      <p className="checkout-mode-badge live">Secure Razorpay payment mode</p>
       {checkoutMessage ? <p className="checkout-feedback">{checkoutMessage}</p> : null}
 
       <div className="checkout-container">

@@ -37,6 +37,8 @@ function AdminFinancialDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [gstFilter, setGstFilter] = useState("all");
+  const [reconFilter, setReconFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -72,23 +74,54 @@ function AdminFinancialDashboard() {
     };
   })();
 
-  // Filter transactions for GST place of supply
+  // Filter transactions for GST place of supply, reconciliation status, and search query
   const filteredTransactions = (() => {
     if (!data?.recentTransactions) return [];
-    if (gstFilter === "all") return data.recentTransactions;
-    
-    const warehouse = String(data.warehouseState || "Karnataka").toLowerCase().trim();
-    if (gstFilter === "intra") {
-      return data.recentTransactions.filter(
-        (t) => String(t.placeOfSupply).toLowerCase().trim() === warehouse
+    let list = data.recentTransactions;
+
+    // Search query filter (Order ID, Customer, Place of Supply)
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      list = list.filter((t) => 
+        (t._id && t._id.toLowerCase().includes(q)) ||
+        (t.customer && t.customer.toLowerCase().includes(q)) ||
+        (t.placeOfSupply && t.placeOfSupply.toLowerCase().includes(q))
       );
     }
-    if (gstFilter === "inter") {
-      return data.recentTransactions.filter(
+
+    // Place of supply filter
+    const warehouse = String(data.warehouseState || "Karnataka").toLowerCase().trim();
+    if (gstFilter === "intra") {
+      list = list.filter(
+        (t) => String(t.placeOfSupply).toLowerCase().trim() === warehouse
+      );
+    } else if (gstFilter === "inter") {
+      list = list.filter(
         (t) => String(t.placeOfSupply).toLowerCase().trim() !== warehouse
       );
     }
-    return data.recentTransactions;
+
+    // Reconciliation status filter
+    if (reconFilter === "reconciled") {
+      list = list.filter((t) => t.reconciliationStatus === "Reconciled");
+    } else if (reconFilter === "pending") {
+      list = list.filter((t) => t.reconciliationStatus === "Pending Review");
+    }
+
+    return list;
+  })();
+
+  // Visible rows aggregate totals for quick auditing reconciliation
+  const visibleTotals = (() => {
+    return filteredTransactions.reduce(
+      (acc, tx) => {
+        acc.subtotal += tx.subtotal || 0;
+        acc.tax += (tx.cgst || 0) + (tx.sgst || 0) + (tx.igst || 0);
+        acc.total += tx.total || 0;
+        return acc;
+      },
+      { subtotal: 0, tax: 0, total: 0 }
+    );
   })();
 
   // GSTR-1 CSV Report Export
@@ -231,16 +264,16 @@ function AdminFinancialDashboard() {
       <AdminSidebar />
 
       <main className="admin-main">
-        <header className="admin-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+        <header className="fin-header-wrap">
           <div>
             <h1>Financial Dashboard</h1>
-            <p className="admin-orders-subtitle" style={{ margin: "6px 0 0", color: "var(--admin-muted)" }}>
+            <p className="fin-subtitle">
               GST compliance calculation, Place of Supply matching, and payment ledger reconciliation.
             </p>
           </div>
           {!isLoading && (
             <button className="gstr-export-btn" onClick={exportGstr1Csv}>
-              📥 Export GSTR-1 Report (CSV)
+              <span>📥</span> Export GSTR-1 Report (CSV)
             </button>
           )}
         </header>
@@ -254,74 +287,137 @@ function AdminFinancialDashboard() {
           </div>
         ) : (
           <>
-            {/* Financial Cards Grid */}
-            <div className="stats">
-              <div className="card analytics-card">
-                <span>Gross Revenue</span>
-                <p style={{ color: "#3b82f6" }}>
-                  Rs {(data?.summary?.grossRevenue || 0).toLocaleString("en-IN")}
-                </p>
+            {/* Top 5 Financial KPI Cards Grid */}
+            <div className="fin-kpi-grid">
+              <div className="fin-kpi-card fin-kpi-revenue">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Gross Revenue</span>
+                  <div className="fin-kpi-icon-wrap">
+                    <span>📈</span>
+                  </div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.grossRevenue || 0).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag blue">Total Invoiced</span>
+                </div>
               </div>
-              <div className="card analytics-card highlight-green" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(16, 185, 129, 0.08) 100%)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-                <span>Net Earnings</span>
-                <p style={{ color: "#10b981" }}>
-                  Rs {(data?.summary?.netRevenue || 0).toLocaleString("en-IN")}
-                </p>
-                <small className="admin-overview-subnote">Gross - GST - Shipping</small>
+
+              <div className="fin-kpi-card fin-kpi-earnings highlight-green">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Net Earnings</span>
+                  <div className="fin-kpi-icon-wrap green">
+                    <span>💰</span>
+                  </div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.netRevenue || 0).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag green">Gross - GST - Shipping</span>
+                </div>
               </div>
-              <div className="card analytics-card">
-                <span>Total GST Tax</span>
-                <p style={{ color: "#8b5cf6" }}>
-                  Rs {(data?.summary?.taxGST || 0).toLocaleString("en-IN")}
-                </p>
+
+              <div className="fin-kpi-card fin-kpi-tax">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Total GST Tax</span>
+                  <div className="fin-kpi-icon-wrap purple">
+                    <span>🏛️</span>
+                  </div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.taxGST || 0).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag purple">Tax Collected</span>
+                </div>
               </div>
-              <div className="card analytics-card">
-                <span>CGST + SGST (Intra-state)</span>
-                <p style={{ color: "#3b82f6" }}>
-                  Rs {((data?.summary?.cgst || 0) + (data?.summary?.sgst || 0)).toLocaleString("en-IN")}
-                </p>
-                <small className="admin-overview-subnote">Warehouse State: {data?.warehouseState || "Karnataka"}</small>
+
+              <div className="fin-kpi-card fin-kpi-intra">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">CGST + SGST</span>
+                  <div className="fin-kpi-icon-wrap sky">
+                    <span>📍</span>
+                  </div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{((data?.summary?.cgst || 0) + (data?.summary?.sgst || 0)).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag sky" title={`Warehouse State: ${data?.warehouseState || "Karnataka"}`}>
+                    Intra-state • {data?.warehouseState || "Karnataka"}
+                  </span>
+                </div>
               </div>
-              <div className="card analytics-card">
-                <span>IGST (Inter-state)</span>
-                <p style={{ color: "#6366f1" }}>
-                  Rs {(data?.summary?.igst || 0).toLocaleString("en-IN")}
-                </p>
+
+              <div className="fin-kpi-card fin-kpi-inter">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">IGST (Inter-state)</span>
+                  <div className="fin-kpi-icon-wrap indigo">
+                    <span>🌐</span>
+                  </div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.igst || 0).toLocaleString("en-IN")}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag indigo">Inter-state Orders</span>
+                </div>
               </div>
             </div>
 
-            {/* Reconciliation Tools Row */}
-            <div className="card recon-tools-section">
-              <div className="recon-tools-header" style={{ borderColor: "var(--admin-border)" }}>
-                <h3>🔄 Automated Payment Reconciliation Audit</h3>
-                <span className="recon-badge">Razorpay API Sync Status: Online</span>
+            {/* Automated Payment Reconciliation Audit Section */}
+            <div className="fin-recon-section">
+              <div className="fin-recon-header">
+                <div className="fin-recon-title-area">
+                  <h3>🔄 Automated Payment Reconciliation Audit</h3>
+                </div>
+                <span className="fin-recon-badge-live">
+                  <span className="fin-pulse-dot"></span>
+                  Razorpay API Sync Status: Online
+                </span>
               </div>
-              <div className="recon-stats-grid">
-                <div className="recon-stat-box green" style={{ background: "rgba(16, 185, 129, 0.03)", borderColor: "var(--admin-border)" }}>
-                  <strong style={{ color: "#10b981" }}>{reconStats.reconciled}</strong>
-                  <span>Reconciled Transactions</span>
+              <div className="fin-recon-stats-grid">
+                <div className="fin-recon-stat-card green">
+                  <div className="fin-recon-icon-box green">✓</div>
+                  <div className="fin-recon-stat-details">
+                    <strong>{reconStats.reconciled}</strong>
+                    <span>Reconciled Transactions</span>
+                  </div>
                 </div>
-                <div className="recon-stat-box orange" style={{ background: "rgba(245, 158, 11, 0.03)", borderColor: "var(--admin-border)" }}>
-                  <strong style={{ color: "#f59e0b" }}>{reconStats.pending}</strong>
-                  <span>Pending Review</span>
+                <div className="fin-recon-stat-card orange">
+                  <div className="fin-recon-icon-box orange">⏱</div>
+                  <div className="fin-recon-stat-details">
+                    <strong>{reconStats.pending}</strong>
+                    <span>Pending Review</span>
+                  </div>
                 </div>
-                <div className="recon-stat-box blue" style={{ background: "rgba(59, 130, 246, 0.03)", borderColor: "var(--admin-border)" }}>
-                  <strong style={{ color: "#3b82f6" }}>{reconStats.total}</strong>
-                  <span>Total Scanned Ledger Logs</span>
+                <div className="fin-recon-stat-card blue">
+                  <div className="fin-recon-icon-box blue">📊</div>
+                  <div className="fin-recon-stat-details">
+                    <strong>{reconStats.total}</strong>
+                    <span>Total Scanned Ledger Logs</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Charts Row */}
-            <div className="sales-dashboard-grid">
-              <div className="card sales-dashboard-chart-card double-width">
+            <div className="fin-charts-grid">
+              <div className="fin-chart-card">
                 <h3>📈 Revenue & Profit Growth</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
-              <div className="card sales-dashboard-chart-card">
+              <div className="fin-chart-card">
                 <h3>📊 Fee Components Breakdown</h3>
                 <div className="chart-container">
                   <Bar data={feesBreakdownData} options={barOptions} />
@@ -330,24 +426,71 @@ function AdminFinancialDashboard() {
             </div>
 
             {/* Recent Transactions Ledger */}
-            <div className="card financial-ledger-card">
-              <div className="ledger-card-header-row" style={{ borderColor: "var(--admin-border)" }}>
-                <h3>📒 Transaction Audit Ledger & GSTR Place of Supply</h3>
+            <div className="fin-ledger-card">
+              <div className="fin-ledger-header">
+                <div className="fin-ledger-title-wrap">
+                  <h3>📒 Transaction Audit Ledger & GSTR Place of Supply</h3>
+                  <span className="fin-ledger-count-badge">
+                    {filteredTransactions.length} of {data?.recentTransactions?.length || 0} entries
+                  </span>
+                </div>
                 
-                {/* GST Place of Supply Filter */}
-                <div className="pos-filter-group">
-                  <label htmlFor="pos-filter">Place of Supply:</label>
-                  <select 
-                    id="pos-filter"
-                    value={gstFilter} 
-                    onChange={(e) => setGstFilter(e.target.value)}
-                    className="pos-filter-select"
-                    style={{ background: "var(--admin-surface)", color: "var(--admin-text)", borderColor: "var(--admin-border)" }}
-                  >
-                    <option value="all">All States</option>
-                    <option value="intra">Intra-state (CGST + SGST)</option>
-                    <option value="inter">Inter-state (IGST)</option>
-                  </select>
+                <div className="fin-ledger-controls">
+                  {/* Search bar */}
+                  <div className="fin-search-box">
+                    <span className="fin-search-icon">🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Search ID, customer, state..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="fin-search-input"
+                    />
+                  </div>
+
+                  {/* GST Place of Supply Filter */}
+                  <div className="pos-filter-group">
+                    <select 
+                      id="pos-filter"
+                      value={gstFilter} 
+                      onChange={(e) => setGstFilter(e.target.value)}
+                      className="pos-filter-select"
+                      title="Filter by GST Place of Supply"
+                    >
+                      <option value="all">🌐 All States</option>
+                      <option value="intra">📍 Intra-state (CGST+SGST)</option>
+                      <option value="inter">✈️ Inter-state (IGST)</option>
+                    </select>
+                  </div>
+
+                  {/* Reconciliation Filter */}
+                  <div className="pos-filter-group">
+                    <select 
+                      id="recon-filter"
+                      value={reconFilter} 
+                      onChange={(e) => setReconFilter(e.target.value)}
+                      className="pos-filter-select"
+                      title="Filter by Reconciliation Status"
+                    >
+                      <option value="all">⚡ All Status</option>
+                      <option value="reconciled">✓ Reconciled</option>
+                      <option value="pending">⏱ Pending Review</option>
+                    </select>
+                  </div>
+
+                  {(searchTerm || gstFilter !== "all" || reconFilter !== "all") && (
+                    <button 
+                      className="fin-reset-btn" 
+                      onClick={() => {
+                        setSearchTerm("");
+                        setGstFilter("all");
+                        setReconFilter("all");
+                      }}
+                      title="Reset all filters"
+                    >
+                      ✕ Reset
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -358,62 +501,103 @@ function AdminFinancialDashboard() {
                       <th style={{ borderColor: "var(--admin-border)" }}>Order ID</th>
                       <th style={{ borderColor: "var(--admin-border)" }}>Date</th>
                       <th style={{ borderColor: "var(--admin-border)" }}>Place of Supply</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Taxable Subtotal</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>CGST</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>SGST</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>IGST</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Discount</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Total Collected</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Reconciliation</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Taxable Subtotal</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>CGST</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>SGST</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>IGST</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Discount</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Total Collected</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Reconciliation</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredTransactions.length > 0 ? (
-                      filteredTransactions.map((tx) => (
-                        <tr key={tx._id}>
-                          <td className="order-code" style={{ borderColor: "var(--admin-border-soft)", fontFamily: "monospace", fontWeight: "bold" }}>
-                            #{tx._id.slice(-6).toUpperCase()}
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            {new Date(tx.createdAt).toLocaleDateString("en-IN")}
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            <strong>{tx.placeOfSupply}</strong>
-                            <small style={{ display: "block", color: "var(--admin-muted)" }}>{tx.customer}</small>
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>Rs {tx.subtotal.toFixed(2)}</td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            {tx.cgst > 0 ? `Rs ${tx.cgst.toFixed(2)}` : "—"}
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            {tx.sgst > 0 ? `Rs ${tx.sgst.toFixed(2)}` : "—"}
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            {tx.igst > 0 ? `Rs ${tx.igst.toFixed(2)}` : "—"}
-                          </td>
-                          <td className={tx.discount > 0 ? "text-red" : ""} style={{ borderColor: "var(--admin-border-soft)" }}>
-                            {tx.discount > 0 ? `- Rs ${tx.discount.toFixed(2)}` : "—"}
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            <strong>Rs {tx.total.toFixed(2)}</strong>
-                          </td>
-                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                            <span className={`recon-status-badge ${tx.reconciliationStatus.toLowerCase().replace(" ", "-")}`}>
-                              {tx.reconciliationStatus}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
+                      filteredTransactions.map((tx) => {
+                        const isIntra = String(tx.placeOfSupply).toLowerCase().trim() === String(data?.warehouseState || "Karnataka").toLowerCase().trim();
+                        return (
+                          <tr key={tx._id}>
+                            <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                              <span className="fin-order-code-badge">
+                                #{tx._id.slice(-6).toUpperCase()}
+                              </span>
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", whiteSpace: "nowrap" }}>
+                              {new Date(tx.createdAt).toLocaleDateString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric"
+                              })}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                              <div style={{ fontWeight: 600, color: "var(--admin-text)" }}>{tx.placeOfSupply}</div>
+                              <small style={{ display: "block", color: "var(--admin-muted)" }}>{tx.customer}</small>
+                              <span className={`fin-pos-pill ${isIntra ? "intra" : "inter"}`}>
+                                {isIntra ? "Intra-state" : "Inter-state"}
+                              </span>
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace", fontWeight: 600 }}>
+                              ₹{tx.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {tx.cgst > 0 ? `₹${tx.cgst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {tx.sgst > 0 ? `₹${tx.sgst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {tx.igst > 0 ? `₹${tx.igst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                            </td>
+                            <td className={tx.discount > 0 ? "text-red" : ""} style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {tx.discount > 0 ? `- ₹${tx.discount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              <strong style={{ color: "var(--admin-text)", fontSize: "13.5px" }}>
+                                ₹{tx.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </strong>
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "center" }}>
+                              <span className={`recon-status-badge ${tx.reconciliationStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                {tx.reconciliationStatus === "Reconciled" ? "✓ Reconciled" : "⏱ Pending Review"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: "center", padding: "30px", borderColor: "var(--admin-border-soft)" }}>
-                          No transaction matches the filter option.
+                        <td colSpan="10" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
+                          <div style={{ fontSize: "28px", marginBottom: "8px" }}>📑</div>
+                          <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching transactions found</p>
+                          <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the Place of Supply filter.</small>
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {/* Summary Footer for Filtered Transactions */}
+              {filteredTransactions.length > 0 && (
+                <div className="fin-ledger-summary-footer">
+                  <div className="fin-summary-stats">
+                    <div className="fin-summary-stat-item">
+                      <span>Visible Subtotal:</span>
+                      <strong>₹{visibleTotals.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div className="fin-summary-stat-item">
+                      <span>GST Tax:</span>
+                      <strong style={{ color: "#7c3aed" }}>₹{visibleTotals.tax.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div className="fin-summary-stat-item">
+                      <span>Total Invoiced:</span>
+                      <strong style={{ color: "#2563eb" }}>₹{visibleTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--admin-muted)", fontWeight: 600 }}>
+                    Warehouse State: <strong style={{ color: "var(--admin-text)" }}>{data?.warehouseState || "Karnataka"}</strong>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}

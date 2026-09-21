@@ -83,8 +83,6 @@ function MyOrders() {
   const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
   const [activeKindleGuideItem, setActiveKindleGuideItem] = useState(null);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const isDummyPaymentEnabled =
-    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
   const deferredSelectedView = useDeferredValue(selectedView);
 
   const getAuthHeaders = () => ({
@@ -186,7 +184,7 @@ function MyOrders() {
 
   const handleContinuePayment = async (order) => {
     if (!order?._id) return;
-    if (!isDummyPaymentEnabled && !razorpayKey) {
+    if (!razorpayKey) {
       setPageMessage("Payment gateway key is missing. Please contact support.");
       return;
     }
@@ -194,53 +192,11 @@ function MyOrders() {
     setPageMessage("");
 
     try {
-      let RazorpayConstructor = window.Razorpay;
-      if (!isDummyPaymentEnabled) {
-        RazorpayConstructor = await loadRazorpayCheckout();
-      }
+      const RazorpayConstructor = await loadRazorpayCheckout();
 
       const { data } = await axios.post("/api/payment/create-order", {
         amount: Number(order.total || 0)
       });
-
-      const isOrderDummy =
-        isDummyPaymentEnabled ||
-        Boolean(data?.isDummy) ||
-        String(data?.id || "").startsWith("dummy_order_");
-
-      if (isOrderDummy) {
-        const wantsToProceed = window.confirm("Dummy payment mode: click OK to mark this order as paid.");
-        if (!wantsToProceed) {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
-          await loadOrders();
-          setPageMessage("Payment was cancelled. You can retry anytime.");
-          return;
-        }
-
-        const response = {
-          razorpay_order_id: data.id || `dummy_order_${Date.now()}`,
-          razorpay_payment_id: `dummy_pay_${Date.now()}`,
-          razorpay_signature: "dummy_signature",
-          dummy: true
-        };
-
-        const verify = await axios.post("/api/payment/verify", response);
-        if (!verify.data?.success) {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
-          await loadOrders();
-          setPageMessage("Payment verification failed. Please try again.");
-          return;
-        }
-
-        await updateOrderPaymentStatus(order._id, {
-          paymentStatus: "Paid",
-          razorpayOrderId: response.razorpay_order_id,
-          razorpayPaymentId: response.razorpay_payment_id
-        });
-        await loadOrders();
-        showToast("Payment successful. Order is now confirmed.");
-        return;
-      }
 
       const cleanPhone = String(order?.shipping?.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(order?.user?.email || order?.shipping?.email || "").trim();
@@ -272,7 +228,8 @@ function MyOrders() {
             await updateOrderPaymentStatus(order._id, {
               paymentStatus: "Paid",
               razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature
             });
             await loadOrders();
             showToast("Payment successful. Order is now confirmed.");
@@ -797,24 +754,14 @@ function MyOrders() {
         </div>
       ) : null}
       {showReviewModal && (
-        <div className="review-redirect-modal-backdrop">
-          <div className="review-redirect-modal">
+        <div className="review-redirect-modal-backdrop" onClick={() => setShowReviewModal(false)}>
+          <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Thank you for your purchase!</h2>
-            <p>We hope you love your new product. We would be extremely grateful if you could share your feedback with us.</p>
+            <p>Your order has been placed successfully. You can track your order status and access your items below.</p>
             <div className="review-redirect-modal-actions">
               <button
                 type="button"
                 className="review-redirect-btn-primary"
-                onClick={() => {
-                  setShowReviewModal(false);
-                  window.location.href = "https://review.digitalsanskritguru.com/";
-                }}
-              >
-                Leave a Review
-              </button>
-              <button
-                type="button"
-                className="review-redirect-btn-secondary"
                 onClick={() => setShowReviewModal(false)}
               >
                 Go to My Orders
