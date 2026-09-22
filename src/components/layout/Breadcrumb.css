@@ -42,8 +42,29 @@
   color: var(--site-text-muted, #64748b);
 }
 
+.site-breadcrumb-link {
+  color: var(--site-text-soft, #64748b);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.site-breadcrumb-link:hover {
+  color: var(--site-link, #b45309);
+  text-decoration: underline;
+}
+
+.site-breadcrumb-current {
+  color: var(--site-text, #0f172a);
+  font-weight: 700;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .site-breadcrumb-separator {
-  color: var(--site-muted, #94a3b8);
+  color: var(--site-border-dark, #94a3b8);
   font-size: 13px;
   font-weight: 400;
   margin: 0 8px;

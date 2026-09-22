@@ -6,7 +6,34 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  HelpCircle,
+  Package,
+  RotateCcw,
+  ShieldCheck,
+  X
+} from "lucide-react";
 import "./MyOrders.css";
+
+const CANCELLATION_REASONS = [
+  "Ordered by mistake",
+  "Found a better price elsewhere",
+  "Need to change shipping address or contact info",
+  "Delivery time is too long",
+  "Changed my mind / No longer needed",
+  "Other reason"
+];
+
+const RETURN_REASONS = [
+  "Damaged or defective product received",
+  "Wrong item delivered",
+  "Item does not match description",
+  "Missing parts or accessories",
+  "Quality not as expected",
+  "Other reason"
+];
 
 const RETURN_WINDOW_DAYS = 7;
 const INITIAL_VISIBLE_ORDERS = 8;
@@ -82,6 +109,14 @@ function MyOrders() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
   const [activeKindleGuideItem, setActiveKindleGuideItem] = useState(null);
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState("Ordered by mistake");
+  const [customCancelReason, setCustomCancelReason] = useState("");
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [returnTarget, setReturnTarget] = useState(null);
+  const [returnReason, setReturnReason] = useState("Damaged or defective product received");
+  const [customReturnReason, setCustomReturnReason] = useState("");
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
   const deferredSelectedView = useDeferredValue(selectedView);
 
@@ -148,37 +183,59 @@ function MyOrders() {
     await axios.put(`/api/orders/${orderId}/payment-status`, payload, getAuthHeaders());
   };
 
-  const cancelOrder = async (orderId) => {
-    const shouldCancel = window.confirm("Cancel this order before shipping?");
-    if (!shouldCancel) return;
+  const handleConfirmCancelOrder = async (e) => {
+    if (e) e.preventDefault();
+    if (!orderToCancel) return;
+    const finalReason =
+      cancelReason === "Other reason" && customCancelReason.trim()
+        ? customCancelReason.trim()
+        : cancelReason;
 
+    setIsCancellingOrder(true);
     try {
-      await axios.put(`/api/orders/${orderId}/cancel`, {}, getAuthHeaders());
+      await axios.put(`/api/orders/${orderToCancel._id}/cancel`, { reason: finalReason }, getAuthHeaders());
       await loadOrders();
       setPageMessage("Order cancelled successfully.");
+      showToast("Order cancelled successfully.", "success");
+      setOrderToCancel(null);
+      setCancelReason("Ordered by mistake");
+      setCustomCancelReason("");
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || "Unable to cancel this order right now.");
+      const errMsg = err?.response?.data?.message || "Unable to cancel this order right now.";
+      setPageMessage(errMsg);
+      showToast(errMsg, "error");
+    } finally {
+      setIsCancellingOrder(false);
     }
   };
 
-  const requestReturn = async (orderId, itemId) => {
-    const reason = window.prompt("Why are you returning this product?", "Requested by customer");
-    if (reason === null) return;
+  const handleConfirmReturnRequest = async (e) => {
+    if (e) e.preventDefault();
+    if (!returnTarget) return;
+    const finalReason =
+      returnReason === "Other reason" && customReturnReason.trim()
+        ? customReturnReason.trim()
+        : returnReason;
 
-    const requestKey = `${orderId}:${itemId}`;
-    setRequestingReturnOrderId(requestKey);
+    setIsSubmittingReturn(true);
     try {
       await axios.put(
-        `/api/orders/${orderId}/items/${itemId}/return-request`,
-        { reason },
+        `/api/orders/${returnTarget.orderId}/items/${returnTarget.itemId}/return-request`,
+        { reason: finalReason },
         getAuthHeaders()
       );
       await loadOrders();
       setPageMessage("Return request submitted successfully.");
+      showToast("Return request submitted successfully.", "success");
+      setReturnTarget(null);
+      setReturnReason("Damaged or defective product received");
+      setCustomReturnReason("");
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || "Unable to submit the return request right now.");
+      const errMsg = err?.response?.data?.message || "Unable to submit the return request right now.";
+      setPageMessage(errMsg);
+      showToast(errMsg, "error");
     } finally {
-      setRequestingReturnOrderId("");
+      setIsSubmittingReturn(false);
     }
   };
 
@@ -446,14 +503,37 @@ function MyOrders() {
 
                     return (
                       <div key={i} className="my-order-item">
-                        <div className="my-order-item-content">
+                        <div className="my-order-item-main">
                           {itemId ? (
-                            <Link to={`/product/${itemId}`} className="my-order-item-link">
-                              <strong>{item.name}</strong>
+                            <Link to={`/product/${itemId}`} className="my-order-item-image-link" tabIndex={-1}>
+                              <img
+                                src={item.image || item.product?.image || "/no-image.webp"}
+                                alt={item.name}
+                                className="my-order-item-thumb"
+                                onError={(e) => {
+                                  e.currentTarget.src = "/no-image.webp";
+                                }}
+                              />
                             </Link>
                           ) : (
-                            <strong>{item.name}</strong>
+                            <img
+                              src={item.image || item.product?.image || "/no-image.webp"}
+                              alt={item.name}
+                              className="my-order-item-thumb"
+                              onError={(e) => {
+                                e.currentTarget.src = "/no-image.webp";
+                              }}
+                            />
                           )}
+
+                          <div className="my-order-item-content">
+                            {itemId ? (
+                              <Link to={`/product/${itemId}`} className="my-order-item-link">
+                                <strong>{item.name}</strong>
+                              </Link>
+                            ) : (
+                              <strong>{item.name}</strong>
+                            )}
                           {item.productType === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length > 0 && (
                             <div className="my-order-item-bundle-details" style={{ marginTop: '8px', paddingLeft: '12px', borderLeft: '2px solid var(--site-border)' }}>
                               <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 'bold', color: 'var(--site-text-soft)' }}>
@@ -557,16 +637,22 @@ function MyOrders() {
                             </div>
                           )}
                         </div>
-                        <div className="my-order-item-side">
+                      </div>
+                      <div className="my-order-item-side">
                           <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
                           <span>Qty: {item.quantity || 1}</span>
                           {canRequestReturn ? (
                             <button
                               className="my-order-return-btn"
-                              onClick={() => requestReturn(order._id, itemId)}
-                              disabled={requestingReturnOrderId === `${order._id}:${itemId}`}
+                              onClick={() =>
+                                setReturnTarget({
+                                  orderId: order._id,
+                                  itemId,
+                                  itemName: item?.name || "Product"
+                                })
+                              }
                             >
-                              {requestingReturnOrderId === `${order._id}:${itemId}` ? "Submitting..." : "Return product"}
+                              Return product
                             </button>
                           ) : null}
                           {isPaid && status !== "Cancelled" ? (
@@ -640,7 +726,7 @@ function MyOrders() {
                 {canCancelOrder ? (
                   <button
                     className="my-order-cancel-btn"
-                    onClick={() => cancelOrder(order._id)}
+                    onClick={() => setOrderToCancel(order)}
                   >
                     Cancel order
                   </button>
@@ -850,6 +936,261 @@ function MyOrders() {
               style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#ffffff", userSelect: "none" }}
               allow="fullscreen"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Premium Order Cancellation Modal */}
+      {orderToCancel && (
+        <div
+          className="order-cancel-modal-backdrop"
+          onClick={() => {
+            if (!isCancellingOrder) setOrderToCancel(null);
+          }}
+        >
+          <div
+            className="order-cancel-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="order-cancel-modal-header">
+              <div className="order-cancel-modal-header-info">
+                <div className="order-cancel-modal-icon-badge">
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h3 className="order-cancel-modal-title">Cancel Order</h3>
+                  <p className="order-cancel-modal-id">
+                    ID: #{orderToCancel._id.slice(-8).toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="order-modal-close-btn"
+                onClick={() => {
+                  if (!isCancellingOrder) setOrderToCancel(null);
+                }}
+                disabled={isCancellingOrder}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCancelOrder} className="order-cancel-form">
+              {/* Product Preview Cards */}
+              <div className="order-cancel-items-scroll">
+                {(orderToCancel.items || []).map((item, idx) => (
+                  <div key={idx} className="order-cancel-item-row">
+                    <img
+                      src={item.image || "/no-image.webp"}
+                      alt={item.name}
+                      className="order-cancel-item-thumb"
+                      onError={(e) => {
+                        e.currentTarget.src = "/no-image.webp";
+                      }}
+                    />
+                    <div className="order-cancel-item-details">
+                      <p className="order-cancel-item-name">{item.name}</p>
+                      <div className="order-cancel-item-sub">
+                        <span>Qty: {item.quantity || 1}</span>
+                        <span>•</span>
+                        <span>
+                          {formatCurrencyExact(
+                            Number(item.price || 0),
+                            item.currency || orderToCancel.currencyDisplay?.currency || "INR"
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total & Refund Info Banner */}
+              <div className="order-cancel-summary-box">
+                <div className="order-cancel-summary-row">
+                  <span>Order Total:</span>
+                  <strong>
+                    {formatCurrencyExact(
+                      Number(orderToCancel.total || 0),
+                      orderToCancel.currencyDisplay?.currency || "INR"
+                    )}
+                  </strong>
+                </div>
+
+                {getEffectivePaymentStatus(orderToCancel) === "Paid" ? (
+                  <div className="order-cancel-refund-alert">
+                    <ShieldCheck size={16} className="text-emerald" />
+                    <div>
+                      <strong>100% Refund Guarantee</strong>
+                      <p>
+                        Your payment will be automatically refunded back to your original source within 3–5 business days.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="order-cancel-unpaid-alert">
+                    <CheckCircle2 size={16} className="text-sky" />
+                    <span>No payment was captured. The order will be cancelled with zero fee.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Cancellation Reason Dropdown */}
+              <div className="order-cancel-field-group">
+                <label className="order-cancel-field-label">
+                  Reason for Cancellation <strong className="required-star">*</strong>
+                </label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="order-cancel-select"
+                  required
+                >
+                  {CANCELLATION_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+
+                {cancelReason === "Other reason" && (
+                  <textarea
+                    value={customCancelReason}
+                    onChange={(e) => setCustomCancelReason(e.target.value)}
+                    placeholder="Please specify why you want to cancel..."
+                    className="order-cancel-textarea"
+                    rows={2}
+                    required
+                  />
+                )}
+
+                {cancelReason === "Need to change shipping address or contact info" && (
+                  <div className="order-cancel-tip-box">
+                    <span>💡 <strong>Tip:</strong> Need to update your delivery address? Reach out on our WhatsApp support with your Order ID to update it without cancelling!</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="order-cancel-modal-actions">
+                <button
+                  type="button"
+                  className="order-cancel-btn-keep"
+                  onClick={() => setOrderToCancel(null)}
+                  disabled={isCancellingOrder}
+                >
+                  Don't Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="order-cancel-btn-confirm"
+                  disabled={isCancellingOrder}
+                >
+                  {isCancellingOrder ? "Cancelling..." : "Confirm Cancellation"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Return Request Modal */}
+      {returnTarget && (
+        <div
+          className="order-cancel-modal-backdrop"
+          onClick={() => {
+            if (!isSubmittingReturn) setReturnTarget(null);
+          }}
+        >
+          <div
+            className="order-cancel-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="order-cancel-modal-header">
+              <div className="order-cancel-modal-header-info">
+                <div className="order-cancel-modal-icon-badge return-badge">
+                  <RotateCcw size={22} />
+                </div>
+                <div>
+                  <h3 className="order-cancel-modal-title">Return Product</h3>
+                  <p className="order-cancel-modal-id">{returnTarget.itemName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="order-modal-close-btn"
+                onClick={() => {
+                  if (!isSubmittingReturn) setReturnTarget(null);
+                }}
+                disabled={isSubmittingReturn}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReturnRequest} className="order-cancel-form">
+              <div className="order-cancel-field-group">
+                <label className="order-cancel-field-label">
+                  Reason for Return <strong className="required-star">*</strong>
+                </label>
+                <select
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  className="order-cancel-select"
+                  required
+                >
+                  {RETURN_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="order-cancel-field-label" style={{ marginTop: "12px" }}>
+                  Additional Details / Feedback
+                </label>
+                <textarea
+                  value={customReturnReason}
+                  onChange={(e) => setCustomReturnReason(e.target.value)}
+                  placeholder="Provide any additional comments (optional)..."
+                  className="order-cancel-textarea"
+                  rows={3}
+                />
+              </div>
+
+              <div className="order-cancel-summary-box">
+                <div className="order-cancel-refund-alert">
+                  <ShieldCheck size={16} className="text-emerald" />
+                  <div>
+                    <strong>Easy Return Policy</strong>
+                    <p>
+                      Our support team will review your request and arrange return shipping / refund within 24 hours.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="order-cancel-modal-actions">
+                <button
+                  type="button"
+                  className="order-cancel-btn-keep"
+                  onClick={() => setReturnTarget(null)}
+                  disabled={isSubmittingReturn}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="order-cancel-btn-confirm return-submit"
+                  disabled={isSubmittingReturn}
+                >
+                  {isSubmittingReturn ? "Submitting..." : "Submit Return Request"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

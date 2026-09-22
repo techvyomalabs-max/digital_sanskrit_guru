@@ -43,7 +43,8 @@ import {
   Globe,
   Navigation,
   Hash,
-  MessageCircle
+  MessageCircle,
+  Trash2
 } from "lucide-react";
 
 function getPasswordStrength(pwd) {
@@ -273,7 +274,7 @@ function MyAccount() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [showAddressForm, setShowAddressForm] = useState(addresses.length === 0);
   const [editingIndex, setEditingIndex] = useState(null);
-  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null);
+  const [addressToDelete, setAddressToDelete] = useState(null);
   const [addressError, setAddressError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const [addressLabel, setAddressLabel] = useState("Home");
@@ -746,8 +747,10 @@ function MyAccount() {
   const saveAddress = async () => {
     const errors = {};
     const digits = String(phone || "").replace(/\D/g, "");
+    const cleanPhone = String(phone || "").trim();
     const cleanName = String(name || "").trim();
     const cleanAddress = String(address || "").trim();
+    const cleanLandmark = String(landmark || "").trim();
     const cleanCity = String(city || "").trim();
     const cleanState = String(state || "").trim();
     const cleanPincode = String(pincode || "").trim();
@@ -759,7 +762,7 @@ function MyAccount() {
     if (!cleanState) errors.state = "State is required.";
     if (!cleanCountry) errors.country = "Country is required.";
 
-    const phoneValidation = validatePhoneNumber(phone, cleanCountry);
+    const phoneValidation = validatePhoneNumber(cleanPhone, cleanCountry);
     if (!phoneValidation.isValid) {
       errors.phone = phoneValidation.message;
     }
@@ -781,22 +784,22 @@ function MyAccount() {
 
     const existingAddress = editingIndex === null ? null : addresses[editingIndex] || null;
     const nextCoordinates = await fetchCoordinatesForAddress({
-      address,
-      landmark,
-      city,
-      state,
+      address: cleanAddress,
+      landmark: cleanLandmark,
+      city: cleanCity,
+      state: cleanState,
       pincode: cleanPincode,
       country: cleanCountry
     });
 
     const payload = {
       label: addressLabel,
-      name,
-      phone: cleanPhone,
-      address,
-      landmark,
-      city,
-      state,
+      name: cleanName,
+      phone: phoneValidation.cleanPhone || cleanPhone,
+      address: cleanAddress,
+      landmark: cleanLandmark,
+      city: cleanCity,
+      state: cleanState,
       pincode: cleanPincode,
       country: cleanCountry,
       latitude:
@@ -871,32 +874,6 @@ function MyAccount() {
           <p className="my-account-subtitle">
             Access your orders, saved items, and account shortcuts just like an account home page.
           </p>
-        </div>
-
-        <div className="my-account-highlight">
-          <span className="my-account-highlight-label">Latest order</span>
-          {isLoadingOrders ? (
-            <LoadingSpinner text="Checking orders..." minHeight="70px" size="24px" />
-          ) : orderSummary.latestOrder ? (
-            <>
-              <strong>{formatDate(orderSummary.latestOrder.createdAt)}</strong>
-              <p>
-                {orderSummary.latestOrder.status || "Pending"} •{" "}
-                {formatCurrencyForUser(orderSummary.latestOrder.total)}
-              </p>
-              <Link to="/my-orders" className="my-account-pill-link">
-                Track order
-              </Link>
-            </>
-          ) : (
-            <>
-              <strong>No orders yet</strong>
-              <p>Start shopping to see your recent orders here.</p>
-              <Link to="/" className="my-account-pill-link">
-                Continue shopping
-              </Link>
-            </>
-          )}
         </div>
       </section>
 
@@ -1486,36 +1463,13 @@ function MyAccount() {
                         </button>
                       )}
 
-                      {confirmDeleteIndex === index ? (
-                        <div className="my-account-delete-confirm-box">
-                          <span>Delete?</span>
-                          <button
-                            type="button"
-                            className="my-account-delete-confirm-btn"
-                            onClick={() => {
-                              deleteAddress(index);
-                              setConfirmDeleteIndex(null);
-                            }}
-                          >
-                            ✓ Yes
-                          </button>
-                          <button
-                            type="button"
-                            className="my-account-delete-cancel-btn"
-                            onClick={() => setConfirmDeleteIndex(null)}
-                          >
-                            ✕ No
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="my-account-addr-btn danger"
-                          onClick={() => setConfirmDeleteIndex(index)}
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="my-account-addr-btn danger"
+                        onClick={() => setAddressToDelete({ index, address: item })}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
                     </div>
 
                     {!item.isDefault ? (
@@ -1861,6 +1815,59 @@ function MyAccount() {
             </div>
           </div>
         ) : null}
+
+        {/* Delete Address Confirmation Popup Modal */}
+        {addressToDelete !== null && (
+          <div
+            className="address-delete-modal-backdrop"
+            onClick={() => setAddressToDelete(null)}
+          >
+            <div
+              className="address-delete-modal-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="address-delete-modal-icon-wrap">
+                <span>🗑️</span>
+              </div>
+              <h3 className="address-delete-modal-title">Delete Address?</h3>
+              <p className="address-delete-modal-desc">
+                Are you sure you want to delete this delivery address? This action cannot be undone.
+              </p>
+
+              {addressToDelete.address && (
+                <div className="address-delete-preview-box">
+                  <div style={{ fontWeight: 700, marginBottom: "3px" }}>
+                    {addressToDelete.address.name} {addressToDelete.address.phone ? `(${addressToDelete.address.phone})` : ""}
+                  </div>
+                  <div>{addressToDelete.address.address}</div>
+                  <div>
+                    {[addressToDelete.address.city, addressToDelete.address.state, addressToDelete.address.pincode, addressToDelete.address.country].filter(Boolean).join(", ")}
+                  </div>
+                </div>
+              )}
+
+              <div className="address-delete-modal-actions">
+                <button
+                  type="button"
+                  className="address-delete-btn-cancel"
+                  onClick={() => setAddressToDelete(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="address-delete-btn-confirm"
+                  onClick={() => {
+                    removeAddress(addressToDelete.index);
+                    setAddressToDelete(null);
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="my-account-panel my-account-panel-compact">

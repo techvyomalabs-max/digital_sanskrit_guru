@@ -8,34 +8,40 @@ import "./Breadcrumb.css";
 const ROUTE_MAP = {
   // Store Pages
   collection: { label: "Store Catalog", path: "/collection" },
-  search: { label: "Search Results", path: "/search" },
+  search: { label: "Search Results", path: "/search", parent: { label: "Store Catalog", path: "/collection" } },
   cart: { label: "Shopping Cart", path: "/cart" },
   checkout: { label: "Checkout", path: "/checkout", parent: { label: "Shopping Cart", path: "/cart" } },
-  wishlist: { label: "My Wishlist", path: "/wishlist" },
+  wishlist: { label: "My Wishlist", path: "/wishlist", parent: { label: "My Account", path: "/account" } },
   account: { label: "My Account", path: "/account" },
   "my-orders": { label: "My Orders", path: "/my-orders", parent: { label: "My Account", path: "/account" } },
   "my-library": { label: "Digital Library", path: "/my-library", parent: { label: "My Account", path: "/account" } },
-  "redeem-gift": { label: "Redeem Gift Card", path: "/redeem-gift" },
+  "redeem-gift": { label: "Redeem Gift Card", path: "/redeem-gift", parent: { label: "My Account", path: "/account" } },
   login: { label: "Sign In", path: "/login" },
   register: { label: "Create Account", path: "/register" },
-  "reset-password": { label: "Reset Password", path: "/reset-password" },
-  "guest-buy": { label: "Quick Checkout", path: "/guest-buy" },
+  "reset-password": { label: "Reset Password", path: "/reset-password", parent: { label: "Sign In", path: "/login" } },
+  "guest-buy": { label: "Quick Checkout", path: "/collection" },
+  buy: { label: "Quick Checkout", path: "/collection", parent: { label: "Store Catalog", path: "/collection" } },
   about: { label: "About Us", path: "/about" },
   faq: { label: "FAQs", path: "/faq" },
   contact: { label: "Contact Us", path: "/contact" },
   "shipping-policy": { label: "Shipping Policy", path: "/shipping-policy" },
+  "shipping-refund-policy": { label: "Shipping & Refund Policy", path: "/shipping-refund-policy" },
+  "refund-policy": { label: "Refund Policy", path: "/refund-policy" },
 
   // Admin Pages
   admin: { label: "Admin Console", path: "/admin" },
   "sales-dashboard": { label: "Sales Analytics", path: "/admin/sales-dashboard", parent: { label: "Admin Console", path: "/admin" } },
+  sales: { label: "Sales Analytics", path: "/admin/sales-dashboard", parent: { label: "Admin Console", path: "/admin" } },
   "financial-dashboard": { label: "Finance & Taxes", path: "/admin/financial-dashboard", parent: { label: "Admin Console", path: "/admin" } },
   orders: { label: "Orders", path: "/admin/orders", parent: { label: "Admin Console", path: "/admin" } },
   products: { label: "Warehouse", path: "/admin/products", parent: { label: "Admin Console", path: "/admin" } },
   "add-products": { label: "Add & Edit Products", path: "/admin/add-products", parent: { label: "Admin Console", path: "/admin" } },
   coupons: { label: "Discount Coupons", path: "/admin/coupons", parent: { label: "Admin Console", path: "/admin" } },
   users: { label: "User Insights", path: "/admin/users", parent: { label: "Admin Console", path: "/admin" } },
-  "access-control": { label: "Admin Roles", path: "/admin/access-control", parent: { label: "Admin Console", path: "/admin" } },
-  "theme-settings": { label: "Site & Theme Settings", path: "/admin/theme-settings", parent: { label: "Admin Console", path: "/admin" } },
+  "admin-access": { label: "Admin Roles", path: "/admin/admin-access", parent: { label: "Admin Console", path: "/admin" } },
+  "access-control": { label: "Admin Roles", path: "/admin/admin-access", parent: { label: "Admin Console", path: "/admin" } },
+  theme: { label: "Site & Theme Settings", path: "/admin/theme", parent: { label: "Admin Console", path: "/admin" } },
+  "theme-settings": { label: "Site & Theme Settings", path: "/admin/theme", parent: { label: "Admin Console", path: "/admin" } },
   marketing: { label: "Marketing Campaigns", path: "/admin/marketing", parent: { label: "Admin Console", path: "/admin" } },
   "security-logs": { label: "Security Logs", path: "/admin/security-logs", parent: { label: "Admin Console", path: "/admin" } },
   trash: { label: "Recycle Bin", path: "/admin/trash", parent: { label: "Admin Console", path: "/admin" } },
@@ -45,6 +51,26 @@ const ROUTE_MAP = {
 export default function Breadcrumb() {
   const location = useLocation();
   const [currentTitle, setCurrentTitle] = useState(typeof document !== "undefined" ? document.title : "");
+  const [lastRoute, setLastRoute] = useState(() => {
+    try {
+      return sessionStorage.getItem("dsg_last_nav_route") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  // Track previous route in session storage to support context-aware breadcrumbs
+  useEffect(() => {
+    try {
+      const currentPath = location.pathname;
+      const prevStored = sessionStorage.getItem("dsg_current_nav_route");
+      if (prevStored && prevStored !== currentPath) {
+        sessionStorage.setItem("dsg_last_nav_route", prevStored);
+        setLastRoute(prevStored);
+      }
+      sessionStorage.setItem("dsg_current_nav_route", currentPath);
+    } catch {}
+  }, [location.pathname]);
 
   // Listen for dynamic page/document title changes (e.g., after product or async metadata loads)
   useEffect(() => {
@@ -74,6 +100,11 @@ export default function Breadcrumb() {
     const segments = path.split("/").filter(Boolean);
     const searchParams = new URLSearchParams(location.search);
     const items = [{ label: "Home", path: "/" }];
+
+    const cameFromAccount =
+      lastRoute.startsWith("/account") ||
+      location.state?.from === "/account" ||
+      location.state?.targetSection === "manage-address";
 
     // Handle Admin Routes
     if (segments[0] === "admin") {
@@ -140,22 +171,60 @@ export default function Breadcrumb() {
       return items;
     }
 
+    // Handle Quick / Guest Buy Route: /buy/:id
+    if (segments[0] === "buy") {
+      items.push({ label: "Store Catalog", path: "/collection" });
+      items.push({ label: "Quick Checkout", path: location.pathname });
+      return items;
+    }
+
     // Handle Standard Routes
     const primarySegment = segments[0];
     const mapped = ROUTE_MAP[primarySegment];
 
     if (mapped) {
+      // Dynamic origin injection for Cart & Checkout when arriving from My Account
+      if ((primarySegment === "cart" || primarySegment === "checkout") && cameFromAccount) {
+        items.push({ label: "My Account", path: "/account" });
+      }
+
       if (mapped.parent) {
         items.push(mapped.parent);
       }
       items.push({ label: mapped.label, path: mapped.path });
+
+      // Handle My Account Subsections (via Hash or Search Params)
+      if (primarySegment === "account") {
+        const hash = location.hash.toLowerCase();
+        const sectionParam = searchParams.get("section");
+        const isAddressSection =
+          hash === "#manage-address" ||
+          hash === "#addresses" ||
+          hash === "#address" ||
+          sectionParam === "address" ||
+          searchParams.get("openAddressForm") === "1";
+
+        const isProfileSection = hash === "#profile" || sectionParam === "profile";
+        const isOrdersSection = hash === "#orders" || sectionParam === "orders";
+        const isNotificationSection = hash === "#notifications" || hash === "#push";
+
+        if (isAddressSection) {
+          items.push({ label: "Manage Addresses", path: "/account#manage-address" });
+        } else if (isProfileSection) {
+          items.push({ label: "Profile Settings", path: "/account#profile" });
+        } else if (isOrdersSection) {
+          items.push({ label: "Recent Orders", path: "/account#orders" });
+        } else if (isNotificationSection) {
+          items.push({ label: "Notification Settings", path: "/account#notifications" });
+        }
+      }
     } else {
       const formattedLabel = primarySegment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
       items.push({ label: formattedLabel, path: `/${primarySegment}` });
     }
 
     return items;
-  }, [location.pathname, location.search, currentTitle]);
+  }, [location.pathname, location.search, location.hash, currentTitle, lastRoute]);
 
   // Inject Structured Data (JSON-LD BreadcrumbList) for SEO
   useEffect(() => {

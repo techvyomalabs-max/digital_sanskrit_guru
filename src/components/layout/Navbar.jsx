@@ -63,7 +63,7 @@ function Navbar({ bannerActive = false }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressIndex, setEditingAddressIndex] = useState(null);
-  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null);
+  const [addressToDelete, setAddressToDelete] = useState(null);
   const [isCollectionFilterMenuOpen, setIsCollectionFilterMenuOpen] = useState(false);
   const [isManagingAddresses, setIsManagingAddresses] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -911,36 +911,13 @@ function Navbar({ bannerActive = false }) {
                                   </button>
                                 ) : null}
 
-                                {confirmDeleteIndex === index ? (
-                                  <div className="navbar-address-delete-confirm">
-                                    <span>Delete?</span>
-                                    <button
-                                      type="button"
-                                      className="navbar-confirm-yes"
-                                      onClick={() => {
-                                        removeAddress(index);
-                                        setConfirmDeleteIndex(null);
-                                      }}
-                                    >
-                                      Yes
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="navbar-confirm-no"
-                                      onClick={() => setConfirmDeleteIndex(null)}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="navbar-address-btn-text danger"
-                                    onClick={() => setConfirmDeleteIndex(index)}
-                                  >
-                                    Delete
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  className="navbar-address-btn-text danger"
+                                  onClick={() => setAddressToDelete({ index, address: item })}
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </div>
                           </article>
@@ -993,6 +970,59 @@ function Navbar({ bannerActive = false }) {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Delete Address Confirmation Popup Modal */}
+        {addressToDelete !== null && (
+          <div
+            className="address-delete-modal-backdrop"
+            onClick={() => setAddressToDelete(null)}
+          >
+            <div
+              className="address-delete-modal-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="address-delete-modal-icon-wrap">
+                <span>🗑️</span>
+              </div>
+              <h3 className="address-delete-modal-title">Delete Address?</h3>
+              <p className="address-delete-modal-desc">
+                Are you sure you want to delete this delivery address? This action cannot be undone.
+              </p>
+
+              {addressToDelete.address && (
+                <div className="address-delete-preview-box">
+                  <div style={{ fontWeight: 700, marginBottom: "3px" }}>
+                    {addressToDelete.address.name} {addressToDelete.address.phone ? `(${addressToDelete.address.phone})` : ""}
+                  </div>
+                  <div>{addressToDelete.address.address}</div>
+                  <div>
+                    {[addressToDelete.address.city, addressToDelete.address.state, addressToDelete.address.pincode, addressToDelete.address.country].filter(Boolean).join(", ")}
+                  </div>
+                </div>
+              )}
+
+              <div className="address-delete-modal-actions">
+                <button
+                  type="button"
+                  className="address-delete-btn-cancel"
+                  onClick={() => setAddressToDelete(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="address-delete-btn-confirm"
+                  onClick={() => {
+                    removeAddress(addressToDelete.index);
+                    setAddressToDelete(null);
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         )}

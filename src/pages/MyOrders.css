@@ -279,7 +279,42 @@
   margin-top: var(--space-2);
 }
 
+.my-order-item-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+.my-order-item-image-link {
+  display: block;
+  flex-shrink: 0;
+  line-height: 0;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.my-order-item-thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--site-border, #cbd5e1);
+  background: var(--site-surface-2, #f8fafc);
+  flex-shrink: 0;
+  display: block;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.my-order-item-image-link:hover .my-order-item-thumb {
+  transform: scale(1.04);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
 .my-order-item-content {
+  flex: 1;
   min-width: 0;
 }
 
@@ -465,6 +500,15 @@
   .my-order-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .my-order-item-main {
+    width: 100%;
+  }
+
+  .my-order-item-side {
+    width: 100%;
+    justify-items: start;
   }
 
   .my-order-item span {
@@ -738,4 +782,349 @@
 @keyframes modal-slide-up {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* Custom In-App Order Cancel & Return Confirmation Modals */
+.order-cancel-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  padding: 16px;
+  animation: modal-fade-in 0.2s ease-out;
+}
+
+.order-cancel-modal-card {
+  background: var(--site-surface, #ffffff);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 18px;
+  max-width: 480px;
+  width: 100%;
+  padding: 24px;
+  box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+  animation: modal-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.order-cancel-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--site-border, #e2e8f0);
+  margin-bottom: 16px;
+}
+
+.order-cancel-modal-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.order-cancel-modal-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.order-cancel-modal-icon-badge.return-badge {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.order-cancel-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--site-text, #0f172a);
+}
+
+.order-cancel-modal-id {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--site-text-soft, #64748b);
+  font-weight: 600;
+}
+
+.order-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--site-text-soft, #94a3b8);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.order-modal-close-btn:hover {
+  background: var(--site-surface-2, #f1f5f9);
+  color: var(--site-text, #0f172a);
+}
+
+.order-cancel-form {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-right: 2px;
+  margin: 0;
+}
+
+.order-cancel-items-scroll {
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px;
+  background: var(--site-surface-2, #f8fafc);
+  border-radius: 10px;
+  border: 1px solid var(--site-border, #e2e8f0);
+}
+
+.order-cancel-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.order-cancel-item-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--site-border, #cbd5e1);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.order-cancel-item-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-cancel-item-name {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-text, #1e293b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-cancel-item-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--site-text-soft, #64748b);
+  margin-top: 2px;
+}
+
+.order-cancel-summary-box {
+  background: var(--site-surface-2, #f8fafc);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-cancel-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13.5px;
+}
+
+.order-cancel-summary-row span {
+  color: var(--site-text-soft, #64748b);
+  font-weight: 600;
+}
+
+.order-cancel-summary-row strong {
+  color: var(--site-text, #0f172a);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.order-cancel-refund-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #065f46;
+}
+
+.order-cancel-refund-alert strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #047857;
+  margin-bottom: 2px;
+}
+
+.order-cancel-refund-alert p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.order-cancel-unpaid-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.order-cancel-field-group {
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.order-cancel-field-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--site-text, #0f172a);
+  margin-bottom: 6px;
+}
+
+.order-cancel-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--site-border, #cbd5e1);
+  background: var(--site-surface, #ffffff);
+  color: var(--site-text, #0f172a);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.order-cancel-select:focus {
+  border-color: var(--site-link, #b45309);
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.15);
+}
+
+.order-cancel-textarea {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--site-border, #cbd5e1);
+  background: var(--site-surface, #ffffff);
+  color: var(--site-text, #0f172a);
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+}
+
+.order-cancel-textarea:focus {
+  border-color: var(--site-link, #b45309);
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.15);
+}
+
+.order-cancel-tip-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fefce8;
+  border: 1px solid #fef08a;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: #854d0e;
+  line-height: 1.4;
+}
+
+.order-cancel-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.order-cancel-btn-keep {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--site-border, #cbd5e1);
+  background: var(--site-surface, #ffffff);
+  color: var(--site-text, #475569);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.order-cancel-btn-keep:hover {
+  background: var(--site-surface-2, #f1f5f9);
+}
+
+.order-cancel-btn-confirm {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  transition: all 0.15s ease;
+}
+
+.order-cancel-btn-confirm:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.order-cancel-btn-confirm.return-submit {
+  border-color: var(--site-link, #b45309);
+  background: var(--site-link, #b45309);
+  box-shadow: 0 2px 8px rgba(180, 83, 9, 0.25);
+}
+
+.order-cancel-btn-confirm.return-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--site-link, #b45309) 85%, #000);
+}
+
+.order-cancel-btn-confirm:disabled,
+.order-cancel-btn-keep:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
