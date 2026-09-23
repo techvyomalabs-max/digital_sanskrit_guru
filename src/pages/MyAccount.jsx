@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { apiBaseUrl } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
-import { useCart } from "../hooks/useCart";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyForUser } from "../utils/currency";
@@ -28,7 +27,6 @@ import {
   Mail,
   Phone,
   ShieldCheck,
-  ShoppingBag,
   CheckCircle2,
   Lock,
   KeyRound,
@@ -44,7 +42,15 @@ import {
   Navigation,
   Hash,
   MessageCircle,
-  Trash2
+  Trash2,
+  Package,
+  Truck,
+  Heart,
+  BookOpen,
+  Gift,
+  LayoutDashboard,
+  ChevronRight,
+  Copy
 } from "lucide-react";
 
 function getPasswordStrength(pwd) {
@@ -264,14 +270,12 @@ async function fetchCoordinatesForAddress(parts = {}) {
 
 function MyAccount() {
   const { user, token, updateProfileState } = useAuth();
-  const { cartItems } = useCart();
   const { wishlist } = useWishlist();
   const { addresses, addAddress, updateAddress, removeAddress, setDefaultAddress } = useDeliveryLocation();
   const location = useLocation();
   const addressFormRef = useRef(null);
   const nameInputRef = useRef(null);
   const [orders, setOrders] = useState([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [showAddressForm, setShowAddressForm] = useState(addresses.length === 0);
   const [editingIndex, setEditingIndex] = useState(null);
   const [addressToDelete, setAddressToDelete] = useState(null);
@@ -290,6 +294,94 @@ function MyAccount() {
   const [enableCurrentLocation, setEnableCurrentLocation] = useState(true);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [locationStatusMessage, setLocationStatusMessage] = useState("");
+  const [addressToast, setAddressToast] = useState("");
+  const [copiedAddressIndex, setCopiedAddressIndex] = useState(null);
+  const [isDetectingPincode, setIsDetectingPincode] = useState(false);
+  const [pincodeLookupMsg, setPincodeLookupMsg] = useState("");
+
+  const showAddressToast = (msg) => {
+    setAddressToast(msg);
+    setTimeout(() => {
+      setAddressToast((curr) => (curr === msg ? "" : curr));
+    }, 3500);
+  };
+
+  const copyAddressToClipboard = (item, index) => {
+    const fullText = [
+      item.name,
+      item.phone,
+      item.address,
+      item.landmark ? `Landmark: ${item.landmark}` : "",
+      [item.city, item.state, item.pincode, item.country].filter(Boolean).join(", ")
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(fullText).then(() => {
+        setCopiedAddressIndex(index);
+        setTimeout(() => setCopiedAddressIndex(null), 2000);
+        showAddressToast("Address copied to clipboard!");
+      });
+    }
+  };
+
+  const handlePincodeChange = async (val) => {
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    setPincode(clean);
+    if (fieldErrors.pincode) {
+      setFieldErrors((prev) => ({ ...prev, pincode: "" }));
+    }
+
+    if (clean.length === 6 && country === "India") {
+      setIsDetectingPincode(true);
+      setPincodeLookupMsg("");
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${clean}`);
+        const data = await res.json();
+        if (Array.isArray(data) && data[0]?.Status === "Success" && Array.isArray(data[0]?.PostOffice) && data[0].PostOffice.length > 0) {
+          const po = data[0].PostOffice[0];
+          const detectedState = po.State || "";
+          const detectedDistrict = po.District || po.Block || "";
+
+          const matchedState = matchBestOption(detectedState, getStatesForCountry("India")) || detectedState;
+          if (matchedState) setState(matchedState);
+
+          const districts = getDistrictsForState("India", matchedState);
+          const matchedCity = matchBestOption(detectedDistrict, districts) || detectedDistrict;
+          if (matchedCity) setCity(matchedCity);
+
+          setPincodeLookupMsg(`Auto-detected: ${matchedCity}, ${matchedState}`);
+          setFieldErrors((prev) => {
+            const next = { ...prev };
+            delete next.pincode;
+            delete next.state;
+            delete next.city;
+            return next;
+          });
+        } else {
+          setPincodeLookupMsg("Could not find location details for this PIN code.");
+        }
+      } catch {
+        setPincodeLookupMsg("");
+      } finally {
+        setIsDetectingPincode(false);
+      }
+    } else {
+      setPincodeLookupMsg("");
+    }
+  };
+
+  useEffect(() => {
+    if (!addressToDelete) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setAddressToDelete(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addressToDelete]);
 
   const availableStates = useMemo(() => {
     return getStatesForCountry(country);
@@ -410,8 +502,8 @@ function MyAccount() {
     }
   };
 
-  // Profile Edit states
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  // Profile Edit states (separated for Personal Information vs Login & Security)
+  const [editingSection, setEditingSection] = useState(null); // 'personal' | 'security' | null
   const [profileName, setProfileName] = useState(user?.name || "");
   const [profileEmail, setProfileEmail] = useState(user?.email || "");
   const [profilePhone, setProfilePhone] = useState(user?.phone || "");
@@ -457,6 +549,32 @@ function MyAccount() {
 
   const pwdStrength = useMemo(() => getPasswordStrength(profilePassword), [profilePassword]);
 
+  const userInitials = useMemo(() => {
+    if (user?.name && user.name.trim()) {
+      const parts = user.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    if (user?.email && user.email.trim()) {
+      return user.email.slice(0, 2).toUpperCase();
+    }
+    return "DS";
+  }, [user?.name, user?.email]);
+
+  const handleScrollToAddresses = (e) => {
+    if (e) e.preventDefault();
+    const el = document.getElementById("manage-address");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.classList.add("my-account-panel-highlight");
+      setTimeout(() => {
+        el.classList.remove("my-account-panel-highlight");
+      }, 2000);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       setProfileName(user.name || "");
@@ -474,21 +592,28 @@ function MyAccount() {
     setProfileError("");
   };
 
-  const handleProfileSave = async (e) => {
+  const resetProfileForms = () => {
+    setEditingSection(null);
+    setProfileName(user?.name || "");
+    setProfileEmail(user?.email || "");
+    setProfilePhone(user?.phone || "");
+    setProfilePassword("");
+    setProfilePasswordConfirm("");
+    setShowProfilePassword(false);
+    setShowProfileConfirmPassword(false);
+    setProfileError("");
+  };
+
+  const handlePersonalSave = async (e) => {
     e.preventDefault();
     setProfileMessage("");
     setProfileError("");
 
     const cleanName = String(profileName || "").trim();
-    const cleanEmail = String(profileEmail || "").trim();
     const cleanPhone = String(profilePhone || "").trim();
 
     if (!cleanName) {
       setProfileError("Full Name is required.");
-      return;
-    }
-    if (!cleanEmail) {
-      setProfileError("Email Address is required.");
       return;
     }
 
@@ -501,28 +626,8 @@ function MyAccount() {
       }
       validatedPhone = phoneValidation.cleanPhone;
 
-      // If phone was changed and OTP is required, trigger OTP modal if not yet verified
       if (isOtpRequired && cleanPhone !== (user?.phone || "") && !isProfilePhoneVerified) {
         setIsPhoneOtpModalOpen(true);
-        return;
-      }
-    }
-
-    if (profilePassword) {
-      if (profilePassword.startsWith(" ") || profilePassword.endsWith(" ")) {
-        setProfileError("Password cannot start or end with a space.");
-        return;
-      }
-      if (profilePassword.trim().length < 8) {
-        setProfileError("Password must be at least 8 characters long.");
-        return;
-      }
-      if (!/[A-Za-z]/.test(profilePassword) || !/\d/.test(profilePassword)) {
-        setProfileError("Password must contain at least one letter and one number.");
-        return;
-      }
-      if (profilePassword !== profilePasswordConfirm) {
-        setProfileError("Passwords do not match.");
         return;
       }
     }
@@ -533,9 +638,7 @@ function MyAccount() {
         "/api/auth/profile",
         {
           name: cleanName,
-          email: cleanEmail,
           phone: validatedPhone || cleanPhone,
-          password: profilePassword || undefined,
           phoneVerificationToken: isProfilePhoneVerified && phoneVerificationToken ? phoneVerificationToken : undefined
         },
         {
@@ -545,20 +648,82 @@ function MyAccount() {
 
       if (res.data?.success) {
         updateProfileState(res.data);
-        setProfileMessage("Account details updated successfully!");
+        setProfileMessage("Personal details updated successfully!");
+        setEditingSection(null);
+        setIsProfilePhoneVerified(true);
+        setPhoneVerificationToken("");
+      } else {
+        setProfileError("Failed to update personal details.");
+      }
+    } catch (err) {
+      console.error(err);
+      setProfileError(err.response?.data?.message || "Failed to update personal details.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleSecuritySave = async (e) => {
+    e.preventDefault();
+    setProfileMessage("");
+    setProfileError("");
+
+    const cleanEmail = String(profileEmail || "").trim();
+
+    if (!cleanEmail) {
+      setProfileError("Email Address is required.");
+      return;
+    }
+
+    if (!profilePassword) {
+      setProfileError("Please enter a new password.");
+      return;
+    }
+
+    if (profilePassword.startsWith(" ") || profilePassword.endsWith(" ")) {
+      setProfileError("Password cannot start or end with a space.");
+      return;
+    }
+    if (profilePassword.trim().length < 8) {
+      setProfileError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(profilePassword) || !/\d/.test(profilePassword)) {
+      setProfileError("Password must contain at least one letter and one number.");
+      return;
+    }
+    if (profilePassword !== profilePasswordConfirm) {
+      setProfileError("Passwords do not match.");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const res = await axios.put(
+        "/api/auth/profile",
+        {
+          email: cleanEmail,
+          password: profilePassword
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (res.data?.success) {
+        updateProfileState(res.data);
+        setProfileMessage("Password and security settings updated successfully!");
         setProfilePassword("");
         setProfilePasswordConfirm("");
         setShowProfilePassword(false);
         setShowProfileConfirmPassword(false);
-        setIsEditingProfile(false);
-        setIsProfilePhoneVerified(true);
-        setPhoneVerificationToken("");
+        setEditingSection(null);
       } else {
-        setProfileError("Failed to update profile.");
+        setProfileError("Failed to update security settings.");
       }
     } catch (err) {
       console.error(err);
-      setProfileError(err.response?.data?.message || "Failed to update profile details.");
+      setProfileError(err.response?.data?.message || "Failed to update security settings.");
     } finally {
       setIsSavingProfile(false);
     }
@@ -582,16 +747,9 @@ function MyAccount() {
   }, [location.hash, location.search]);
 
   useEffect(() => {
-    if (!token) {
-      setIsLoadingOrders(false);
-      return;
-    }
+    if (!token) return;
 
     let active = true;
-    const safetyTimer = setTimeout(() => {
-      if (active) setIsLoadingOrders(false);
-    }, 2500);
-
     axios
       .get("/api/orders/my", {
         headers: { Authorization: `Bearer ${token}` }
@@ -603,16 +761,10 @@ function MyAccount() {
       .catch(() => {
         if (!active) return;
         setOrders([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        clearTimeout(safetyTimer);
-        setIsLoadingOrders(false);
       });
 
     return () => {
       active = false;
-      clearTimeout(safetyTimer);
     };
   }, [token]);
 
@@ -632,42 +784,39 @@ function MyAccount() {
     };
   }, [orders]);
 
-  const recentOrders = useMemo(() => orders.slice(0, 2), [orders]);
-
   const manageTiles = [
     {
-      eyebrow: "Orders",
+      eyebrow: "Orders & Invoices",
       title: "Your Orders",
-      text: "Track packages, return items, and download invoices from one place.",
+      text: "Track packages, view order history, initiate returns, and download tax invoices.",
       meta: `${orderSummary.total} total orders`,
       link: "/my-orders",
-      action: "View orders"
+      action: "View orders",
+      icon: Package,
+      iconTheme: "orders"
     },
     {
-      eyebrow: "Delivery",
-      title: "Your Addresses",
+      eyebrow: "Shipping Locations",
+      title: "Address Book",
       text: "Add, edit, or set default delivery addresses for 1-click checkout.",
       meta: `${addresses.length} saved ${addresses.length === 1 ? "address" : "addresses"}`,
       link: "#manage-address",
       action: "Manage addresses",
-      onClick: () => {
-        const el = document.getElementById("manage-address");
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-          el.classList.add("my-account-panel-highlight");
-          setTimeout(() => el.classList.remove("my-account-panel-highlight"), 2200);
-        }
-      }
+      icon: MapPin,
+      iconTheme: "address",
+      onClick: handleScrollToAddresses
     },
     {
-      eyebrow: "Security",
+      eyebrow: "Account Security",
       title: "Login & Security",
-      text: "Check your account details, change password, and manage login security.",
-      meta: user?.email || "No email saved",
+      text: "Update name, contact email, mobile number, and password credentials.",
+      meta: user?.email || "Account credentials",
       link: "#account-details",
       action: "Edit credentials",
+      icon: ShieldCheck,
+      iconTheme: "security",
       onClick: () => {
-        setIsEditingProfile(true);
+        setEditingSection("security");
         setProfileMessage("");
         setProfileError("");
         setTimeout(() => {
@@ -681,31 +830,47 @@ function MyAccount() {
       }
     },
     {
-      eyebrow: "Saved For Later",
-      title: "Wishlist",
-      text: "Revisit the products you want later without searching again.",
-      meta: `${wishlist.length} wishlist items`,
-      link: "/wishlist",
-      action: "Open wishlist"
+      eyebrow: "Digital Content",
+      title: "Digital Library",
+      text: "Access your purchased digital books, interactive flipbooks, and learning material.",
+      meta: "Your digital content",
+      link: "/my-library",
+      action: "Open library",
+      icon: BookOpen,
+      iconTheme: "library"
     },
     {
-      eyebrow: "Shopping",
-      title: "Your Cart",
-      text: "Continue checkout with the items you already selected.",
-      meta: `${cartItems.length} items in cart`,
-      link: "/cart",
-      action: "Go to cart"
+      eyebrow: "Credits & Offers",
+      title: "Gift Cards & Vouchers",
+      text: "Redeem gift vouchers, check credit balance, and apply promotional discounts.",
+      meta: "Redeem gift code",
+      link: "/redeem-gift",
+      action: "Redeem voucher",
+      icon: Gift,
+      iconTheme: "gift"
+    },
+    {
+      eyebrow: "Saved For Later",
+      title: "Saved Wishlist",
+      text: "Revisit items you love and keep track of availability and special discounts.",
+      meta: `${wishlist.length} saved ${wishlist.length === 1 ? "item" : "items"}`,
+      link: "/wishlist",
+      action: "Open wishlist",
+      icon: Heart,
+      iconTheme: "wishlist"
     }
   ];
 
   if (user?.isAdmin) {
     manageTiles.push({
-      eyebrow: "Store Control",
-      title: "Admin Dashboard",
-      text: "Open products, users, orders, and settings from your admin workspace.",
-      meta: "Administrator access",
+      eyebrow: "Store Administration",
+      title: "Admin Console",
+      text: "Manage store catalog, warehouse inventory, user accounts, and financial analytics.",
+      meta: "Administrator workspace",
       link: "/admin",
-      action: "Open admin"
+      action: "Open console",
+      icon: LayoutDashboard,
+      iconTheme: "admin"
     });
   }
 
@@ -815,8 +980,10 @@ function MyAccount() {
 
     if (editingIndex === null) {
       addAddress(payload);
+      showAddressToast("New delivery address added successfully!");
     } else {
       updateAddress(editingIndex, payload);
+      showAddressToast("Address details updated successfully!");
     }
 
     resetAddressForm();
@@ -859,57 +1026,102 @@ function MyAccount() {
   };
 
   const deleteAddress = (index) => {
+    const target = addresses[index];
     removeAddress(index);
     if (editingIndex === index) {
       resetAddressForm();
     }
+    showAddressToast(`Address for ${target?.name || "recipient"} removed.`);
+  };
+
+  const handleSetDefaultAddress = (index) => {
+    const target = addresses[index];
+    setDefaultAddress(index);
+    showAddressToast(`Default delivery address set to ${target?.name || "selected address"}.`);
   };
 
   return (
     <div className="my-account-page">
       <section className="my-account-header">
-        <div>
-          <p className="my-account-kicker">Your Account</p>
-          <h1>Hello, {user?.name || "Customer"}</h1>
-          <p className="my-account-subtitle">
-            Access your orders, saved items, and account shortcuts just like an account home page.
-          </p>
-        </div>
-      </section>
+        <div className="my-account-hero-content">
+          <div className="my-account-hero-identity">
+            <div className="my-account-hero-avatar-ring">
+              <div className="my-account-hero-avatar">
+                {userInitials}
+              </div>
+              <span className="my-account-hero-pulse" title="Active Account" />
+            </div>
 
-      <section className="my-account-summary-strip">
-        <div className="my-account-summary-item">
-          <span>Total Orders</span>
-          <strong>{orderSummary.total}</strong>
+            <div className="my-account-hero-details">
+              <div className="my-account-hero-badges-row">
+                <span className="my-account-pill-badge active">
+                  <span className="pulse-dot" /> Active Account
+                </span>
+                {user?.isAdmin ? (
+                  <span className="my-account-pill-badge admin">
+                    <ShieldCheck size={12} /> Administrator
+                  </span>
+                ) : (
+                  <span className="my-account-pill-badge customer">
+                    <CheckCircle2 size={12} /> Verified Customer
+                  </span>
+                )}
+              </div>
+
+              <h1 className="my-account-hero-title">
+                Hello, {user?.name || "Customer"}!
+              </h1>
+              <p className="my-account-subtitle">
+                Manage your personal profile, addresses, digital library, and orders in one central hub.
+              </p>
+
+              <div className="my-account-hero-meta-row">
+                {user?.email && (
+                  <span className="my-account-hero-meta-item">
+                    <Mail size={13} /> {user.email}
+                  </span>
+                )}
+                {user?.phone && (
+                  <span className="my-account-hero-meta-item">
+                    <Phone size={13} /> {user.phone}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="my-account-summary-item">
-          <span>Open Orders</span>
-          <strong>{orderSummary.open}</strong>
-        </div>
-        <div className="my-account-summary-item">
-          <span>Delivered</span>
-          <strong>{orderSummary.delivered}</strong>
-        </div>
-        <div className="my-account-summary-item">
-          <span>Wishlist</span>
-          <strong>{wishlist.length}</strong>
-        </div>
+
+        {orderSummary.open > 0 && (
+          <div className="my-account-hero-open-orders-banner">
+            <div className="my-account-hero-open-orders-icon">
+              <Truck size={17} />
+            </div>
+            <div className="my-account-hero-open-orders-text">
+              <strong>{orderSummary.open} {orderSummary.open === 1 ? "shipment" : "shipments"} on the way</strong>
+              <span>Track live delivery progress directly in Your Orders.</span>
+            </div>
+            <Link to="/my-orders" className="my-account-hero-track-btn">
+              Track Deliveries →
+            </Link>
+          </div>
+        )}
       </section>
 
       <section className="my-account-section my-account-section-compact">
         <div className="my-account-section-head">
           <div>
             <p className="my-account-section-kicker">Account Services</p>
-            <h2>Your account</h2>
+            <h2>Services & Settings</h2>
           </div>
         </div>
 
         <div className="my-account-tile-grid">
           {manageTiles.map((tile) => {
+            const IconComp = tile.icon || Package;
             const cardContent = (
               <>
-                <div className="my-account-tile-icon" aria-hidden="true">
-                  {tile.title.charAt(0)}
+                <div className={`my-account-tile-icon theme-${tile.iconTheme || "orders"}`} aria-hidden="true">
+                  <IconComp size={20} />
                 </div>
                 <div className="my-account-tile-copy">
                   <p className="my-account-tile-eyebrow">{tile.eyebrow}</p>
@@ -917,7 +1129,9 @@ function MyAccount() {
                   <p>{tile.text}</p>
                   <div className="my-account-tile-footer">
                     <span title={tile.meta}>{tile.meta}</span>
-                    <strong>{tile.action}</strong>
+                    <strong className="my-account-tile-action-link">
+                      {tile.action} <ChevronRight size={14} className="my-account-tile-arrow" />
+                    </strong>
                   </div>
                 </div>
               </>
@@ -937,7 +1151,6 @@ function MyAccount() {
                     }
                   }}
                   className="my-account-tile"
-                  style={{ cursor: "pointer" }}
                 >
                   {cardContent}
                 </div>
@@ -958,43 +1171,62 @@ function MyAccount() {
           <div>
             <p className="my-account-section-kicker">Profile & Credentials</p>
             <h2>Account details</h2>
+            <p className="my-account-section-sub">
+              Manage your personal identity, contact phone number, and login credentials.
+            </p>
           </div>
-          {!isEditingProfile && (
-            <div className="my-account-panel-head-actions">
-              <button
-                type="button"
-                className="my-account-inline-link my-account-inline-btn"
-                onClick={() => {
-                  setIsEditingProfile(true);
-                  setProfileMessage("");
-                  setProfileError("");
-                  setTimeout(() => {
-                    const el = document.getElementById("profile-name-input");
-                    if (el) el.focus();
-                  }, 80);
-                }}
-              >
-                <Edit3 size={14} /> Edit Details
-              </button>
-            </div>
-          )}
+          <div className="my-account-panel-head-actions">
+            <span className="my-account-status-badge">
+              <span className="my-account-pulse-dot" />
+              Active Account
+            </span>
+          </div>
         </div>
 
-        {!isEditingProfile ? (
-          <div className="my-account-cards-grid">
-            {/* Card 1: Personal Information */}
-            <div className="my-account-info-card">
-              <div className="my-account-card-header">
-                <div className="my-account-card-title-wrap">
-                  <User size={18} className="my-account-card-icon" />
-                  <h4>Personal Information</h4>
+        {profileMessage && (
+          <div className="my-account-profile-success-msg">
+            <CheckCircle2 size={16} />
+            <span>{profileMessage}</span>
+            <button
+              type="button"
+              className="my-account-toast-dismiss"
+              onClick={() => setProfileMessage("")}
+              aria-label="Dismiss message"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <div className="my-account-cards-grid">
+          {/* Card 1: Personal Information */}
+          <div className={`my-account-info-card ${editingSection === "personal" ? "is-editing" : ""}`}>
+            <div className="my-account-card-header">
+              <div className="my-account-card-title-wrap">
+                <div className="my-account-avatar-wrap">
+                  {userInitials}
                 </div>
+                <div>
+                  <h4>Personal Information</h4>
+                  <span className="my-account-card-sublabel">Identity & Contact</span>
+                </div>
+              </div>
+              {editingSection === "personal" ? (
+                <button
+                  type="button"
+                  className="my-account-card-close-btn"
+                  title="Close edit form"
+                  onClick={resetProfileForms}
+                >
+                  <X size={16} />
+                </button>
+              ) : (
                 <button
                   type="button"
                   className="my-account-card-edit-btn"
                   title="Edit Personal Information"
                   onClick={() => {
-                    setIsEditingProfile(true);
+                    setEditingSection("personal");
                     setProfileMessage("");
                     setProfileError("");
                     setTimeout(() => {
@@ -1005,157 +1237,13 @@ function MyAccount() {
                 >
                   <Edit3 size={14} /> Edit
                 </button>
-              </div>
-
-              <div className="my-account-card-rows">
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Full Name</span>
-                  <strong className="my-account-card-field-val">{user?.name || "Not provided"}</strong>
-                </div>
-
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Phone Number</span>
-                  <div className="my-account-card-field-val-wrap">
-                    {user?.phone ? (
-                      <strong className="my-account-card-field-val">{user.phone}</strong>
-                    ) : (
-                      <button
-                        type="button"
-                        className="my-account-add-phone-btn"
-                        onClick={() => {
-                          setIsEditingProfile(true);
-                          setProfileMessage("");
-                          setProfileError("");
-                          setTimeout(() => {
-                            const el = document.getElementById("profile-phone-input");
-                            if (el) el.focus();
-                          }, 80);
-                        }}
-                      >
-                        + Add phone number
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Primary Address</span>
-                  <strong className="my-account-card-field-val">
-                    {addresses.length > 0
-                      ? `${addresses[0].city || "Saved"}, ${addresses[0].state || "India"}`
-                      : "No address saved yet"}
-                  </strong>
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* Card 2: Security & Credentials */}
-            <div className="my-account-info-card">
-              <div className="my-account-card-header">
-                <div className="my-account-card-title-wrap">
-                  <ShieldCheck size={18} className="my-account-card-icon" />
-                  <h4>Login & Security</h4>
-                </div>
-                <button
-                  type="button"
-                  className="my-account-card-edit-btn"
-                  title="Edit Security Settings"
-                  onClick={() => {
-                    setIsEditingProfile(true);
-                    setProfileMessage("");
-                    setProfileError("");
-                    setTimeout(() => {
-                      const el = document.getElementById("profile-password-input");
-                      if (el) el.focus();
-                    }, 80);
-                  }}
-                >
-                  <KeyRound size={14} /> Edit
-                </button>
-              </div>
-
-              <div className="my-account-card-rows">
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Email Address</span>
-                  <div className="my-account-card-field-val-wrap">
-                    <strong className="my-account-card-field-val">{user?.email || "Not provided"}</strong>
-                    <span className="my-account-verified-badge"><CheckCircle2 size={12} /> Verified</span>
-                  </div>
-                </div>
-
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Password</span>
-                  <div className="my-account-card-field-val-wrap">
-                    <span className="my-account-password-dots">••••••••••••</span>
-                    <button
-                      type="button"
-                      className="my-account-card-action-btn"
-                      onClick={() => {
-                        setIsEditingProfile(true);
-                        setProfileMessage("");
-                        setProfileError("");
-                        setTimeout(() => {
-                          const el = document.getElementById("profile-password-input");
-                          if (el) el.focus();
-                        }, 80);
-                      }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                </div>
-
-                <div className="my-account-card-row">
-                  <span className="my-account-card-field-label">Account Role</span>
-                  <div className="my-account-card-field-val-wrap">
-                    <span className={`my-account-role-badge ${user?.isAdmin ? "admin" : "customer"}`}>
-                      {user?.isAdmin ? "Administrator" : "Customer"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {profileMessage && !isEditingProfile && (
-          <p className="my-account-profile-success-msg">
-            <CheckCircle2 size={16} /> {profileMessage}
-          </p>
-        )}
-
-        {isEditingProfile ? (
-          <div className="my-account-edit-container">
-            <div className="my-account-edit-form-header">
-              <div className="my-account-edit-form-title">
-                <User size={18} className="text-sky" />
-                <h3>Edit Profile & Security</h3>
-              </div>
-              <button
-                type="button"
-                className="my-account-form-close-btn"
-                onClick={() => {
-                  setIsEditingProfile(false);
-                  setProfileName(user?.name || "");
-                  setProfileEmail(user?.email || "");
-                  setProfilePhone(user?.phone || "");
-                  setProfilePassword("");
-                  setProfilePasswordConfirm("");
-                  setShowProfilePassword(false);
-                  setShowProfileConfirmPassword(false);
-                  setProfileError("");
-                }}
-                aria-label="Close edit profile form"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <form onSubmit={handleProfileSave} className="my-account-unified-form">
-              <div className="my-account-form-section">
-                <h4 className="my-account-form-section-title">Personal Details</h4>
-                <div className="my-account-form-grid">
-                  <label>
+            {editingSection === "personal" ? (
+              <form onSubmit={handlePersonalSave} className="my-account-card-edit-form">
+                <div className="my-account-form-fields-stack">
+                  <label className="my-account-form-field">
                     <span className="my-account-input-label">
                       Full Name <strong className="required-star">*</strong>
                     </span>
@@ -1171,33 +1259,19 @@ function MyAccount() {
                     </div>
                   </label>
 
-                  <label>
-                    <span className="my-account-input-label">
-                      Email Address <strong className="required-star">*</strong>
-                    </span>
-                    <div className="my-account-input-with-icon">
-                      <Mail size={16} className="my-account-input-icon" />
-                      <input
-                        type="email"
-                        value={profileEmail}
-                        onChange={(e) => setProfileEmail(e.target.value)}
-                        placeholder="name@example.com"
-                        required
-                      />
-                    </div>
-                  </label>
-
-                  <label className="my-account-form-full-width">
+                  <label className="my-account-form-field">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <span className="my-account-input-label" style={{ marginBottom: 0 }}>Mobile / Phone Number</span>
+                      <span className="my-account-input-label" style={{ marginBottom: 0 }}>
+                        Phone Number
+                      </span>
                       {isOtpRequired && (isProfilePhoneVerified || (profilePhone && profilePhone === user?.phone)) ? (
-                        <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          <CheckCircle2 size={13} /> Verified on WhatsApp
+                        <span className="my-account-phone-verified-tag">
+                          <CheckCircle2 size={12} /> WhatsApp Verified
                         </span>
                       ) : null}
                     </div>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "6px" }}>
-                      <div className="my-account-phone-input-group" style={{ flex: 1 }}>
+                    <div className="my-account-phone-field-row">
+                      <div className="my-account-phone-input-group">
                         <span className="my-account-phone-prefix">🇮🇳 +91</span>
                         <input
                           id="profile-phone-input"
@@ -1220,6 +1294,7 @@ function MyAccount() {
                       {isOtpRequired && profilePhone && profilePhone !== (user?.phone || "") && !isProfilePhoneVerified && (
                         <button
                           type="button"
+                          className="my-account-verify-wa-btn"
                           onClick={() => {
                             const validation = validatePhoneNumber(profilePhone);
                             if (!validation.isValid) {
@@ -1229,42 +1304,157 @@ function MyAccount() {
                             setProfileError("");
                             setIsPhoneOtpModalOpen(true);
                           }}
-                          style={{
-                            padding: "9px 14px",
-                            background: "#ecfdf5",
-                            border: "1.5px solid #a7f3d0",
-                            color: "#047857",
-                            borderRadius: "8px",
-                            fontWeight: "700",
-                            fontSize: "12.5px",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            whiteSpace: "nowrap",
-                            height: "42px",
-                            transition: "all 0.15s ease"
-                          }}
                           title="Verify phone number via WhatsApp OTP"
                         >
-                          <MessageCircle size={15} /> Verify via WhatsApp
+                          <MessageCircle size={14} /> Verify
                         </button>
                       )}
                     </div>
-                    <small className="my-account-input-hint">Used for order delivery updates & WhatsApp notifications.</small>
+                    <small className="my-account-input-hint">Used for order delivery updates & WhatsApp alerts.</small>
                   </label>
                 </div>
-              </div>
 
-              <div className="my-account-form-section password-section">
-                <div className="my-account-form-section-head">
-                  <h4 className="my-account-form-section-title">Change Password</h4>
-                  <span className="my-account-optional-hint">(Optional — leave blank to keep unchanged)</span>
+                {profileError && (
+                  <div className="my-account-form-error-alert">
+                    <AlertCircle size={15} />
+                    <span>{profileError}</span>
+                  </div>
+                )}
+
+                <div className="my-account-card-form-actions">
+                  <button type="submit" className="primary my-account-save-btn" disabled={isSavingProfile}>
+                    {isSavingProfile ? "Saving..." : "Save Details"}
+                  </button>
+                  <button type="button" className="my-account-cancel-btn" onClick={resetProfileForms}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="my-account-card-rows">
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Full Name</span>
+                  <strong className="my-account-card-field-val">{user?.name || "Not provided"}</strong>
                 </div>
 
-                <div className="my-account-form-grid">
-                  <label>
-                    <span className="my-account-input-label">New Password</span>
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Phone Number</span>
+                  <div className="my-account-card-field-val-wrap">
+                    {user?.phone ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <strong className="my-account-card-field-val">🇮🇳 +91 {user.phone.replace(/^91/, "")}</strong>
+                        <span className="my-account-verified-badge" title="Phone verified on WhatsApp">
+                          <CheckCircle2 size={12} /> WhatsApp
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="my-account-add-phone-btn"
+                        onClick={() => {
+                          setEditingSection("personal");
+                          setProfileMessage("");
+                          setProfileError("");
+                          setTimeout(() => {
+                            const el = document.getElementById("profile-phone-input");
+                            if (el) el.focus();
+                          }, 80);
+                        }}
+                      >
+                        + Add phone number
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Primary Address</span>
+                  <div className="my-account-card-field-val-wrap">
+                    <strong className="my-account-card-field-val" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <MapPin size={13} className="text-sky" />
+                      {addresses.length > 0
+                        ? `${addresses[0].city || "Saved"}, ${addresses[0].state || "India"}`
+                        : "No address saved"}
+                    </strong>
+                    <button
+                      type="button"
+                      className="my-account-address-link"
+                      onClick={handleScrollToAddresses}
+                      title="Scroll to manage delivery addresses"
+                    >
+                      Manage addresses ↓
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card 2: Login & Security */}
+          <div className={`my-account-info-card ${editingSection === "security" ? "is-editing" : ""}`}>
+            <div className="my-account-card-header">
+              <div className="my-account-card-title-wrap">
+                <div className="my-account-security-icon-wrap">
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <h4>Login & Security</h4>
+                  <span className="my-account-card-sublabel">Credentials & Access</span>
+                </div>
+              </div>
+              {editingSection === "security" ? (
+                <button
+                  type="button"
+                  className="my-account-card-close-btn"
+                  title="Close edit form"
+                  onClick={resetProfileForms}
+                >
+                  <X size={16} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="my-account-card-edit-btn"
+                  title="Edit Security Settings"
+                  onClick={() => {
+                    setEditingSection("security");
+                    setProfileMessage("");
+                    setProfileError("");
+                    setTimeout(() => {
+                      const el = document.getElementById("profile-password-input");
+                      if (el) el.focus();
+                    }, 80);
+                  }}
+                >
+                  <KeyRound size={14} /> Edit
+                </button>
+              )}
+            </div>
+
+            {editingSection === "security" ? (
+              <form onSubmit={handleSecuritySave} className="my-account-card-edit-form">
+                <div className="my-account-form-fields-stack">
+                  <label className="my-account-form-field">
+                    <span className="my-account-input-label">
+                      Email Address <strong className="required-star">*</strong>
+                    </span>
+                    <div className="my-account-input-with-icon">
+                      <Mail size={16} className="my-account-input-icon" />
+                      <input
+                        id="profile-email-input"
+                        type="email"
+                        value={profileEmail}
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        required
+                      />
+                    </div>
+                  </label>
+
+                  <label className="my-account-form-field">
+                    <span className="my-account-input-label">
+                      New Password <strong className="required-star">*</strong>
+                    </span>
                     <div className="password-input-wrapper">
                       <input
                         id="profile-password-input"
@@ -1280,7 +1470,7 @@ function MyAccount() {
                         onClick={() => setShowProfilePassword((prev) => !prev)}
                         aria-label={showProfilePassword ? "Hide password" : "Show password"}
                       >
-                        {showProfilePassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showProfilePassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
 
@@ -1297,15 +1487,30 @@ function MyAccount() {
                             />
                           ))}
                         </div>
-                        <span className="my-account-pwd-label" style={{ color: pwdStrength.color }}>
-                          Strength: {pwdStrength.label}
-                        </span>
+                        <div className="my-account-pwd-header-row">
+                          <span className="my-account-pwd-label" style={{ color: pwdStrength.color }}>
+                            Strength: {pwdStrength.label}
+                          </span>
+                        </div>
+                        <div className="my-account-pwd-checklist">
+                          <span className={`my-account-pwd-check-item ${profilePassword.length >= 8 ? "met" : ""}`}>
+                            <CheckCircle2 size={12} /> 8+ characters
+                          </span>
+                          <span className={`my-account-pwd-check-item ${/[a-z]/.test(profilePassword) && /[A-Z]/.test(profilePassword) ? "met" : ""}`}>
+                            <CheckCircle2 size={12} /> Upper & lowercase
+                          </span>
+                          <span className={`my-account-pwd-check-item ${/\d/.test(profilePassword) || /[^A-Za-z0-9]/.test(profilePassword) ? "met" : ""}`}>
+                            <CheckCircle2 size={12} /> Number or symbol
+                          </span>
+                        </div>
                       </div>
                     ) : null}
                   </label>
 
-                  <label>
-                    <span className="my-account-input-label">Confirm New Password</span>
+                  <label className="my-account-form-field">
+                    <span className="my-account-input-label">
+                      Confirm New Password <strong className="required-star">*</strong>
+                    </span>
                     <div className="password-input-wrapper">
                       <input
                         type={showProfileConfirmPassword ? "text" : "password"}
@@ -1322,7 +1527,7 @@ function MyAccount() {
                         disabled={!profilePassword}
                         aria-label={showProfileConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                       >
-                        {showProfileConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        {showProfileConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                     {profilePassword && profilePasswordConfirm ? (
@@ -1336,40 +1541,77 @@ function MyAccount() {
                     ) : null}
                   </label>
                 </div>
-              </div>
 
-              {profileError && (
-                <div className="my-account-form-error-alert">
-                  <AlertCircle size={16} />
-                  <span>{profileError}</span>
+                {profileError && (
+                  <div className="my-account-form-error-alert">
+                    <AlertCircle size={15} />
+                    <span>{profileError}</span>
+                  </div>
+                )}
+
+                <div className="my-account-card-form-actions">
+                  <button type="submit" className="primary my-account-save-btn" disabled={isSavingProfile}>
+                    {isSavingProfile ? "Updating..." : "Update Security"}
+                  </button>
+                  <button type="button" className="my-account-cancel-btn" onClick={resetProfileForms}>
+                    Cancel
+                  </button>
                 </div>
-              )}
+              </form>
+            ) : (
+              <div className="my-account-card-rows">
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Email Address</span>
+                  <div className="my-account-card-field-val-wrap">
+                    <strong className="my-account-card-field-val">{user?.email || "Not provided"}</strong>
+                    <span className="my-account-verified-badge"><CheckCircle2 size={12} /> Verified</span>
+                  </div>
+                </div>
 
-              <div className="my-account-form-actions-bar">
-                <button type="submit" className="primary my-account-save-btn" disabled={isSavingProfile}>
-                  {isSavingProfile ? "Saving Details..." : "Save Changes"}
-                </button>
-                <button
-                  type="button"
-                  className="my-account-cancel-btn"
-                  onClick={() => {
-                    setIsEditingProfile(false);
-                    setProfileName(user?.name || "");
-                    setProfileEmail(user?.email || "");
-                    setProfilePhone(user?.phone || "");
-                    setProfilePassword("");
-                    setProfilePasswordConfirm("");
-                    setShowProfilePassword(false);
-                    setShowProfileConfirmPassword(false);
-                    setProfileError("");
-                  }}
-                >
-                  Cancel
-                </button>
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Password</span>
+                  <div className="my-account-card-field-val-wrap">
+                    <span className="my-account-password-dots">••••••••••••</span>
+                    <button
+                      type="button"
+                      className="my-account-card-action-btn"
+                      onClick={() => {
+                        setEditingSection("security");
+                        setProfileMessage("");
+                        setProfileError("");
+                        setTimeout(() => {
+                          const el = document.getElementById("profile-password-input");
+                          if (el) el.focus();
+                        }, 80);
+                      }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                </div>
+
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Account Role</span>
+                  <div className="my-account-card-field-val-wrap">
+                    <span className={`my-account-role-badge ${user?.isAdmin ? "admin" : "customer"}`}>
+                      {user?.isAdmin ? "Administrator" : "Customer"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="my-account-card-row">
+                  <span className="my-account-card-field-label">Login Security</span>
+                  <div className="my-account-card-field-val-wrap">
+                    <span className="my-account-security-status-tag">
+                      <Lock size={12} />
+                      {isOtpRequired ? "WhatsApp 2-Step OTP Protected" : "Password Protected"}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </form>
+            )}
           </div>
-        ) : null}
+        </div>
       </section>
 
       <section id="manage-address" className="my-account-panel my-account-panel-compact my-account-address-panel">
@@ -1397,6 +1639,21 @@ function MyAccount() {
             </button>
           </div>
         </div>
+
+        {addressToast && (
+          <div className="my-account-address-toast">
+            <CheckCircle2 size={16} />
+            <span>{addressToast}</span>
+            <button
+              type="button"
+              className="my-account-toast-dismiss"
+              onClick={() => setAddressToast("")}
+              aria-label="Dismiss notification"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {addresses.length > 0 ? (
           <div className="my-account-address-cards-grid">
@@ -1441,6 +1698,23 @@ function MyAccount() {
 
                   <div className="my-account-addr-card-footer">
                     <div className="my-account-addr-action-btns">
+                      <button
+                        type="button"
+                        className="my-account-addr-btn"
+                        title="Copy full address"
+                        onClick={() => copyAddressToClipboard(item, index)}
+                      >
+                        {copiedAddressIndex === index ? (
+                          <>
+                            <CheckCircle2 size={13} className="text-emerald" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={13} /> Copy
+                          </>
+                        )}
+                      </button>
+
                       {isEditingThisCard ? (
                         <button
                           type="button"
@@ -1451,7 +1725,7 @@ function MyAccount() {
                             setAddressError("");
                           }}
                         >
-                          <X size={13} /> Cancel Edit
+                          <X size={13} /> Cancel
                         </button>
                       ) : (
                         <button
@@ -1476,7 +1750,7 @@ function MyAccount() {
                       <button
                         type="button"
                         className="my-account-set-default-btn"
-                        onClick={() => setDefaultAddress(index)}
+                        onClick={() => handleSetDefaultAddress(index)}
                       >
                         Set as Default
                       </button>
@@ -1670,23 +1944,30 @@ function MyAccount() {
                   </label>
 
                   <label>
-                    <span className="my-account-input-label">
-                      PIN Code <strong className="required-star">*</strong>
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                      <span className="my-account-input-label" style={{ marginBottom: 0 }}>
+                        PIN Code <strong className="required-star">*</strong>
+                      </span>
+                      {isDetectingPincode ? (
+                        <span className="my-account-pincode-detecting">Detecting city & state...</span>
+                      ) : null}
+                    </div>
                     <div className="my-account-input-with-icon">
                       <Hash size={16} className="my-account-input-icon" />
                       <input
                         value={pincode}
                         maxLength={10}
                         className={fieldErrors.pincode ? "invalid-input" : ""}
-                        onChange={(e) => {
-                          setPincode(e.target.value);
-                          if (fieldErrors.pincode) setFieldErrors((prev) => ({ ...prev, pincode: "" }));
-                        }}
+                        onChange={(e) => handlePincodeChange(e.target.value)}
                         placeholder="e.g. 560017"
                         required
                       />
                     </div>
+                    {pincodeLookupMsg && (
+                      <span className="my-account-pincode-success">
+                        <CheckCircle2 size={12} /> {pincodeLookupMsg}
+                      </span>
+                    )}
                     {fieldErrors.pincode && <span className="my-account-inline-error">⚠️ {fieldErrors.pincode}</span>}
                   </label>
 
@@ -1852,76 +2133,20 @@ function MyAccount() {
                   className="address-delete-btn-cancel"
                   onClick={() => setAddressToDelete(null)}
                 >
-                  Cancel
+                  Keep Address
                 </button>
                 <button
                   type="button"
                   className="address-delete-btn-confirm"
                   onClick={() => {
-                    removeAddress(addressToDelete.index);
+                    deleteAddress(addressToDelete.index);
                     setAddressToDelete(null);
                   }}
                 >
-                  Delete
+                  Yes, Delete
                 </button>
               </div>
             </div>
-          </div>
-        )}
-      </section>
-
-      <section className="my-account-panel my-account-panel-compact">
-        <div className="my-account-panel-head">
-          <div>
-            <p className="my-account-section-kicker">Recent Activity</p>
-            <h2>Your recent orders</h2>
-          </div>
-          <Link to="/my-orders" className="my-account-inline-link">
-            See all
-          </Link>
-        </div>
-
-        {recentOrders.length === 0 ? (
-          <div className="my-account-empty">
-            <p>You have not placed any orders yet.</p>
-            <Link to="/" className="my-account-inline-link">
-              Start shopping
-            </Link>
-          </div>
-        ) : (
-          <div className="my-account-recent-orders">
-            {recentOrders.map((order) => (
-              <div key={order._id} className="my-account-order-card">
-                <div className="my-account-order-meta">
-                  <div>
-                    <span>Ordered on</span>
-                    <strong>{formatDate(order.createdAt)}</strong>
-                  </div>
-                  <div>
-                    <span>Total</span>
-                    <strong>{formatCurrencyForUser(order.total)}</strong>
-                  </div>
-                  <div>
-                    <span>Status</span>
-                    <strong>{order.status || "Pending"}</strong>
-                  </div>
-                </div>
-                <div className="my-account-order-body">
-                  <div>
-                    <p className="my-account-order-id">Order ID: {order._id}</p>
-                    <p className="my-account-order-items">
-                      {(order.items || [])
-                        .slice(0, 3)
-                        .map((item) => `${item.name} x ${item.quantity || 1}`)
-                        .join(", ")}
-                    </p>
-                  </div>
-                  <Link to="/my-orders" className="my-account-pill-link">
-                    View details
-                  </Link>
-                </div>
-              </div>
-            ))}
           </div>
         )}
       </section>
