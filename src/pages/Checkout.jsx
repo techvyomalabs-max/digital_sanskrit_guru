@@ -242,54 +242,51 @@ function Checkout() {
   }, [isBillingSame]);
 
   const fetchCoordinatesForAddress = async (parts = {}) => {
-    const query = [
-      parts.address,
-      parts.landmark,
-      parts.city,
-      parts.state,
-      parts.pincode,
-      parts.country
+    const queryCandidates = [
+      [parts.address, parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
+      [parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
+      [parts.city, parts.state, parts.country],
+      [parts.pincode, parts.country]
     ]
-      .map((item) => String(item || "").trim())
-      .filter(Boolean)
-      .join(", ");
+      .map((arr) => arr.map((item) => String(item || "").trim()).filter(Boolean).join(", "))
+      .filter(Boolean);
 
-    if (!query) {
-      return { latitude: null, longitude: null };
-    }
+    const seen = new Set();
+    for (const query of queryCandidates) {
+      if (seen.has(query)) continue;
+      seen.add(query);
 
-    const params = new URLSearchParams({
-      q: query,
-      format: "jsonv2",
-      limit: "1",
-      addressdetails: "1"
-    });
-
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
-        }
+      const params = new URLSearchParams({
+        q: query,
+        format: "jsonv2",
+        limit: "1",
+        addressdetails: "1"
       });
 
-      if (!response.ok) {
-        return { latitude: null, longitude: null };
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json"
+          }
+        });
+
+        if (!response.ok) continue;
+
+        const results = await response.json();
+        const first = Array.isArray(results) ? results[0] : null;
+        const latitude = Number(first?.lat);
+        const longitude = Number(first?.lon);
+
+        if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
+          return { latitude, longitude };
+        }
+      } catch {
+        // Continue to next candidate query
       }
-
-      const results = await response.json();
-      const first = Array.isArray(results) ? results[0] : null;
-      const latitude = Number(first?.lat);
-      const longitude = Number(first?.lon);
-
-      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-        return { latitude: null, longitude: null };
-      }
-
-      return { latitude, longitude };
-    } catch {
-      return { latitude: null, longitude: null };
     }
+
+    return { latitude: null, longitude: null };
   };
 
   const handleSaveNewAddress = async () => {

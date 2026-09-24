@@ -14,6 +14,11 @@ import {
   getDistrictsForState,
   matchBestOption
 } from "../utils/locationData";
+import {
+  COUNTRY_PHONE_CODES,
+  getCountryPhoneData,
+  extractPhoneAndCountry
+} from "../utils/countryPhoneCodes";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import "./MyAccount.css";
@@ -50,6 +55,7 @@ import {
   Gift,
   LayoutDashboard,
   ChevronRight,
+  ChevronDown,
   Copy
 } from "lucide-react";
 
@@ -218,54 +224,51 @@ function PushSubscribeSection({ token }) {
 
 
 async function fetchCoordinatesForAddress(parts = {}) {
-  const query = [
-    parts.address,
-    parts.landmark,
-    parts.city,
-    parts.state,
-    parts.pincode,
-    parts.country
+  const queryCandidates = [
+    [parts.address, parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
+    [parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
+    [parts.city, parts.state, parts.country],
+    [parts.pincode, parts.country]
   ]
-    .map((item) => String(item || "").trim())
-    .filter(Boolean)
-    .join(", ");
+    .map((arr) => arr.map((item) => String(item || "").trim()).filter(Boolean).join(", "))
+    .filter(Boolean);
 
-  if (!query) {
-    return { latitude: null, longitude: null };
-  }
+  const seen = new Set();
+  for (const query of queryCandidates) {
+    if (seen.has(query)) continue;
+    seen.add(query);
 
-  const params = new URLSearchParams({
-    q: query,
-    format: "jsonv2",
-    limit: "1",
-    addressdetails: "1"
-  });
-
-  try {
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json"
-      }
+    const params = new URLSearchParams({
+      q: query,
+      format: "jsonv2",
+      limit: "1",
+      addressdetails: "1"
     });
 
-    if (!response.ok) {
-      return { latitude: null, longitude: null };
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      });
+
+      if (!response.ok) continue;
+
+      const results = await response.json();
+      const first = Array.isArray(results) ? results[0] : null;
+      const latitude = Number(first?.lat);
+      const longitude = Number(first?.lon);
+
+      if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
+        return { latitude, longitude };
+      }
+    } catch {
+      // Continue to next candidate query
     }
-
-    const results = await response.json();
-    const first = Array.isArray(results) ? results[0] : null;
-    const latitude = Number(first?.lat);
-    const longitude = Number(first?.lon);
-
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      return { latitude: null, longitude: null };
-    }
-
-    return { latitude, longitude };
-  } catch {
-    return { latitude: null, longitude: null };
   }
+
+  return { latitude: null, longitude: null };
 }
 
 function MyAccount() {
@@ -290,6 +293,8 @@ function MyAccount() {
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [country, setCountry] = useState("India");
+  const [phoneCountry, setPhoneCountry] = useState("India");
+  const currentPhoneData = useMemo(() => getCountryPhoneData(phoneCountry), [phoneCountry]);
   const [isDefaultAddress, setIsDefaultAddress] = useState(false);
   const [enableCurrentLocation, setEnableCurrentLocation] = useState(true);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -393,6 +398,7 @@ function MyAccount() {
 
   const handleCountryChange = (newCountry) => {
     setCountry(newCountry);
+    setPhoneCountry(newCountry);
     if (fieldErrors.country) setFieldErrors((prev) => ({ ...prev, country: "" }));
 
     const nextStates = getStatesForCountry(newCountry);
@@ -402,6 +408,21 @@ function MyAccount() {
         setCity("");
       }
     }
+  };
+
+  const handlePhoneCountryChange = (newPhoneCountry) => {
+    setPhoneCountry(newPhoneCountry);
+    if (newPhoneCountry && country !== newPhoneCountry) {
+      setCountry(newPhoneCountry);
+      const nextStates = getStatesForCountry(newPhoneCountry);
+      if (nextStates.length > 0) {
+        if (!nextStates.some((s) => s.toLowerCase() === state.trim().toLowerCase())) {
+          setState("");
+          setCity("");
+        }
+      }
+    }
+    if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: "" }));
   };
 
   const handleStateChange = (newState) => {
@@ -432,7 +453,169 @@ function MyAccount() {
       .catch(() => {});
   }, []);
 
+  const resetAddressForm = () => {
+    setAddressLabel("Home");
+    setName(user?.name || "");
+    const extracted = extractPhoneAndCountry(user?.phone || "", "India");
+    setPhoneCountry(extracted.country || "India");
+    setPhone(extracted.localPhone || "");
+    setAddress("");
+    setLandmark("");
+    setCity("");
+    setState("");
+    setPincode("");
+    setCountry(extracted.country || "India");
+    setIsDefaultAddress(addresses.length === 0);
+    setEditingIndex(null);
+    setAddressError("");
+    setFieldErrors({});
+  };
+
+  const closeAddressForm = () => {
+    resetAddressForm();
+    setShowAddressForm(false);
+  };
+
+  const openNewAddressForm = () => {
+    resetAddressForm();
+    setIsDefaultAddress(addresses.length === 0);
+    setShowAddressForm(true);
+    setTimeout(() => {
+      const targetEl = addressFormRef.current || document.getElementById("manage-address");
+      if (targetEl) {
+        const navOffset = 140;
+        const elementPosition = targetEl.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({
+          top: Math.max(0, elementPosition - navOffset),
+          behavior: "smooth"
+        });
+        targetEl.classList.add("my-account-panel-highlight");
+        setTimeout(() => targetEl.classList.remove("my-account-panel-highlight"), 2500);
+      }
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
+      }
+    }, 120);
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (isDetectingLocation) return;
+    setIsDetectingLocation(true);
+    setLocationStatusMessage("Detecting your location...");
+
+    try {
+      const position = await getCurrentDevicePosition();
+      const latitude = Number(position?.coords?.latitude);
+      const longitude = Number(position?.coords?.longitude);
+
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        throw new Error("Could not read coordinates from device.");
+      }
+
+      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
+      const detectedCountry = matchBestOption(resolved.country || "India", COUNTRIES) || resolved.country || "India";
+      const statesList = getStatesForCountry(detectedCountry);
+      const detectedState = matchBestOption(resolved.state || "", statesList) || resolved.state || "";
+      const districtsList = getDistrictsForState(detectedCountry, detectedState);
+      const detectedCity = matchBestOption(resolved.city || "", districtsList) || resolved.city || "";
+
+      if (resolved.address) setAddress(resolved.address);
+      if (resolved.landmark) setLandmark(resolved.landmark);
+      setCountry(detectedCountry);
+      setPhoneCountry(detectedCountry);
+      if (detectedState) setState(detectedState);
+      if (detectedCity) setCity(detectedCity);
+      if (resolved.pincode) setPincode(resolved.pincode);
+
+      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
+    } catch (err) {
+      setLocationStatusMessage(err?.message || "Could not detect current location.");
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
+
+  const editAddress = (index) => {
+    const current = addresses[index];
+    if (!current) return;
+
+    const matchedCountry = matchBestOption(current.country || "India", COUNTRIES) || current.country || "India";
+    const extracted = extractPhoneAndCountry(current.phone || "", matchedCountry);
+    const statesList = getStatesForCountry(matchedCountry);
+    const matchedState = matchBestOption(current.state || "", statesList) || current.state || "";
+    const districtsList = getDistrictsForState(matchedCountry, matchedState);
+    const matchedCity = matchBestOption(current.city || "", districtsList) || current.city || "";
+
+    setAddressLabel(current.label || "Home");
+    setName(current.name || "");
+    setCountry(matchedCountry);
+    setPhoneCountry(extracted.country || matchedCountry);
+    setPhone(extracted.localPhone || "");
+    setAddress(current.address || "");
+    setLandmark(current.landmark || "");
+    setState(matchedState);
+    setCity(matchedCity);
+    setPincode(current.pincode || "");
+    setIsDefaultAddress(Boolean(current.isDefault));
+    setEditingIndex(index);
+    setShowAddressForm(true);
+    setAddressError("");
+
+    setTimeout(() => {
+      const cardEl = document.getElementById(`my-account-addr-card-${index}`);
+      const formEl = addressFormRef.current || document.getElementById("manage-address");
+      const targetEl = formEl || cardEl;
+      if (targetEl) {
+        const navOffset = 140;
+        const elementPosition = targetEl.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({
+          top: Math.max(0, elementPosition - navOffset),
+          behavior: "smooth"
+        });
+      }
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
+      }
+    }, 120);
+  };
+
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const editAddressParam = params.get("editAddress");
+    const editIdx =
+      location.state?.editAddressIndex !== undefined && location.state?.editAddressIndex !== null
+        ? Number(location.state.editAddressIndex)
+        : editAddressParam !== null && editAddressParam !== ""
+        ? Number(editAddressParam)
+        : null;
+
+    if (editIdx !== null && !Number.isNaN(editIdx) && addresses && addresses[editIdx]) {
+      editAddress(editIdx);
+      return;
+    }
+
+    const isUseCurrentLocation =
+      params.get("useCurrentLocation") === "true" ||
+      params.get("action") === "use-current-location" ||
+      location.state?.action === "use-current-location";
+
+    if (isUseCurrentLocation) {
+      openNewAddressForm();
+      handleUseCurrentLocation();
+      return;
+    }
+
+    const isAddNewAddress =
+      params.get("addNewAddress") === "true" ||
+      params.get("action") === "add-address" ||
+      location.state?.action === "add-address" ||
+      location.hash === "#add-address";
+
+    if (isAddNewAddress) {
+      openNewAddressForm();
+      return;
+    }
+
     const isAddressTarget =
       location.hash === "#manage-address" ||
       location.hash === "#addresses" ||
@@ -464,43 +647,31 @@ function MyAccount() {
         clearTimeout(timer2);
       };
     }
-  }, [location.hash, location.search, location.state]);
+  }, [location.hash, location.search, location.state, addresses]);
 
-  const handleUseCurrentLocation = async () => {
-    if (isDetectingLocation) return;
-    setIsDetectingLocation(true);
-    setLocationStatusMessage("Detecting your location...");
-
-    try {
-      const position = await getCurrentDevicePosition();
-      const latitude = Number(position?.coords?.latitude);
-      const longitude = Number(position?.coords?.longitude);
-
-      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-        throw new Error("Could not read coordinates from device.");
+  useEffect(() => {
+    const handleCustomEdit = (e) => {
+      const idx = e.detail?.index;
+      if (idx !== undefined && idx !== null && addresses && addresses[idx]) {
+        editAddress(Number(idx));
       }
-
-      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
-      const detectedCountry = matchBestOption(resolved.country || "India", COUNTRIES) || resolved.country || "India";
-      const statesList = getStatesForCountry(detectedCountry);
-      const detectedState = matchBestOption(resolved.state || "", statesList) || resolved.state || "";
-      const districtsList = getDistrictsForState(detectedCountry, detectedState);
-      const detectedCity = matchBestOption(resolved.city || "", districtsList) || resolved.city || "";
-
-      if (resolved.address) setAddress(resolved.address);
-      if (resolved.landmark) setLandmark(resolved.landmark);
-      setCountry(detectedCountry);
-      if (detectedState) setState(detectedState);
-      if (detectedCity) setCity(detectedCity);
-      if (resolved.pincode) setPincode(resolved.pincode);
-
-      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
-    } catch (err) {
-      setLocationStatusMessage(err?.message || "Could not detect current location.");
-    } finally {
-      setIsDetectingLocation(false);
-    }
-  };
+    };
+    const handleCustomAdd = () => {
+      openNewAddressForm();
+    };
+    const handleCustomLocation = () => {
+      openNewAddressForm();
+      handleUseCurrentLocation();
+    };
+    window.addEventListener("editAccountAddress", handleCustomEdit);
+    window.addEventListener("addNewAccountAddress", handleCustomAdd);
+    window.addEventListener("useCurrentLocationAccountAddress", handleCustomLocation);
+    return () => {
+      window.removeEventListener("editAccountAddress", handleCustomEdit);
+      window.removeEventListener("addNewAccountAddress", handleCustomAdd);
+      window.removeEventListener("useCurrentLocationAccountAddress", handleCustomLocation);
+    };
+  }, [addresses]);
 
   // Profile Edit states (separated for Personal Information vs Login & Security)
   const [editingSection, setEditingSection] = useState(null); // 'personal' | 'security' | null
@@ -731,6 +902,17 @@ function MyAccount() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
+    if (
+      params.get("editAddress") ||
+      params.get("addNewAddress") === "true" ||
+      params.get("useCurrentLocation") === "true" ||
+      params.get("action") === "add-address" ||
+      params.get("action") === "use-current-location" ||
+      location.state?.action === "add-address" ||
+      location.state?.action === "use-current-location"
+    ) {
+      return;
+    }
     const shouldOpenAddressForm = params.get("openAddressForm") === "1";
     const shouldScrollToAddresses = location.hash === "#manage-address" || shouldOpenAddressForm;
 
@@ -874,40 +1056,7 @@ function MyAccount() {
     });
   }
 
-  const resetAddressForm = () => {
-    setAddressLabel("Home");
-    setName("");
-    setPhone("");
-    setAddress("");
-    setLandmark("");
-    setCity("");
-    setState("");
-    setPincode("");
-    setCountry("India");
-    setIsDefaultAddress(addresses.length === 0);
-    setEditingIndex(null);
-    setAddressError("");
-    setFieldErrors({});
-  };
 
-  const closeAddressForm = () => {
-    resetAddressForm();
-    setShowAddressForm(false);
-  };
-
-  const openNewAddressForm = () => {
-    resetAddressForm();
-    setIsDefaultAddress(addresses.length === 0);
-    setShowAddressForm(true);
-    setTimeout(() => {
-      if (addressFormRef.current) {
-        addressFormRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      if (nameInputRef.current) {
-        nameInputRef.current.focus();
-      }
-    }, 80);
-  };
 
   const saveAddress = async () => {
     const errors = {};
@@ -927,7 +1076,15 @@ function MyAccount() {
     if (!cleanState) errors.state = "State is required.";
     if (!cleanCountry) errors.country = "Country is required.";
 
-    const phoneValidation = validatePhoneNumber(cleanPhone, cleanCountry);
+    const phoneData = getCountryPhoneData(phoneCountry || cleanCountry);
+    let fullPhoneToSave = cleanPhone;
+    if (cleanPhone) {
+      if (phoneData.code !== "+91" && !cleanPhone.startsWith("+")) {
+        fullPhoneToSave = `${phoneData.code} ${cleanPhone}`;
+      }
+    }
+
+    const phoneValidation = validatePhoneNumber(fullPhoneToSave, cleanCountry || phoneCountry);
     if (!phoneValidation.isValid) {
       errors.phone = phoneValidation.message;
     }
@@ -960,7 +1117,7 @@ function MyAccount() {
     const payload = {
       label: addressLabel,
       name: cleanName,
-      phone: phoneValidation.cleanPhone || cleanPhone,
+      phone: fullPhoneToSave || phoneValidation.cleanPhone || cleanPhone,
       address: cleanAddress,
       landmark: cleanLandmark,
       city: cleanCity,
@@ -991,39 +1148,7 @@ function MyAccount() {
     setAddressError("");
   };
 
-  const editAddress = (index) => {
-    const current = addresses[index];
-    if (!current) return;
 
-    const matchedCountry = matchBestOption(current.country || "India", COUNTRIES) || current.country || "India";
-    const statesList = getStatesForCountry(matchedCountry);
-    const matchedState = matchBestOption(current.state || "", statesList) || current.state || "";
-    const districtsList = getDistrictsForState(matchedCountry, matchedState);
-    const matchedCity = matchBestOption(current.city || "", districtsList) || current.city || "";
-
-    setAddressLabel(current.label || "Home");
-    setName(current.name || "");
-    setPhone(current.phone || "");
-    setAddress(current.address || "");
-    setLandmark(current.landmark || "");
-    setCountry(matchedCountry);
-    setState(matchedState);
-    setCity(matchedCity);
-    setPincode(current.pincode || "");
-    setIsDefaultAddress(Boolean(current.isDefault));
-    setEditingIndex(index);
-    setShowAddressForm(true);
-    setAddressError("");
-
-    setTimeout(() => {
-      if (addressFormRef.current) {
-        addressFormRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      if (nameInputRef.current) {
-        nameInputRef.current.focus();
-      }
-    }, 80);
-  };
 
   const deleteAddress = (index) => {
     const target = addresses[index];
@@ -1663,6 +1788,7 @@ function MyAccount() {
               return (
                 <div
                   key={`${item.name}-${item.pincode}-${index}`}
+                  id={`my-account-addr-card-${index}`}
                   className={`my-account-addr-card ${isEditingThisCard ? "editing-active" : ""}`}
                 >
                   <div className="my-account-addr-card-head">
@@ -1885,16 +2011,34 @@ function MyAccount() {
                       Mobile / Phone Number <strong className="required-star">*</strong>
                     </span>
                     <div className={`my-account-phone-input-group ${fieldErrors.phone ? "invalid-input" : ""}`}>
-                      <span className="my-account-phone-prefix">🇮🇳 +91</span>
+                      <div className="my-account-phone-prefix-wrap" title="Click to change country calling code">
+                        <span className="my-account-phone-prefix-display">
+                          <span>{currentPhoneData.flag}</span>
+                          <span>{currentPhoneData.code}</span>
+                          <ChevronDown size={13} className="my-account-phone-chevron" />
+                        </span>
+                        <select
+                          className="my-account-phone-select-overlay"
+                          value={phoneCountry}
+                          onChange={(e) => handlePhoneCountryChange(e.target.value)}
+                          aria-label="Select Country Phone Code"
+                        >
+                          {COUNTRY_PHONE_CODES.map((item) => (
+                            <option key={`${item.country}-${item.code}`} value={item.country}>
+                              {item.flag} {item.code} - {item.country}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <input
                         type="tel"
-                        maxLength={15}
+                        maxLength={16}
                         value={phone}
                         onChange={(e) => {
-                          setPhone(e.target.value.replace(/[^\d+]/g, ""));
+                          setPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
                           if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: "" }));
                         }}
-                        placeholder="10-digit mobile number"
+                        placeholder={currentPhoneData.placeholder || "Enter phone number"}
                         required
                       />
                     </div>

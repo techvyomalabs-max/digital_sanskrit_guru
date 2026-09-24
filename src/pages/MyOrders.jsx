@@ -39,6 +39,7 @@ const RETURN_WINDOW_DAYS = 7;
 const INITIAL_VISIBLE_ORDERS = 8;
 
 function getEffectivePaymentStatus(order) {
+  if (String(order?.refundStatus || "").trim() === "Refunded") return "Refunded";
   const raw = String(order?.paymentStatus || "").trim();
   if (raw) return raw;
 
@@ -710,7 +711,25 @@ function MyOrders() {
                 </p>
 
                 {shouldShowRefundStatus ? (
-                  <p className="my-order-refund-note">Refund status: {refundStatus}</p>
+                  <div className="my-order-refund-block">
+                    <p className="my-order-refund-note">
+                      <span>Refund:</span>{" "}
+                      <span className={`my-order-status status-refund-${refundStatus.toLowerCase()}`}>
+                        {refundStatus}
+                      </span>
+                    </p>
+                    <p className="my-order-refund-subnote">
+                      {refundStatus === "Pending"
+                        ? "Refund initiated. Processing in 3–5 business days."
+                        : refundStatus === "Processing"
+                          ? "Refund is currently being processed with the bank."
+                          : refundStatus === "Refunded"
+                            ? "Refund has been sent to your original payment source."
+                            : refundStatus === "Rejected"
+                              ? "Refund request could not be processed."
+                              : ""}
+                    </p>
+                  </div>
                 ) : null}
 
                 {canContinuePayment ? (

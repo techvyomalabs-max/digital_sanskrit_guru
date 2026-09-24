@@ -295,6 +295,36 @@ function AdminOrders() {
     }
   };
 
+  const updateRefundStatus = async (orderId, refundStatus, forceManual = false) => {
+    setUpdatingOrderId(orderId);
+    try {
+      const res = await axios.put(
+        `/api/orders/${orderId}/refund-status`,
+        { refundStatus, forceManual },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      await loadOrders();
+      const refundId = res.data?.paymentMeta?.razorpayRefundId;
+      setPageMessage(
+        refundId
+          ? `Razorpay refund initiated! (Refund ID: ${refundId})`
+          : `Refund status updated to "${refundStatus}".`
+      );
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Unable to update refund status.";
+      const canForce = Boolean(err?.response?.data?.canForceManual);
+      if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
+        return updateRefundStatus(orderId, refundStatus, true);
+      }
+      setPageMessage(errMsg);
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
   const handleModalSubmit = async (e) => {
     if (e) e.preventDefault();
 
@@ -975,10 +1005,78 @@ function AdminOrders() {
                                 {updatingOrderId === order._id ? "Updating..." : "Cancel"}
                               </button>
                             )}
-                            {!canProgressStatus ? (
+                            {isCancelled && (paymentStatus === "Paid" || (order?.refundStatus && order?.refundStatus !== "Not Applicable")) ? (
+                              <div className="admin-refund-panel">
+                                <div className="admin-refund-header">
+                                  <span className="admin-refund-title">Refund:</span>
+                                  <span className={`admin-order-status status-refund-${String(order?.refundStatus || "Pending").toLowerCase()}`}>
+                                    {order?.refundStatus || "Pending"}
+                                  </span>
+                                </div>
+                                {order?.paymentMeta?.razorpayRefundId ? (
+                                  <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
+                                    ⚡ RZP: {order.paymentMeta.razorpayRefundId}
+                                  </small>
+                                ) : null}
+                                {canUpdateOrders ? (
+                                  order?.refundStatus === "Refunded" ? (
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#166534", marginTop: "4px" }}>
+                                      ✓ Refund Completed
+                                    </div>
+                                  ) : (
+                                    <div className="admin-refund-actions">
+                                      {order?.refundStatus === "Pending" && (
+                                        <button
+                                          type="button"
+                                          className="status-action-btn"
+                                          disabled={updatingOrderId === order._id}
+                                          onClick={() => updateRefundStatus(order._id, "Processing")}
+                                          title="Move to Processing"
+                                        >
+                                          {updatingOrderId === order._id ? "Updating..." : "Process Refund"}
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="status-action-btn refund-success-btn"
+                                        disabled={updatingOrderId === order._id}
+                                        onClick={() => updateRefundStatus(order._id, "Refunded")}
+                                        title="Mark as Refund Completed"
+                                      >
+                                        {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
+                                      </button>
+                                      {order?.refundStatus !== "Rejected" && (
+                                        <button
+                                          type="button"
+                                          className="status-action-btn cancel"
+                                          disabled={updatingOrderId === order._id}
+                                          onClick={() => updateRefundStatus(order._id, "Rejected")}
+                                          title="Reject Refund"
+                                        >
+                                          {updatingOrderId === order._id ? "Updating..." : "Reject"}
+                                        </button>
+                                      )}
+                                      <select
+                                        id={`refund-select-${order._id}`}
+                                        className="admin-refund-select"
+                                        value={order?.refundStatus || "Pending"}
+                                        disabled={updatingOrderId === order._id}
+                                        onChange={(e) => updateRefundStatus(order._id, e.target.value)}
+                                        aria-label="Change refund status"
+                                      >
+                                        <option value="Pending">Pending</option>
+                                        <option value="Processing">Processing</option>
+                                        <option value="Refunded">Refunded</option>
+                                        <option value="Rejected">Rejected</option>
+                                      </select>
+                                    </div>
+                                  )
+                                ) : null}
+                              </div>
+                            ) : !canProgressStatus ? (
                               <p className="admin-status-note">
                                 {isCancelled
-                                  ? `Refund: ${order?.refundStatus || "Not Applicable"}`
+                                  ? "Cancelled (No payment captured)"
                                   : paymentStatus === "Failed"
                                     ? "Payment failed"
                                     : "Waiting for successful payment"}

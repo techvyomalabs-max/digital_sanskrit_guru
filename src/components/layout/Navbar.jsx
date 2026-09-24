@@ -26,6 +26,7 @@ import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../../utils/geoAddress";
+import { validatePhoneNumber } from "../../utils/phoneValidation";
 import "./Navbar.css";
 
 const onDemandUrl = String(
@@ -60,6 +61,7 @@ function Navbar({ bannerActive = false }) {
 
 
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressIndex, setEditingAddressIndex] = useState(null);
@@ -179,6 +181,7 @@ function Navbar({ bannerActive = false }) {
   };
 
   const handleSectionNav = (sectionKey) => {
+    setSearchQuery("");
     const targetId = `home-section-${sectionKey}`;
     if (location.pathname === "/") {
       document.querySelectorAll(".home-section-highlighted").forEach((el) => {
@@ -208,8 +211,12 @@ function Navbar({ bannerActive = false }) {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const queryFromUrl = params.get("q") || params.get("search") || "";
-    if (location.pathname === "/" || location.pathname === "/search") {
+    if (location.pathname === "/search") {
       setSearchQuery(queryFromUrl);
+    } else if (location.pathname === "/" && queryFromUrl) {
+      setSearchQuery(queryFromUrl);
+    } else {
+      setSearchQuery("");
     }
   }, [location.pathname, location.search]);
 
@@ -303,21 +310,53 @@ function Navbar({ bannerActive = false }) {
     setShowModalAddressForm(true);
   };
 
+  const handleAddNewAddressRedirect = () => {
+    setIsAddressModalOpen(false);
+    setShowModalAddressForm(false);
+    setEditingAddressIndex(null);
+
+    if (user) {
+      navigate("/account?addNewAddress=true#manage-address", {
+        state: { targetSection: "manage-address", action: "add-address" }
+      });
+      window.dispatchEvent(new CustomEvent("addNewAccountAddress"));
+    } else {
+      navigate(`/login?redirect=${encodeURIComponent("/account?addNewAddress=true#manage-address")}`);
+    }
+  };
+
+  const handleUseCurrentLocationRedirect = () => {
+    setIsAddressModalOpen(false);
+    setShowModalAddressForm(false);
+    setEditingAddressIndex(null);
+
+    if (user) {
+      navigate("/account?useCurrentLocation=true#manage-address", {
+        state: { targetSection: "manage-address", action: "use-current-location" }
+      });
+      window.dispatchEvent(new CustomEvent("useCurrentLocationAccountAddress"));
+    } else {
+      navigate(`/login?redirect=${encodeURIComponent("/account?useCurrentLocation=true#manage-address")}`);
+    }
+  };
+
   const handleOpenEditAddressForm = (index) => {
-    const addr = addresses[index];
-    if (!addr) return;
-    setEditingAddressIndex(index);
-    setModalName(addr.name || "");
-    setModalPhone(addr.phone || "");
-    setModalAddress(addr.address || "");
-    setModalLandmark(addr.landmark || "");
-    setModalCity(addr.city || "");
-    setModalState(addr.state || "");
-    setModalPincode(addr.pincode || "");
-    setModalCountry(addr.country || "India");
-    setModalLabel(addr.label || "Home");
-    setModalFormError("");
-    setShowModalAddressForm(true);
+    setIsAddressModalOpen(false);
+    setShowModalAddressForm(false);
+    setEditingAddressIndex(null);
+
+    if (user) {
+      navigate(`/account?editAddress=${index}#manage-address`, {
+        state: { targetSection: "manage-address", editAddressIndex: index }
+      });
+      window.dispatchEvent(
+        new CustomEvent("editAccountAddress", {
+          detail: { index }
+        })
+      );
+    } else {
+      navigate(`/login?redirect=${encodeURIComponent(`/account?editAddress=${index}#manage-address`)}`);
+    }
   };
 
   const handleUseCurrentLocation = async () => {
@@ -370,6 +409,13 @@ function Navbar({ bannerActive = false }) {
       setModalFormError("Please enter your phone number.");
       return;
     }
+
+    const phoneValidation = validatePhoneNumber(modalPhone, modalCountry);
+    if (!phoneValidation.isValid) {
+      setModalFormError(phoneValidation.message);
+      return;
+    }
+
     if (!modalAddress.trim()) {
       setModalFormError("Please enter your street address / House No.");
       return;
@@ -379,10 +425,15 @@ function Navbar({ bannerActive = false }) {
       return;
     }
 
+    if ((modalCountry.trim().toLowerCase() === "india" || !modalCountry) && !/^\d{6}$/.test(modalPincode.trim())) {
+      setModalFormError("Please enter a valid 6-digit Indian PIN code.");
+      return;
+    }
+
     const payload = {
       label: modalLabel,
       name: modalName.trim(),
-      phone: modalPhone.trim(),
+      phone: phoneValidation.cleanPhone || modalPhone.trim(),
       address: modalAddress.trim(),
       landmark: modalLandmark.trim(),
       city: modalCity.trim(),
@@ -409,7 +460,7 @@ function Navbar({ bannerActive = false }) {
         {!isAdminRoute && (
           <div className="navbar-top">
             <div className="navbar-inner">
-              <Link to="/" className="navbar-logo navbar-outline">
+              <Link to="/" className="navbar-logo navbar-outline" onClick={() => setSearchQuery("")}>
                 <img
                   src="/logo.png"
                   alt="Digital Sanskrit Guru"
@@ -433,12 +484,31 @@ function Navbar({ bannerActive = false }) {
 
               <form className="navbar-search-wrap" onSubmit={handleSearchSubmit}>
                 <input
+                  ref={searchInputRef}
                   className="navbar-search"
                   placeholder="Search products, courses, and topics"
                   aria-label="Search products, courses, and topics"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    className="navbar-search-clear-btn"
+                    aria-label="Clear search"
+                    title="Clear search"
+                    onClick={() => {
+                      setSearchQuery("");
+                      if (location.pathname === "/search") {
+                        navigate("/collection");
+                      } else if (searchInputRef.current) {
+                        searchInputRef.current.focus();
+                      }
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                ) : null}
                 <button type="submit" className="navbar-search-btn" aria-label="Search">
                   <span className="navbar-search-btn-icon" aria-hidden="true">
                     {renderIcon("search", storeIcons.search)}
@@ -448,28 +518,28 @@ function Navbar({ bannerActive = false }) {
 
               <div className="navbar-right">
                 {user ? (
-                  <Link className="navbar-account navbar-outline" to="/account">
+                  <Link className="navbar-account navbar-outline" to="/account" onClick={() => setSearchQuery("")}>
                     <span className="navbar-account-line1">Hello, {user.name}</span>
                     <span className="navbar-account-line2">Your Account</span>
                   </Link>
                 ) : (
-                  <Link className="navbar-account navbar-outline" to="/login">
+                  <Link className="navbar-account navbar-outline" to="/login" onClick={() => setSearchQuery("")}>
                     <span className="navbar-account-line1">Hello, Sign in</span>
                     <span className="navbar-account-line2">Account & Lists</span>
                   </Link>
                 )}
 
-                <Link className="navbar-orders navbar-outline" to="/my-orders">
+                <Link className="navbar-orders navbar-outline" to="/my-orders" onClick={() => setSearchQuery("")}>
                   <span className="navbar-account-line1">Returns</span>
                   <span className="navbar-account-line2">& Orders</span>
                 </Link>
 
-                <Link className="navbar-orders navbar-outline" to="/faq">
+                <Link className="navbar-orders navbar-outline" to="/faq" onClick={() => setSearchQuery("")}>
                   <span className="navbar-account-line1">Help</span>
                   <span className="navbar-account-line2">& FAQs</span>
                 </Link>
 
-                <Link className="navbar-cart navbar-outline" to="/cart">
+                <Link className="navbar-cart navbar-outline" to="/cart" onClick={() => setSearchQuery("")}>
                   <span className="navbar-cart-icon" aria-hidden="true">
                     {renderIcon("cart", storeIcons.cart)}
                   </span>
@@ -582,6 +652,7 @@ function Navbar({ bannerActive = false }) {
                     className="navbar-collection-filter-item"
                     onClick={() => {
                       setIsCollectionFilterMenuOpen(false);
+                      setSearchQuery("");
                       navigate(
                         category === "All"
                           ? "/collection"
@@ -697,7 +768,11 @@ function Navbar({ bannerActive = false }) {
                         <input
                           type="tel"
                           value={modalPhone}
-                          onChange={(e) => setModalPhone(e.target.value)}
+                          maxLength={15}
+                          onChange={(e) => {
+                            setModalPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
+                            if (modalFormError) setModalFormError("");
+                          }}
                           placeholder="e.g. 9876543210"
                           style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
                         />
@@ -754,7 +829,11 @@ function Navbar({ bannerActive = false }) {
                         <input
                           type="text"
                           value={modalPincode}
-                          onChange={(e) => setModalPincode(e.target.value)}
+                          maxLength={6}
+                          onChange={(e) => {
+                            setModalPincode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                            if (modalFormError) setModalFormError("");
+                          }}
                           placeholder="Pincode"
                           style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
                         />
@@ -817,18 +896,14 @@ function Navbar({ bannerActive = false }) {
                       <button
                         type="button"
                         className="navbar-address-current-location-btn"
-                        onClick={handleUseCurrentLocation}
-                        disabled={isDetectingLocation}
+                        onClick={handleUseCurrentLocationRedirect}
                       >
                         <span className="navbar-location-gps-icon">🎯</span>
                         <div className="navbar-location-btn-text">
-                          <strong>{isDetectingLocation ? "Detecting location..." : "Use Current Location"}</strong>
+                          <strong>Use Current Location</strong>
                           <span>Detect automatically using device GPS</span>
                         </div>
                       </button>
-                      {locationStatusMessage ? (
-                        <p className="navbar-address-current-location-note">{locationStatusMessage}</p>
-                      ) : null}
                     </div>
                   )}
 
@@ -936,7 +1011,7 @@ function Navbar({ bannerActive = false }) {
                     <button
                       type="button"
                       className="navbar-address-add-btn"
-                      onClick={handleOpenInlineAddForm}
+                      onClick={handleAddNewAddressRedirect}
                     >
                       <span>＋</span> Add a New Address
                     </button>
@@ -1031,7 +1106,7 @@ function Navbar({ bannerActive = false }) {
 
       {/* Mobile Bottom Navigation Bar */}
       <div className="navbar-mobile-bottom-bar">
-        <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end>
+        <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end onClick={() => setSearchQuery("")}>
           <span className="mobile-bottom-icon">{renderIcon("home", storeIcons.home)}</span>
           <span className="mobile-bottom-label">Home</span>
         </NavLink>
@@ -1040,6 +1115,7 @@ function Navbar({ bannerActive = false }) {
           className={`mobile-bottom-item${isCollectionFilterMenuOpen ? " active" : ""}`}
           onClick={() => {
             setIsCollectionFilterMenuOpen((prev) => !prev);
+            setSearchQuery("");
             if (location.pathname !== "/collection") {
               navigate("/collection");
             }
@@ -1048,7 +1124,7 @@ function Navbar({ bannerActive = false }) {
           <span className="mobile-bottom-icon">{renderIcon("categories", storeIcons.categories)}</span>
           <span className="mobile-bottom-label">Categories</span>
         </button>
-        <NavLink to="/wishlist" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
+        <NavLink to="/wishlist" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} onClick={() => setSearchQuery("")}>
           <div className="mobile-bottom-cart-wrap">
             <span className="mobile-bottom-icon">{renderIcon("wishlist", storeIcons.wishlist)}</span>
             {wishlist.length > 0 ? (
@@ -1059,7 +1135,7 @@ function Navbar({ bannerActive = false }) {
           </div>
           <span className="mobile-bottom-label">Wishlist</span>
         </NavLink>
-        <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}>
+        <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} onClick={() => setSearchQuery("")}>
           <span className="mobile-bottom-icon">{renderIcon("profile", storeIcons.profile)}</span>
           <span className="mobile-bottom-label">{user ? "Profile" : "Login"}</span>
         </NavLink>
@@ -1096,45 +1172,45 @@ function Navbar({ bannerActive = false }) {
             {deliveryLine1} <strong>{deliveryLine2}</strong>
           </button>
 
-          <NavLink className={linkClassName} to="/" end onClick={() => setIsMenuOpen(false)}>
+          <NavLink className={linkClassName} to="/" end onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
             <House size={18} className="navbar-link-icon" />
             <span>Home</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/about" onClick={() => setIsMenuOpen(false)}>
+          <NavLink className={linkClassName} to="/about" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
             <Info size={18} className="navbar-link-icon" />
             <span>About Us</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/wishlist" onClick={() => setIsMenuOpen(false)}>
+          <NavLink className={linkClassName} to="/wishlist" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
             <Heart size={18} className="navbar-link-icon" />
             <span>Wishlist</span>
             <span className="navbar-inline-count">{wishlist.length}</span>
           </NavLink>
           {user && (
             <>
-              <NavLink className={linkClassName} to="/my-orders" onClick={() => setIsMenuOpen(false)}>
+              <NavLink className={linkClassName} to="/my-orders" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
                 <Package size={18} className="navbar-link-icon" />
                 <span>My Orders</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/my-library" onClick={() => setIsMenuOpen(false)}>
+              <NavLink className={linkClassName} to="/my-library" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
                 <BookOpen size={18} className="navbar-link-icon" />
                 <span>My Digital Library</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/account" onClick={() => setIsMenuOpen(false)}>
+              <NavLink className={linkClassName} to="/account" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
                 <User size={18} className="navbar-link-icon" />
                 <span>My Account</span>
               </NavLink>
             </>
           )}
-          <NavLink className={linkClassName} to="/faq" onClick={() => setIsMenuOpen(false)}>
+          <NavLink className={linkClassName} to="/faq" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
             <HelpCircle size={18} className="navbar-link-icon" />
             <span>FAQ</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/contact" onClick={() => setIsMenuOpen(false)}>
+          <NavLink className={linkClassName} to="/contact" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
             <Mail size={18} className="navbar-link-icon" />
             <span>Contact Us</span>
           </NavLink>
           {user?.isAdmin && (
-            <NavLink className={linkClassName} to="/admin" onClick={() => setIsMenuOpen(false)}>
+            <NavLink className={linkClassName} to="/admin" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
               <ShieldCheck size={18} className="navbar-link-icon" />
               <span>Admin Dashboard</span>
             </NavLink>
@@ -1145,6 +1221,7 @@ function Navbar({ bannerActive = false }) {
               className="navbar-link navbar-logout navbar-outline"
               onClick={() => {
                 setIsMenuOpen(false);
+                setSearchQuery("");
                 logout();
               }}
             >
@@ -1153,11 +1230,11 @@ function Navbar({ bannerActive = false }) {
             </button>
           ) : (
             <>
-              <NavLink className={linkClassName} to="/login" onClick={() => setIsMenuOpen(false)}>
+              <NavLink className={linkClassName} to="/login" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
                 <LogIn size={18} className="navbar-link-icon" />
                 <span>Login</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/register" onClick={() => setIsMenuOpen(false)}>
+              <NavLink className={linkClassName} to="/register" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
                 <UserPlus size={18} className="navbar-link-icon" />
                 <span>New Customer? Register</span>
               </NavLink>

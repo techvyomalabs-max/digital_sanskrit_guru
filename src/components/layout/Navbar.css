@@ -408,13 +408,14 @@ html.banner-active .navbar {
 .navbar-search-wrap {
   width: 100%;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: stretch;
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 2px solid var(--site-search-border);
   background: var(--site-surface);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
 }
 
 .navbar-search-wrap:focus-within {
@@ -423,7 +424,7 @@ html.banner-active .navbar {
 }
 
 .navbar-search {
-  width: 100%;
+  flex: 1 1 0%;
   min-width: 0;
   border: none;
   background: transparent;
@@ -440,6 +441,24 @@ html.banner-active .navbar {
   font-weight: 400;
 }
 
+.navbar-search-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--site-text-soft, #64748b);
+  padding: 0 10px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.navbar-search-clear-btn:hover {
+  color: var(--site-text, #0f172a);
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .navbar-search-btn {
   display: inline-flex;
   align-items: center;
@@ -452,6 +471,7 @@ html.banner-active .navbar {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease;
+  flex: 0 0 auto;
 }
 
 .navbar-search-btn:hover {

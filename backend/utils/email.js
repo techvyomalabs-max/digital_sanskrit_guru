@@ -427,6 +427,46 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   });
 }
 
+async function sendRefundStatusUpdate(order, user, refundStatus) {
+  const to = String(user?.email || "").trim().toLowerCase();
+  if (!to) return;
+
+  const refundMessages = {
+    Pending: { emoji: "⏳", title: "Refund Request Received", body: "We have received your refund request for your cancelled/returned order. Our team will review and process it shortly." },
+    Processing: { emoji: "💳", title: "Refund in Process", body: "Your refund is currently being processed. It typically takes 3–5 business days to reflect in your original payment method / bank account." },
+    Refunded: { emoji: "✅", title: "Refund Completed", body: "Your refund has been successfully processed! The funds have been returned to your original payment source." },
+    Rejected: { emoji: "⚠️", title: "Refund Status Update", body: "Your refund request could not be processed at this time. Please contact support if you have any questions." }
+  };
+
+  const info = refundMessages[refundStatus] || {
+    emoji: "💰",
+    title: `Refund Status: ${refundStatus}`,
+    body: `Your order refund status has been updated to ${refundStatus}.`
+  };
+
+  const badgeClass = refundStatus === "Refunded" ? "badge-delivered" : refundStatus === "Rejected" ? "badge-cancelled" : "badge-shipped";
+
+  const html = htmlWrapper(info.title, `
+    <h2>${info.emoji} ${info.title}</h2>
+    <p>Hi <strong>${String(user?.name || "Customer")}</strong>,</p>
+    <p>${info.body}</p>
+    <p>
+      <strong>Order ID:</strong> ${String(order._id || "").slice(-8).toUpperCase()}&nbsp;&nbsp;
+      <span class="badge ${badgeClass}">Refund: ${refundStatus}</span>
+    </p>
+    ${buildOrderItemsTable(order.items || [])}
+    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
+  `);
+
+  return sendEmail({
+    to,
+    subject: `${info.emoji} Refund Update: ${refundStatus} — Order #${String(order._id || "").slice(-8).toUpperCase()}`,
+    html,
+    type: "refund-update",
+    orderId: String(order._id || "")
+  });
+}
+
 async function sendLowStockAdminAlert(products) {
   if (!ADMIN_EMAIL) return;
   const rows = products.map((p) =>
@@ -691,6 +731,7 @@ module.exports = {
   sendEmail,
   sendOrderConfirmation,
   sendOrderStatusUpdate,
+  sendRefundStatusUpdate,
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
   sendBroadcastEmail,

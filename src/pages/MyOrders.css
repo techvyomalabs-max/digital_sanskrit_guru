@@ -224,14 +224,55 @@
   color: #3730A3;
 }
 
+.my-order-status.status-refund-pending {
+  background: #FEF3C7;
+  border-color: #FDE68A;
+  color: #92400E;
+}
+
+.my-order-status.status-refund-processing {
+  background: #DBEAFE;
+  border-color: #BFDBFE;
+  color: #1E40AF;
+}
+
+.my-order-status.status-refund-refunded {
+  background: #DCFCE7;
+  border-color: #BBF7D0;
+  color: #166534;
+}
+
+.my-order-status.status-refund-rejected {
+  background: #FEE2E2;
+  border-color: #FECACA;
+  color: #991B1B;
+}
+
 .my-order-cancelled-panel {
   background: var(--site-surface-muted);
+}
+
+.my-order-refund-block {
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .my-order-refund-note {
   margin: 0;
   font-size: 12px;
   color: var(--site-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.my-order-refund-subnote {
+  margin: 0;
+  font-size: 11px;
+  color: var(--site-text-soft, #64748b);
+  line-height: 1.35;
 }
 
 .my-order-return-note {

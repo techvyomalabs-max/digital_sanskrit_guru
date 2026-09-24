@@ -278,6 +278,92 @@
   filter: brightness(1.05);
 }
 
+.admin-order-details-refund-control-wrap {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-order-details-refund-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.admin-order-details-refund-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-order-details-refund-select {
+  flex: 1;
+  min-width: 130px;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-order-details-refund-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-order-details-refund-btn:hover {
+  background: #dbeafe;
+}
+
+.admin-order-details-refund-btn.refund-btn-success {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-order-details-refund-btn.refund-btn-success:hover {
+  background: #bbf7d0;
+}
+
+.admin-order-details-refund-btn.refund-btn-danger {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.admin-order-details-refund-btn.refund-btn-danger:hover {
+  background: #ffe4e6;
+}
+
+.admin-order-details-refund-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1100px) {
   .admin-order-details-grid,
   .admin-order-details-layout {

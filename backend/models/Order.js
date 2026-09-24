@@ -182,7 +182,15 @@ const orderSchema = new mongoose.Schema(
         type: String,
         default: ""
       },
+      razorpayRefundId: {
+        type: String,
+        default: ""
+      },
       paidAt: {
+        type: Date,
+        default: null
+      },
+      refundedAt: {
         type: Date,
         default: null
       }

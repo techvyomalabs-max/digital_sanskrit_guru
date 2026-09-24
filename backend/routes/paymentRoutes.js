@@ -26,7 +26,8 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, async (req,
     const order = await razorpay.orders.create({
       amount: Math.round(amount * 100),
       currency,
-      receipt: `order_${Date.now()}`
+      receipt: `order_${Date.now()}`,
+      payment_capture: 1
     });
 
     return res.json(order);

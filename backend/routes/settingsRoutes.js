@@ -5,6 +5,7 @@ const admin = require("../middleware/adminMiddleware");
 const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../utils/currency");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
+const { normalizeCountryName } = require("../utils/deliveryPricing");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -148,10 +149,6 @@ function normalizeDistancePricing(input, fallbackDeliveryCharge = 0) {
     freeRadiusKm: Math.max(0, Number(input?.freeRadiusKm || 0)),
     maxCharge: rawMax === null ? null : Math.max(0, rawMax)
   };
-}
-
-function normalizeCountryName(value) {
-  return String(value || "").trim().toLowerCase();
 }
 
 function normalizeCurrencyCode(value, fallback = DEFAULT_INTERNATIONAL_CURRENCY) {

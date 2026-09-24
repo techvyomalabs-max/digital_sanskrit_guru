@@ -19,6 +19,7 @@ const crypto = require("crypto");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
+  sendRefundStatusUpdate,
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
   sendWelcomeCredentialsEmail
@@ -33,6 +34,7 @@ const {
 
 const { getTrackingDetails } = require("../utils/trackingService");
 const { orderRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
+const getRazorpayClient = require("../utils/razorpay");
 
 const router = express.Router();
 
@@ -1790,8 +1792,70 @@ router.put("/:id/refund-status", protect, admin, async (req, res) => {
 
   const previousRefundStatus = String(order.refundStatus || "").trim() || "Not Applicable";
 
-  if (String(order.status || "").trim() !== "Cancelled" || String(order.paymentStatus || "").trim() !== "Paid") {
-    return res.status(400).json({ message: "Refund status can be updated only for paid cancelled orders." });
+  if (previousRefundStatus === "Refunded") {
+    return res.status(400).json({ message: "This order has already been refunded. Completed refunds cannot be changed." });
+  }
+
+  const isCancelledAndPaid = String(order.status || "").trim() === "Cancelled" && String(order.paymentStatus || "").trim() === "Paid";
+  const isCancelled = String(order.status || "").trim() === "Cancelled";
+  const hasActiveRefund = String(order.refundStatus || "").trim() !== "Not Applicable";
+
+  if (!isCancelled && !hasActiveRefund && String(order.paymentStatus || "").trim() !== "Paid") {
+    return res.status(400).json({ message: "Refund status can be updated only for paid, cancelled, or return-requested orders." });
+  }
+
+  // If marking as Refunded and order was paid through Razorpay, attempt automatic gateway refund
+  let razorpayRefundId = "";
+  const razorpayPaymentId = String(order?.paymentMeta?.razorpayPaymentId || "").trim();
+  const isManualOnly = Boolean(req.body?.manualRefund || req.body?.forceManual);
+
+  if (refundStatus === "Refunded" && razorpayPaymentId && !isManualOnly && !order?.paymentMeta?.razorpayRefundId) {
+    try {
+      const razorpay = getRazorpayClient();
+      
+      // Check payment status on Razorpay. If authorized (uncaptured), capture it first so Razorpay allows refund
+      const paymentObj = await razorpay.payments.fetch(razorpayPaymentId);
+      if (paymentObj && paymentObj.status === "authorized") {
+        await razorpay.payments.capture(razorpayPaymentId, paymentObj.amount, paymentObj.currency || "INR");
+      }
+
+      const customAmount = Number(req.body?.refundAmount);
+      const amountInINR = Number.isFinite(customAmount) && customAmount > 0
+        ? customAmount
+        : Number(order.total || 0);
+
+      const amountInPaise = Math.round(amountInINR * 100);
+
+      if (amountInPaise > 0) {
+        const refundResponse = await razorpay.payments.refund(razorpayPaymentId, {
+          amount: amountInPaise,
+          notes: {
+            orderId: String(order._id),
+            orderNumber: String(order.invoiceNumber || String(order._id).slice(-6)),
+            reason: String(req.body?.reason || "Cancelled order refund")
+          }
+        });
+        razorpayRefundId = String(refundResponse?.id || "");
+      }
+    } catch (razorErr) {
+      console.error("Razorpay automated refund error:", razorErr);
+      const description = razorErr?.error?.description || razorErr?.message || "Razorpay API refund error";
+
+      // If Razorpay API returns an error and admin has not explicitly forced manual override:
+      if (!req.body?.forceManual) {
+        return res.status(400).json({
+          message: `Razorpay Refund Failed: ${description}`,
+          error: description,
+          canForceManual: true
+        });
+      }
+    }
+  }
+
+  if (razorpayRefundId) {
+    if (!order.paymentMeta) order.paymentMeta = {};
+    order.paymentMeta.razorpayRefundId = razorpayRefundId;
+    order.paymentMeta.refundedAt = new Date();
   }
 
   order.refundStatus = refundStatus;
@@ -1806,14 +1870,24 @@ router.put("/:id/refund-status", protect, admin, async (req, res) => {
     entityType: "order",
     entityId: String(updated._id || ""),
     entityLabel: String(updated._id || ""),
-    summary: `Updated refund for order ${String(updated._id || "").slice(-6)}: ${previousRefundStatus} -> ${refundStatus}`,
+    summary: `Updated refund for order ${String(updated._id || "").slice(-6)}: ${previousRefundStatus} -> ${refundStatus}${razorpayRefundId ? ` (Razorpay ID: ${razorpayRefundId})` : ""}`,
     details: {
       previousRefundStatus,
-      nextRefundStatus: refundStatus
+      nextRefundStatus: refundStatus,
+      razorpayRefundId: razorpayRefundId || order?.paymentMeta?.razorpayRefundId || null
     }
   });
 
   res.json(updated);
+
+  // Send customer email notification if status changed to an active refund status
+  if (previousRefundStatus !== refundStatus && ["Processing", "Refunded", "Rejected"].includes(refundStatus)) {
+    fireNotifications(async () => {
+      const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
+      if (!populatedOrder?.user) return;
+      await sendRefundStatusUpdate(updated, populatedOrder.user, refundStatus);
+    });
+  }
 });
 
 router.put("/:id/items/:itemId/return-status", protect, admin, async (req, res) => {

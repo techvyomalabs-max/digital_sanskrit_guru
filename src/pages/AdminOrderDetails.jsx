@@ -13,6 +13,7 @@ function AdminOrderDetails() {
   const [order, setOrder] = useState(null);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [isUpdatingRefund, setIsUpdatingRefund] = useState(false);
   const [pageMessage, setPageMessage] = useState("");
 
   useEffect(() => {
@@ -44,6 +45,35 @@ function AdminOrderDetails() {
       active = false;
     };
   }, [id, token]);
+
+  const updateRefundStatus = async (newRefundStatus, forceManual = false) => {
+    if (!order?._id) return;
+    setIsUpdatingRefund(true);
+    setPageMessage("");
+    try {
+      const res = await axios.put(
+        `/api/orders/${order._id}/refund-status`,
+        { refundStatus: newRefundStatus, forceManual },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOrder(res.data || { ...order, refundStatus: newRefundStatus });
+      const rzpId = res.data?.paymentMeta?.razorpayRefundId;
+      setPageMessage(
+        rzpId
+          ? `Razorpay refund initiated successfully! (Refund ID: ${rzpId})`
+          : `Refund status updated to "${newRefundStatus}".`
+      );
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Unable to update refund status.";
+      const canForce = Boolean(err?.response?.data?.canForceManual);
+      if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
+        return updateRefundStatus(newRefundStatus, true);
+      }
+      setPageMessage(errMsg);
+    } finally {
+      setIsUpdatingRefund(false);
+    }
+  };
 
   const itemCount = useMemo(() => {
     return Array.isArray(order?.items)
@@ -139,13 +169,72 @@ function AdminOrderDetails() {
                 <strong className={`admin-order-chip payment-${displayPaymentStatus.toLowerCase()}`}>
                   {displayPaymentStatus}
                 </strong>
-                {displayRefundStatus !== "Not Applicable" ? (
-                  <p>
-                    Refund:{" "}
-                    <strong className={`admin-order-chip refund-${displayRefundStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                      {displayRefundStatus}
-                    </strong>
+                {displayRefundStatus !== "Not Applicable" || displayOrderStatus === "Cancelled" ? (
+                  <div className="admin-order-details-refund-control-wrap">
+                    <div className="admin-order-details-refund-header">
+                      <span>Refund Status:</span>
+                      <strong className={`admin-order-chip refund-${displayRefundStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                        {displayRefundStatus}
+                      </strong>
+                    </div>
+                    {displayRefundStatus === "Refunded" ? (
+                      <p style={{ margin: "6px 0 0", fontSize: "12.5px", fontWeight: 700, color: "#166534" }}>
+                        ✓ Refund Completed & Finalized
+                      </p>
+                    ) : (
+                      <div className="admin-order-details-refund-actions">
+                        <select
+                          value={displayRefundStatus}
+                          onChange={(e) => updateRefundStatus(e.target.value)}
+                          disabled={isUpdatingRefund}
+                          className="admin-order-details-refund-select"
+                          aria-label="Change refund status"
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Processing">Processing</option>
+                          <option value="Refunded">Refunded</option>
+                          <option value="Rejected">Rejected</option>
+                          <option value="Not Applicable">Not Applicable</option>
+                        </select>
+                        {displayRefundStatus === "Pending" && (
+                          <button
+                            type="button"
+                            className="admin-order-details-refund-btn"
+                            disabled={isUpdatingRefund}
+                            onClick={() => updateRefundStatus("Processing")}
+                          >
+                            {isUpdatingRefund ? "Updating..." : "Process Refund"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="admin-order-details-refund-btn refund-btn-success"
+                          disabled={isUpdatingRefund}
+                          onClick={() => updateRefundStatus("Refunded")}
+                        >
+                          {isUpdatingRefund ? "Updating..." : "Mark Refunded"}
+                        </button>
+                        {displayRefundStatus !== "Rejected" && (
+                          <button
+                            type="button"
+                            className="admin-order-details-refund-btn refund-btn-danger"
+                            disabled={isUpdatingRefund}
+                            onClick={() => updateRefundStatus("Rejected")}
+                          >
+                            {isUpdatingRefund ? "Updating..." : "Reject"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                {order?.paymentMeta?.razorpayRefundId ? (
+                  <p style={{ marginTop: '8px', color: '#4f46e5', fontWeight: 600 }}>
+                    ⚡ Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
                   </p>
+                ) : null}
+                {order?.paymentMeta?.refundedAt ? (
+                  <p>Refunded on: {formatDateTime(order.paymentMeta.refundedAt)}</p>
                 ) : null}
                 <p>Method: {order.paymentMethod || "Razorpay"}</p>
                 <p>
