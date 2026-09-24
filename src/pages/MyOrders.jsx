@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   X
 } from "lucide-react";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
 
 const CANCELLATION_REASONS = [
@@ -100,6 +101,7 @@ function MyOrders() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [orders, setOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [retryingOrderId, setRetryingOrderId] = useState("");
   const [requestingReturnOrderId, setRequestingReturnOrderId] = useState("");
   const [generatingInvoiceOrderId, setGeneratingInvoiceOrderId] = useState("");
@@ -140,12 +142,18 @@ function MyOrders() {
   };
 
   const loadOrders = async () => {
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     try {
       const res = await axios.get("/api/orders/my", getAuthHeaders());
       setOrders(Array.isArray(res.data) ? res.data : []);
     } catch {
       setOrders([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -395,21 +403,21 @@ function MyOrders() {
           className={selectedView === "All" ? "my-orders-filter active" : "my-orders-filter"}
           onClick={() => selectView("All")}
         >
-          All ({viewCounts.All})
+          All ({isLoading ? "..." : viewCounts.All})
         </button>
         <button
           type="button"
           className={selectedView === "ActionRequired" ? "my-orders-filter active" : "my-orders-filter"}
           onClick={() => selectView("ActionRequired")}
         >
-          Action Required ({viewCounts.ActionRequired})
+          Action Required ({isLoading ? "..." : viewCounts.ActionRequired})
         </button>
         <button
           type="button"
           className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
           onClick={() => selectView("Completed")}
         >
-          Completed ({viewCounts.Completed})
+          Completed ({isLoading ? "..." : viewCounts.Completed})
         </button>
       </div>
 
@@ -419,9 +427,12 @@ function MyOrders() {
 
       {pageMessage ? <p className="my-orders-banner">{pageMessage}</p> : null}
 
-      {visibleOrders.length === 0 && <p className="my-orders-empty">No orders in this view.</p>}
-
-      {visibleOrders.map((order) => {
+      {isLoading ? (
+        <LoadingSpinner text="Loading your orders..." minHeight="240px" />
+      ) : visibleOrders.length === 0 ? (
+        <p className="my-orders-empty">No orders in this view.</p>
+      ) : (
+        visibleOrders.map((order) => {
         const status = String(order.status || "Pending");
         const paymentStatus = getEffectivePaymentStatus(order);
         const isPaid = paymentStatus === "Paid";
@@ -842,9 +853,9 @@ function MyOrders() {
             </div>
           </div>
         );
-      })}
+      }))}
 
-      {hasMoreOrders ? (
+      {!isLoading && hasMoreOrders ? (
         <div className="my-orders-load-more-wrap">
           <p className="my-orders-load-more-note">
             Showing {visibleOrders.length} of {filteredOrders.length} orders
