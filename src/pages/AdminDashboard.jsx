@@ -1963,7 +1963,9 @@ function AdminDashboard() {
           </div>
           <div className="card">
             <h3 style={{ margin: "0 0 14px" }}>Best Selling Product Chart</h3>
-            {topProducts.length === 0 ? (
+            {isInitialLoading ? (
+              <p>Loading sales data...</p>
+            ) : topProducts.length === 0 ? (
               <p>No sales data yet.</p>
             ) : (
               <div className="best-products-chart">
@@ -1990,7 +1992,9 @@ function AdminDashboard() {
         <section className="dashboard-grid">
           <div className="card">
             <h3>Low Stock Alerts</h3>
-            {lowStockProducts.length === 0 ? (
+            {isInitialLoading ? (
+              <p>Checking inventory levels...</p>
+            ) : lowStockProducts.length === 0 ? (
               <p>No low-stock items right now.</p>
             ) : (
               lowStockProducts.map((product) => (
@@ -2060,7 +2064,11 @@ function AdminDashboard() {
                 })}
               </tbody>
             </table>
-            {orders.length === 0 && <p style={{ margin: "12px 0 0" }}>No orders found.</p>}
+            {isInitialLoading ? (
+              <p style={{ margin: "12px 0 0", color: "var(--site-text-soft)" }}>Loading recent orders...</p>
+            ) : orders.length === 0 ? (
+              <p style={{ margin: "12px 0 0" }}>No orders found.</p>
+            ) : null}
           </div>
         </section>
       </main>

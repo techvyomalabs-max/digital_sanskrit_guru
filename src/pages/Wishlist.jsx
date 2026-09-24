@@ -5,10 +5,11 @@ import { useCart } from "../hooks/useCart";
 import { useToast } from "../hooks/useToast";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Wishlist.css";
 
 function Wishlist() {
-  const { wishlist, removeFromWishlist } = useWishlist();
+  const { wishlist, isLoadingWishlist, removeFromWishlist } = useWishlist();
   const { addToCart } = useCart();
   const { showToast } = useToast();
 
@@ -32,14 +33,20 @@ function Wishlist() {
         <div className="wishlist-header-row">
           <div className="wishlist-title-area">
             <h1>My Wishlist</h1>
-            <p>You have {wishlist.length} item{wishlist.length !== 1 ? "s" : ""} saved in your wishlist.</p>
+            <p>
+              {isLoadingWishlist
+                ? "Loading your wishlist..."
+                : `You have ${wishlist.length} item${wishlist.length !== 1 ? "s" : ""} saved in your wishlist.`}
+            </p>
           </div>
           <Link to="/collection" className="wishlist-back-link">
             <ArrowLeft size={16} /> Continue Shopping
           </Link>
         </div>
 
-        {wishlist.length > 0 ? (
+        {isLoadingWishlist ? (
+          <LoadingSpinner text="Loading saved items..." minHeight="260px" />
+        ) : wishlist.length > 0 ? (
           <div className="wishlist-list-container">
             {/* Header row (Desktop only) */}
             <div className="wishlist-list-header">

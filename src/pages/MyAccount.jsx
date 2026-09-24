@@ -274,12 +274,12 @@ async function fetchCoordinatesForAddress(parts = {}) {
 function MyAccount() {
   const { user, token, updateProfileState } = useAuth();
   const { wishlist } = useWishlist();
-  const { addresses, addAddress, updateAddress, removeAddress, setDefaultAddress } = useDeliveryLocation();
+  const { addresses, isLoadingAddresses, addAddress, updateAddress, removeAddress, setDefaultAddress } = useDeliveryLocation();
   const location = useLocation();
   const addressFormRef = useRef(null);
   const nameInputRef = useRef(null);
   const [orders, setOrders] = useState([]);
-  const [showAddressForm, setShowAddressForm] = useState(addresses.length === 0);
+  const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [addressToDelete, setAddressToDelete] = useState(null);
   const [addressError, setAddressError] = useState("");
@@ -1780,7 +1780,9 @@ function MyAccount() {
           </div>
         )}
 
-        {addresses.length > 0 ? (
+        {isLoadingAddresses ? (
+          <LoadingSpinner text="Loading saved addresses..." minHeight="160px" />
+        ) : addresses.length > 0 ? (
           <div className="my-account-address-cards-grid">
             {addresses.map((item, index) => {
               const isEditingThisCard = editingIndex === index && showAddressForm;

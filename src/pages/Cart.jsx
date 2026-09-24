@@ -6,6 +6,7 @@ import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Cart.css";
 
 const getItemHsnSac = (item) => {
@@ -159,6 +160,7 @@ function Cart() {
   const {
     cartItems,
     savedForLaterItems,
+    isLoadingCart,
     removeFromCart,
     updateQty,
     saveForLater,
@@ -279,6 +281,14 @@ function Cart() {
     const intlDeliveryEnabled = charges?.internationalDelivery?.enabled === true;
     return isInternational && !intlDeliveryEnabled && hasPhysicalItems;
   }, [selectedAddress?.country, charges?.internationalDelivery?.enabled, hasPhysicalItems]);
+
+  if (isLoadingCart) {
+    return (
+      <div className="cart-page">
+        <LoadingSpinner text="Loading your shopping cart..." minHeight="320px" />
+      </div>
+    );
+  }
 
   if (cartItems.length === 0 && savedForLaterItems.length === 0) {
     return (

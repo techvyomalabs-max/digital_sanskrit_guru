@@ -103,6 +103,7 @@ export function CartProvider({ children }) {
   const { token } = useAuth();
   const [cartItems, setCartItems] = useState(() => readGuestCart());
   const [savedForLaterItems, setSavedForLaterItems] = useState(() => readSavedForLater());
+  const [isLoadingCart, setIsLoadingCart] = useState(() => Boolean(token));
   const [addedItem, setAddedItem] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const pendingDeletions = useRef(new Set());
@@ -116,9 +117,11 @@ export function CartProvider({ children }) {
   const loadCart = useCallback(async () => {
     if (!token) {
       setCartItems(readGuestCart());
+      setIsLoadingCart(false);
       return;
     }
 
+    setIsLoadingCart(true);
     try {
       const res = await axios.get("/api/cart", getCartHeaders());
       setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
@@ -128,6 +131,8 @@ export function CartProvider({ children }) {
         showToast("Session expired. Please login again.", "error");
       }
       setCartItems([]);
+    } finally {
+      setIsLoadingCart(false);
     }
   }, [token, showToast]);
 
@@ -446,6 +451,7 @@ export function CartProvider({ children }) {
       value={{
         cartItems,
         savedForLaterItems,
+        isLoadingCart,
         addToCart,
         removeFromCart,
         updateQty,

@@ -8,6 +8,7 @@ export function WishlistProvider({ children }) {
   const { showToast } = useToast();
   const { token } = useAuth();
   const syncedRef = useRef(false);
+  const [isLoadingWishlist, setIsLoadingWishlist] = useState(() => Boolean(token));
 
   const [wishlist, setWishlist] = useState(() => {
     try {
@@ -27,10 +28,12 @@ export function WishlistProvider({ children }) {
   useEffect(() => {
     if (!token) {
       syncedRef.current = false;
+      setIsLoadingWishlist(false);
       return;
     }
     if (syncedRef.current) return;
     syncedRef.current = true;
+    setIsLoadingWishlist(true);
 
     // Fetch user's wishlist from the database
     axios
@@ -68,6 +71,9 @@ export function WishlistProvider({ children }) {
       })
       .catch(() => {
         // Sync failure is non-critical — local data remains intact
+      })
+      .finally(() => {
+        setIsLoadingWishlist(false);
       });
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,7 +140,7 @@ export function WishlistProvider({ children }) {
 
   return (
     <WishlistContext.Provider
-      value={{ wishlist, addToWishlist, removeFromWishlist }}
+      value={{ wishlist, isLoadingWishlist, addToWishlist, removeFromWishlist }}
     >
       {children}
     </WishlistContext.Provider>

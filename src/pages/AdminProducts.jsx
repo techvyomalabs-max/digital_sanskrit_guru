@@ -8,6 +8,7 @@ import "./AdminProducts.css";
 function AdminProducts() {
   const { token } = useAuth();
   const [products, setProducts] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [warehouseAdjustments, setWarehouseAdjustments] = useState({});
   const [stockActionLoading, setStockActionLoading] = useState("");
   const [warehouseMessage, setWarehouseMessage] = useState("");
@@ -15,15 +16,21 @@ function AdminProducts() {
   const [warehouseZoneFilter, setWarehouseZoneFilter] = useState("All");
 
   useEffect(() => {
+    setIsLoading(true);
     axios
       .get("/api/products")
       .then((res) => setProducts(res.data))
-      .catch(() => setProducts([]));
+      .catch(() => setProducts([]))
+      .finally(() => setIsLoading(false));
   }, []);
 
   const loadProducts = async () => {
-    const res = await axios.get("/api/products");
-    setProducts(res.data);
+    try {
+      const res = await axios.get("/api/products");
+      setProducts(res.data);
+    } catch {
+      setProducts([]);
+    }
   };
 
   const inventoryAnalytics = useMemo(() => {
@@ -256,7 +263,9 @@ function AdminProducts() {
         {/* Category Distribution Analytics */}
         <section className="card">
           <h3 style={{ margin: "0 0 14px", fontSize: "16px", fontWeight: 700 }}>📊 Category Inventory Distribution</h3>
-          {inventoryAnalytics.categoryStock.length === 0 ? (
+          {isLoading ? (
+            <p style={{ color: "var(--admin-muted)" }}>Loading inventory data...</p>
+          ) : inventoryAnalytics.categoryStock.length === 0 ? (
             <p style={{ color: "var(--admin-muted)" }}>No inventory data available.</p>
           ) : (
             <div className="inventory-bars">
@@ -362,7 +371,11 @@ function AdminProducts() {
               )}
 
               <div className="warehouse-restock-list">
-                {warehouseAnalytics.restockQueue.length === 0 ? (
+                {isLoading ? (
+                  <p style={{ color: "var(--admin-muted)", padding: "20px 0", textAlign: "center" }}>
+                    Analyzing stock levels...
+                  </p>
+                ) : warehouseAnalytics.restockQueue.length === 0 ? (
                   <p style={{ color: "var(--admin-muted)", padding: "20px 0", textAlign: "center" }}>
                     ✓ All products are sufficiently stocked. No items in restock queue.
                   </p>
@@ -423,7 +436,11 @@ function AdminProducts() {
           </div>
 
           <div className="warehouse-manager-list">
-            {warehouseStockRows.length === 0 ? (
+            {isLoading ? (
+              <p style={{ padding: "20px 0", color: "var(--admin-muted)", textAlign: "center" }}>
+                Loading warehouse products...
+              </p>
+            ) : warehouseStockRows.length === 0 ? (
               <p style={{ padding: "20px 0", color: "var(--admin-muted)", textAlign: "center" }}>
                 No products match the current search or zone filters.
               </p>
