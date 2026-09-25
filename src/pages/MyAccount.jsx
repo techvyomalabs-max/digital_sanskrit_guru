@@ -279,6 +279,7 @@ function MyAccount() {
   const addressFormRef = useRef(null);
   const nameInputRef = useRef(null);
   const [orders, setOrders] = useState([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [addressToDelete, setAddressToDelete] = useState(null);
@@ -929,9 +930,13 @@ function MyAccount() {
   }, [location.hash, location.search]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setIsLoadingOrders(false);
+      return;
+    }
 
     let active = true;
+    setIsLoadingOrders(true);
     axios
       .get("/api/orders/my", {
         headers: { Authorization: `Bearer ${token}` }
@@ -943,6 +948,9 @@ function MyAccount() {
       .catch(() => {
         if (!active) return;
         setOrders([]);
+      })
+      .finally(() => {
+        if (active) setIsLoadingOrders(false);
       });
 
     return () => {
@@ -971,7 +979,7 @@ function MyAccount() {
       eyebrow: "Orders & Invoices",
       title: "Your Orders",
       text: "Track packages, view order history, initiate returns, and download tax invoices.",
-      meta: `${orderSummary.total} total orders`,
+      meta: isLoadingOrders ? "Loading orders..." : `${orderSummary.total} total orders`,
       link: "/my-orders",
       action: "View orders",
       icon: Package,
@@ -981,7 +989,7 @@ function MyAccount() {
       eyebrow: "Shipping Locations",
       title: "Address Book",
       text: "Add, edit, or set default delivery addresses for 1-click checkout.",
-      meta: `${addresses.length} saved ${addresses.length === 1 ? "address" : "addresses"}`,
+      meta: isLoadingAddresses ? "Loading addresses..." : `${addresses.length} saved ${addresses.length === 1 ? "address" : "addresses"}`,
       link: "#manage-address",
       action: "Manage addresses",
       icon: MapPin,
@@ -1164,6 +1172,14 @@ function MyAccount() {
     setDefaultAddress(index);
     showAddressToast(`Default delivery address set to ${target?.name || "selected address"}.`);
   };
+
+  if (!user && token) {
+    return (
+      <div className="my-account-page">
+        <LoadingSpinner text="Loading your account details..." minHeight="350px" />
+      </div>
+    );
+  }
 
   return (
     <div className="my-account-page">
@@ -1697,21 +1713,6 @@ function MyAccount() {
                   <span className="my-account-card-field-label">Password</span>
                   <div className="my-account-card-field-val-wrap">
                     <span className="my-account-password-dots">••••••••••••</span>
-                    <button
-                      type="button"
-                      className="my-account-card-action-btn"
-                      onClick={() => {
-                        setEditingSection("security");
-                        setProfileMessage("");
-                        setProfileError("");
-                        setTimeout(() => {
-                          const el = document.getElementById("profile-password-input");
-                          if (el) el.focus();
-                        }, 80);
-                      }}
-                    >
-                      Change
-                    </button>
                   </div>
                 </div>
 
