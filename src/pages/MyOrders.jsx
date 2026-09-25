@@ -3,6 +3,7 @@ import axios from "axios";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
+import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
@@ -30,7 +31,12 @@ import {
   ChevronUp,
   MessageCircle,
   CreditCard,
-  Gift
+  Gift,
+  ArrowRight,
+  Compass,
+  Grid,
+  Heart,
+  Sparkles
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
@@ -112,9 +118,151 @@ function getCourierTrackingUrl(courierName, trackingId) {
   return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
 }
 
+function EmptyOrdersView({
+  user,
+  wishlist = [],
+  cartCount = 0,
+  isFiltered = false,
+  selectedView = "All",
+  onResetFilter
+}) {
+  const quickCategories = [
+    { label: "Paperback Books", category: "Book - Paperback", icon: BookOpen },
+    { label: "Web Versions", category: "Web Version", icon: Compass },
+    { label: "Flipbooks & E-Books", category: "Flipbook", icon: Grid },
+    { label: "Bundles & Combos", category: "Bundle", icon: Package },
+    { label: "Top Rated Picks", route: "/?scrollTo=top-rated", icon: Star }
+  ];
+
+  const perks = [
+    {
+      icon: Zap,
+      title: "Instant Digital Access",
+      desc: "Get immediate access to web versions and digital flipbooks on any device."
+    },
+    {
+      icon: Truck,
+      title: "Worldwide Tracked Shipping",
+      desc: "Fast and reliable door delivery for all physical books and Sanskrit study kits."
+    },
+    {
+      icon: ShieldCheck,
+      title: "100% Authentic Literature",
+      desc: "Original Sanskrit texts, verified commentaries, and expert learning material."
+    }
+  ];
+
+  return (
+    <div className="orders-empty-container">
+      <div className="orders-empty-hero-card">
+        <div className="orders-empty-icon-ring">
+          <div className="orders-empty-icon-circle">
+            <Package size={40} className="orders-empty-icon" />
+          </div>
+          <span className="orders-empty-icon-sparkle">
+            <Sparkles size={16} />
+          </span>
+        </div>
+
+        <div className="orders-empty-badge">
+          <Sparkles size={13} />
+          <span>
+            {isFiltered
+              ? `Filtered View: ${selectedView}`
+              : user?.name
+              ? `Welcome back, ${user.name}!`
+              : "Welcome to Digital Sanskrit Guru"}
+          </span>
+        </div>
+
+        <h2 className="orders-empty-title">
+          {isFiltered
+            ? `No ${selectedView.toLowerCase()} orders found`
+            : "You haven't placed any orders yet"}
+        </h2>
+
+        <p className="orders-empty-desc">
+          {isFiltered
+            ? `You don't have any orders under the "${selectedView}" filter. Switch to all orders or explore new titles.`
+            : "Explore our curated collection of authentic Sanskrit books, interactive web versions, flipbooks, and comprehensive study bundles. Your order history and digital reader access will show up right here."}
+        </p>
+
+        <div className="orders-empty-actions">
+          <Link to="/collection" className="orders-empty-primary-btn">
+            <ShoppingBag size={18} />
+            <span>Explore Collection</span>
+            <ArrowRight size={16} />
+          </Link>
+
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={onResetFilter}
+              className="orders-empty-secondary-btn"
+            >
+              <Package size={17} />
+              <span>View All Orders</span>
+            </button>
+          )}
+
+          {wishlist.length > 0 && (
+            <Link to="/wishlist" className="orders-empty-secondary-btn">
+              <Heart size={17} style={{ color: "#e11d48" }} />
+              <span>View Wishlist ({wishlist.length})</span>
+            </Link>
+          )}
+
+          {cartCount > 0 && (
+            <Link to="/cart" className="orders-empty-secondary-btn">
+              <ShoppingBag size={17} />
+              <span>View Cart ({cartCount})</span>
+            </Link>
+          )}
+        </div>
+
+        {/* Quick Categories Bar */}
+        <div className="orders-empty-categories-wrap">
+          <span className="orders-empty-categories-label">Explore by category</span>
+          <div className="orders-empty-categories-pills">
+            {quickCategories.map((item) => {
+              const IconComp = item.icon;
+              const targetUrl = item.route || `/collection?category=${encodeURIComponent(item.category)}`;
+              return (
+                <Link key={item.label} to={targetUrl} className="orders-empty-category-pill">
+                  <IconComp size={14} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Trust & Value Perks */}
+      <div className="orders-empty-perks-grid">
+        {perks.map((perk) => {
+          const PerkIcon = perk.icon;
+          return (
+            <div key={perk.title} className="orders-empty-perk-card">
+              <div className="orders-empty-perk-icon-wrap">
+                <PerkIcon size={20} />
+              </div>
+              <div className="orders-empty-perk-copy">
+                <h4>{perk.title}</h4>
+                <p>{perk.desc}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MyOrders() {
   const { token, user } = useAuth();
-  const { addToCart } = useCart();
+  const { addToCart, cartItems = [] } = useCart();
+  const { wishlist = [] } = useWishlist();
   const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -453,29 +601,31 @@ function MyOrders() {
         <h1>Your Orders</h1>
       </div>
 
-      <div className="my-orders-filters">
-        <button
-          type="button"
-          className={selectedView === "All" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("All")}
-        >
-          All ({isLoading ? "..." : viewCounts.All})
-        </button>
-        <button
-          type="button"
-          className={selectedView === "ActionRequired" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("ActionRequired")}
-        >
-          Action Required ({isLoading ? "..." : viewCounts.ActionRequired})
-        </button>
-        <button
-          type="button"
-          className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("Completed")}
-        >
-          Completed ({isLoading ? "..." : viewCounts.Completed})
-        </button>
-      </div>
+      {!isLoading && orders.length > 0 && (
+        <div className="my-orders-filters">
+          <button
+            type="button"
+            className={selectedView === "All" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("All")}
+          >
+            All ({isLoading ? "..." : viewCounts.All})
+          </button>
+          <button
+            type="button"
+            className={selectedView === "ActionRequired" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("ActionRequired")}
+          >
+            Action Required ({isLoading ? "..." : viewCounts.ActionRequired})
+          </button>
+          <button
+            type="button"
+            className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("Completed")}
+          >
+            Completed ({isLoading ? "..." : viewCounts.Completed})
+          </button>
+        </div>
+      )}
 
       {deferredSelectedView !== selectedView && (
         <p className="my-orders-updating">Updating orders view...</p>
@@ -485,8 +635,22 @@ function MyOrders() {
 
       {isLoading ? (
         <LoadingSpinner text="Loading your orders..." minHeight="240px" />
+      ) : orders.length === 0 ? (
+        <EmptyOrdersView
+          user={user}
+          wishlist={wishlist}
+          cartCount={cartItems.reduce((acc, i) => acc + Math.max(1, Number(i.quantity || 1)), 0)}
+          isFiltered={false}
+        />
       ) : visibleOrders.length === 0 ? (
-        <p className="my-orders-empty">No orders in this view.</p>
+        <EmptyOrdersView
+          user={user}
+          wishlist={wishlist}
+          cartCount={cartItems.reduce((acc, i) => acc + Math.max(1, Number(i.quantity || 1)), 0)}
+          isFiltered={true}
+          selectedView={selectedView === "ActionRequired" ? "Action Required" : selectedView}
+          onResetFilter={() => selectView("All")}
+        />
       ) : (
         visibleOrders.map((order) => {
           const status = String(order.status || "Pending");

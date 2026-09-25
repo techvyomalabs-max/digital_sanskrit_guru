@@ -1019,6 +1019,30 @@
   border-radius: 4px;
 }
 
+/* ── Skeleton Shimmer Loading ── */
+.checkout-skeleton-shimmer {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.7) 0%,
+    rgba(241, 245, 249, 0.95) 50%,
+    rgba(226, 232, 240, 0.7) 100%
+  );
+  background-size: 200% 100%;
+  animation: checkout-shimmer 1.4s infinite linear;
+}
+
+@keyframes checkout-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 /* ── Summary Breakdown Rows ── */
 .checkout-summary-breakdown {
   display: flex;

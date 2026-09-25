@@ -125,6 +125,20 @@ const itemStyles = {
   }
 };
 
+function SkeletonShimmer({ width = "70px", height = "18px", borderRadius = "6px", className = "" }) {
+  return (
+    <span
+      className={`checkout-skeleton-shimmer ${className}`}
+      style={{
+        width: typeof width === "number" ? `${width}px` : width,
+        height: typeof height === "number" ? `${height}px` : height,
+        borderRadius
+      }}
+      aria-hidden="true"
+    />
+  );
+}
+
 function Checkout() {
   const { cartItems, clearCart } = useCart();
   const { token, user } = useAuth();
@@ -482,7 +496,7 @@ function Checkout() {
     total: 0,
     currency: "INR"
   });
-  const [isCalculatingTotals, setIsCalculatingTotals] = useState(false);
+  const [isCalculatingTotals, setIsCalculatingTotals] = useState(cartItems.length > 0);
 
   useEffect(() => {
     if (cartItems.length === 0) {
@@ -495,6 +509,7 @@ function Checkout() {
         total: 0,
         currency: displayCurrency
       });
+      setIsCalculatingTotals(false);
       return;
     }
 
@@ -560,6 +575,12 @@ function Checkout() {
   }, [serverTotals]);
 
   const finalTotal = serverTotals.total;
+
+  const isPriceLoading =
+    isCalculatingTotals ||
+    (cartItems.length > 0 &&
+      Number(serverTotals.total || 0) === 0 &&
+      Number(serverTotals.subtotal || 0) === 0);
 
   const hasDigitalItemsInCart = useMemo(() => {
     return cartItems.some((item) => isDigitalItem(item));
@@ -1490,7 +1511,11 @@ function Checkout() {
           <div className="checkout-summary-breakdown">
             <div className="summary-item">
               <span>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
-              <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
+              {isPriceLoading ? (
+                <SkeletonShimmer width={72} height={18} />
+              ) : (
+                <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
+              )}
             </div>
             <div className="summary-item">
               <span>
@@ -1498,16 +1523,22 @@ function Checkout() {
                   ? "GST (Export 0%)"
                   : `GST (${charges.gstPercent}% Included)`}
               </span>
-              <strong>
-                {totals.isInternational
-                  ? formatCurrencyExact(0, displayCurrency)
-                  : formatCurrencyExact(totals.gstAmount, displayCurrency)}
-              </strong>
+              {isPriceLoading ? (
+                <SkeletonShimmer width={64} height={18} />
+              ) : (
+                <strong>
+                  {totals.isInternational
+                    ? formatCurrencyExact(0, displayCurrency)
+                    : formatCurrencyExact(totals.gstAmount, displayCurrency)}
+                </strong>
+              )}
             </div>
             <div className="summary-item">
               <span>Delivery</span>
               <span>
-                {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={56} height={18} />
+                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
                   <strong className="delivery-free-badge">FREE (Instant Access)</strong>
                 ) : totals.deliveryCharge === 0 ? (
                   <strong className="delivery-free-badge">FREE</strong>
@@ -1531,7 +1562,11 @@ function Checkout() {
                     <span>Remove</span>
                   </button>
                 </div>
-                <strong>-{formatCurrencyExact(discount, displayCurrency)}</strong>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={60} height={18} />
+                ) : (
+                  <strong>-{formatCurrencyExact(discount, displayCurrency)}</strong>
+                )}
               </div>
             )}
           </div>
@@ -1559,7 +1594,11 @@ function Checkout() {
               <span className="grand-total-label">Final Order Total</span>
               <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
             </div>
-            <span className="grand-total-val">{formatCurrencyExact(finalTotal, displayCurrency)}</span>
+            {isPriceLoading ? (
+              <SkeletonShimmer width={95} height={26} borderRadius={8} />
+            ) : (
+              <span className="grand-total-val">{formatCurrencyExact(finalTotal, displayCurrency)}</span>
+            )}
           </div>
 
           {isIntlPhysicalRestricted && (
@@ -1574,10 +1613,18 @@ function Checkout() {
             type="button"
             className="pay-now-btn"
             onClick={processCheckout}
-            disabled={isPaying || isIntlPhysicalRestricted}
+            disabled={isPaying || isIntlPhysicalRestricted || isPriceLoading}
           >
             <Lock size={16} />
-            <span>{isPaying ? "Processing..." : isIntlPhysicalRestricted ? "Physical Products Restricted" : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}</span>
+            <span>
+              {isPaying
+                ? "Processing..."
+                : isPriceLoading
+                ? "Calculating Total..."
+                : isIntlPhysicalRestricted
+                ? "Physical Products Restricted"
+                : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
+            </span>
             <ArrowRight size={16} />
           </button>
 
