@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
   House,
@@ -25,13 +25,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
-import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../../utils/geoAddress";
-import { validatePhoneNumber } from "../../utils/phoneValidation";
 import "./Navbar.css";
-
-const onDemandUrl = String(
-  import.meta.env.VITE_ONDEMAND_URL || "https://antiquewhite-squid-823975.hostingersite.com/#/"
-).trim();
 
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
@@ -50,37 +44,30 @@ const DEFAULT_COLLECTION_CATEGORIES = [
   "Calendar - Paperback"
 ];
 
+const getAddressLocationText = (item) =>
+  [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
+
 function Navbar({ bannerActive = false }) {
   const { user, logout } = useAuth();
   const { cartItems } = useCart();
   const { wishlist } = useWishlist();
-  const { selectedAddress, addresses, selectedIndex, selectAddress, addAddress, updateAddress, removeAddress, setDefaultAddress } =
-    useDeliveryLocation();
+  const {
+    selectedAddress,
+    addresses,
+    selectedIndex,
+    selectAddress,
+    removeAddress,
+    setDefaultAddress
+  } = useDeliveryLocation();
   const location = useLocation();
   const navigate = useNavigate();
-
 
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
-  const [editingAddressIndex, setEditingAddressIndex] = useState(null);
   const [addressToDelete, setAddressToDelete] = useState(null);
   const [isCollectionFilterMenuOpen, setIsCollectionFilterMenuOpen] = useState(false);
-  const [isManagingAddresses, setIsManagingAddresses] = useState(false);
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
-  const [locationStatusMessage, setLocationStatusMessage] = useState("");
-  const [showModalAddressForm, setShowModalAddressForm] = useState(false);
-  const [modalName, setModalName] = useState("");
-  const [modalPhone, setModalPhone] = useState("");
-  const [modalAddress, setModalAddress] = useState("");
-  const [modalLandmark, setModalLandmark] = useState("");
-  const [modalCity, setModalCity] = useState("");
-  const [modalState, setModalState] = useState("");
-  const [modalPincode, setModalPincode] = useState("");
-  const [modalCountry, setModalCountry] = useState("India");
-  const [modalLabel, setModalLabel] = useState("Home");
-  const [modalFormError, setModalFormError] = useState("");
   const [collectionCategories, setCollectionCategories] = useState(DEFAULT_COLLECTION_CATEGORIES);
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
@@ -96,11 +83,13 @@ function Navbar({ bannerActive = false }) {
   });
   const [enableCurrentLocation, setEnableCurrentLocation] = useState(true);
 
+  // Fetch public settings / icons
   useEffect(() => {
     let active = true;
     const fetchIcons = () => {
-      axios.get("/api/settings/public")
-        .then(res => {
+      axios
+        .get("/api/settings/public")
+        .then((res) => {
           if (active) {
             if (res.data?.storeIcons) {
               setStoreIcons(res.data.storeIcons);
@@ -110,11 +99,10 @@ function Navbar({ bannerActive = false }) {
             }
           }
         })
-        .catch(() => { });
+        .catch(() => {});
     };
 
     fetchIcons();
-
     window.addEventListener("siteSettingsUpdated", fetchIcons);
     return () => {
       active = false;
@@ -123,7 +111,8 @@ function Navbar({ bannerActive = false }) {
   }, []);
 
   const renderIcon = (type, customValue) => {
-    const isDefault = !customValue ||
+    const isDefault =
+      !customValue ||
       (type === "home" && customValue === "🏠") ||
       (type === "categories" && customValue === "📚") ||
       (type === "wishlist" && customValue === "❤️") ||
@@ -133,26 +122,39 @@ function Navbar({ bannerActive = false }) {
 
     if (isDefault) {
       switch (type) {
-        case "home": return <House size={20} className="lucide-icon" />;
-        case "categories": return <Grid size={20} className="lucide-icon" />;
-        case "wishlist": return <Heart size={20} className="lucide-icon" />;
-        case "cart": return <ShoppingCart size={20} className="lucide-icon" />;
-        case "profile": return <User size={20} className="lucide-icon" />;
-        case "search": return <Search size={20} className="lucide-icon" />;
-        default: return null;
+        case "home":
+          return <House size={20} className="lucide-icon" />;
+        case "categories":
+          return <Grid size={20} className="lucide-icon" />;
+        case "wishlist":
+          return <Heart size={20} className="lucide-icon" />;
+        case "cart":
+          return <ShoppingCart size={20} className="lucide-icon" />;
+        case "profile":
+          return <User size={20} className="lucide-icon" />;
+        case "search":
+          return <Search size={20} className="lucide-icon" />;
+        default:
+          return null;
       }
     }
     return <span className="custom-emoji-icon">{customValue}</span>;
   };
 
+  // Performant scroll listener with state guards
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
       if (currentScrollY > 140) {
-        setShowAttachedBar(false);
-        setIsCollectionFilterMenuOpen(false);
+        setShowAttachedBar((prev) => {
+          if (prev) {
+            setIsCollectionFilterMenuOpen(false);
+            return false;
+          }
+          return prev;
+        });
       } else if (currentScrollY < 60) {
-        setShowAttachedBar(true);
+        setShowAttachedBar((prev) => (!prev ? true : prev));
       }
     };
 
@@ -172,42 +174,7 @@ function Navbar({ bannerActive = false }) {
     };
   }, [showAttachedBar]);
 
-
-
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    const query = searchQuery.trim();
-    navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
-  };
-
-  const handleSectionNav = (sectionKey) => {
-    setSearchQuery("");
-    const targetId = `home-section-${sectionKey}`;
-    if (location.pathname === "/") {
-      document.querySelectorAll(".home-section-highlighted").forEach((el) => {
-        el.classList.remove("home-section-highlighted");
-      });
-
-      const elem = document.getElementById(targetId);
-      if (elem) {
-        const header = document.querySelector(".navbar-container") || document.querySelector("header");
-        const navbarHeight = header ? header.getBoundingClientRect().height : 120;
-        const elementPosition = elem.getBoundingClientRect().top + window.pageYOffset;
-        const offsetPosition = Math.max(0, elementPosition - navbarHeight - 16);
-
-        window.scrollTo({
-          top: offsetPosition,
-          behavior: "smooth"
-        });
-
-        void elem.offsetWidth;
-        elem.classList.add("home-section-highlighted");
-      }
-    } else {
-      navigate(`/?scrollTo=${sectionKey}`);
-    }
-  };
-
+  // Synchronize search query with URL params
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const queryFromUrl = params.get("q") || params.get("search") || "";
@@ -220,16 +187,15 @@ function Navbar({ bannerActive = false }) {
     }
   }, [location.pathname, location.search]);
 
+  // Reset transient menus on route navigation
   useEffect(() => {
     setIsMenuOpen(false);
     setIsAddressModalOpen(false);
     setIsCollectionFilterMenuOpen(false);
-    setIsManagingAddresses(false);
-    setIsDetectingLocation(false);
-    setLocationStatusMessage("");
     setShowAttachedBar(window.scrollY < 140);
   }, [location.pathname, location.search]);
 
+  // Fetch product categories once for collection dropdown
   useEffect(() => {
     if (isAdminRoute || hasLoadedCollectionCategories.current) {
       return undefined;
@@ -263,12 +229,7 @@ function Navbar({ bannerActive = false }) {
     };
   }, [isAdminRoute]);
 
-  useEffect(() => {
-    if (isAddressModalOpen) return;
-    setIsDetectingLocation(false);
-    setLocationStatusMessage("");
-  }, [isAddressModalOpen]);
-
+  // Escape key handler for address modal
   useEffect(() => {
     if (!isAddressModalOpen) return undefined;
 
@@ -282,69 +243,101 @@ function Navbar({ bannerActive = false }) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isAddressModalOpen]);
 
-  const linkClassName = ({ isActive }) =>
-    `navbar-link navbar-outline${isActive ? " navbar-link-active" : ""}`;
-  const activeAddress = selectedAddress || addresses[0] || null;
-  const deliveryLine1 = "Deliver to";
-  const deliveryLine2 = activeAddress
-    ? activeAddress.address ||
-    [activeAddress.city, activeAddress.state, activeAddress.pincode].filter(Boolean).join(", ") ||
-    "Saved address"
-    : "Select your address";
+  const handleNavClick = useCallback(() => {
+    setIsMenuOpen(false);
+    setSearchQuery("");
+  }, []);
 
-  const getAddressLocationText = (item) =>
-    [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
-
-  const handleOpenInlineAddForm = () => {
-    setEditingAddressIndex(null);
-    setModalName(user?.name || "");
-    setModalPhone(user?.phone || "");
-    setModalAddress("");
-    setModalLandmark("");
-    setModalCity("");
-    setModalState("");
-    setModalPincode("");
-    setModalCountry("India");
-    setModalLabel("Home");
-    setModalFormError("");
-    setShowModalAddressForm(true);
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const query = searchQuery.trim();
+    navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
 
+  const handleSectionNav = (sectionKey) => {
+    setSearchQuery("");
+    const targetId = `home-section-${sectionKey}`;
+    if (location.pathname === "/") {
+      document.querySelectorAll(".home-section-highlighted").forEach((el) => {
+        el.classList.remove("home-section-highlighted");
+      });
+
+      const elem = document.getElementById(targetId);
+      if (elem) {
+        const header =
+          document.querySelector(".navbar-container") || document.querySelector("header");
+        const navbarHeight = header ? header.getBoundingClientRect().height : 120;
+        const elementPosition = elem.getBoundingClientRect().top + window.pageYOffset;
+        const offsetPosition = Math.max(0, elementPosition - navbarHeight - 16);
+
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: "smooth"
+        });
+
+        void elem.offsetWidth;
+        elem.classList.add("home-section-highlighted");
+      }
+    } else {
+      navigate(`/?scrollTo=${sectionKey}`);
+    }
+  };
+
+  // Memoized values for performance
+  const activeAddress = useMemo(
+    () => selectedAddress || addresses[0] || null,
+    [selectedAddress, addresses]
+  );
+
+  const deliveryLine1 = "Deliver to";
+  const deliveryLine2 = useMemo(() => {
+    if (!activeAddress) return "Select your address";
+    return (
+      activeAddress.address ||
+      getAddressLocationText(activeAddress) ||
+      "Saved address"
+    );
+  }, [activeAddress]);
+
+  const totalCartCount = useMemo(
+    () => cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
+    [cartItems]
+  );
+
+  const linkClassName = ({ isActive }) =>
+    `navbar-link navbar-outline${isActive ? " navbar-link-active" : ""}`;
+
+  // Address modal navigation handlers
   const handleAddNewAddressRedirect = () => {
     setIsAddressModalOpen(false);
-    setShowModalAddressForm(false);
-    setEditingAddressIndex(null);
-
     if (user) {
       navigate("/account?addNewAddress=true#manage-address", {
         state: { targetSection: "manage-address", action: "add-address" }
       });
       window.dispatchEvent(new CustomEvent("addNewAccountAddress"));
     } else {
-      navigate(`/login?redirect=${encodeURIComponent("/account?addNewAddress=true#manage-address")}`);
+      navigate(
+        `/login?redirect=${encodeURIComponent("/account?addNewAddress=true#manage-address")}`
+      );
     }
   };
 
   const handleUseCurrentLocationRedirect = () => {
     setIsAddressModalOpen(false);
-    setShowModalAddressForm(false);
-    setEditingAddressIndex(null);
-
     if (user) {
       navigate("/account?useCurrentLocation=true#manage-address", {
         state: { targetSection: "manage-address", action: "use-current-location" }
       });
       window.dispatchEvent(new CustomEvent("useCurrentLocationAccountAddress"));
     } else {
-      navigate(`/login?redirect=${encodeURIComponent("/account?useCurrentLocation=true#manage-address")}`);
+      navigate(
+        `/login?redirect=${encodeURIComponent("/account?useCurrentLocation=true#manage-address")}`
+      );
     }
   };
 
   const handleOpenEditAddressForm = (index) => {
     setIsAddressModalOpen(false);
-    setShowModalAddressForm(false);
-    setEditingAddressIndex(null);
-
     if (user) {
       navigate(`/account?editAddress=${index}#manage-address`, {
         state: { targetSection: "manage-address", editAddressIndex: index }
@@ -355,112 +348,45 @@ function Navbar({ bannerActive = false }) {
         })
       );
     } else {
-      navigate(`/login?redirect=${encodeURIComponent(`/account?editAddress=${index}#manage-address`)}`);
+      navigate(
+        `/login?redirect=${encodeURIComponent(`/account?editAddress=${index}#manage-address`)}`
+      );
     }
   };
 
-  const handleUseCurrentLocation = async () => {
-    if (isDetectingLocation) return;
-
-    setIsDetectingLocation(true);
-    setLocationStatusMessage("Detecting your current location...");
-    setModalFormError("");
-
-    try {
-      const position = await getCurrentDevicePosition();
-      const latitude = Number(position?.coords?.latitude);
-      const longitude = Number(position?.coords?.longitude);
-
-      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-        throw new Error("Could not read coordinates from your device.");
-      }
-
-      const resolved = await reverseGeocodeCoordinates(latitude, longitude);
-
-      // Pre-fill modal form fields and open completion form
-      setModalName(user?.name || "");
-      setModalPhone(user?.phone || "");
-      setModalAddress(resolved.address || "");
-      setModalLandmark(resolved.landmark || "");
-      setModalCity(resolved.city || "");
-      setModalState(resolved.state || "");
-      setModalPincode(resolved.pincode || "");
-      setModalCountry(resolved.country || "India");
-      setModalLabel("Home");
-      setShowModalAddressForm(true);
-
-      setLocationStatusMessage("Location detected! Please review and complete your Flat / House number.");
-    } catch (error) {
-      setLocationStatusMessage(error?.message || "Could not use current location.");
-    } finally {
-      setIsDetectingLocation(false);
-    }
-  };
-
-  const handleSaveModalAddress = (e) => {
-    e.preventDefault();
-    setModalFormError("");
-
-    if (!modalName.trim()) {
-      setModalFormError("Please enter your full name.");
-      return;
-    }
-    if (!modalPhone.trim()) {
-      setModalFormError("Please enter your phone number.");
-      return;
-    }
-
-    const phoneValidation = validatePhoneNumber(modalPhone, modalCountry);
-    if (!phoneValidation.isValid) {
-      setModalFormError(phoneValidation.message);
-      return;
-    }
-
-    if (!modalAddress.trim()) {
-      setModalFormError("Please enter your street address / House No.");
-      return;
-    }
-    if (!modalCity.trim() || !modalState.trim() || !modalPincode.trim()) {
-      setModalFormError("Please complete City, State, and Pincode.");
-      return;
-    }
-
-    if ((modalCountry.trim().toLowerCase() === "india" || !modalCountry) && !/^\d{6}$/.test(modalPincode.trim())) {
-      setModalFormError("Please enter a valid 6-digit Indian PIN code.");
-      return;
-    }
-
-    const payload = {
-      label: modalLabel,
-      name: modalName.trim(),
-      phone: phoneValidation.cleanPhone || modalPhone.trim(),
-      address: modalAddress.trim(),
-      landmark: modalLandmark.trim(),
-      city: modalCity.trim(),
-      state: modalState.trim(),
-      pincode: modalPincode.trim(),
-      country: modalCountry.trim() || "India",
-      isDefault: addresses.length === 0
-    };
-
-    if (editingAddressIndex !== null && editingAddressIndex >= 0) {
-      updateAddress(editingAddressIndex, payload);
+  const handleManageAddressesRedirect = () => {
+    setIsAddressModalOpen(false);
+    if (user) {
+      navigate("/account#manage-address", { state: { targetSection: "manage-address" } });
+      setTimeout(() => {
+        const el = document.getElementById("manage-address");
+        if (el) {
+          const navOffset = 140;
+          const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
+          window.scrollTo({
+            top: Math.max(0, elementPosition - navOffset),
+            behavior: "smooth"
+          });
+          el.classList.add("my-account-panel-highlight");
+          setTimeout(() => el.classList.remove("my-account-panel-highlight"), 2500);
+        }
+      }, 50);
     } else {
-      addAddress(payload);
-      setIsAddressModalOpen(false);
+      navigate("/login?redirect=/account");
     }
-    setEditingAddressIndex(null);
-    setShowModalAddressForm(false);
-    setLocationStatusMessage("");
   };
 
   return (
     <>
-      <nav className={`navbar${bannerActive ? " banner-active" : ""}${isAdminRoute ? " admin-navbar-mode" : ""}`}>
+      <nav
+        className={`navbar${bannerActive ? " banner-active" : ""}${
+          isAdminRoute ? " admin-navbar-mode" : ""
+        }`}
+      >
         {!isAdminRoute && (
           <div className="navbar-top">
             <div className="navbar-inner">
-              <Link to="/" className="navbar-logo navbar-outline" onClick={() => setSearchQuery("")}>
+              <Link to="/" className="navbar-logo navbar-outline" onClick={handleNavClick}>
                 <img
                   src="/logo.png"
                   alt="Digital Sanskrit Guru"
@@ -473,7 +399,11 @@ function Navbar({ bannerActive = false }) {
                 className="navbar-location navbar-location-btn navbar-outline"
                 onClick={() => setIsAddressModalOpen(true)}
               >
-                <span className="navbar-location-icon" aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <span
+                  className="navbar-location-icon"
+                  aria-hidden="true"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                >
                   <MapPin size={18} className="lucide-icon" />
                 </span>
                 <span className="navbar-location-text">
@@ -518,35 +448,53 @@ function Navbar({ bannerActive = false }) {
 
               <div className="navbar-right">
                 {user ? (
-                  <Link className="navbar-account navbar-outline" to="/account" onClick={() => setSearchQuery("")}>
+                  <Link
+                    className="navbar-account navbar-outline"
+                    to="/account"
+                    onClick={handleNavClick}
+                  >
                     <span className="navbar-account-line1">Hello, {user.name}</span>
                     <span className="navbar-account-line2">Your Account</span>
                   </Link>
                 ) : (
-                  <Link className="navbar-account navbar-outline" to="/login" onClick={() => setSearchQuery("")}>
+                  <Link
+                    className="navbar-account navbar-outline"
+                    to="/login"
+                    onClick={handleNavClick}
+                  >
                     <span className="navbar-account-line1">Hello, Sign in</span>
                     <span className="navbar-account-line2">Account & Lists</span>
                   </Link>
                 )}
 
-                <Link className="navbar-orders navbar-outline" to="/my-orders" onClick={() => setSearchQuery("")}>
+                <Link
+                  className="navbar-orders navbar-outline"
+                  to="/my-orders"
+                  onClick={handleNavClick}
+                >
                   <span className="navbar-account-line1">Returns</span>
                   <span className="navbar-account-line2">& Orders</span>
                 </Link>
 
-                <Link className="navbar-orders navbar-outline" to="/faq" onClick={() => setSearchQuery("")}>
+                <Link
+                  className="navbar-orders navbar-outline"
+                  to="/faq"
+                  onClick={handleNavClick}
+                >
                   <span className="navbar-account-line1">Help</span>
                   <span className="navbar-account-line2">& FAQs</span>
                 </Link>
 
-                <Link className="navbar-cart navbar-outline" to="/cart" onClick={() => setSearchQuery("")}>
+                <Link
+                  className="navbar-cart navbar-outline"
+                  to="/cart"
+                  onClick={handleNavClick}
+                >
                   <span className="navbar-cart-icon" aria-hidden="true">
                     {renderIcon("cart", storeIcons.cart)}
                   </span>
                   <span className="navbar-cart-label">Cart</span>
-                  <span className="navbar-badge">
-                    {cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0)}
-                  </span>
+                  <span className="navbar-badge">{totalCartCount}</span>
                 </Link>
 
                 <button
@@ -558,7 +506,11 @@ function Navbar({ bannerActive = false }) {
                   onClick={() => setIsMenuOpen((current) => !current)}
                 >
                   <span className="navbar-menu-icon" aria-hidden="true">
-                    {isMenuOpen ? <X size={20} className="lucide-icon" /> : <Menu size={20} className="lucide-icon" />}
+                    {isMenuOpen ? (
+                      <X size={20} className="lucide-icon" />
+                    ) : (
+                      <Menu size={20} className="lucide-icon" />
+                    )}
                   </span>
                   <span className="navbar-menu-text">{isMenuOpen ? "Close" : "Menu"}</span>
                 </button>
@@ -567,27 +519,61 @@ function Navbar({ bannerActive = false }) {
           </div>
         )}
 
-        <div className={`navbar-attached-bar ${!showAttachedBar && !isAdminRoute ? "navbar-attached-bar-hidden" : ""}`}>
+        <div
+          className={`navbar-attached-bar ${
+            !showAttachedBar && !isAdminRoute ? "navbar-attached-bar-hidden" : ""
+          }`}
+        >
           <div className="navbar-inner navbar-attached-bar-inner">
             <div className="navbar-attached-bar-start">
               {isAdminRoute ? (
                 <>
-                  <Link to="/" className="navbar-quick-nav-btn" style={{ fontWeight: 700, color: "#f59e0b" }}>
+                  <Link
+                    to="/"
+                    className="navbar-quick-nav-btn"
+                    style={{ fontWeight: 700, color: "#f59e0b" }}
+                  >
                     ← Storefront
                   </Link>
-                  <NavLink to="/admin" end className={({ isActive }) => `navbar-quick-nav-btn${isActive ? " active" : ""}`}>
+                  <NavLink
+                    to="/admin"
+                    end
+                    className={({ isActive }) =>
+                      `navbar-quick-nav-btn${isActive ? " active" : ""}`
+                    }
+                  >
                     Dashboard
                   </NavLink>
-                  <NavLink to="/admin/sales-dashboard" className={({ isActive }) => `navbar-quick-nav-btn${isActive ? " active" : ""}`}>
+                  <NavLink
+                    to="/admin/sales-dashboard"
+                    className={({ isActive }) =>
+                      `navbar-quick-nav-btn${isActive ? " active" : ""}`
+                    }
+                  >
                     Sales Analytics
                   </NavLink>
-                  <NavLink to="/admin/orders" className={({ isActive }) => `navbar-quick-nav-btn${isActive ? " active" : ""}`}>
+                  <NavLink
+                    to="/admin/orders"
+                    className={({ isActive }) =>
+                      `navbar-quick-nav-btn${isActive ? " active" : ""}`
+                    }
+                  >
                     Orders
                   </NavLink>
-                  <NavLink to="/admin/products" className={({ isActive }) => `navbar-quick-nav-btn${isActive ? " active" : ""}`}>
+                  <NavLink
+                    to="/admin/products"
+                    className={({ isActive }) =>
+                      `navbar-quick-nav-btn${isActive ? " active" : ""}`
+                    }
+                  >
                     Warehouse
                   </NavLink>
-                  <NavLink to="/admin/users" className={({ isActive }) => `navbar-quick-nav-btn${isActive ? " active" : ""}`}>
+                  <NavLink
+                    to="/admin/users"
+                    className={({ isActive }) =>
+                      `navbar-quick-nav-btn${isActive ? " active" : ""}`
+                    }
+                  >
                     Users
                   </NavLink>
                 </>
@@ -629,17 +615,6 @@ function Navbar({ bannerActive = false }) {
                 </>
               )}
             </div>
-            {/* {onDemandUrl ? (
-              <a
-                href={onDemandUrl}
-                className="navbar-ondemand-btn"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Ondemand website"
-              >
-                Open OnDemand
-              </a>
-            ) : null} */}
           </div>
           {!isAdminRoute && isCollectionFilterMenuOpen ? (
             <div className="navbar-collection-filter-menu">
@@ -676,13 +651,11 @@ function Navbar({ bannerActive = false }) {
           />
         ) : null}
 
+        {/* Saved Delivery Addresses Modal */}
         {isAddressModalOpen && (
           <div
             className="navbar-address-modal-backdrop"
-            onClick={() => {
-              setIsAddressModalOpen(false);
-              setShowModalAddressForm(false);
-            }}
+            onClick={() => setIsAddressModalOpen(false)}
             role="presentation"
           >
             <div
@@ -692,359 +665,173 @@ function Navbar({ bannerActive = false }) {
               aria-labelledby="navbar-address-modal-title"
               onClick={(event) => event.stopPropagation()}
             >
-              {showModalAddressForm ? (
-                <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <div className="navbar-address-modal-head">
-                    <div>
-                      <h3 id="navbar-address-modal-title">
-                        <span className="navbar-address-modal-head-icon" aria-hidden="true">
-                          📍
-                        </span>
-                        {editingAddressIndex !== null ? "Edit Delivery Address" : modalAddress ? "Complete & Save Address" : "Add New Address"}
-                      </h3>
-                      <p className="navbar-address-modal-subtitle">
-                        Enter your delivery details for accurate shipping
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="navbar-address-modal-close-btn"
-                      onClick={() => setShowModalAddressForm(false)}
-                      aria-label="Back to addresses"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleSaveModalAddress} style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto" }}>
-                    {locationStatusMessage ? (
-                      <p style={{ fontSize: "12.5px", color: "var(--site-link)", margin: 0, fontWeight: "600" }}>
-                        {locationStatusMessage}
-                      </p>
-                    ) : null}
-                    {modalFormError && (
-                      <p style={{ fontSize: "12.5px", color: "#dc2626", margin: 0, fontWeight: "600", background: "#fef2f2", padding: "8px 12px", borderRadius: "8px", border: "1px solid #fee2e2" }}>
-                        {modalFormError}
-                      </p>
-                    )}
-
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--site-text-soft)" }}>Address Type:</span>
-                      {["Home", "Work", "Other"].map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setModalLabel(opt)}
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "999px",
-                            border: modalLabel === opt ? "1.5px solid var(--site-button-bg, #b45309)" : "1px solid var(--site-border, #e2e8f0)",
-                            background: modalLabel === opt ? "var(--site-button-bg, #b45309)" : "var(--site-surface, #fff)",
-                            color: modalLabel === opt ? "#fff" : "var(--site-text, #334155)",
-                            fontSize: "12px",
-                            fontWeight: "700",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease"
-                          }}
-                        >
-                          {opt === "Home" ? "🏠 Home" : opt === "Work" ? "🏢 Work" : "📌 Other"}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Full Name *</label>
-                        <input
-                          type="text"
-                          value={modalName}
-                          onChange={(e) => setModalName(e.target.value)}
-                          placeholder="e.g. Rohan Sharma"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Phone Number *</label>
-                        <input
-                          type="tel"
-                          value={modalPhone}
-                          maxLength={15}
-                          onChange={(e) => {
-                            setModalPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
-                            if (modalFormError) setModalFormError("");
-                          }}
-                          placeholder="e.g. 9876543210"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Flat / House No. & Street Address *</label>
-                      <input
-                        type="text"
-                        value={modalAddress}
-                        onChange={(e) => setModalAddress(e.target.value)}
-                        placeholder="e.g. Flat 302, Royal Residency, 10th Main"
-                        style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                      />
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Landmark</label>
-                        <input
-                          type="text"
-                          value={modalLandmark}
-                          onChange={(e) => setModalLandmark(e.target.value)}
-                          placeholder="Optional landmark"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>City *</label>
-                        <input
-                          type="text"
-                          value={modalCity}
-                          onChange={(e) => setModalCity(e.target.value)}
-                          placeholder="City"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>State *</label>
-                        <input
-                          type="text"
-                          value={modalState}
-                          onChange={(e) => setModalState(e.target.value)}
-                          placeholder="State"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Pincode *</label>
-                        <input
-                          type="text"
-                          value={modalPincode}
-                          maxLength={6}
-                          onChange={(e) => {
-                            setModalPincode(e.target.value.replace(/\D/g, "").slice(0, 6));
-                            if (modalFormError) setModalFormError("");
-                          }}
-                          placeholder="Pincode"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "4px", color: "var(--site-text)" }}>Country *</label>
-                        <input
-                          type="text"
-                          value={modalCountry}
-                          onChange={(e) => setModalCountry(e.target.value)}
-                          placeholder="Country"
-                          style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--site-border, #cbd5e1)", borderRadius: "8px", fontSize: "13.5px", boxSizing: "border-box" }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "8px", paddingTop: "12px", borderTop: "1px solid var(--site-border, #e2e8f0)" }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowModalAddressForm(false)}
-                        style={{ padding: "8px 16px", border: "1px solid var(--site-border, #cbd5e1)", background: "transparent", borderRadius: "8px", cursor: "pointer", fontSize: "13.5px", fontWeight: "600", color: "var(--site-text-soft)" }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        style={{ padding: "8px 20px", border: "none", background: "var(--site-button-bg, #b45309)", color: "#fff", borderRadius: "8px", cursor: "pointer", fontWeight: "700", fontSize: "13.5px", transition: "all 0.15s ease" }}
-                      >
-                        Save & Select Address
-                      </button>
-                    </div>
-                  </form>
+              <div className="navbar-address-modal-head">
+                <div>
+                  <h3 id="navbar-address-modal-title">
+                    <span className="navbar-address-modal-head-icon" aria-hidden="true">
+                      📍
+                    </span>
+                    Select Delivery Address
+                  </h3>
+                  <p className="navbar-address-modal-subtitle">
+                    Choose a location to see product availability & delivery charges
+                  </p>
                 </div>
-              ) : (
-                <>
-                  <div className="navbar-address-modal-head">
-                    <div>
-                      <h3 id="navbar-address-modal-title">
-                        <span className="navbar-address-modal-head-icon" aria-hidden="true">
-                          📍
-                        </span>
-                        Select Delivery Address
-                      </h3>
-                      <p className="navbar-address-modal-subtitle">
-                        Choose a location to see product availability & delivery charges
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="navbar-address-modal-close-btn"
-                      onClick={() => setIsAddressModalOpen(false)}
-                      aria-label="Close"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                <button
+                  type="button"
+                  className="navbar-address-modal-close-btn"
+                  onClick={() => setIsAddressModalOpen(false)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
 
-                  {enableCurrentLocation && (
-                    <div className="navbar-address-current-location">
-                      <button
-                        type="button"
-                        className="navbar-address-current-location-btn"
-                        onClick={handleUseCurrentLocationRedirect}
+              {enableCurrentLocation && (
+                <div className="navbar-address-current-location">
+                  <button
+                    type="button"
+                    className="navbar-address-current-location-btn"
+                    onClick={handleUseCurrentLocationRedirect}
+                  >
+                    <span className="navbar-location-gps-icon">🎯</span>
+                    <div className="navbar-location-btn-text">
+                      <strong>Use Current Location</strong>
+                      <span>Detect automatically using device GPS</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {addresses.length > 0 ? (
+                <div className="navbar-address-options">
+                  {addresses.map((item, index) => {
+                    const isSelected = selectedIndex === index;
+                    return (
+                      <article
+                        key={`${item.name}-${item.pincode}-${index}`}
+                        className={`navbar-address-option ${isSelected ? "active" : ""}`}
+                        onClick={() => {
+                          selectAddress(index);
+                        }}
                       >
-                        <span className="navbar-location-gps-icon">🎯</span>
-                        <div className="navbar-location-btn-text">
-                          <strong>Use Current Location</strong>
-                          <span>Detect automatically using device GPS</span>
+                        <div className="navbar-address-option-top">
+                          <div className="navbar-address-radio">
+                            <span
+                              className={`navbar-address-custom-radio ${
+                                isSelected ? "checked" : ""
+                              }`}
+                            >
+                              {isSelected ? "✓" : ""}
+                            </span>
+                            <strong className="navbar-address-user-name">
+                              {item.name || "Address"}
+                            </strong>
+                          </div>
+                          <div className="navbar-address-tags">
+                            {item.isDefault ? (
+                              <span className="navbar-address-badge default">Default</span>
+                            ) : null}
+                            <span className="navbar-address-badge label">
+                              {item.label === "Work"
+                                ? "🏢 Work"
+                                : item.label === "Other"
+                                ? "📌 Other"
+                                : "🏠 Home"}
+                            </span>
+                          </div>
                         </div>
-                      </button>
-                    </div>
-                  )}
 
-                  {addresses.length > 0 ? (
-                    <div className="navbar-address-options">
-                      {addresses.map((item, index) => {
-                        const isSelected = selectedIndex === index;
-                        return (
-                          <article
-                            key={`${item.name}-${item.pincode}-${index}`}
-                            className={`navbar-address-option ${isSelected ? "active" : ""}`}
-                            onClick={() => {
-                              selectAddress(index);
-                            }}
-                          >
-                            <div className="navbar-address-option-top">
-                              <div className="navbar-address-radio">
-                                <span className={`navbar-address-custom-radio ${isSelected ? "checked" : ""}`}>
-                                  {isSelected ? "✓" : ""}
-                                </span>
-                                <strong className="navbar-address-user-name">{item.name || "Address"}</strong>
-                              </div>
-                              <div className="navbar-address-tags">
-                                {item.isDefault ? (
-                                  <span className="navbar-address-badge default">Default</span>
-                                ) : null}
-                                <span className="navbar-address-badge label">
-                                  {item.label === "Work" ? "🏢 Work" : item.label === "Other" ? "📌 Other" : "🏠 Home"}
-                                </span>
-                              </div>
-                            </div>
+                        {item.phone ? (
+                          <div className="navbar-address-phone">
+                            <span>📞 {item.phone}</span>
+                          </div>
+                        ) : null}
 
-                            {item.phone ? (
-                              <div className="navbar-address-phone">
-                                <span>📞 {item.phone}</span>
-                              </div>
+                        <p className="navbar-address-text">{item.address}</p>
+                        <p className="navbar-address-subtext">
+                          {getAddressLocationText(item) || "Location details not available"}
+                        </p>
+
+                        <div
+                          className="navbar-address-option-footer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="navbar-address-select-status">
+                            {isSelected ? (
+                              <span className="navbar-address-selected-badge">
+                                ✓ Delivering to this address
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="navbar-address-deliver-btn"
+                                onClick={() => {
+                                  selectAddress(index);
+                                  setIsAddressModalOpen(false);
+                                }}
+                              >
+                                Deliver here
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="navbar-address-meta-actions">
+                            <button
+                              type="button"
+                              className="navbar-address-btn-text"
+                              onClick={() => handleOpenEditAddressForm(index)}
+                            >
+                              Edit
+                            </button>
+
+                            {!item.isDefault ? (
+                              <button
+                                type="button"
+                                className="navbar-address-btn-text"
+                                onClick={() => setDefaultAddress(index)}
+                              >
+                                Set as default
+                              </button>
                             ) : null}
 
-                            <p className="navbar-address-text">{item.address}</p>
-                            <p className="navbar-address-subtext">
-                              {getAddressLocationText(item) || "Location details not available"}
-                            </p>
-
-                            <div className="navbar-address-option-footer" onClick={(e) => e.stopPropagation()}>
-                              <div className="navbar-address-select-status">
-                                {isSelected ? (
-                                  <span className="navbar-address-selected-badge">
-                                    ✓ Delivering to this address
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="navbar-address-deliver-btn"
-                                    onClick={() => {
-                                      selectAddress(index);
-                                      setIsAddressModalOpen(false);
-                                    }}
-                                  >
-                                    Deliver here
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="navbar-address-meta-actions">
-                                <button
-                                  type="button"
-                                  className="navbar-address-btn-text"
-                                  onClick={() => handleOpenEditAddressForm(index)}
-                                >
-                                  Edit
-                                </button>
-
-                                {!item.isDefault ? (
-                                  <button
-                                    type="button"
-                                    className="navbar-address-btn-text"
-                                    onClick={() => setDefaultAddress(index)}
-                                  >
-                                    Set as default
-                                  </button>
-                                ) : null}
-
-                                <button
-                                  type="button"
-                                  className="navbar-address-btn-text danger"
-                                  onClick={() => setAddressToDelete({ index, address: item })}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="navbar-address-empty">
-                      <div className="navbar-address-empty-icon">📍</div>
-                      <p>No saved addresses yet.</p>
-                      <span>Add a delivery address to enable quick location selection.</span>
-                    </div>
-                  )}
-
-                  <div className="navbar-address-modal-actions">
-                    <button
-                      type="button"
-                      className="navbar-address-add-btn"
-                      onClick={handleAddNewAddressRedirect}
-                    >
-                      <span>＋</span> Add a New Address
-                    </button>
-                    <button
-                      type="button"
-                      className="navbar-address-manage-btn"
-                      onClick={() => {
-                        setIsAddressModalOpen(false);
-                        if (user) {
-                          navigate("/account#manage-address", { state: { targetSection: "manage-address" } });
-                          setTimeout(() => {
-                            const el = document.getElementById("manage-address");
-                            if (el) {
-                              const navOffset = 140;
-                              const elementPosition = el.getBoundingClientRect().top + window.pageYOffset;
-                              window.scrollTo({
-                                top: Math.max(0, elementPosition - navOffset),
-                                behavior: "smooth"
-                              });
-                              el.classList.add("my-account-panel-highlight");
-                              setTimeout(() => el.classList.remove("my-account-panel-highlight"), 2500);
-                            }
-                          }, 50);
-                        } else {
-                          navigate("/login?redirect=/account");
-                        }
-                      }}
-                    >
-                      <span>⚙️</span> Manage Addresses
-                    </button>
-                  </div>
-                </>
+                            <button
+                              type="button"
+                              className="navbar-address-btn-text danger"
+                              onClick={() => setAddressToDelete({ index, address: item })}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="navbar-address-empty">
+                  <div className="navbar-address-empty-icon">📍</div>
+                  <p>No saved addresses yet.</p>
+                  <span>Add a delivery address to enable quick location selection.</span>
+                </div>
               )}
+
+              <div className="navbar-address-modal-actions">
+                <button
+                  type="button"
+                  className="navbar-address-add-btn"
+                  onClick={handleAddNewAddressRedirect}
+                >
+                  <span>＋</span> Add a New Address
+                </button>
+                <button
+                  type="button"
+                  className="navbar-address-manage-btn"
+                  onClick={handleManageAddressesRedirect}
+                >
+                  <span>⚙️</span> Manage Addresses
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1070,12 +857,11 @@ function Navbar({ bannerActive = false }) {
               {addressToDelete.address && (
                 <div className="address-delete-preview-box">
                   <div style={{ fontWeight: 700, marginBottom: "3px" }}>
-                    {addressToDelete.address.name} {addressToDelete.address.phone ? `(${addressToDelete.address.phone})` : ""}
+                    {addressToDelete.address.name}{" "}
+                    {addressToDelete.address.phone ? `(${addressToDelete.address.phone})` : ""}
                   </div>
                   <div>{addressToDelete.address.address}</div>
-                  <div>
-                    {[addressToDelete.address.city, addressToDelete.address.state, addressToDelete.address.pincode, addressToDelete.address.country].filter(Boolean).join(", ")}
-                  </div>
+                  <div>{getAddressLocationText(addressToDelete.address)}</div>
                 </div>
               )}
 
@@ -1101,12 +887,16 @@ function Navbar({ bannerActive = false }) {
             </div>
           </div>
         )}
-
       </nav>
 
       {/* Mobile Bottom Navigation Bar */}
       <div className="navbar-mobile-bottom-bar">
-        <NavLink to="/" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} end onClick={() => setSearchQuery("")}>
+        <NavLink
+          to="/"
+          className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}
+          end
+          onClick={handleNavClick}
+        >
           <span className="mobile-bottom-icon">{renderIcon("home", storeIcons.home)}</span>
           <span className="mobile-bottom-label">Home</span>
         </NavLink>
@@ -1121,26 +911,37 @@ function Navbar({ bannerActive = false }) {
             }
           }}
         >
-          <span className="mobile-bottom-icon">{renderIcon("categories", storeIcons.categories)}</span>
+          <span className="mobile-bottom-icon">
+            {renderIcon("categories", storeIcons.categories)}
+          </span>
           <span className="mobile-bottom-label">Categories</span>
         </button>
-        <NavLink to="/wishlist" className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} onClick={() => setSearchQuery("")}>
+        <NavLink
+          to="/wishlist"
+          className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}
+          onClick={handleNavClick}
+        >
           <div className="mobile-bottom-cart-wrap">
-            <span className="mobile-bottom-icon">{renderIcon("wishlist", storeIcons.wishlist)}</span>
+            <span className="mobile-bottom-icon">
+              {renderIcon("wishlist", storeIcons.wishlist)}
+            </span>
             {wishlist.length > 0 ? (
-              <span className="mobile-bottom-badge">
-                {wishlist.length}
-              </span>
+              <span className="mobile-bottom-badge">{wishlist.length}</span>
             ) : null}
           </div>
           <span className="mobile-bottom-label">Wishlist</span>
         </NavLink>
-        <NavLink to={user ? "/account" : "/login"} className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`} onClick={() => setSearchQuery("")}>
+        <NavLink
+          to={user ? "/account" : "/login"}
+          className={({ isActive }) => `mobile-bottom-item${isActive ? " active" : ""}`}
+          onClick={handleNavClick}
+        >
           <span className="mobile-bottom-icon">{renderIcon("profile", storeIcons.profile)}</span>
           <span className="mobile-bottom-label">{user ? "Profile" : "Login"}</span>
         </NavLink>
       </div>
 
+      {/* Mobile Menu Backdrop */}
       {isMenuOpen && (
         <button
           type="button"
@@ -1150,6 +951,7 @@ function Navbar({ bannerActive = false }) {
         />
       )}
 
+      {/* Mobile Slide-Out Drawer Subbar */}
       <div className={`navbar-subbar ${isMenuOpen ? "navbar-subbar-open" : ""}`}>
         <div className="navbar-inner navbar-subbar-inner" id="navbar-subbar-links">
           <div className="navbar-subbar-header">
@@ -1172,45 +974,45 @@ function Navbar({ bannerActive = false }) {
             {deliveryLine1} <strong>{deliveryLine2}</strong>
           </button>
 
-          <NavLink className={linkClassName} to="/" end onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+          <NavLink className={linkClassName} to="/" end onClick={handleNavClick}>
             <House size={18} className="navbar-link-icon" />
             <span>Home</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/about" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+          <NavLink className={linkClassName} to="/about" onClick={handleNavClick}>
             <Info size={18} className="navbar-link-icon" />
             <span>About Us</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/wishlist" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+          <NavLink className={linkClassName} to="/wishlist" onClick={handleNavClick}>
             <Heart size={18} className="navbar-link-icon" />
             <span>Wishlist</span>
             <span className="navbar-inline-count">{wishlist.length}</span>
           </NavLink>
           {user && (
             <>
-              <NavLink className={linkClassName} to="/my-orders" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+              <NavLink className={linkClassName} to="/my-orders" onClick={handleNavClick}>
                 <Package size={18} className="navbar-link-icon" />
                 <span>My Orders</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/my-library" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+              <NavLink className={linkClassName} to="/my-library" onClick={handleNavClick}>
                 <BookOpen size={18} className="navbar-link-icon" />
                 <span>My Digital Library</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/account" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+              <NavLink className={linkClassName} to="/account" onClick={handleNavClick}>
                 <User size={18} className="navbar-link-icon" />
                 <span>My Account</span>
               </NavLink>
             </>
           )}
-          <NavLink className={linkClassName} to="/faq" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+          <NavLink className={linkClassName} to="/faq" onClick={handleNavClick}>
             <HelpCircle size={18} className="navbar-link-icon" />
             <span>FAQ</span>
           </NavLink>
-          <NavLink className={linkClassName} to="/contact" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+          <NavLink className={linkClassName} to="/contact" onClick={handleNavClick}>
             <Mail size={18} className="navbar-link-icon" />
             <span>Contact Us</span>
           </NavLink>
           {user?.isAdmin && (
-            <NavLink className={linkClassName} to="/admin" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+            <NavLink className={linkClassName} to="/admin" onClick={handleNavClick}>
               <ShieldCheck size={18} className="navbar-link-icon" />
               <span>Admin Dashboard</span>
             </NavLink>
@@ -1220,8 +1022,7 @@ function Navbar({ bannerActive = false }) {
               type="button"
               className="navbar-link navbar-logout navbar-outline"
               onClick={() => {
-                setIsMenuOpen(false);
-                setSearchQuery("");
+                handleNavClick();
                 logout();
               }}
             >
@@ -1230,11 +1031,11 @@ function Navbar({ bannerActive = false }) {
             </button>
           ) : (
             <>
-              <NavLink className={linkClassName} to="/login" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+              <NavLink className={linkClassName} to="/login" onClick={handleNavClick}>
                 <LogIn size={18} className="navbar-link-icon" />
                 <span>Login</span>
               </NavLink>
-              <NavLink className={linkClassName} to="/register" onClick={() => { setIsMenuOpen(false); setSearchQuery(""); }}>
+              <NavLink className={linkClassName} to="/register" onClick={handleNavClick}>
                 <UserPlus size={18} className="navbar-link-icon" />
                 <span>New Customer? Register</span>
               </NavLink>

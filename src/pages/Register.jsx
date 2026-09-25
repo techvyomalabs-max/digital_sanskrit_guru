@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, CheckCircle2, MessageCircle } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, MessageCircle, ChevronDown } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import TurnstileWidget from "../components/common/TurnstileWidget";
 import { validatePhoneNumber } from "../utils/phoneValidation";
+import {
+  COUNTRY_PHONE_CODES,
+  getCountryPhoneData
+} from "../utils/countryPhoneCodes";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import "./Register.css";
 
@@ -15,6 +19,7 @@ function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneCountry, setPhoneCountry] = useState("India");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -24,6 +29,8 @@ function Register() {
   const [phoneError, setPhoneError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const currentPhoneData = useMemo(() => getCountryPhoneData(phoneCountry), [phoneCountry]);
 
   // Store WhatsApp settings
   const [whatsappSettings, setWhatsappSettings] = useState(null);
@@ -57,8 +64,16 @@ function Register() {
     whatsappSettings?.mode === "api" && whatsappSettings?.enableOtpVerification !== false
   );
 
+  const getFullPhoneNumber = () => {
+    const clean = String(phone || "").trim();
+    if (!clean) return "";
+    if (clean.startsWith("+")) return clean;
+    return `${currentPhoneData.code} ${clean}`.trim();
+  };
+
   const handleOpenOtpModal = () => {
-    const phoneValidation = validatePhoneNumber(phone);
+    const fullPhone = getFullPhoneNumber();
+    const phoneValidation = validatePhoneNumber(fullPhone, phoneCountry);
     if (!phoneValidation.isValid) {
       setPhoneError(phoneValidation.message);
       return;
@@ -79,7 +94,8 @@ function Register() {
     setPhoneError("");
     setPasswordError("");
 
-    const phoneValidation = validatePhoneNumber(phone);
+    const fullPhone = getFullPhoneNumber();
+    const phoneValidation = validatePhoneNumber(fullPhone, phoneCountry);
     if (!phoneValidation.isValid) {
       setPhoneError(phoneValidation.message);
       return;
@@ -116,11 +132,18 @@ function Register() {
     setError("");
 
     try {
-      await register(name, email, password, phoneValidation.cleanPhone || phone, rememberMe, {
-        honey_pot_field: honeyPot,
-        turnstileToken,
-        phoneVerificationToken
-      });
+      await register(
+        name,
+        email,
+        password,
+        phoneValidation.cleanPhone || fullPhone,
+        rememberMe,
+        {
+          honey_pot_field: honeyPot,
+          turnstileToken,
+          phoneVerificationToken
+        }
+      );
       navigate("/");
     } catch (err) {
       setError(err?.response?.data?.message || "Registration failed");
@@ -181,50 +204,73 @@ function Register() {
                 Phone Number <span style={{ color: "#ef4444" }}>*</span>
               </label>
               {isOtpRequired && isPhoneVerified ? (
-                <span style={{ fontSize: "12px", color: "#15803d", fontWeight: "700", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "#15803d",
+                    fontWeight: "700",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px"
+                  }}
+                >
                   <CheckCircle2 size={13} /> Verified on WhatsApp
                 </span>
               ) : null}
             </div>
 
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <input
-                id="register-phone"
-                type="tel"
-                maxLength={15}
-                placeholder="e.g. 9876543210"
-                value={phone}
-                className={phoneError ? "invalid-input" : ""}
-                onChange={(e) => {
-                  setPhone(e.target.value.replace(/[^\d+]/g, ""));
-                  if (phoneError) setPhoneError("");
-                  if (isPhoneVerified) {
-                    setIsPhoneVerified(false);
-                    setPhoneVerificationToken("");
-                  }
-                }}
-                required
-                style={{ flex: 1 }}
-              />
+            <div className="register-phone-field-row">
+              <div className={`register-phone-input-group ${phoneError ? "invalid-input" : ""}`}>
+                <div
+                  className="register-phone-prefix-wrap"
+                  title="Click to change country calling code"
+                >
+                  <span className="register-phone-prefix-display">
+                    <span>{currentPhoneData.flag}</span>
+                    <span>{currentPhoneData.code}</span>
+                    <ChevronDown size={13} className="register-phone-chevron" />
+                  </span>
+                  <select
+                    className="register-phone-select-overlay"
+                    value={phoneCountry}
+                    onChange={(e) => {
+                      setPhoneCountry(e.target.value);
+                      if (isPhoneVerified) {
+                        setIsPhoneVerified(false);
+                        setPhoneVerificationToken("");
+                      }
+                    }}
+                    aria-label="Select Country Phone Code"
+                  >
+                    {COUNTRY_PHONE_CODES.map((item) => (
+                      <option key={`${item.country}-${item.code}`} value={item.country}>
+                        {item.flag} {item.code} - {item.country}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  id="register-phone"
+                  type="tel"
+                  maxLength={16}
+                  placeholder={currentPhoneData.placeholder || "Enter phone number"}
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
+                    if (phoneError) setPhoneError("");
+                    if (isPhoneVerified) {
+                      setIsPhoneVerified(false);
+                      setPhoneVerificationToken("");
+                    }
+                  }}
+                  required
+                />
+              </div>
               {isOtpRequired && !isPhoneVerified && (
                 <button
                   type="button"
                   onClick={handleOpenOtpModal}
-                  style={{
-                    padding: "10px 14px",
-                    background: "#ecfdf5",
-                    border: "1.5px solid #a7f3d0",
-                    color: "#047857",
-                    borderRadius: "8px",
-                    fontWeight: "700",
-                    fontSize: "12.5px",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    whiteSpace: "nowrap",
-                    transition: "all 0.15s ease"
-                  }}
+                  className="register-verify-wa-btn"
                   title="Verify phone number via WhatsApp OTP"
                 >
                   <MessageCircle size={15} /> Verify via WhatsApp
@@ -232,7 +278,16 @@ function Register() {
               )}
             </div>
             {phoneError && (
-              <span className="register-field-error" style={{ color: "#dc2626", fontSize: "12px", fontWeight: "600", marginTop: "4px", display: "block" }}>
+              <span
+                className="register-field-error"
+                style={{
+                  color: "#dc2626",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  marginTop: "4px",
+                  display: "block"
+                }}
+              >
                 ⚠️ {phoneError}
               </span>
             )}
@@ -263,7 +318,16 @@ function Register() {
               </button>
             </div>
             {passwordError && (
-              <span className="register-field-error" style={{ color: "#dc2626", fontSize: "12px", fontWeight: "600", marginTop: "4px", display: "block" }}>
+              <span
+                className="register-field-error"
+                style={{
+                  color: "#dc2626",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  marginTop: "4px",
+                  display: "block"
+                }}
+              >
                 ⚠️ {passwordError}
               </span>
             )}
@@ -297,7 +361,7 @@ function Register() {
       {/* WhatsApp OTP Verification Modal */}
       <WhatsAppOtpModal
         isOpen={isOtpModalOpen}
-        phone={phone}
+        phone={getFullPhoneNumber()}
         onClose={() => setIsOtpModalOpen(false)}
         onVerified={handleOtpVerified}
       />

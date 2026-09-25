@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
@@ -9,6 +9,32 @@ import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPrici
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
+import {
+  ShieldCheck,
+  Lock,
+  ArrowLeft,
+  ArrowRight,
+  MapPin,
+  Phone,
+  Plus,
+  Check,
+  CheckCircle2,
+  Tag,
+  Gift,
+  Truck,
+  CreditCard,
+  Zap,
+  AlertCircle,
+  Building,
+  Home,
+  Briefcase,
+  User,
+  Sparkles,
+  ShoppingBag,
+  ExternalLink,
+  FileText,
+  X
+} from "lucide-react";
 import "./Checkout.css";
 
 const getAddressLocationText = (item) => {
@@ -594,6 +620,12 @@ function Checkout() {
     }
   };
 
+  const removeCoupon = () => {
+    setCouponCode("");
+    setDiscount(0);
+    setCouponMessage("Coupon removed.");
+  };
+
 
   const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
     const checkoutCountry = String(selected?.country || "").trim().toUpperCase();
@@ -814,495 +846,432 @@ function Checkout() {
 
   return (
     <div className="checkout-page">
-      <h1 className="checkout-title">
-        Checkout <span>({itemCount} items)</span>
-      </h1>
-      <p className="checkout-mode-badge live">Secure Razorpay payment mode</p>
-      {checkoutMessage ? <p className="checkout-feedback">{checkoutMessage}</p> : null}
+      <div className="checkout-heading-row">
+        <div className="checkout-heading-left">
+          <div className="checkout-heading-title-wrap">
+            <ShieldCheck size={24} className="checkout-heading-icon" />
+            <h1>Checkout</h1>
+          </div>
+          <span className="checkout-heading-count">
+            {itemCount} {itemCount === 1 ? "item" : "items"}
+          </span>
+          <span className="checkout-ssl-pill">
+            <Lock size={12} /> 256-Bit SSL Encrypted
+          </span>
+        </div>
+        <div className="checkout-heading-right">
+          <Link to="/cart" className="checkout-back-link">
+            <ArrowLeft size={15} />
+            <span>Return to Cart</span>
+          </Link>
+        </div>
+      </div>
+
+      {checkoutMessage && (
+        <div className="checkout-feedback">
+          <AlertCircle size={16} />
+          <span>{checkoutMessage}</span>
+        </div>
+      )}
 
       <div className="checkout-container">
         <section className="checkout-main">
-          {showNewAddressForm ? (
-            <div className="checkout-address-form-container">
-              <div className="checkout-section-head" style={{ marginBottom: '16px' }}>
-                <h2>Add a New Address</h2>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {charges.enableCurrentLocation !== false && (
-                    <button
-                      type="button"
-                      className="checkout-compact-address-change-btn"
-                      onClick={handleUseCurrentLocation}
-                      disabled={isDetectingLocation}
-                      style={{
-                        background: 'var(--site-link)',
-                        color: '#fff',
-                        borderColor: 'var(--site-link)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="checkout-compact-address-change-btn"
-                    onClick={() => setShowNewAddressForm(false)}
-                  >
-                    Back to List
-                  </button>
-                </div>
+          {/* Step 1: Delivery Address */}
+          <div className="checkout-step-card">
+            <div className="checkout-step-header">
+              <div className="checkout-step-title-wrap">
+                <span className="checkout-step-num">1</span>
+                <h3>Delivery Address</h3>
               </div>
-
-              {locationStatusMessage ? (
-                <p style={{ fontSize: '13px', color: 'var(--site-link)', marginBottom: '12px', fontWeight: '500' }}>
-                  {locationStatusMessage}
-                </p>
-              ) : null}
-
-              <div className="checkout-address-form-grid" style={{ display: 'grid', gap: '14px' }}>
-                <div className="checkout-address-form-labels" style={{ display: 'flex', gap: '8px' }}>
-                  {["Home", "Work", "Other"].map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      className={`checkout-address-label-chip ${addressLabel === option ? "active" : ""}`}
-                      onClick={() => setAddressLabel(option)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '999px',
-                        border: '1px solid var(--site-border)',
-                        background: addressLabel === option ? 'var(--site-link)' : 'var(--site-surface)',
-                        color: addressLabel === option ? '#fff' : 'var(--site-text)',
-                        fontWeight: '700',
-                        fontSize: '12.5px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                  <label className="checkout-form-label">
-                    <span>Full Name *</span>
-                    <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Rohan Sharma" className="checkout-form-input" />
-                  </label>
-                  <label className="checkout-form-label">
-                    <span>Phone Number *</span>
-                    <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="e.g. 9876543210" className="checkout-form-input" />
-                  </label>
-                </div>
-
-                <label className="checkout-form-label" style={{ display: 'block' }}>
-                  <span>Complete Address *</span>
-                  <textarea
-                    value={newAddressText}
-                    onChange={(e) => setNewAddressText(e.target.value)}
-                    placeholder="Flat, house no., building, street, area"
-                    className="checkout-form-input"
-                    style={{ minHeight: '80px', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                  />
-                </label>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                  <label className="checkout-form-label">
-                    <span>Landmark</span>
-                    <input value={newLandmark} onChange={(e) => setNewLandmark(e.target.value)} placeholder="Optional landmark" className="checkout-form-input" />
-                  </label>
-                  <label className="checkout-form-label">
-                    <span>City *</span>
-                    <input value={newCity} onChange={(e) => setNewCity(e.target.value)} placeholder="e.g. Delhi" className="checkout-form-input" />
-                  </label>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-                  <label className="checkout-form-label">
-                    <span>State *</span>
-                    <input value={newState} onChange={(e) => setNewState(e.target.value)} placeholder="e.g. Delhi" className="checkout-form-input" />
-                  </label>
-                  <label className="checkout-form-label">
-                    <span>Postal Code *</span>
-                    <input value={newPincode} onChange={(e) => setNewPincode(e.target.value)} placeholder="e.g. 110001" className="checkout-form-input" />
-                  </label>
-                  <label className="checkout-form-label">
-                    <span>Country *</span>
-                    <input value={newCountry} onChange={(e) => setNewCountry(e.target.value)} placeholder="e.g. India" className="checkout-form-input" />
-                  </label>
-                </div>
-
-                {addressError && (
-                  <p style={{ color: '#d32f2f', fontSize: '13px', fontWeight: '600', margin: '4px 0 0' }}>
-                    {addressError}
-                  </p>
-                )}
-
-                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                  <button
-                    type="button"
-                    onClick={handleSaveNewAddress}
-                    disabled={isSavingAddress}
-                    className="checkout-address-save-btn"
-                    style={{ margin: 0 }}
-                  >
-                    {isSavingAddress ? "Saving..." : "Save and Use Address"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowNewAddressForm(false)}
-                    style={{
-                      border: '1px solid var(--site-border)',
-                      borderRadius: '20px',
-                      background: 'var(--site-surface)',
-                      color: 'var(--site-text)',
-                      fontSize: '13.5px',
-                      fontWeight: '700',
-                      padding: '8px 20px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+              {selectedAddress && !isEditingAddress && !showNewAddressForm && (
+                <button
+                  type="button"
+                  className="checkout-step-change-btn"
+                  onClick={() => setIsEditingAddress(true)}
+                >
+                  Change
+                </button>
+              )}
             </div>
-          ) : (
-            <>
-              {selectedAddress && !isEditingAddress ? (
-                <div className="checkout-compact-address-box">
-                  <div className="checkout-compact-address-info">
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                      <h2 style={{ margin: 0, fontSize: "17px", fontWeight: "700", color: "var(--site-text)" }}>
-                        Delivering to {selectedAddress.name}
-                      </h2>
-                      {selectedAddress.label && (
-                        <span className="checkout-address-label" style={{ margin: 0 }}>{selectedAddress.label}</span>
-                      )}
-                      {selectedAddress.isDefault && (
-                        <span className="default-badge" style={{ margin: 0 }}>Default</span>
-                      )}
-                    </div>
-                    <p className="checkout-compact-address-detail" style={{ marginTop: "6px" }}>
-                      {selectedAddress.address}
-                    </p>
-                    {selectedAddress.landmark && (
-                      <p className="checkout-compact-address-detail">Landmark: {selectedAddress.landmark}</p>
-                    )}
-                    <p className="checkout-compact-address-detail">
-                      {getAddressLocationText(selectedAddress)}
-                    </p>
-                    <p className="checkout-compact-address-detail" style={{ fontWeight: "500", marginTop: "2px" }}>
-                      Phone: {selectedAddress.phone}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="checkout-compact-address-change-btn"
-                    onClick={() => setIsEditingAddress(true)}
-                  >
-                    Change
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="checkout-section-head">
-                    <h2>Select a delivery address</h2>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+
+            {showNewAddressForm ? (
+              <div className="checkout-address-form-container">
+                <div className="checkout-section-head" style={{ marginBottom: "16px" }}>
+                  <h4>Add a New Address</h4>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    {charges.enableCurrentLocation !== false && (
                       <button
                         type="button"
-                        className="checkout-compact-address-change-btn"
-                        onClick={() => {
-                          setAddressFormTriggerSource("delivery");
-                          setShowNewAddressForm(true);
-                        }}
+                        className="checkout-location-detect-btn"
+                        onClick={handleUseCurrentLocation}
+                        disabled={isDetectingLocation}
                       >
-                        + Add New Address
+                        <MapPin size={13} />
+                        <span>{isDetectingLocation ? "Detecting..." : "Use Current Location"}</span>
                       </button>
-                      {selectedAddress && isEditingAddress && (
-                        <button
-                          type="button"
-                          className="checkout-compact-address-change-btn"
-                          onClick={() => setIsEditingAddress(false)}
-                          style={{ fontSize: "13px" }}
-                        >
-                          Cancel
-                        </button>
+                    )}
+                    <button
+                      type="button"
+                      className="checkout-cancel-link-btn"
+                      onClick={() => setShowNewAddressForm(false)}
+                    >
+                      Back to List
+                    </button>
+                  </div>
+                </div>
+
+                {locationStatusMessage ? (
+                  <p className="checkout-location-msg">
+                    {locationStatusMessage}
+                  </p>
+                ) : null}
+
+                <div className="checkout-address-form-grid">
+                  <div className="checkout-address-form-labels">
+                    {["Home", "Work", "Other"].map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`checkout-address-label-chip ${addressLabel === option ? "active" : ""}`}
+                        onClick={() => setAddressLabel(option)}
+                      >
+                        {option === "Home" ? <Home size={13} /> : option === "Work" ? <Briefcase size={13} /> : <Building size={13} />}
+                        <span>{option}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="checkout-form-row two-col">
+                    <label className="checkout-form-label">
+                      <span>Full Name *</span>
+                      <input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="e.g. Rohan Sharma"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <label className="checkout-form-label">
+                      <span>Phone Number *</span>
+                      <input
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="e.g. 9876543210"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="checkout-form-label">
+                    <span>Complete Address *</span>
+                    <textarea
+                      value={newAddressText}
+                      onChange={(e) => setNewAddressText(e.target.value)}
+                      placeholder="Flat, house no., building, street, area"
+                      className="checkout-form-input checkout-form-textarea"
+                    />
+                  </label>
+
+                  <div className="checkout-form-row two-col">
+                    <label className="checkout-form-label">
+                      <span>Landmark</span>
+                      <input
+                        value={newLandmark}
+                        onChange={(e) => setNewLandmark(e.target.value)}
+                        placeholder="Optional landmark"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <label className="checkout-form-label">
+                      <span>City *</span>
+                      <input
+                        value={newCity}
+                        onChange={(e) => setNewCity(e.target.value)}
+                        placeholder="e.g. Bengaluru"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="checkout-form-row three-col">
+                    <label className="checkout-form-label">
+                      <span>State *</span>
+                      <input
+                        value={newState}
+                        onChange={(e) => setNewState(e.target.value)}
+                        placeholder="e.g. Karnataka"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <label className="checkout-form-label">
+                      <span>Postal Code *</span>
+                      <input
+                        value={newPincode}
+                        onChange={(e) => setNewPincode(e.target.value)}
+                        placeholder="e.g. 560040"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <label className="checkout-form-label">
+                      <span>Country *</span>
+                      <input
+                        value={newCountry}
+                        onChange={(e) => setNewCountry(e.target.value)}
+                        placeholder="e.g. India"
+                        className="checkout-form-input"
+                      />
+                    </label>
+                  </div>
+
+                  {addressError && (
+                    <p className="checkout-form-error">
+                      {addressError}
+                    </p>
+                  )}
+
+                  <div className="checkout-form-btn-row">
+                    <button
+                      type="button"
+                      onClick={handleSaveNewAddress}
+                      disabled={isSavingAddress}
+                      className="checkout-address-save-btn"
+                    >
+                      {isSavingAddress ? "Saving..." : "Save and Use Address"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewAddressForm(false)}
+                      className="checkout-cancel-btn"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {selectedAddress && !isEditingAddress ? (
+                  <div className="checkout-compact-address-box">
+                    <div className="checkout-compact-address-info">
+                      <div className="checkout-compact-name-row">
+                        <strong className="checkout-compact-name">
+                          {selectedAddress.name}
+                        </strong>
+                        {selectedAddress.label && (
+                          <span className="checkout-address-label">{selectedAddress.label}</span>
+                        )}
+                        {selectedAddress.isDefault && (
+                          <span className="default-badge">Default</span>
+                        )}
+                      </div>
+                      <p className="checkout-compact-address-detail">
+                        {selectedAddress.address}
+                      </p>
+                      {selectedAddress.landmark && (
+                        <p className="checkout-compact-address-detail">Landmark: {selectedAddress.landmark}</p>
                       )}
+                      <p className="checkout-compact-address-detail">
+                        {getAddressLocationText(selectedAddress)}
+                      </p>
+                      <p className="checkout-compact-phone">
+                        <Phone size={13} /> {selectedAddress.phone}
+                      </p>
                     </div>
                   </div>
-                  <p className="coupon-selector-empty">
-                    Add or manage addresses from <a href="/account">My Account</a>.
-                  </p>
+                ) : (
+                  <>
+                    <div className="checkout-section-action-bar">
+                      <p className="checkout-section-note">Select an existing address or add a new delivery location:</p>
+                      <div className="checkout-address-actions">
+                        <button
+                          type="button"
+                          className="checkout-add-address-btn"
+                          onClick={() => {
+                            setAddressFormTriggerSource("delivery");
+                            setShowNewAddressForm(true);
+                          }}
+                        >
+                          <Plus size={14} /> Add New Address
+                        </button>
+                        {selectedAddress && isEditingAddress && (
+                          <button
+                            type="button"
+                            className="checkout-cancel-link-btn"
+                            onClick={() => setIsEditingAddress(false)}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                  <div className="address-list">
-                    {addresses.map((item, index) => (
-                      <div
-                        key={index}
-                        className={`address-card ${selectedIndex === index ? "selected" : ""}`}
-                        onClick={() => {
-                          selectAddress(index);
-                          setIsEditingAddress(false);
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          checked={selectedIndex === index}
-                          onChange={(e) => {
-                            e.stopPropagation();
+                    <div className="address-list">
+                      {addresses.map((item, index) => (
+                        <div
+                          key={index}
+                          className={`address-card ${selectedIndex === index ? "selected" : ""}`}
+                          onClick={() => {
                             selectAddress(index);
                             setIsEditingAddress(false);
                           }}
-                        />
+                        >
+                          <input
+                            type="radio"
+                            checked={selectedIndex === index}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              selectAddress(index);
+                              setIsEditingAddress(false);
+                            }}
+                          />
 
-                        <div className="address-info">
-                          <strong>{item.name}</strong>
-                          {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
-                          <p>{item.phone}</p>
-                          <p>{item.address}</p>
-                          {item.landmark && <p>Landmark: {item.landmark}</p>}
-                          {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
-
-                          {item.isDefault && <span className="default-badge">Default</span>}
+                          <div className="address-info">
+                            <div className="address-card-topline">
+                              <strong>{item.name}</strong>
+                              <div className="address-badge-row">
+                                {item.label ? <span className="checkout-address-label">{item.label}</span> : null}
+                                {item.isDefault && <span className="default-badge">Default</span>}
+                              </div>
+                            </div>
+                            <p className="address-line">{item.address}</p>
+                            {item.landmark && <p className="address-muted">Landmark: {item.landmark}</p>}
+                            {getAddressLocationText(item) && <p className="address-muted">{getAddressLocationText(item)}</p>}
+                            <p className="address-phone"><Phone size={12} /> {item.phone}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <div className="billing-address-toggle" style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'var(--site-surface-muted)', borderRadius: '8px', border: '1px solid var(--site-border)' }}>
-                <input
-                  type="checkbox"
-                  id="billing-same"
-                  checked={isBillingSame}
-                  onChange={(e) => setIsBillingSame(e.target.checked)}
-                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                />
-                <label htmlFor="billing-same" style={{ fontWeight: '600', cursor: 'pointer', color: 'var(--site-text)', fontSize: '14.5px' }}>
-                  Billing address is same as delivery address
-                </label>
-              </div>
-
-              {!isBillingSame && (
-                <div className="billing-address-section" style={{ marginTop: "24px" }}>
-                  {selectedBillingAddress && !isEditingBillingAddress ? (
-                    <div className="checkout-compact-address-box">
-                      <div className="checkout-compact-address-info">
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                          <h2 style={{ margin: 0, fontSize: "17px", fontWeight: "700", color: "var(--site-text)" }}>
-                            Billing to {selectedBillingAddress.name}
-                          </h2>
-                          {selectedBillingAddress.label && (
-                            <span className="checkout-address-label" style={{ margin: 0 }}>{selectedBillingAddress.label}</span>
-                          )}
-                          {selectedBillingAddress.isDefault && (
-                            <span className="default-badge" style={{ margin: 0 }}>Default</span>
-                          )}
-                        </div>
-                        <p className="checkout-compact-address-detail" style={{ marginTop: "6px" }}>
-                          {selectedBillingAddress.address}
-                        </p>
-                        {selectedBillingAddress.landmark && (
-                          <p className="checkout-compact-address-detail">Landmark: {selectedBillingAddress.landmark}</p>
-                        )}
-                        <p className="checkout-compact-address-detail">
-                          {getAddressLocationText(selectedBillingAddress)}
-                        </p>
-                        <p className="checkout-compact-address-detail" style={{ fontWeight: "500", marginTop: "2px" }}>
-                          Phone: {selectedBillingAddress.phone}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="checkout-compact-address-change-btn"
-                        onClick={() => setIsEditingBillingAddress(true)}
-                      >
-                        Change
-                      </button>
+                      ))}
                     </div>
-                  ) : (
-                    <>
-                      <div className="checkout-section-head" style={{ marginBottom: "12px" }}>
-                        <h2>Select a billing address</h2>
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Step 2: Billing Address */}
+          <div className="checkout-step-card">
+            <div className="checkout-step-header">
+              <div className="checkout-step-title-wrap">
+                <span className="checkout-step-num">2</span>
+                <h3>Billing Address</h3>
+              </div>
+              {!isBillingSame && selectedBillingAddress && !isEditingBillingAddress && !showNewAddressForm && (
+                <button
+                  type="button"
+                  className="checkout-step-change-btn"
+                  onClick={() => setIsEditingBillingAddress(true)}
+                >
+                  Change
+                </button>
+              )}
+            </div>
+
+            <div className="billing-address-toggle">
+              <input
+                type="checkbox"
+                id="billing-same"
+                checked={isBillingSame}
+                onChange={(e) => setIsBillingSame(e.target.checked)}
+              />
+              <label htmlFor="billing-same">
+                Billing address is same as delivery address
+              </label>
+            </div>
+
+            {!isBillingSame && (
+              <div className="billing-address-section">
+                {selectedBillingAddress && !isEditingBillingAddress ? (
+                  <div className="checkout-compact-address-box">
+                    <div className="checkout-compact-address-info">
+                      <div className="checkout-compact-name-row">
+                        <strong className="checkout-compact-name">
+                          {selectedBillingAddress.name}
+                        </strong>
+                        {selectedBillingAddress.label && (
+                          <span className="checkout-address-label">{selectedBillingAddress.label}</span>
+                        )}
+                      </div>
+                      <p className="checkout-compact-address-detail">
+                        {selectedBillingAddress.address}
+                      </p>
+                      {selectedBillingAddress.landmark && (
+                        <p className="checkout-compact-address-detail">Landmark: {selectedBillingAddress.landmark}</p>
+                      )}
+                      <p className="checkout-compact-address-detail">
+                        {getAddressLocationText(selectedBillingAddress)}
+                      </p>
+                      <p className="checkout-compact-phone">
+                        <Phone size={13} /> {selectedBillingAddress.phone}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="checkout-section-action-bar">
+                      <p className="checkout-section-note">Select billing address:</p>
+                      <div className="checkout-address-actions">
+                        <button
+                          type="button"
+                          className="checkout-add-address-btn"
+                          onClick={() => {
+                            setAddressFormTriggerSource("billing");
+                            setShowNewAddressForm(true);
+                          }}
+                        >
+                          <Plus size={14} /> Add New Address
+                        </button>
+                        {selectedBillingAddress && isEditingBillingAddress && (
                           <button
                             type="button"
-                            className="checkout-compact-address-change-btn"
-                            onClick={() => {
-                              setAddressFormTriggerSource("billing");
-                              setShowNewAddressForm(true);
-                            }}
+                            className="checkout-cancel-link-btn"
+                            onClick={() => setIsEditingBillingAddress(false)}
                           >
-                            + Add New Address
+                            Cancel
                           </button>
-                          {selectedBillingAddress && isEditingBillingAddress && (
-                            <button
-                              type="button"
-                              className="checkout-compact-address-change-btn"
-                              onClick={() => setIsEditingBillingAddress(false)}
-                              style={{ fontSize: "13px" }}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
-                      <div className="address-list">
-                        {addresses.map((item, index) => (
-                          <div
-                            key={`billing-${index}`}
-                            className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
-                            onClick={() => {
+                    </div>
+                    <div className="address-list">
+                      {addresses.map((item, index) => (
+                        <div
+                          key={`billing-${index}`}
+                          className={`address-card ${selectedBillingIndex === index ? "selected" : ""}`}
+                          onClick={() => {
+                            setSelectedBillingIndex(index);
+                            setIsEditingBillingAddress(false);
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            checked={selectedBillingIndex === index}
+                            onChange={(e) => {
+                              e.stopPropagation();
                               setSelectedBillingIndex(index);
                               setIsEditingBillingAddress(false);
                             }}
-                          >
-                            <input
-                              type="radio"
-                              checked={selectedBillingIndex === index}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                setSelectedBillingIndex(index);
-                                setIsEditingBillingAddress(false);
-                              }}
-                            />
-                            <div className="address-info">
+                          />
+                          <div className="address-info">
+                            <div className="address-card-topline">
                               <strong>{item.name}</strong>
-                              {item.label ? <p className="checkout-address-label">{item.label}</p> : null}
-                              <p>{item.phone}</p>
-                              <p>{item.address}</p>
-                              {item.landmark && <p>Landmark: {item.landmark}</p>}
-                              {getAddressLocationText(item) && <p>{getAddressLocationText(item)}</p>}
+                              {item.label ? <span className="checkout-address-label">{item.label}</span> : null}
                             </div>
+                            <p className="address-line">{item.address}</p>
+                            {item.landmark && <p className="address-muted">Landmark: {item.landmark}</p>}
+                            {getAddressLocationText(item) && <p className="address-muted">{getAddressLocationText(item)}</p>}
+                            <p className="address-phone"><Phone size={12} /> {item.phone}</p>
                           </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        <aside className="order-summary">
-          <h2>Order Summary</h2>
-
-          <div className="coupon-box">
-            <input
-              placeholder="Enter coupon code"
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value)}
-            />
-            <button onClick={() => applyCoupon()} disabled={isApplyingCoupon}>
-              {isApplyingCoupon ? "Applying..." : "Apply"}
-            </button>
-          </div>
-
-          <div className="coupon-selector">
-            <p className="coupon-selector-title">Available coupons</p>
-            {isLoadingCoupons ? (
-              <p className="coupon-selector-empty">Loading coupons...</p>
-            ) : availableCoupons.length === 0 ? (
-              <p className="coupon-selector-empty">No coupons available for this order amount.</p>
-            ) : (
-              <div className="coupon-chip-grid">
-                {availableCoupons.map((coupon) => {
-                  const code = String(coupon.code || "").toUpperCase();
-                  const isActive = code === String(couponCode || "").toUpperCase();
-                  const label =
-                    coupon.type === "percentage"
-                      ? `${Number(coupon.value || 0)}% OFF`
-                      : `${formatCurrencyExact(Number(coupon.value || 0), displayCurrency)} OFF`;
-
-                  return (
-                    <button
-                      key={coupon._id || code}
-                      type="button"
-                      className={isActive ? "coupon-chip active" : "coupon-chip"}
-                      onClick={() => applyCoupon(code)}
-                      disabled={isApplyingCoupon}
-                    >
-                      <strong>{code}</strong>
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
 
-          {couponMessage && <p className="coupon-message">{couponMessage}</p>}
-
-          <div className="summary-products">
-            {cartItems.map((item, index) => {
-              const qty = Math.max(1, Number(item.quantity || 1));
-              const unitPrice = Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
-              const lineTotal = roundMoney(unitPrice * qty);
-              const hsnSac = getItemHsnSac(item);
-              const defaultGstPercent = Number(charges.gstPercent || 0);
-              const gstRate = hsnSac === "4901" ? 0 : defaultGstPercent;
-              const gstAmount = roundMoney(lineTotal - (lineTotal / (1 + gstRate / 100)));
-
-              return (
-                <div key={index} className="summary-item-wrapper" style={itemStyles.itemWrapper}>
-                  <div className="summary-item" style={itemStyles.summaryItem}>
-                    <span style={itemStyles.itemName}>{item.name}</span>
-                    <span style={itemStyles.itemTotal}>
-                      {qty} x {formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))} = {" "}
-                      {formatCurrencyExact(lineTotal, displayCurrency)}
-                    </span>
-                  </div>
-                  <div className="itemized-tax-details" style={itemStyles.taxDetails}>
-                    <span style={itemStyles.taxDetailLabel}>
-                      HSN: <strong style={itemStyles.taxDetailValue}>{hsnSac}</strong>
-                    </span>
-                    <span style={itemStyles.taxDetailLabel}>
-                      GST Rate: <strong style={itemStyles.taxDetailValue}>{gstRate}%</strong>
-                    </span>
-                    <span style={itemStyles.taxDetailLabel}>
-                      Tax: <strong style={itemStyles.taxDetailValue}>{formatCurrencyExact(gstAmount, displayCurrency)}</strong>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <hr />
-
-          <div className="summary-item">
-            <span>Subtotal</span>
-            <span>{formatCurrencyExact(totals.subtotal, displayCurrency)}</span>
-          </div>
-          <div className="summary-item">
-            <span>GST ({charges.gstPercent}% Included)</span>
-            <span>{formatCurrencyExact(totals.gstAmount, displayCurrency)}</span>
-          </div>
-          <div className="summary-item">
-            <span>Delivery</span>
-            <span>
-              {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-                <strong style={{ color: "#2e7d32" }}>FREE (Digital Access)</strong>
-              ) : totals.deliveryCharge === 0 ? (
-                <strong style={{ color: "#2e7d32" }}>FREE</strong>
-              ) : (
-                formatCurrencyExact(totals.deliveryCharge, displayCurrency)
-              )}
-            </span>
-          </div>
-          {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-            <p className="coupon-selector-empty" style={{ color: "#2e7d32", fontWeight: 600 }}>
-              ⚡ Digital order: Instant access granted upon payment completion. No physical shipping fee required.
-            </p>
-          ) : null}
-
-          {hasDigitalItemsInCart ? (
-            <div style={{ margin: "14px 0", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--site-border)", backgroundColor: "var(--site-bg-soft)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: hasAlreadyPurchasedItemInCart ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13.5px", color: "var(--site-text)" }}>
+          {/* Digital Gift Option */}
+          {hasDigitalItemsInCart && (
+            <div className="checkout-gift-card">
+              <label className="checkout-gift-toggle-label">
                 <input
                   type="checkbox"
                   checked={isGift}
@@ -1313,88 +1282,308 @@ function Checkout() {
                   }}
                   disabled={hasAlreadyPurchasedItemInCart}
                 />
-                🎁 Purchase digital items in this order as Gift Passes
+                <Gift size={18} className="checkout-gift-icon" />
+                <span>Purchase digital items in this order as Gift Passes</span>
               </label>
+
               {hasAlreadyPurchasedItemInCart && (
-                <p style={{ margin: "6px 0 0 24px", fontSize: "12.5px", color: "#b91c1c", fontWeight: "bold", lineHeight: 1.4 }}>
-                  ⚠️ You already own one or more digital web version products in this order. This order is forced to be purchased as Gift Passes so you can share them.
+                <p className="checkout-gift-warning">
+                  <AlertCircle size={14} />
+                  <span>You already own one or more digital web version products in this order. This order will automatically generate Gift Passes so you can share them.</span>
                 </p>
               )}
+
               {isGift && (
-                <div style={{ marginTop: "10px", paddingLeft: "24px" }}>
-                  <p style={{ margin: "0 0 10px", fontSize: "12px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
+                <div className="checkout-gift-form">
+                  <p className="checkout-gift-note">
                     Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
                   </p>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "bold", color: "var(--site-text)", marginBottom: "4px" }}>
-                    📧 Recipient's Email Address:
+                  <label className="checkout-form-label">
+                    <span>Recipient's Email Address (Optional):</span>
+                    <input
+                      type="email"
+                      placeholder="recipient@example.com"
+                      value={giftRecipientEmail}
+                      onChange={(e) => setGiftRecipientEmail(e.target.value)}
+                      className="checkout-form-input"
+                    />
                   </label>
-                  <input
-                    type="email"
-                    placeholder="recipient@example.com"
-                    value={giftRecipientEmail}
-                    onChange={(e) => setGiftRecipientEmail(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--site-border)",
-                      backgroundColor: "var(--site-card-bg)",
-                      color: "var(--site-text)",
-                      fontSize: "13px"
-                    }}
-                  />
-                  <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--site-text-soft)", lineHeight: 1.3 }}>
+                  <p className="checkout-gift-subnote">
                     We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
                   </p>
                 </div>
               )}
             </div>
-          ) : null}
-          {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
-            <p className="coupon-selector-empty">Estimated distance: {deliveryDetails.distanceKm.toFixed(1)} km</p>
           )}
+
+          {/* Available Coupons & Offers in Left Column */}
+          {availableCoupons.length > 0 && (
+            <div className="checkout-step-card checkout-coupons-main-card">
+              <div className="checkout-step-header">
+                <div className="checkout-step-title-wrap">
+                  <Sparkles size={20} className="checkout-step-icon-accent" />
+                  <h3>Available Coupons & Offers</h3>
+                </div>
+                <span className="checkout-coupons-count-badge">{availableCoupons.length} available</span>
+              </div>
+
+              <div className="coupon-vouchers-grid">
+                {availableCoupons.map((coupon) => {
+                  const code = String(coupon.code || "").toUpperCase();
+                  const isCurrentlyApplied = Boolean(couponCode && couponCode.toUpperCase() === code && discount > 0);
+                  const discountLabel =
+                    coupon.type === "percentage"
+                      ? `${Number(coupon.value || 0)}% OFF`
+                      : `${formatCurrencyExact(Number(coupon.value || 0), displayCurrency)} OFF`;
+                  const minOrder = Number(coupon.minOrder || 0);
+
+                  return (
+                    <div
+                      key={coupon._id || code}
+                      className={`coupon-voucher-card ${isCurrentlyApplied ? "applied" : ""}`}
+                    >
+                      <div className="coupon-voucher-left">
+                        <div className="coupon-voucher-badge">
+                          <Tag size={12} />
+                          <strong>{code}</strong>
+                        </div>
+                        <div className="coupon-voucher-meta">
+                          <span className="coupon-voucher-benefit">{discountLabel}</span>
+                          {minOrder > 0 && (
+                            <span className="coupon-voucher-min">
+                              On orders above {formatCurrencyExact(minOrder, displayCurrency)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="coupon-voucher-action">
+                        {isCurrentlyApplied ? (
+                          <button
+                            type="button"
+                            className="coupon-voucher-btn remove"
+                            onClick={() => removeCoupon()}
+                            disabled={isApplyingCoupon}
+                          >
+                            <X size={12} />
+                            <span>Remove</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="coupon-voucher-btn apply"
+                            onClick={() => applyCoupon(code)}
+                            disabled={isApplyingCoupon}
+                          >
+                            <span>Apply</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Order Summary Sidebar */}
+        <aside className="order-summary">
+          <div className="checkout-summary-head">
+            <ShieldCheck size={20} className="summary-shield-icon" />
+            <h3>Order Summary</h3>
+          </div>
+
+          {/* Coupon Code Input & Applied State */}
+          {discount > 0 && couponCode ? (
+            <div className="coupon-applied-card">
+              <div className="coupon-applied-left">
+                <div className="coupon-applied-icon-wrap">
+                  <CheckCircle2 size={16} />
+                </div>
+                <div className="coupon-applied-info">
+                  <div className="coupon-applied-code-row">
+                    <strong className="coupon-applied-code">{couponCode}</strong>
+                    <span className="coupon-applied-tag">Applied</span>
+                  </div>
+                  <span className="coupon-applied-saving">
+                    You saved {formatCurrencyExact(discount, displayCurrency)}!
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="coupon-remove-btn"
+                onClick={removeCoupon}
+                title="Remove this coupon"
+              >
+                <X size={14} />
+                <span>Remove</span>
+              </button>
+            </div>
+          ) : (
+            <div className="coupon-box">
+              <div className="coupon-input-wrap">
+                <Tag size={15} className="coupon-input-icon" />
+                <input
+                  placeholder="Enter coupon code"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyCoupon();
+                    }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="coupon-apply-btn"
+                onClick={() => applyCoupon()}
+                disabled={isApplyingCoupon || !couponCode.trim()}
+              >
+                {isApplyingCoupon ? "Applying..." : "Apply"}
+              </button>
+            </div>
+          )}
+
+          {couponMessage && (
+            <p className={`coupon-message ${discount > 0 ? "success" : "info"}`}>
+              {couponMessage}
+            </p>
+          )}
+
+          {/* Purchased Items List */}
+          <div className="summary-products">
+            {cartItems.map((item, index) => {
+              const qty = Math.max(1, Number(item.quantity || 1));
+              const unitPrice = Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
+              const lineTotal = roundMoney(unitPrice * qty);
+              const hsnSac = getItemHsnSac(item);
+              const defaultGstPercent = Number(charges.gstPercent || 0);
+              const gstRate = hsnSac === "4901" ? 0 : defaultGstPercent;
+              const gstAmount = roundMoney(lineTotal - (lineTotal / (1 + gstRate / 100)));
+              const isDigital = isDigitalItem(item);
+
+              return (
+                <div key={index} className="summary-item-wrapper">
+                  <div className="summary-item-head">
+                    <span className="summary-item-name">{item.name}</span>
+                    <strong className="summary-item-total">
+                      {formatCurrencyExact(lineTotal, displayCurrency)}
+                    </strong>
+                  </div>
+                  <div className="summary-item-sub">
+                    <span>
+                      {qty} × {formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))}
+                    </span>
+                    <span className="summary-item-hsn">HSN: {hsnSac}</span>
+                    <span className="summary-item-gst">GST: {gstRate}%</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Breakdown Rows */}
+          <div className="checkout-summary-breakdown">
+            <div className="summary-item">
+              <span>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
+              <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
+            </div>
+            <div className="summary-item">
+              <span>
+                {totals.isInternational
+                  ? "GST (Export 0%)"
+                  : `GST (${charges.gstPercent}% Included)`}
+              </span>
+              <strong>
+                {totals.isInternational
+                  ? formatCurrencyExact(0, displayCurrency)
+                  : formatCurrencyExact(totals.gstAmount, displayCurrency)}
+              </strong>
+            </div>
+            <div className="summary-item">
+              <span>Delivery</span>
+              <span>
+                {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                  <strong className="delivery-free-badge">FREE (Instant Access)</strong>
+                ) : totals.deliveryCharge === 0 ? (
+                  <strong className="delivery-free-badge">FREE</strong>
+                ) : (
+                  <strong>{formatCurrencyExact(totals.deliveryCharge, displayCurrency)}</strong>
+                )}
+              </span>
+            </div>
+
+            {discount > 0 && (
+              <div className="summary-item discount-row">
+                <div className="summary-discount-label">
+                  <span>Coupon Discount ({couponCode})</span>
+                  <button
+                    type="button"
+                    className="summary-discount-remove-link"
+                    onClick={removeCoupon}
+                    title="Remove coupon discount"
+                  >
+                    <X size={12} />
+                    <span>Remove</span>
+                  </button>
+                </div>
+                <strong>-{formatCurrencyExact(discount, displayCurrency)}</strong>
+              </div>
+            )}
+          </div>
+
+          {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+            <div className="checkout-digital-note">
+              <Zap size={14} />
+              <span>Digital order: Instant access granted upon payment completion.</span>
+            </div>
+          ) : null}
+
+          {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
+            <p className="checkout-distance-note">Estimated warehouse distance: {deliveryDetails.distanceKm.toFixed(1)} km</p>
+          )}
+
           {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
-            <p className="coupon-selector-empty">
+            <p className="checkout-distance-note">
               International delivery applied for {deliveryDetails.matchedCountry}.
             </p>
           )}
-          {selectedAddress?.country && cartItems.some((item) => getProductPriceDetails(item, selectedAddress.country).priceType === "international-country") && (
-            <p className="coupon-selector-empty">
-              Country-specific product pricing applied for {selectedAddress.country}.
-            </p>
-          )}
-          <div className="summary-item summary-total">
-            <span>Total</span>
-            <span>{formatCurrencyExact(totals.grandTotal, displayCurrency)}</span>
+
+          {/* Grand Total Box */}
+          <div className="checkout-summary-grand-total">
+            <div className="grand-total-left">
+              <span className="grand-total-label">Final Order Total</span>
+              <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
+            </div>
+            <span className="grand-total-val">{formatCurrencyExact(finalTotal, displayCurrency)}</span>
           </div>
 
-          {discount > 0 && <p className="discount">Discount: -{formatCurrencyExact(discount, displayCurrency)}</p>}
-
-          <h3 className="final-total" style={{ marginBottom: "2px" }}>Final Total: {formatCurrencyExact(finalTotal, displayCurrency)}</h3>
-          <p style={{ fontSize: "11.5px", color: "var(--site-text-soft)", margin: "0 0 12px 0", textAlign: "right" }}>(Inclusive of all taxes)</p>
           {isIntlPhysicalRestricted && (
-            <div style={{
-              margin: "14px 0",
-              padding: "12px 14px",
-              borderRadius: "8px",
-              backgroundColor: "#fff3cd",
-              border: "1px solid #ffeeba",
-              color: "#856404",
-              fontSize: "13px",
-              lineHeight: "1.4"
-            }}>
-              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items from your cart to proceed.
+            <div className="checkout-intl-warning">
+              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to{" "}
+              {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products
+              (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items from your cart to proceed.
             </div>
           )}
-          <p className="checkout-policy-note">Order is placed only after successful payment.</p>
+
           <button
+            type="button"
             className="pay-now-btn"
             onClick={processCheckout}
             disabled={isPaying || isIntlPhysicalRestricted}
-            style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
           >
-            {isPaying ? "Processing..." : isIntlPhysicalRestricted ? "Physical Products Restricted" : "Pay Now"}
+            <Lock size={16} />
+            <span>{isPaying ? "Processing..." : isIntlPhysicalRestricted ? "Physical Products Restricted" : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}</span>
+            <ArrowRight size={16} />
           </button>
+
+          <p className="checkout-policy-note">
+            Your payment is processed securely via Razorpay. Order is confirmed immediately upon payment.
+          </p>
         </aside>
       </div>
     </div>

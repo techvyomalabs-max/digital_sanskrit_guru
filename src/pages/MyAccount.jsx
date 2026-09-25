@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { apiBaseUrl } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
-import { formatCurrencyForUser } from "../utils/currency";
-import { formatDate } from "../utils/date";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import {
   COUNTRIES,
@@ -21,8 +19,8 @@ import {
 } from "../utils/countryPhoneCodes";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
-import "./MyAccount.css";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import "./MyAccount.css";
 import {
   Bell,
   BellOff,
@@ -40,7 +38,6 @@ import {
   AlertCircle,
   Edit3,
   X,
-  Shield,
   Compass,
   Building,
   Globe,
@@ -73,6 +70,20 @@ function getPasswordStrength(pwd) {
   return { score: 4, label: "Strong", color: "#10b981" };
 }
 
+const formatAddressFullText = (item) =>
+  [
+    item?.name,
+    item?.phone,
+    item?.address,
+    item?.landmark ? `Landmark: ${item.landmark}` : "",
+    [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ")
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+const formatAddressLocationLine = (item) =>
+  [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
+
 // ── Push Notification Subscribe Section ──────────────────────────────────────
 function PushSubscribeSection({ token }) {
   const [permission, setPermission] = useState(
@@ -80,6 +91,21 @@ function PushSubscribeSection({ token }) {
   );
   const [status, setStatus] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const vapidKeyRef = useRef(null);
+
+  // Preload VAPID key on mount to eliminate latency when turning notifications ON
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window) {
+      fetch(`${apiBaseUrl || ""}/api/push/vapid-key`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.publicKey) {
+            vapidKeyRef.current = data.publicKey;
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   function urlBase64ToUint8Array(base64String) {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -108,9 +134,16 @@ function PushSubscribeSection({ token }) {
         setStatus("✅ You are already subscribed to push notifications.");
         return;
       }
-      const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-      if (!keyRes.ok) throw new Error("Could not get push key.");
-      const { publicKey } = await keyRes.json();
+
+      let publicKey = vapidKeyRef.current;
+      if (!publicKey) {
+        const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
+        if (!keyRes.ok) throw new Error("Could not get push key.");
+        const keyData = await keyRes.json();
+        publicKey = keyData.publicKey;
+        vapidKeyRef.current = publicKey;
+      }
+
       const sub = await sw.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey)
@@ -222,13 +255,11 @@ function PushSubscribeSection({ token }) {
   );
 }
 
-
 async function fetchCoordinatesForAddress(parts = {}) {
   const queryCandidates = [
     [parts.address, parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
     [parts.landmark, parts.city, parts.state, parts.pincode, parts.country],
-    [parts.city, parts.state, parts.country],
-    [parts.pincode, parts.country]
+    [parts.city, parts.state, parts.country]
   ]
     .map((arr) => arr.map((item) => String(item || "").trim()).filter(Boolean).join(", "))
     .filter(Boolean);
@@ -246,12 +277,15 @@ async function fetchCoordinatesForAddress(parts = {}) {
     });
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
       const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
         method: "GET",
-        headers: {
-          Accept: "application/json"
-        }
+        headers: { Accept: "application/json" },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) continue;
 
@@ -264,7 +298,7 @@ async function fetchCoordinatesForAddress(parts = {}) {
         return { latitude, longitude };
       }
     } catch {
-      // Continue to next candidate query
+      // Continue to next query candidate or return null coordinates
     }
   }
 
@@ -274,10 +308,19 @@ async function fetchCoordinatesForAddress(parts = {}) {
 function MyAccount() {
   const { user, token, updateProfileState } = useAuth();
   const { wishlist } = useWishlist();
-  const { addresses, isLoadingAddresses, addAddress, updateAddress, removeAddress, setDefaultAddress } = useDeliveryLocation();
+  const {
+    addresses,
+    isLoadingAddresses,
+    addAddress,
+    updateAddress,
+    removeAddress,
+    setDefaultAddress
+  } = useDeliveryLocation();
   const location = useLocation();
   const addressFormRef = useRef(null);
   const nameInputRef = useRef(null);
+  const pincodeSeqRef = useRef(0);
+
   const [orders, setOrders] = useState([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [showAddressForm, setShowAddressForm] = useState(false);
@@ -313,16 +356,7 @@ function MyAccount() {
   };
 
   const copyAddressToClipboard = (item, index) => {
-    const fullText = [
-      item.name,
-      item.phone,
-      item.address,
-      item.landmark ? `Landmark: ${item.landmark}` : "",
-      [item.city, item.state, item.pincode, item.country].filter(Boolean).join(", ")
-    ]
-      .filter(Boolean)
-      .join("\n");
-
+    const fullText = formatAddressFullText(item);
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(fullText).then(() => {
         setCopiedAddressIndex(index);
@@ -342,19 +376,29 @@ function MyAccount() {
     if (clean.length === 6 && country === "India") {
       setIsDetectingPincode(true);
       setPincodeLookupMsg("");
+      const currentSeq = ++pincodeSeqRef.current;
       try {
         const res = await fetch(`https://api.postalpincode.in/pincode/${clean}`);
         const data = await res.json();
-        if (Array.isArray(data) && data[0]?.Status === "Success" && Array.isArray(data[0]?.PostOffice) && data[0].PostOffice.length > 0) {
+        if (pincodeSeqRef.current !== currentSeq) return;
+
+        if (
+          Array.isArray(data) &&
+          data[0]?.Status === "Success" &&
+          Array.isArray(data[0]?.PostOffice) &&
+          data[0].PostOffice.length > 0
+        ) {
           const po = data[0].PostOffice[0];
           const detectedState = po.State || "";
           const detectedDistrict = po.District || po.Block || "";
 
-          const matchedState = matchBestOption(detectedState, getStatesForCountry("India")) || detectedState;
+          const matchedState =
+            matchBestOption(detectedState, getStatesForCountry("India")) || detectedState;
           if (matchedState) setState(matchedState);
 
           const districts = getDistrictsForState("India", matchedState);
-          const matchedCity = matchBestOption(detectedDistrict, districts) || detectedDistrict;
+          const matchedCity =
+            matchBestOption(detectedDistrict, districts) || detectedDistrict;
           if (matchedCity) setCity(matchedCity);
 
           setPincodeLookupMsg(`Auto-detected: ${matchedCity}, ${matchedState}`);
@@ -369,9 +413,13 @@ function MyAccount() {
           setPincodeLookupMsg("Could not find location details for this PIN code.");
         }
       } catch {
-        setPincodeLookupMsg("");
+        if (pincodeSeqRef.current === currentSeq) {
+          setPincodeLookupMsg("");
+        }
       } finally {
-        setIsDetectingPincode(false);
+        if (pincodeSeqRef.current === currentSeq) {
+          setIsDetectingPincode(false);
+        }
       }
     } else {
       setPincodeLookupMsg("");
@@ -514,11 +562,14 @@ function MyAccount() {
       }
 
       const resolved = await reverseGeocodeCoordinates(latitude, longitude);
-      const detectedCountry = matchBestOption(resolved.country || "India", COUNTRIES) || resolved.country || "India";
+      const detectedCountry =
+        matchBestOption(resolved.country || "India", COUNTRIES) || resolved.country || "India";
       const statesList = getStatesForCountry(detectedCountry);
-      const detectedState = matchBestOption(resolved.state || "", statesList) || resolved.state || "";
+      const detectedState =
+        matchBestOption(resolved.state || "", statesList) || resolved.state || "";
       const districtsList = getDistrictsForState(detectedCountry, detectedState);
-      const detectedCity = matchBestOption(resolved.city || "", districtsList) || resolved.city || "";
+      const detectedCity =
+        matchBestOption(resolved.city || "", districtsList) || resolved.city || "";
 
       if (resolved.address) setAddress(resolved.address);
       if (resolved.landmark) setLandmark(resolved.landmark);
@@ -540,7 +591,8 @@ function MyAccount() {
     const current = addresses[index];
     if (!current) return;
 
-    const matchedCountry = matchBestOption(current.country || "India", COUNTRIES) || current.country || "India";
+    const matchedCountry =
+      matchBestOption(current.country || "India", COUNTRIES) || current.country || "India";
     const extracted = extractPhoneAndCountry(current.phone || "", matchedCountry);
     const statesList = getStatesForCountry(matchedCountry);
     const matchedState = matchBestOption(current.state || "", statesList) || current.state || "";
@@ -674,11 +726,12 @@ function MyAccount() {
     };
   }, [addresses]);
 
-  // Profile Edit states (separated for Personal Information vs Login & Security)
+  // Profile Edit states
   const [editingSection, setEditingSection] = useState(null); // 'personal' | 'security' | null
   const [profileName, setProfileName] = useState(user?.name || "");
   const [profileEmail, setProfileEmail] = useState(user?.email || "");
   const [profilePhone, setProfilePhone] = useState(user?.phone || "");
+  const [profilePhoneCountry, setProfilePhoneCountry] = useState("India");
   const [profilePassword, setProfilePassword] = useState("");
   const [profilePasswordConfirm, setProfilePasswordConfirm] = useState("");
   const [showProfilePassword, setShowProfilePassword] = useState(false);
@@ -686,6 +739,16 @@ function MyAccount() {
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const userPhoneData = useMemo(() => {
+    if (!user?.phone) return null;
+    return extractPhoneAndCountry(user.phone, "India");
+  }, [user?.phone]);
+
+  const currentProfilePhoneData = useMemo(
+    () => getCountryPhoneData(profilePhoneCountry),
+    [profilePhoneCountry]
+  );
 
   // Store WhatsApp settings
   const [whatsappSettings, setWhatsappSettings] = useState(null);
@@ -735,7 +798,7 @@ function MyAccount() {
     return "DS";
   }, [user?.name, user?.email]);
 
-  const handleScrollToAddresses = (e) => {
+  const handleScrollToAddresses = useCallback((e) => {
     if (e) e.preventDefault();
     const el = document.getElementById("manage-address");
     if (el) {
@@ -745,13 +808,15 @@ function MyAccount() {
         el.classList.remove("my-account-panel-highlight");
       }, 2000);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (user) {
       setProfileName(user.name || "");
       setProfileEmail(user.email || "");
-      setProfilePhone(user.phone || "");
+      const extracted = extractPhoneAndCountry(user.phone || "", "India");
+      setProfilePhoneCountry(extracted.country || "India");
+      setProfilePhone(extracted.localPhone || "");
       setIsProfilePhoneVerified(true);
       setPhoneVerificationToken("");
     }
@@ -760,7 +825,9 @@ function MyAccount() {
   const handleProfileOtpVerified = ({ phone: verifiedPhone, phoneVerificationToken: token }) => {
     setIsProfilePhoneVerified(true);
     setPhoneVerificationToken(token);
-    setProfilePhone(verifiedPhone);
+    const extracted = extractPhoneAndCountry(verifiedPhone, profilePhoneCountry);
+    setProfilePhoneCountry(extracted.country || profilePhoneCountry);
+    setProfilePhone(extracted.localPhone || verifiedPhone);
     setProfileError("");
   };
 
@@ -768,7 +835,14 @@ function MyAccount() {
     setEditingSection(null);
     setProfileName(user?.name || "");
     setProfileEmail(user?.email || "");
-    setProfilePhone(user?.phone || "");
+    if (user?.phone) {
+      const extracted = extractPhoneAndCountry(user.phone, "India");
+      setProfilePhoneCountry(extracted.country || "India");
+      setProfilePhone(extracted.localPhone || "");
+    } else {
+      setProfilePhoneCountry("India");
+      setProfilePhone("");
+    }
     setProfilePassword("");
     setProfilePasswordConfirm("");
     setShowProfilePassword(false);
@@ -789,16 +863,25 @@ function MyAccount() {
       return;
     }
 
-    let validatedPhone = "";
+    let fullPhoneToSave = "";
     if (cleanPhone) {
-      const phoneValidation = validatePhoneNumber(cleanPhone);
+      const formattedCandidate = cleanPhone.startsWith("+")
+        ? cleanPhone
+        : `${currentProfilePhoneData.code} ${cleanPhone}`.trim();
+
+      const phoneValidation = validatePhoneNumber(formattedCandidate, profilePhoneCountry);
       if (!phoneValidation.isValid) {
         setProfileError(phoneValidation.message);
         return;
       }
-      validatedPhone = phoneValidation.cleanPhone;
+      fullPhoneToSave = phoneValidation.cleanPhone || formattedCandidate;
 
-      if (isOtpRequired && cleanPhone !== (user?.phone || "") && !isProfilePhoneVerified) {
+      const isSameAsSaved =
+        userPhoneData &&
+        cleanPhone === userPhoneData.localPhone &&
+        profilePhoneCountry === userPhoneData.country;
+
+      if (isOtpRequired && !isSameAsSaved && !isProfilePhoneVerified) {
         setIsPhoneOtpModalOpen(true);
         return;
       }
@@ -810,8 +893,9 @@ function MyAccount() {
         "/api/auth/profile",
         {
           name: cleanName,
-          phone: validatedPhone || cleanPhone,
-          phoneVerificationToken: isProfilePhoneVerified && phoneVerificationToken ? phoneVerificationToken : undefined
+          phone: fullPhoneToSave,
+          phoneVerificationToken:
+            isProfilePhoneVerified && phoneVerificationToken ? phoneVerificationToken : undefined
         },
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -974,101 +1058,114 @@ function MyAccount() {
     };
   }, [orders]);
 
-  const manageTiles = [
-    {
-      eyebrow: "Orders & Invoices",
-      title: "Your Orders",
-      text: "Track packages, view order history, initiate returns, and download tax invoices.",
-      meta: isLoadingOrders ? "Loading orders..." : `${orderSummary.total} total orders`,
-      link: "/my-orders",
-      action: "View orders",
-      icon: Package,
-      iconTheme: "orders"
-    },
-    {
-      eyebrow: "Shipping Locations",
-      title: "Address Book",
-      text: "Add, edit, or set default delivery addresses for 1-click checkout.",
-      meta: isLoadingAddresses ? "Loading addresses..." : `${addresses.length} saved ${addresses.length === 1 ? "address" : "addresses"}`,
-      link: "#manage-address",
-      action: "Manage addresses",
-      icon: MapPin,
-      iconTheme: "address",
-      onClick: handleScrollToAddresses
-    },
-    {
-      eyebrow: "Account Security",
-      title: "Login & Security",
-      text: "Update name, contact email, mobile number, and password credentials.",
-      meta: user?.email || "Account credentials",
-      link: "#account-details",
-      action: "Edit credentials",
-      icon: ShieldCheck,
-      iconTheme: "security",
-      onClick: () => {
-        setEditingSection("security");
-        setProfileMessage("");
-        setProfileError("");
-        setTimeout(() => {
-          const el = document.getElementById("account-details");
-          if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "center" });
-            const targetInput = el.querySelector("input[type='password']") || el.querySelector("input");
-            if (targetInput) targetInput.focus();
-          }
-        }, 80);
+  const manageTiles = useMemo(() => {
+    const tiles = [
+      {
+        eyebrow: "Orders & Invoices",
+        title: "Your Orders",
+        text: "Track packages, view order history, initiate returns, and download tax invoices.",
+        meta: isLoadingOrders ? "Loading orders..." : `${orderSummary.total} total orders`,
+        link: "/my-orders",
+        action: "View orders",
+        icon: Package,
+        iconTheme: "orders"
+      },
+      {
+        eyebrow: "Shipping Locations",
+        title: "Address Book",
+        text: "Add, edit, or set default delivery addresses for 1-click checkout.",
+        meta: isLoadingAddresses
+          ? "Loading addresses..."
+          : `${addresses.length} saved ${addresses.length === 1 ? "address" : "addresses"}`,
+        link: "#manage-address",
+        action: "Manage addresses",
+        icon: MapPin,
+        iconTheme: "address",
+        onClick: handleScrollToAddresses
+      },
+      {
+        eyebrow: "Account Security",
+        title: "Login & Security",
+        text: "Update name, contact email, mobile number, and password credentials.",
+        meta: user?.email || "Account credentials",
+        link: "#account-details",
+        action: "Edit credentials",
+        icon: ShieldCheck,
+        iconTheme: "security",
+        onClick: () => {
+          setEditingSection("security");
+          setProfileMessage("");
+          setProfileError("");
+          setTimeout(() => {
+            const el = document.getElementById("account-details");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              const targetInput =
+                el.querySelector("input[type='password']") || el.querySelector("input");
+              if (targetInput) targetInput.focus();
+            }
+          }, 80);
+        }
+      },
+      {
+        eyebrow: "Digital Content",
+        title: "Digital Library",
+        text: "Access your purchased digital books, interactive flipbooks, and learning material.",
+        meta: "Your digital content",
+        link: "/my-library",
+        action: "Open library",
+        icon: BookOpen,
+        iconTheme: "library"
+      },
+      {
+        eyebrow: "Credits & Offers",
+        title: "Gift Cards & Vouchers",
+        text: "Redeem gift vouchers, check credit balance, and apply promotional discounts.",
+        meta: "Redeem gift code",
+        link: "/redeem-gift",
+        action: "Redeem voucher",
+        icon: Gift,
+        iconTheme: "gift"
+      },
+      {
+        eyebrow: "Saved For Later",
+        title: "Saved Wishlist",
+        text: "Revisit items you love and keep track of availability and special discounts.",
+        meta: `${wishlist.length} saved ${wishlist.length === 1 ? "item" : "items"}`,
+        link: "/wishlist",
+        action: "Open wishlist",
+        icon: Heart,
+        iconTheme: "wishlist"
       }
-    },
-    {
-      eyebrow: "Digital Content",
-      title: "Digital Library",
-      text: "Access your purchased digital books, interactive flipbooks, and learning material.",
-      meta: "Your digital content",
-      link: "/my-library",
-      action: "Open library",
-      icon: BookOpen,
-      iconTheme: "library"
-    },
-    {
-      eyebrow: "Credits & Offers",
-      title: "Gift Cards & Vouchers",
-      text: "Redeem gift vouchers, check credit balance, and apply promotional discounts.",
-      meta: "Redeem gift code",
-      link: "/redeem-gift",
-      action: "Redeem voucher",
-      icon: Gift,
-      iconTheme: "gift"
-    },
-    {
-      eyebrow: "Saved For Later",
-      title: "Saved Wishlist",
-      text: "Revisit items you love and keep track of availability and special discounts.",
-      meta: `${wishlist.length} saved ${wishlist.length === 1 ? "item" : "items"}`,
-      link: "/wishlist",
-      action: "Open wishlist",
-      icon: Heart,
-      iconTheme: "wishlist"
+    ];
+
+    if (user?.isAdmin) {
+      tiles.push({
+        eyebrow: "Store Administration",
+        title: "Admin Console",
+        text: "Manage store catalog, warehouse inventory, user accounts, and financial analytics.",
+        meta: "Administrator workspace",
+        link: "/admin",
+        action: "Open console",
+        icon: LayoutDashboard,
+        iconTheme: "admin"
+      });
     }
-  ];
 
-  if (user?.isAdmin) {
-    manageTiles.push({
-      eyebrow: "Store Administration",
-      title: "Admin Console",
-      text: "Manage store catalog, warehouse inventory, user accounts, and financial analytics.",
-      meta: "Administrator workspace",
-      link: "/admin",
-      action: "Open console",
-      icon: LayoutDashboard,
-      iconTheme: "admin"
-    });
-  }
-
-
+    return tiles;
+  }, [
+    isLoadingOrders,
+    orderSummary.total,
+    isLoadingAddresses,
+    addresses.length,
+    user?.email,
+    user?.isAdmin,
+    wishlist.length,
+    handleScrollToAddresses
+  ]);
 
   const saveAddress = async () => {
     const errors = {};
-    const digits = String(phone || "").replace(/\D/g, "");
     const cleanPhone = String(phone || "").trim();
     const cleanName = String(name || "").trim();
     const cleanAddress = String(address || "").trim();
@@ -1156,8 +1253,6 @@ function MyAccount() {
     setAddressError("");
   };
 
-
-
   const deleteAddress = (index) => {
     const target = addresses[index];
     removeAddress(index);
@@ -1187,9 +1282,7 @@ function MyAccount() {
         <div className="my-account-hero-content">
           <div className="my-account-hero-identity">
             <div className="my-account-hero-avatar-ring">
-              <div className="my-account-hero-avatar">
-                {userInitials}
-              </div>
+              <div className="my-account-hero-avatar">{userInitials}</div>
               <span className="my-account-hero-pulse" title="Active Account" />
             </div>
 
@@ -1238,7 +1331,9 @@ function MyAccount() {
               <Truck size={17} />
             </div>
             <div className="my-account-hero-open-orders-text">
-              <strong>{orderSummary.open} {orderSummary.open === 1 ? "shipment" : "shipments"} on the way</strong>
+              <strong>
+                {orderSummary.open} {orderSummary.open === 1 ? "shipment" : "shipments"} on the way
+              </strong>
               <span>Track live delivery progress directly in Your Orders.</span>
             </div>
             <Link to="/my-orders" className="my-account-hero-track-btn">
@@ -1261,7 +1356,10 @@ function MyAccount() {
             const IconComp = tile.icon || Package;
             const cardContent = (
               <>
-                <div className={`my-account-tile-icon theme-${tile.iconTheme || "orders"}`} aria-hidden="true">
+                <div
+                  className={`my-account-tile-icon theme-${tile.iconTheme || "orders"}`}
+                  aria-hidden="true"
+                >
                   <IconComp size={20} />
                 </div>
                 <div className="my-account-tile-copy">
@@ -1307,7 +1405,10 @@ function MyAccount() {
         </div>
       </section>
 
-      <section id="account-details" className="my-account-panel my-account-panel-compact my-account-profile-panel">
+      <section
+        id="account-details"
+        className="my-account-panel my-account-panel-compact my-account-profile-panel"
+      >
         <div className="my-account-panel-head">
           <div>
             <p className="my-account-section-kicker">Profile & Credentials</p>
@@ -1341,12 +1442,14 @@ function MyAccount() {
 
         <div className="my-account-cards-grid">
           {/* Card 1: Personal Information */}
-          <div className={`my-account-info-card ${editingSection === "personal" ? "is-editing" : ""}`}>
+          <div
+            className={`my-account-info-card ${
+              editingSection === "personal" ? "is-editing" : ""
+            }`}
+          >
             <div className="my-account-card-header">
               <div className="my-account-card-title-wrap">
-                <div className="my-account-avatar-wrap">
-                  {userInitials}
-                </div>
+                <div className="my-account-avatar-wrap">{userInitials}</div>
                 <div>
                   <h4>Personal Information</h4>
                   <span className="my-account-card-sublabel">Identity & Contact</span>
@@ -1401,11 +1504,22 @@ function MyAccount() {
                   </label>
 
                   <label className="my-account-form-field">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between"
+                      }}
+                    >
                       <span className="my-account-input-label" style={{ marginBottom: 0 }}>
                         Phone Number
                       </span>
-                      {isOtpRequired && (isProfilePhoneVerified || (profilePhone && profilePhone === user?.phone)) ? (
+                      {isOtpRequired &&
+                      (isProfilePhoneVerified ||
+                        (profilePhone &&
+                          userPhoneData &&
+                          profilePhone === userPhoneData.localPhone &&
+                          profilePhoneCountry === userPhoneData.country)) ? (
                         <span className="my-account-phone-verified-tag">
                           <CheckCircle2 size={12} /> WhatsApp Verified
                         </span>
@@ -1413,45 +1527,87 @@ function MyAccount() {
                     </div>
                     <div className="my-account-phone-field-row">
                       <div className="my-account-phone-input-group">
-                        <span className="my-account-phone-prefix">🇮🇳 +91</span>
+                        <div
+                          className="my-account-phone-prefix-wrap"
+                          title="Click to change country calling code"
+                        >
+                          <span className="my-account-phone-prefix-display">
+                            <span>{currentProfilePhoneData.flag}</span>
+                            <span>{currentProfilePhoneData.code}</span>
+                            <ChevronDown size={13} className="my-account-phone-chevron" />
+                          </span>
+                          <select
+                            className="my-account-phone-select-overlay"
+                            value={profilePhoneCountry}
+                            onChange={(e) => {
+                              setProfilePhoneCountry(e.target.value);
+                              setIsProfilePhoneVerified(false);
+                              setPhoneVerificationToken("");
+                            }}
+                            aria-label="Select Country Phone Code"
+                          >
+                            {COUNTRY_PHONE_CODES.map((item) => (
+                              <option
+                                key={`${item.country}-${item.code}`}
+                                value={item.country}
+                              >
+                                {item.flag} {item.code} - {item.country}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         <input
                           id="profile-phone-input"
                           type="tel"
-                          maxLength={15}
+                          maxLength={16}
                           value={profilePhone}
                           onChange={(e) => {
-                            const val = e.target.value.replace(/[^\d+]/g, "");
+                            const val = e.target.value.replace(/[^\d+\s-]/g, "");
                             setProfilePhone(val);
-                            if (val !== (user?.phone || "")) {
+                            if (
+                              userPhoneData &&
+                              val === userPhoneData.localPhone &&
+                              profilePhoneCountry === userPhoneData.country
+                            ) {
+                              setIsProfilePhoneVerified(true);
+                            } else {
                               setIsProfilePhoneVerified(false);
                               setPhoneVerificationToken("");
-                            } else {
-                              setIsProfilePhoneVerified(true);
                             }
                           }}
-                          placeholder="9876543210"
+                          placeholder={currentProfilePhoneData.placeholder || "Enter phone number"}
                         />
                       </div>
-                      {isOtpRequired && profilePhone && profilePhone !== (user?.phone || "") && !isProfilePhoneVerified && (
-                        <button
-                          type="button"
-                          className="my-account-verify-wa-btn"
-                          onClick={() => {
-                            const validation = validatePhoneNumber(profilePhone);
-                            if (!validation.isValid) {
-                              setProfileError(validation.message);
-                              return;
-                            }
-                            setProfileError("");
-                            setIsPhoneOtpModalOpen(true);
-                          }}
-                          title="Verify phone number via WhatsApp OTP"
-                        >
-                          <MessageCircle size={14} /> Verify
-                        </button>
-                      )}
+                      {isOtpRequired &&
+                        profilePhone &&
+                        !(
+                          userPhoneData &&
+                          profilePhone === userPhoneData.localPhone &&
+                          profilePhoneCountry === userPhoneData.country
+                        ) &&
+                        !isProfilePhoneVerified && (
+                          <button
+                            type="button"
+                            className="my-account-verify-wa-btn"
+                            onClick={() => {
+                              const fullPhone = `${currentProfilePhoneData.code} ${profilePhone}`.trim();
+                              const validation = validatePhoneNumber(fullPhone, profilePhoneCountry);
+                              if (!validation.isValid) {
+                                setProfileError(validation.message);
+                                return;
+                              }
+                              setProfileError("");
+                              setIsPhoneOtpModalOpen(true);
+                            }}
+                            title="Verify phone number via WhatsApp OTP"
+                          >
+                            <MessageCircle size={14} /> Verify
+                          </button>
+                        )}
                     </div>
-                    <small className="my-account-input-hint">Used for order delivery updates & WhatsApp alerts.</small>
+                    <small className="my-account-input-hint">
+                      Used for order delivery updates & WhatsApp alerts.
+                    </small>
                   </label>
                 </div>
 
@@ -1463,10 +1619,18 @@ function MyAccount() {
                 )}
 
                 <div className="my-account-card-form-actions">
-                  <button type="submit" className="primary my-account-save-btn" disabled={isSavingProfile}>
+                  <button
+                    type="submit"
+                    className="primary my-account-save-btn"
+                    disabled={isSavingProfile}
+                  >
                     {isSavingProfile ? "Saving..." : "Save Details"}
                   </button>
-                  <button type="button" className="my-account-cancel-btn" onClick={resetProfileForms}>
+                  <button
+                    type="button"
+                    className="my-account-cancel-btn"
+                    onClick={resetProfileForms}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -1475,7 +1639,9 @@ function MyAccount() {
               <div className="my-account-card-rows">
                 <div className="my-account-card-row">
                   <span className="my-account-card-field-label">Full Name</span>
-                  <strong className="my-account-card-field-val">{user?.name || "Not provided"}</strong>
+                  <strong className="my-account-card-field-val">
+                    {user?.name || "Not provided"}
+                  </strong>
                 </div>
 
                 <div className="my-account-card-row">
@@ -1483,8 +1649,13 @@ function MyAccount() {
                   <div className="my-account-card-field-val-wrap">
                     {user?.phone ? (
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <strong className="my-account-card-field-val">🇮🇳 +91 {user.phone.replace(/^91/, "")}</strong>
-                        <span className="my-account-verified-badge" title="Phone verified on WhatsApp">
+                        <strong className="my-account-card-field-val">
+                          {userPhoneData?.flag} {userPhoneData?.code} {userPhoneData?.localPhone}
+                        </strong>
+                        <span
+                          className="my-account-verified-badge"
+                          title="Phone verified on WhatsApp"
+                        >
                           <CheckCircle2 size={12} /> WhatsApp
                         </span>
                       </div>
@@ -1511,7 +1682,10 @@ function MyAccount() {
                 <div className="my-account-card-row">
                   <span className="my-account-card-field-label">Primary Address</span>
                   <div className="my-account-card-field-val-wrap">
-                    <strong className="my-account-card-field-val" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <strong
+                      className="my-account-card-field-val"
+                      style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    >
                       <MapPin size={13} className="text-sky" />
                       {addresses.length > 0
                         ? `${addresses[0].city || "Saved"}, ${addresses[0].state || "India"}`
@@ -1532,7 +1706,11 @@ function MyAccount() {
           </div>
 
           {/* Card 2: Login & Security */}
-          <div className={`my-account-info-card ${editingSection === "security" ? "is-editing" : ""}`}>
+          <div
+            className={`my-account-info-card ${
+              editingSection === "security" ? "is-editing" : ""
+            }`}
+          >
             <div className="my-account-card-header">
               <div className="my-account-card-title-wrap">
                 <div className="my-account-security-icon-wrap">
@@ -1621,26 +1799,48 @@ function MyAccount() {
                           {[1, 2, 3, 4].map((step) => (
                             <div
                               key={step}
-                              className={`my-account-pwd-bar ${pwdStrength.score >= step ? "active" : ""}`}
+                              className={`my-account-pwd-bar ${
+                                pwdStrength.score >= step ? "active" : ""
+                              }`}
                               style={{
-                                backgroundColor: pwdStrength.score >= step ? pwdStrength.color : "#e2e8f0"
+                                backgroundColor:
+                                  pwdStrength.score >= step ? pwdStrength.color : "#e2e8f0"
                               }}
                             />
                           ))}
                         </div>
                         <div className="my-account-pwd-header-row">
-                          <span className="my-account-pwd-label" style={{ color: pwdStrength.color }}>
+                          <span
+                            className="my-account-pwd-label"
+                            style={{ color: pwdStrength.color }}
+                          >
                             Strength: {pwdStrength.label}
                           </span>
                         </div>
                         <div className="my-account-pwd-checklist">
-                          <span className={`my-account-pwd-check-item ${profilePassword.length >= 8 ? "met" : ""}`}>
+                          <span
+                            className={`my-account-pwd-check-item ${
+                              profilePassword.length >= 8 ? "met" : ""
+                            }`}
+                          >
                             <CheckCircle2 size={12} /> 8+ characters
                           </span>
-                          <span className={`my-account-pwd-check-item ${/[a-z]/.test(profilePassword) && /[A-Z]/.test(profilePassword) ? "met" : ""}`}>
+                          <span
+                            className={`my-account-pwd-check-item ${
+                              /[a-z]/.test(profilePassword) && /[A-Z]/.test(profilePassword)
+                                ? "met"
+                                : ""
+                            }`}
+                          >
                             <CheckCircle2 size={12} /> Upper & lowercase
                           </span>
-                          <span className={`my-account-pwd-check-item ${/\d/.test(profilePassword) || /[^A-Za-z0-9]/.test(profilePassword) ? "met" : ""}`}>
+                          <span
+                            className={`my-account-pwd-check-item ${
+                              /\d/.test(profilePassword) || /[^A-Za-z0-9]/.test(profilePassword)
+                                ? "met"
+                                : ""
+                            }`}
+                          >
                             <CheckCircle2 size={12} /> Number or symbol
                           </span>
                         </div>
@@ -1666,7 +1866,11 @@ function MyAccount() {
                         className="password-toggle-btn"
                         onClick={() => setShowProfileConfirmPassword((prev) => !prev)}
                         disabled={!profilePassword}
-                        aria-label={showProfileConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        aria-label={
+                          showProfileConfirmPassword
+                            ? "Hide confirm password"
+                            : "Show confirm password"
+                        }
                       >
                         {showProfileConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
@@ -1674,9 +1878,13 @@ function MyAccount() {
                     {profilePassword && profilePasswordConfirm ? (
                       <div className="my-account-match-status">
                         {profilePassword === profilePasswordConfirm ? (
-                          <span className="text-emerald"><CheckCircle2 size={13} /> Passwords match</span>
+                          <span className="text-emerald">
+                            <CheckCircle2 size={13} /> Passwords match
+                          </span>
                         ) : (
-                          <span className="text-rose"><AlertCircle size={13} /> Passwords do not match</span>
+                          <span className="text-rose">
+                            <AlertCircle size={13} /> Passwords do not match
+                          </span>
                         )}
                       </div>
                     ) : null}
@@ -1691,10 +1899,18 @@ function MyAccount() {
                 )}
 
                 <div className="my-account-card-form-actions">
-                  <button type="submit" className="primary my-account-save-btn" disabled={isSavingProfile}>
+                  <button
+                    type="submit"
+                    className="primary my-account-save-btn"
+                    disabled={isSavingProfile}
+                  >
                     {isSavingProfile ? "Updating..." : "Update Security"}
                   </button>
-                  <button type="button" className="my-account-cancel-btn" onClick={resetProfileForms}>
+                  <button
+                    type="button"
+                    className="my-account-cancel-btn"
+                    onClick={resetProfileForms}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -1704,8 +1920,12 @@ function MyAccount() {
                 <div className="my-account-card-row">
                   <span className="my-account-card-field-label">Email Address</span>
                   <div className="my-account-card-field-val-wrap">
-                    <strong className="my-account-card-field-val">{user?.email || "Not provided"}</strong>
-                    <span className="my-account-verified-badge"><CheckCircle2 size={12} /> Verified</span>
+                    <strong className="my-account-card-field-val">
+                      {user?.email || "Not provided"}
+                    </strong>
+                    <span className="my-account-verified-badge">
+                      <CheckCircle2 size={12} /> Verified
+                    </span>
                   </div>
                 </div>
 
@@ -1719,7 +1939,11 @@ function MyAccount() {
                 <div className="my-account-card-row">
                   <span className="my-account-card-field-label">Account Role</span>
                   <div className="my-account-card-field-val-wrap">
-                    <span className={`my-account-role-badge ${user?.isAdmin ? "admin" : "customer"}`}>
+                    <span
+                      className={`my-account-role-badge ${
+                        user?.isAdmin ? "admin" : "customer"
+                      }`}
+                    >
                       {user?.isAdmin ? "Administrator" : "Customer"}
                     </span>
                   </div>
@@ -1740,7 +1964,10 @@ function MyAccount() {
         </div>
       </section>
 
-      <section id="manage-address" className="my-account-panel my-account-panel-compact my-account-address-panel">
+      <section
+        id="manage-address"
+        className="my-account-panel my-account-panel-compact my-account-address-panel"
+      >
         <div className="my-account-panel-head">
           <div>
             <p className="my-account-section-kicker">Address Book</p>
@@ -1792,14 +2019,26 @@ function MyAccount() {
                 <div
                   key={`${item.name}-${item.pincode}-${index}`}
                   id={`my-account-addr-card-${index}`}
-                  className={`my-account-addr-card ${isEditingThisCard ? "editing-active" : ""}`}
+                  className={`my-account-addr-card ${
+                    isEditingThisCard ? "editing-active" : ""
+                  }`}
                 >
                   <div className="my-account-addr-card-head">
                     <div className="my-account-addr-title-group">
-                      <span className={`my-account-addr-label-tag ${(item.label || "Home").toLowerCase()}`}>
-                        {item.label === "Work" ? "🏢 Work" : item.label === "Other" ? "📍 Other" : "🏠 Home"}
+                      <span
+                        className={`my-account-addr-label-tag ${(
+                          item.label || "Home"
+                        ).toLowerCase()}`}
+                      >
+                        {item.label === "Work"
+                          ? "🏢 Work"
+                          : item.label === "Other"
+                          ? "📍 Other"
+                          : "🏠 Home"}
                       </span>
-                      <strong className="my-account-addr-recipient">{item.name || "Recipient"}</strong>
+                      <strong className="my-account-addr-recipient">
+                        {item.name || "Recipient"}
+                      </strong>
                     </div>
                     {item.isDefault ? (
                       <span className="my-account-default-badge">
@@ -1821,7 +2060,7 @@ function MyAccount() {
                       </span>
                     </div>
                     <p className="my-account-addr-city-line">
-                      {[item.city, item.state, item.pincode, item.country].filter(Boolean).join(", ")}
+                      {formatAddressLocationLine(item)}
                     </p>
                   </div>
 
@@ -1916,7 +2155,9 @@ function MyAccount() {
                 <div>
                   <h3>
                     {editingIndex !== null
-                      ? `Edit Delivery Address (${addresses[editingIndex]?.name || name || "Address"})`
+                      ? `Edit Delivery Address (${
+                          addresses[editingIndex]?.name || name || "Address"
+                        })`
                       : "Add New Delivery Address"}
                   </h3>
                   <p className="my-account-form-subtitle">
@@ -1967,7 +2208,9 @@ function MyAccount() {
                   <button
                     key={item.key}
                     type="button"
-                    className={`my-account-type-chip ${addressLabel === item.key ? "active" : ""}`}
+                    className={`my-account-type-chip ${
+                      addressLabel === item.key ? "active" : ""
+                    }`}
                     onClick={() => setAddressLabel(item.key)}
                   >
                     <span className="my-account-chip-icon">{item.icon}</span>
@@ -2000,21 +2243,31 @@ function MyAccount() {
                         className={fieldErrors.name ? "invalid-input" : ""}
                         onChange={(e) => {
                           setName(e.target.value);
-                          if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: "" }));
+                          if (fieldErrors.name)
+                            setFieldErrors((prev) => ({ ...prev, name: "" }));
                         }}
                         placeholder="e.g. Rahul Sharma"
                         required
                       />
                     </div>
-                    {fieldErrors.name && <span className="my-account-inline-error">⚠️ {fieldErrors.name}</span>}
+                    {fieldErrors.name && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.name}</span>
+                    )}
                   </label>
 
                   <label>
                     <span className="my-account-input-label">
                       Mobile / Phone Number <strong className="required-star">*</strong>
                     </span>
-                    <div className={`my-account-phone-input-group ${fieldErrors.phone ? "invalid-input" : ""}`}>
-                      <div className="my-account-phone-prefix-wrap" title="Click to change country calling code">
+                    <div
+                      className={`my-account-phone-input-group ${
+                        fieldErrors.phone ? "invalid-input" : ""
+                      }`}
+                    >
+                      <div
+                        className="my-account-phone-prefix-wrap"
+                        title="Click to change country calling code"
+                      >
                         <span className="my-account-phone-prefix-display">
                           <span>{currentPhoneData.flag}</span>
                           <span>{currentPhoneData.code}</span>
@@ -2027,7 +2280,10 @@ function MyAccount() {
                           aria-label="Select Country Phone Code"
                         >
                           {COUNTRY_PHONE_CODES.map((item) => (
-                            <option key={`${item.country}-${item.code}`} value={item.country}>
+                            <option
+                              key={`${item.country}-${item.code}`}
+                              value={item.country}
+                            >
                               {item.flag} {item.code} - {item.country}
                             </option>
                           ))}
@@ -2039,13 +2295,16 @@ function MyAccount() {
                         value={phone}
                         onChange={(e) => {
                           setPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
-                          if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: "" }));
+                          if (fieldErrors.phone)
+                            setFieldErrors((prev) => ({ ...prev, phone: "" }));
                         }}
                         placeholder={currentPhoneData.placeholder || "Enter phone number"}
                         required
                       />
                     </div>
-                    {fieldErrors.phone && <span className="my-account-inline-error">⚠️ {fieldErrors.phone}</span>}
+                    {fieldErrors.phone && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.phone}</span>
+                    )}
                   </label>
                 </div>
               </div>
@@ -2059,7 +2318,8 @@ function MyAccount() {
                 <div className="my-account-form-grid">
                   <label className="my-account-form-full-width">
                     <span className="my-account-input-label">
-                      Flat, House No., Building, Street, Area <strong className="required-star">*</strong>
+                      Flat, House No., Building, Street, Area{" "}
+                      <strong className="required-star">*</strong>
                     </span>
                     <div className="my-account-input-with-icon textarea-wrap">
                       <MapPin size={16} className="my-account-input-icon textarea-icon" />
@@ -2069,13 +2329,16 @@ function MyAccount() {
                         className={fieldErrors.address ? "invalid-input" : ""}
                         onChange={(e) => {
                           setAddress(e.target.value);
-                          if (fieldErrors.address) setFieldErrors((prev) => ({ ...prev, address: "" }));
+                          if (fieldErrors.address)
+                            setFieldErrors((prev) => ({ ...prev, address: "" }));
                         }}
                         placeholder="e.g. #934/S, 2nd Cross, 25th Main, Near Sankranthi Circle, Hebbal"
                         required
                       />
                     </div>
-                    {fieldErrors.address && <span className="my-account-inline-error">⚠️ {fieldErrors.address}</span>}
+                    {fieldErrors.address && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.address}</span>
+                    )}
                   </label>
 
                   <label>
@@ -2091,12 +2354,21 @@ function MyAccount() {
                   </label>
 
                   <label>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: "6px"
+                      }}
+                    >
                       <span className="my-account-input-label" style={{ marginBottom: 0 }}>
                         PIN Code <strong className="required-star">*</strong>
                       </span>
                       {isDetectingPincode ? (
-                        <span className="my-account-pincode-detecting">Detecting city & state...</span>
+                        <span className="my-account-pincode-detecting">
+                          Detecting city & state...
+                        </span>
                       ) : null}
                     </div>
                     <div className="my-account-input-with-icon">
@@ -2115,7 +2387,9 @@ function MyAccount() {
                         <CheckCircle2 size={12} /> {pincodeLookupMsg}
                       </span>
                     )}
-                    {fieldErrors.pincode && <span className="my-account-inline-error">⚠️ {fieldErrors.pincode}</span>}
+                    {fieldErrors.pincode && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.pincode}</span>
+                    )}
                   </label>
 
                   <label>
@@ -2137,7 +2411,9 @@ function MyAccount() {
                         ))}
                       </select>
                     </div>
-                    {fieldErrors.country && <span className="my-account-inline-error">⚠️ {fieldErrors.country}</span>}
+                    {fieldErrors.country && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.country}</span>
+                    )}
                   </label>
 
                   <label>
@@ -2170,7 +2446,9 @@ function MyAccount() {
                         />
                       )}
                     </div>
-                    {fieldErrors.state && <span className="my-account-inline-error">⚠️ {fieldErrors.state}</span>}
+                    {fieldErrors.state && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.state}</span>
+                    )}
                   </label>
 
                   <label className="my-account-form-full-width">
@@ -2203,7 +2481,9 @@ function MyAccount() {
                         />
                       )}
                     </div>
-                    {fieldErrors.city && <span className="my-account-inline-error">⚠️ {fieldErrors.city}</span>}
+                    {fieldErrors.city && (
+                      <span className="my-account-inline-error">⚠️ {fieldErrors.city}</span>
+                    )}
                   </label>
                 </div>
               </div>
@@ -2230,7 +2510,11 @@ function MyAccount() {
             )}
 
             <div className="my-account-form-actions-bar">
-              <button type="button" className="primary my-account-save-btn" onClick={saveAddress}>
+              <button
+                type="button"
+                className="primary my-account-save-btn"
+                onClick={saveAddress}
+              >
                 {editingIndex === null ? "Save Delivery Address" : "Update Delivery Address"}
               </button>
               <button
@@ -2265,12 +2549,13 @@ function MyAccount() {
               {addressToDelete.address && (
                 <div className="address-delete-preview-box">
                   <div style={{ fontWeight: 700, marginBottom: "3px" }}>
-                    {addressToDelete.address.name} {addressToDelete.address.phone ? `(${addressToDelete.address.phone})` : ""}
+                    {addressToDelete.address.name}{" "}
+                    {addressToDelete.address.phone
+                      ? `(${addressToDelete.address.phone})`
+                      : ""}
                   </div>
                   <div>{addressToDelete.address.address}</div>
-                  <div>
-                    {[addressToDelete.address.city, addressToDelete.address.state, addressToDelete.address.pincode, addressToDelete.address.country].filter(Boolean).join(", ")}
-                  </div>
+                  <div>{formatAddressLocationLine(addressToDelete.address)}</div>
                 </div>
               )}
 
@@ -2303,7 +2588,13 @@ function MyAccount() {
       {/* WhatsApp OTP Verification Modal */}
       <WhatsAppOtpModal
         isOpen={isPhoneOtpModalOpen}
-        phone={profilePhone}
+        phone={
+          profilePhone
+            ? profilePhone.startsWith("+")
+              ? profilePhone
+              : `${currentProfilePhoneData.code} ${profilePhone}`.trim()
+            : ""
+        }
         onClose={() => setIsPhoneOtpModalOpen(false)}
         onVerified={handleProfileOtpVerified}
       />
@@ -2312,5 +2603,3 @@ function MyAccount() {
 }
 
 export default MyAccount;
-
-

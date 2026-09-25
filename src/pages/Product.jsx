@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
@@ -13,6 +13,98 @@ import { isDigitalItem } from "../utils/deliveryPricing";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
+import {
+  Star,
+  CheckCircle2,
+  ThumbsUp,
+  Filter,
+  PenLine,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  ChevronDown,
+  X
+} from "lucide-react";
+import { formatDate } from "../utils/date";
+
+const AVATAR_PALETTES = [
+  { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
+  { bg: "rgba(22, 163, 74, 0.12)", text: "#16a34a" }, // Green
+  { bg: "rgba(147, 51, 234, 0.12)", text: "#9333ea" }, // Purple
+  { bg: "rgba(217, 119, 6, 0.12)", text: "#d97706" }, // Amber
+  { bg: "rgba(225, 29, 72, 0.12)", text: "#e11d48" }, // Rose
+  { bg: "rgba(13, 148, 136, 0.12)", text: "#0d9488" }  // Teal
+];
+
+function getAvatarColors(name = "") {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % AVATAR_PALETTES.length;
+  return AVATAR_PALETTES[index];
+}
+
+const RATING_DESCRIPTIONS = {
+  1: "1.0 - Poor",
+  2: "2.0 - Below Average",
+  3: "3.0 - Average",
+  4: "4.0 - Very Good",
+  5: "5.0 - Outstanding / Excellent"
+};
+
+function StarRating({ rating = 0, size = 16, className = "" }) {
+  const num = Number(rating || 0);
+  return (
+    <span
+      className={`star-rating-row ${className}`}
+      style={{ display: "inline-flex", alignItems: "center", gap: "2px", verticalAlign: "middle" }}
+      aria-label={`${num} out of 5 stars`}
+    >
+      {[1, 2, 3, 4, 5].map((star) => {
+        const fillPercent = Math.max(0, Math.min(100, (num - (star - 1)) * 100));
+        return (
+          <span
+            key={star}
+            className="star-icon-wrapper"
+            style={{
+              position: "relative",
+              display: "inline-block",
+              width: `${size}px`,
+              height: `${size}px`,
+              lineHeight: 0
+            }}
+          >
+            <Star
+              size={size}
+              className="star-empty"
+              style={{ color: "#cbd5e1", fill: "#e2e8f0" }}
+            />
+            {fillPercent > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: `${fillPercent}%`,
+                  height: "100%",
+                  overflow: "hidden",
+                  lineHeight: 0
+                }}
+              >
+                <Star
+                  size={size}
+                  className="star-filled"
+                  style={{ color: "#f59e0b", fill: "#f59e0b" }}
+                />
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 const PRODUCT_EXTRA_DETAILS = {
   soundaryalahari: {
@@ -168,6 +260,7 @@ function ProductNotFound() {
 
 function Product() {
   const { id } = useParams();
+  const location = useLocation();
   const { addToCart } = useCart();
   const { user, token } = useAuth();
   const { selectedAddress } = useDeliveryLocation();
@@ -183,6 +276,77 @@ function Product() {
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState(null);
+  const [reviewSort, setReviewSort] = useState("newest");
+  const [helpfulVotes, setHelpfulVotes] = useState({});
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    if (!loading && product && (location.hash === "#write-review" || location.hash === "#reviews-section" || location.state?.scrollToReview)) {
+      if (location.hash === "#write-review" || location.state?.scrollToReview) {
+        setIsReviewFormOpen(true);
+      }
+      setTimeout(() => {
+        const targetEl = document.getElementById("write-review") || document.getElementById("reviews-section");
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          const textarea = targetEl.querySelector("textarea");
+          if (textarea) {
+            textarea.focus();
+          }
+        }
+      }, 300);
+    }
+  }, [loading, product, location.hash, location.state]);
+
+  const ratingDistribution = useMemo(() => {
+    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    const total = reviews.length;
+    reviews.forEach((r) => {
+      const star = Math.max(1, Math.min(5, Math.round(Number(r.rating || 5))));
+      counts[star] = (counts[star] || 0) + 1;
+    });
+    return [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      count: counts[star],
+      percent: total > 0 ? Math.round((counts[star] / total) * 100) : 0
+    }));
+  }, [reviews]);
+
+  const averageRating = useMemo(() => {
+    if (!reviews.length) return Number(product?.rating || 0);
+    const sum = reviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
+    return Math.round((sum / reviews.length) * 10) / 10;
+  }, [reviews, product?.rating]);
+
+  const filteredReviews = useMemo(() => {
+    let list = [...reviews];
+    if (selectedRatingFilter !== null) {
+      list = list.filter((r) => Math.round(Number(r.rating || 5)) === selectedRatingFilter);
+    }
+    if (reviewSort === "highest") {
+      list.sort((a, b) => Number(b.rating || 5) - Number(a.rating || 5));
+    } else if (reviewSort === "lowest") {
+      list.sort((a, b) => Number(a.rating || 5) - Number(b.rating || 5));
+    } else {
+      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    return list;
+  }, [reviews, selectedRatingFilter, reviewSort]);
+
+  const handleHelpfulClick = (reviewId) => {
+    setHelpfulVotes((prev) => {
+      const current = prev[reviewId] || { count: 0, voted: false };
+      if (current.voted) {
+        return { ...prev, [reviewId]: { count: Math.max(0, current.count - 1), voted: false } };
+      }
+      showToast("Thank you for your feedback!");
+      return { ...prev, [reviewId]: { count: current.count + 1, voted: true } };
+    });
+  };
 
   const [qty, setQty] = useState(1);
   const [rating, setRating] = useState("5");
@@ -505,20 +669,25 @@ function Product() {
     }
 
     try {
+      setSubmittingReview(true);
       await axios.post(
         `/api/products/${id}/reviews`,
-        { rating: Number(rating), comment },
+        { rating: Number(rating), comment: comment.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setRating("5");
+      setHoverRating(0);
       setComment("");
       setReviewError("");
       setShowReviewSuccessModal(true);
+      setIsReviewFormOpen(false);
       await loadData();
     } catch (err) {
       const message = err?.response?.data?.message || "Failed to submit review";
       setReviewError(message);
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -909,8 +1078,14 @@ function Product() {
                     : (festiveDiscountPercent > 0 ? `Festive offer • ${festiveDiscountPercent}% off` : "Festive offer")}
             </p>
           ) : null}
-          {/* <p className="product-store-link">Visit the Digital Sanskrit Guru Store</p> */}
-          <p className="rating">{renderStars(product.rating)} <span>{Number(product.rating || 0).toFixed(1)} | {reviewCount} review</span></p>
+          <div className="product-hero-rating-wrap">
+            <StarRating rating={product.rating || averageRating || 0} size={18} />
+            <span className="product-hero-rating-val">{Number(product.rating || averageRating || 0).toFixed(1)}</span>
+            <span className="product-hero-rating-sep">•</span>
+            <a href="#reviews-section" className="product-hero-reviews-link">
+              {reviewCount} {reviewCount === 1 ? "customer review" : "customer reviews"}
+            </a>
+          </div>
           <hr />
           <div className="price-block">
             <p className="price">
@@ -1227,63 +1402,407 @@ function Product() {
         )}
       </div>
 
-      <div className="reviews-section">
-        <h3>Customer Reviews</h3>
+      {/* ── Customer Reviews Section ─────────────────────────────────── */}
+      <div className="reviews-section" id="reviews-section">
+        <div className="reviews-section-header">
+          <div className="reviews-header-titles">
+            <h3 className="reviews-main-title">
+              Customer Reviews
+              <span className="reviews-count-badge">{reviews.length}</span>
+            </h3>
+            <p className="reviews-subtitle">
+              Verified feedback from Sanskrit learners, scholars, and readers worldwide
+            </p>
+          </div>
 
-        {reviews.length > 0 ? (
-          <>
-            {reviews.map((r, index) => (
-              <div key={index} className="review-card">
-                <strong>{r.user}</strong>
-                <p>{renderStars(r.rating)}</p>
-                <p>{r.comment}</p>
+          {!isReviewFormOpen && (
+            <button
+              type="button"
+              className="reviews-write-cta-btn"
+              onClick={() => {
+                setIsReviewFormOpen(true);
+                setTimeout(() => {
+                  const targetEl = document.getElementById("write-review");
+                  if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                    const textarea = targetEl.querySelector("textarea");
+                    if (textarea) textarea.focus();
+                  }
+                }, 100);
+              }}
+            >
+              <PenLine size={16} />
+              <span>Write a Review</span>
+            </button>
+          )}
+        </div>
+
+        {/* ── Review Summary & Breakdown Dashboard ── */}
+        <div className="reviews-dashboard-grid">
+          {/* 1. Overall Score Box */}
+          <div className="reviews-score-card">
+            <div className="reviews-score-big">
+              {Number(averageRating || product.rating || 0).toFixed(1)}
+            </div>
+            <div className="reviews-score-stars">
+              <StarRating rating={averageRating || product.rating || 0} size={20} />
+            </div>
+            <div className="reviews-score-meta">
+              Based on <strong>{reviews.length}</strong> {reviews.length === 1 ? "rating" : "ratings"}
+            </div>
+            <div className="reviews-verified-badge-tag">
+              <ShieldCheck size={14} />
+              <span>100% Verified Purchases</span>
+            </div>
+          </div>
+
+          {/* 2. Rating Breakdown Bars */}
+          <div className="reviews-breakdown-card">
+            <h4 className="reviews-breakdown-title">Rating Breakdown</h4>
+            <div className="reviews-breakdown-list">
+              {ratingDistribution.map(({ star, count, percent }) => {
+                const isActive = selectedRatingFilter === star;
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    className={`reviews-breakdown-row ${isActive ? "active-filter" : ""}`}
+                    onClick={() => {
+                      setSelectedRatingFilter(isActive ? null : star);
+                    }}
+                    title={`Filter by ${star} star reviews (${count})`}
+                  >
+                    <span className="reviews-star-label">
+                      {star} <Star size={13} className="star-mini" style={{ fill: "#f59e0b", color: "#f59e0b" }} />
+                    </span>
+                    <div className="reviews-bar-track">
+                      <div
+                        className="reviews-bar-fill"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <span className="reviews-bar-percent">{percent}%</span>
+                    <span className="reviews-bar-count">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Community Prompt CTA Card */}
+          <div className="reviews-prompt-card">
+            <div className="reviews-prompt-icon">
+              <Sparkles size={22} />
+            </div>
+            <h4 className="reviews-prompt-title">Review this product</h4>
+            <p className="reviews-prompt-desc">
+              Have you read or used this book? Share your valuable thoughts to help fellow readers and students!
+            </p>
+            <button
+              type="button"
+              className="reviews-prompt-btn"
+              onClick={() => {
+                setIsReviewFormOpen(true);
+                setTimeout(() => {
+                  const targetEl = document.getElementById("write-review");
+                  if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                    const textarea = targetEl.querySelector("textarea");
+                    if (textarea) textarea.focus();
+                  }
+                }, 100);
+              }}
+            >
+              <PenLine size={15} />
+              Write a Review
+            </button>
+          </div>
+        </div>
+
+        {/* ── Review Form (Expandable / Anchorable) ── */}
+        {isReviewFormOpen && (
+          <div className="reviews-form-panel" id="write-review">
+            <div className="reviews-form-header">
+              <div className="reviews-form-title-wrap">
+                <PenLine size={18} className="form-pen-icon" />
+                <h4>Write a Customer Review</h4>
               </div>
-            ))}
-            {hasMoreReviews && (
-              <div style={{ display: "flex", justifyContent: "flex-start", marginTop: "16px" }}>
-                <button
-                  type="button"
-                  className="load-more-btn"
-                  disabled={isLoadingMoreReviews}
-                  onClick={handleLoadMoreReviews}
+              <button
+                type="button"
+                className="reviews-form-close-btn"
+                onClick={() => setIsReviewFormOpen(false)}
+                aria-label="Close review form"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {user ? (
+              <div className="reviews-form-body">
+                <div className="reviews-form-group">
+                  <label className="reviews-form-label">
+                    Overall Rating <span className="req-star">*</span>
+                  </label>
+                  <div className="star-picker-container">
+                    <div
+                      className="star-picker-row"
+                      onMouseLeave={() => setHoverRating(0)}
+                    >
+                      {[1, 2, 3, 4, 5].map((starVal) => {
+                        const activeVal = hoverRating || Number(rating) || 5;
+                        const isFilled = starVal <= activeVal;
+                        return (
+                          <button
+                            key={starVal}
+                            type="button"
+                            className="star-picker-btn"
+                            onMouseEnter={() => setHoverRating(starVal)}
+                            onClick={() => setRating(String(starVal))}
+                            aria-label={`${starVal} Star`}
+                          >
+                            <Star
+                              size={28}
+                              style={{
+                                color: isFilled ? "#f59e0b" : "#cbd5e1",
+                                fill: isFilled ? "#f59e0b" : "transparent"
+                              }}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="star-picker-hint">
+                      {RATING_DESCRIPTIONS[hoverRating || Number(rating) || 5]}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="reviews-form-group">
+                  <div className="reviews-label-row">
+                    <label className="reviews-form-label">
+                      Your Review <span className="req-star">*</span>
+                    </label>
+                    <span className="reviews-char-hint">
+                      {comment.length} characters
+                    </span>
+                  </div>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => {
+                      setComment(e.target.value);
+                      setReviewError("");
+                    }}
+                    rows={4}
+                    placeholder="What did you like or dislike? How was the content, print quality, or language clarity?"
+                    className="reviews-form-textarea"
+                  />
+                  {reviewError && (
+                    <p className="review-form-error-msg">⚠️ {reviewError}</p>
+                  )}
+                </div>
+
+                <div className="reviews-form-actions">
+                  <button
+                    type="button"
+                    className="reviews-form-cancel-btn"
+                    onClick={() => setIsReviewFormOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="reviews-form-submit-btn"
+                    disabled={submittingReview}
+                    onClick={submitReview}
+                  >
+                    {submittingReview ? "Submitting Review..." : "Submit Review"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="reviews-login-gate">
+                <div className="reviews-login-gate-icon">
+                  <MessageSquare size={28} />
+                </div>
+                <h5>Sign in to Share Your Review</h5>
+                <p>You must have an account to post a review and help the reader community.</p>
+                <Link
+                  to="/login"
+                  state={{ from: `/product/${id}#write-review` }}
+                  className="reviews-login-gate-btn"
                 >
-                  {isLoadingMoreReviews ? "Loading..." : "Load More Reviews"}
-                </button>
+                  Sign In to Review
+                </Link>
               </div>
             )}
-          </>
-        ) : (
-          <p>No reviews yet</p>
+          </div>
         )}
 
-        {/* ── Fix #8: Gate review form — show login prompt for guests ── */}
-        <div className="review-form">
-          <h4>Add Review</h4>
-          {user ? (
-            <>
-              <label>Rating</label>
-              <select value={rating} onChange={(e) => setRating(e.target.value)}>
-                <option value="5">5 stars</option>
-                <option value="4">4 stars</option>
-                <option value="3">3 stars</option>
-                <option value="2">2 stars</option>
-                <option value="1">1 star</option>
-              </select>
-              <textarea
-                value={comment}
-                onChange={(e) => { setComment(e.target.value); setReviewError(""); }}
-                rows={3}
-                placeholder="Write your review..."
-              />
-              {reviewError && <p className="review-form-error">{reviewError}</p>}
-              <button className="add-cart-btn" onClick={submitReview}>
-                Submit Review
+        {/* ── Filter & Sort Toolbar ── */}
+        {reviews.length > 0 && (
+          <div className="reviews-toolbar">
+            <div className="reviews-filter-chips">
+              <span className="reviews-toolbar-label">
+                <Filter size={14} /> Filter:
+              </span>
+              <button
+                type="button"
+                className={`reviews-chip ${selectedRatingFilter === null ? "active" : ""}`}
+                onClick={() => setSelectedRatingFilter(null)}
+              >
+                All ({reviews.length})
               </button>
-            </>
+              {ratingDistribution
+                .filter((d) => d.count > 0)
+                .map((d) => (
+                  <button
+                    key={d.star}
+                    type="button"
+                    className={`reviews-chip ${selectedRatingFilter === d.star ? "active" : ""}`}
+                    onClick={() => setSelectedRatingFilter(selectedRatingFilter === d.star ? null : d.star)}
+                  >
+                    {d.star} ★ ({d.count})
+                  </button>
+                ))}
+            </div>
+
+            <div className="reviews-sort-wrap">
+              <label htmlFor="review-sort-select">Sort by:</label>
+              <select
+                id="review-sort-select"
+                value={reviewSort}
+                onChange={(e) => setReviewSort(e.target.value)}
+                className="reviews-sort-select"
+              >
+                <option value="newest">Most Recent</option>
+                <option value="highest">Highest Rating</option>
+                <option value="lowest">Lowest Rating</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Active Filter Notice */}
+        {selectedRatingFilter !== null && (
+          <div className="reviews-active-filter-alert">
+            <span>Showing only <strong>{selectedRatingFilter}-star</strong> reviews ({filteredReviews.length} found)</span>
+            <button
+              type="button"
+              className="reviews-clear-filter-btn"
+              onClick={() => setSelectedRatingFilter(null)}
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
+
+        {/* ── Reviews Cards List ── */}
+        <div className="reviews-cards-list">
+          {filteredReviews.length > 0 ? (
+            filteredReviews.map((r, index) => {
+              const reviewId = r._id || `rev-${index}`;
+              const reviewerName = r.userName || (typeof r.user === "string" ? r.user : r.user?.name) || "Customer";
+              const avatarColors = getAvatarColors(reviewerName);
+              const initial = reviewerName.trim().charAt(0).toUpperCase() || "U";
+              const isHelpfulVoted = helpfulVotes[reviewId]?.voted;
+              const helpfulCount = (helpfulVotes[reviewId]?.count || 0) + (r.helpfulCount || 0);
+
+              return (
+                <div key={reviewId} className="review-card-modern">
+                  <div className="review-card-top">
+                    <div className="review-user-info">
+                      <div
+                        className="review-avatar-circle"
+                        style={{ backgroundColor: avatarColors.bg, color: avatarColors.text }}
+                      >
+                        {initial}
+                      </div>
+                      <div className="review-user-meta">
+                        <div className="review-user-name-row">
+                          <strong className="review-user-name">{reviewerName}</strong>
+                          <span className="review-verified-tag">
+                            <CheckCircle2 size={13} className="check-icon" />
+                            Verified Buyer
+                          </span>
+                        </div>
+                        {r.createdAt && (
+                          <span className="review-date-text">
+                            Reviewed on {formatDate(r.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="review-rating-pill">
+                      <StarRating rating={r.rating} size={15} />
+                      <span className="review-rating-num">{Number(r.rating || 5).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="review-card-content">
+                    <p className="review-comment-text">{r.comment}</p>
+                  </div>
+
+                  <div className="review-card-footer">
+                    <button
+                      type="button"
+                      className={`review-helpful-btn ${isHelpfulVoted ? "voted" : ""}`}
+                      onClick={() => handleHelpfulClick(reviewId)}
+                      title="Mark as helpful"
+                    >
+                      <ThumbsUp size={14} />
+                      <span>{isHelpfulVoted ? "Helpful (Voted)" : "Helpful"}</span>
+                      {helpfulCount > 0 && <span className="helpful-count-badge">{helpfulCount}</span>}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : reviews.length === 0 ? (
+            <div className="reviews-empty-state">
+              <div className="reviews-empty-icon">
+                <Sparkles size={36} />
+              </div>
+              <h4>No Customer Reviews Yet</h4>
+              <p>Be the first person to share your experience and thoughts about this book!</p>
+              <button
+                type="button"
+                className="reviews-empty-cta-btn"
+                onClick={() => {
+                  setIsReviewFormOpen(true);
+                  setTimeout(() => {
+                    const targetEl = document.getElementById("write-review");
+                    if (targetEl) targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }, 100);
+                }}
+              >
+                <PenLine size={16} />
+                Write the First Review
+              </button>
+            </div>
           ) : (
-            <div className="review-login-prompt">
-              <p>You must be signed in to leave a review.</p>
-              <Link to="/login" className="buy-now-btn review-login-btn">Sign in to review</Link>
+            <div className="reviews-no-filter-results">
+              <p>No reviews found matching the selected rating filter ({selectedRatingFilter} stars).</p>
+              <button
+                type="button"
+                className="reviews-chip active"
+                onClick={() => setSelectedRatingFilter(null)}
+              >
+                View all {reviews.length} reviews
+              </button>
+            </div>
+          )}
+
+          {hasMoreReviews && selectedRatingFilter === null && (
+            <div className="reviews-load-more-wrap">
+              <button
+                type="button"
+                className="reviews-load-more-btn"
+                disabled={isLoadingMoreReviews}
+                onClick={handleLoadMoreReviews}
+              >
+                {isLoadingMoreReviews ? "Loading Reviews..." : "Load More Reviews"}
+              </button>
             </div>
           )}
         </div>

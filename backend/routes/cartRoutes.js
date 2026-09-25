@@ -51,7 +51,14 @@ const formatCart = (cart) => {
       description: item.product.description || "",
       category: item.product.category || "General",
       stock: Number(item.product.stock || 0),
-      quantity: Number(item.quantity || 1)
+      quantity: Number(item.quantity || 1),
+      festiveOffer: Boolean(item.product.festiveOffer),
+      festiveDiscountPercent: Number(item.product.festiveDiscountPercent || 0),
+      discountType: item.product.discountType || "",
+      hsnSac: item.product.hsnSac || "",
+      format: item.product.format || "",
+      isDigital: Boolean(item.product.isDigital),
+      productType: item.product.productType || "single"
     }));
 };
 

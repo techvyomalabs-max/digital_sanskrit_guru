@@ -1,12 +1,36 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
+import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import {
+  ShoppingBag,
+  ArrowRight,
+  ArrowLeft,
+  LogIn,
+  Heart,
+  Package,
+  BookOpen,
+  Sparkles,
+  ShieldCheck,
+  Truck,
+  Zap,
+  Star,
+  Compass,
+  Grid,
+  Trash2,
+  Lock,
+  CreditCard,
+  CheckCircle2,
+  Minus,
+  Plus
+} from "lucide-react";
 import "./Cart.css";
 
 const getItemHsnSac = (item) => {
@@ -65,31 +89,21 @@ function CartQtyInput({ item, currentQty, updateQty }) {
 
   if (isDigital) {
     return (
-      <div className="qty-box" style={{ display: "flex", alignItems: "center", margin: "6px 0" }}>
-        <span style={{ fontSize: "12.5px", fontWeight: "600", color: "#166534", backgroundColor: "#f0fdf4", border: "1px solid #bbf7d0", padding: "3px 8px", borderRadius: "4px" }}>
-          Qty: 1 (Digital License)
-        </span>
+      <div className="cart-digital-pill">
+        <Zap size={12} />
+        <span>Qty: 1 (Digital License)</span>
       </div>
     );
   }
 
   if (isBulk) {
     return (
-      <div className="qty-box" style={{ display: "flex", alignItems: "center" }}>
+      <div className="cart-bulk-select-wrap">
         <select
           value={currentQty}
           onChange={(e) => updateQty(item._id || item.id, Number(e.target.value))}
-          style={{
-            padding: "4px 8px",
-            border: "1px solid var(--border-color, #cbd5e1)",
-            borderRadius: "4px",
-            height: "28px",
-            fontSize: "13px",
-            fontWeight: "bold",
-            backgroundColor: "transparent",
-            color: "inherit",
-            cursor: "pointer"
-          }}
+          className="cart-bulk-select"
+          aria-label="Bulk quantity selection"
         >
           {[10, 20, 30, 40, 50, 100].map((num) => (
             <option key={num} value={num} disabled={item.stock > 0 && num > item.stock}>
@@ -121,42 +135,180 @@ function CartQtyInput({ item, currentQty, updateQty }) {
   };
 
   return (
-    <div className="qty-box" style={{ display: "flex", alignItems: "center" }}>
-      <button type="button" onClick={() => {
-        const nextQty = Math.max(1, Number(localVal || 1) - 1);
-        setLocalVal(nextQty);
-        updateQty(item._id || item.id, nextQty);
-      }}>-</button>
+    <div className="cart-qty-stepper">
+      <button
+        type="button"
+        className="cart-qty-btn minus"
+        disabled={Number(localVal) <= 1}
+        onClick={() => {
+          const nextQty = Math.max(1, Number(localVal || 1) - 1);
+          setLocalVal(nextQty);
+          updateQty(item._id || item.id, nextQty);
+        }}
+        aria-label="Decrease quantity"
+      >
+        <Minus size={13} />
+      </button>
       <input
         type="number"
+        className="cart-qty-input-field"
         value={localVal}
         min="1"
         max={item.stock || 100}
         onChange={handleChange}
         onBlur={handleBlur}
-        style={{
-          width: "50px",
-          textAlign: "center",
-          border: "1px solid var(--border-color, #cbd5e1)",
-          borderRadius: "4px",
-          height: "26px",
-          fontSize: "13.5px",
-          fontWeight: "bold",
-          margin: "0 6px",
-          backgroundColor: "transparent",
-          color: "inherit"
-        }}
+        aria-label="Item quantity"
       />
-      <button type="button" onClick={() => {
-        const nextQty = Number(localVal || 1) + 1;
-        setLocalVal(nextQty);
-        updateQty(item._id || item.id, nextQty);
-      }}>+</button>
+      <button
+        type="button"
+        className="cart-qty-btn plus"
+        disabled={item.stock ? Number(localVal) >= item.stock : false}
+        onClick={() => {
+          const maxStock = item.stock || 100;
+          const nextQty = Math.min(maxStock, Number(localVal || 1) + 1);
+          setLocalVal(nextQty);
+          updateQty(item._id || item.id, nextQty);
+        }}
+        aria-label="Increase quantity"
+      >
+        <Plus size={13} />
+      </button>
+    </div>
+  );
+}
+
+function EmptyCartView({ user, wishlist = [] }) {
+  const isGuest = !user;
+
+  const quickCategories = [
+    { label: "Paperback Books", category: "Book - Paperback", icon: BookOpen },
+    { label: "Web Versions", category: "Web Version", icon: Compass },
+    { label: "Flipbooks & E-Books", category: "Flipbook", icon: Grid },
+    { label: "Bundles & Combos", category: "Bundle", icon: Package },
+    { label: "Top Rated Picks", route: "/?scrollTo=top-rated", icon: Star }
+  ];
+
+  const perks = [
+    {
+      icon: Zap,
+      title: "Instant Digital Access",
+      desc: "Get immediate access to web versions and digital flipbooks on any device."
+    },
+    {
+      icon: Truck,
+      title: "Worldwide Tracked Shipping",
+      desc: "Fast and reliable door delivery for all physical books and Sanskrit study kits."
+    },
+    {
+      icon: ShieldCheck,
+      title: "100% Authentic Literature",
+      desc: "Original Sanskrit texts, verified commentaries, and expert learning material."
+    }
+  ];
+
+  return (
+    <div className="cart-empty-container">
+      <div className="cart-empty-hero-card">
+        <div className="cart-empty-icon-ring">
+          <div className="cart-empty-icon-circle">
+            <ShoppingBag size={38} className="cart-empty-icon" />
+          </div>
+          <span className="cart-empty-icon-sparkle">
+            <Sparkles size={16} />
+          </span>
+        </div>
+
+        <div className="cart-empty-badge">
+          <Sparkles size={13} />
+          <span>
+            {isGuest
+              ? "New to Digital Sanskrit Guru?"
+              : `Welcome back, ${user?.name || "Member"}!`}
+          </span>
+        </div>
+
+        <h2 className="cart-empty-title">
+          {isGuest
+            ? "Your shopping cart is empty"
+            : "Your cart is waiting for your next read"}
+        </h2>
+
+        <p className="cart-empty-desc">
+          {isGuest
+            ? "Explore our curated collection of authentic Sanskrit books, interactive web versions, flipbooks, and comprehensive study bundles."
+            : "You don't have any items in your cart right now. Pick up where you left off from your wishlist or discover our latest arrivals."}
+        </p>
+
+        <div className="cart-empty-actions">
+          <Link to="/collection" className="cart-empty-primary-btn">
+            <ShoppingBag size={18} />
+            <span>{isGuest ? "Browse All Products" : "Explore Collection"}</span>
+            <ArrowRight size={16} />
+          </Link>
+
+          {isGuest ? (
+            <Link to="/login?redirect=/cart" className="cart-empty-secondary-btn">
+              <LogIn size={17} />
+              <span>Sign in to see saved cart</span>
+            </Link>
+          ) : (
+            <>
+              {wishlist.length > 0 && (
+                <Link to="/wishlist" className="cart-empty-secondary-btn">
+                  <Heart size={17} style={{ color: "#e11d48" }} />
+                  <span>View Wishlist ({wishlist.length})</span>
+                </Link>
+              )}
+              <Link to="/my-orders" className="cart-empty-secondary-btn">
+                <Package size={17} />
+                <span>Your Orders</span>
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* Quick Categories Bar */}
+        <div className="cart-empty-categories-wrap">
+          <span className="cart-empty-categories-label">Explore by category</span>
+          <div className="cart-empty-categories-pills">
+            {quickCategories.map((item) => {
+              const IconComp = item.icon;
+              const targetUrl = item.route || `/collection?category=${encodeURIComponent(item.category)}`;
+              return (
+                <Link key={item.label} to={targetUrl} className="cart-empty-category-pill">
+                  <IconComp size={14} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Trust & Value Perks */}
+      <div className="cart-empty-perks-grid">
+        {perks.map((perk) => {
+          const PerkIcon = perk.icon;
+          return (
+            <div key={perk.title} className="cart-empty-perk-card">
+              <div className="cart-empty-perk-icon-wrap">
+                <PerkIcon size={20} />
+              </div>
+              <div className="cart-empty-perk-copy">
+                <h4>{perk.title}</h4>
+                <p>{perk.desc}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function Cart() {
+  const { user } = useAuth();
+  const { wishlist } = useWishlist();
   const {
     cartItems,
     savedForLaterItems,
@@ -186,13 +338,6 @@ function Cart() {
   const itemCount = cartItems.reduce(
     (sum, item) => sum + Math.max(1, Number(item.quantity || 1)),
     0
-  );
-
-  const subtotal = roundMoney(
-    cartItems.reduce(
-      (sum, item) => sum + getItemUnitPrice(item) * Math.max(1, Number(item.quantity || 1)),
-      0
-    )
   );
 
   useEffect(() => {
@@ -293,10 +438,7 @@ function Cart() {
   if (cartItems.length === 0 && savedForLaterItems.length === 0) {
     return (
       <div className="cart-page">
-        <div className="cart-empty-card">
-          <h2>Your cart is empty</h2>
-          <Link to="/">Go Shopping</Link>
-        </div>
+        <EmptyCartView user={user} wishlist={wishlist} />
       </div>
     );
   }
@@ -304,8 +446,21 @@ function Cart() {
   return (
     <div className="cart-page">
       <div className="cart-heading-row">
-        <h1>Shopping Cart</h1>
-        <p>Price</p>
+        <div className="cart-heading-left">
+          <div className="cart-heading-title-wrap">
+            <ShoppingBag size={24} className="cart-heading-icon" />
+            <h1>Shopping Cart</h1>
+          </div>
+          <span className="cart-heading-count">
+            {itemCount} {itemCount === 1 ? "item" : "items"}
+          </span>
+        </div>
+        <div className="cart-heading-right">
+          <Link to="/shop" className="cart-continue-link">
+            <ArrowLeft size={15} />
+            <span>Continue Shopping</span>
+          </Link>
+        </div>
       </div>
 
       <div className="cart-container">
@@ -313,155 +468,260 @@ function Cart() {
           {cartItems.length > 0 ? (
             <>
               <div className="cart-items">
-              {cartItems.map((item, index) => {
-                const qty = Math.max(1, Number(item.quantity || 1));
-                const unitPrice = getItemUnitPrice(item);
-                const lineTotal = roundMoney(unitPrice * qty);
+                {cartItems.map((item, index) => {
+                  const qty = Math.max(1, Number(item.quantity || 1));
+                  const unitPrice = getItemUnitPrice(item);
+                  const lineTotal = roundMoney(unitPrice * qty);
+                  const isDigital = isDigitalItem(item);
+                  const categoryName = item.category || item.product?.category || "General";
+                  const productId = item.productId || item.product?._id || item._id || item.id;
 
-                return (
-                  <div key={item._id || item.id || index} className="cart-item">
-                    <img
-                      src={item.image || "https://picsum.photos/200"}
-                      alt={item.name}
-                      className="cart-image"
-                    />
+                  return (
+                    <div key={item._id || item.id || index} className="cart-item">
+                      <div className="cart-item-top-row">
+                        <Link to={`/product/${productId}`} className="cart-image-wrap">
+                          <img
+                            src={item.image || "https://picsum.photos/200"}
+                            alt={item.name}
+                            className="cart-image"
+                          />
+                        </Link>
 
-                    <div className="cart-info">
-                      <span className="cart-item-category">{item.category || item.product?.category || "General"}</span>
-                      <h3>{item.name}</h3>
-                      <p className="cart-item-price-mobile">
-                        {formatCurrencyExact(lineTotal, displayCurrency)}
-                        {qty > 1 ? ` (${formatCurrencyExact(unitPrice, displayCurrency)} × ${qty})` : ""}
-                      </p>
+                        <div className="cart-info">
+                          <div className="cart-item-meta-top">
+                            <span className="cart-item-category-pill">
+                              {isDigital ? <Zap size={11} /> : <BookOpen size={11} />}
+                              {categoryName}
+                            </span>
+                            <span className={`cart-stock-status ${isDigital ? "digital" : "in-stock"}`}>
+                              <CheckCircle2 size={12} />
+                              {isDigital ? "Instant Digital Access" : "In Stock"}
+                            </span>
+                          </div>
 
-                      <CartQtyInput item={item} currentQty={qty} updateQty={updateQty} />
-                    </div>
+                          <Link to={`/product/${productId}`} className="cart-item-title-link">
+                            <h3 className="cart-item-title">{item.name}</h3>
+                          </Link>
 
-                    <div className="cart-item-actions">
-                      <button
-                        className="remove-btn"
-                        disabled={removingId === (item._id || item.id)}
-                        onClick={async () => {
-                          const id = item._id || item.id;
-                          setRemovingId(id);
-                          await removeFromCart(id);
-                          setRemovingId(null);
-                        }}
-                      >
-                        {removingId === (item._id || item.id) ? "Removing..." : "Delete"}
-                      </button>
-                      <button className="save-later-btn" onClick={() => saveForLater(item)}>
-                        Save for later
-                      </button>
-                      <div style={{ textAlign: "right" }}>
-                        <strong className="cart-item-price">{formatCurrencyExact(lineTotal, displayCurrency)}</strong>
-                        {qty > 1 ? (
-                          <span style={{ display: "block", fontSize: "12px", color: "var(--site-text-soft)", fontWeight: "normal" }}>
-                            ({formatCurrencyExact(unitPrice, displayCurrency)} × {qty})
-                          </span>
-                        ) : null}
+                          <div className="cart-item-price-mobile">
+                            <strong className="cart-item-total-price">
+                              {formatCurrencyExact(lineTotal, displayCurrency)}
+                            </strong>
+                            {qty > 1 && (
+                              <span className="cart-item-unit-price">
+                                ({formatCurrencyExact(unitPrice, displayCurrency)} each)
+                              </span>
+                            )}
+                            {item.festiveOffer && Number(item.festiveDiscountPercent) > 0 && (
+                              <span className="cart-item-festive-badge">
+                                {Number(item.festiveDiscountPercent)}% Festive OFF
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="cart-item-price-col">
+                          <strong className="cart-item-total-price">
+                            {formatCurrencyExact(lineTotal, displayCurrency)}
+                          </strong>
+                          {qty > 1 && (
+                            <span className="cart-item-unit-price">
+                              {formatCurrencyExact(unitPrice, displayCurrency)} each
+                            </span>
+                          )}
+                          {item.festiveOffer && Number(item.festiveDiscountPercent) > 0 && (
+                            <span className="cart-item-festive-badge">
+                              {Number(item.festiveDiscountPercent)}% Festive OFF
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="cart-item-actions-row">
+                        <CartQtyInput item={item} currentQty={qty} updateQty={updateQty} />
+
+                        <div className="cart-item-quick-actions">
+                          <button
+                            type="button"
+                            className="cart-action-btn cart-remove-btn"
+                            disabled={removingId === (item._id || item.id)}
+                            onClick={async () => {
+                              const id = item._id || item.id;
+                              setRemovingId(id);
+                              await removeFromCart(id);
+                              setRemovingId(null);
+                            }}
+                            title="Remove item"
+                          >
+                            <Trash2 size={13} />
+                            <span>{removingId === (item._id || item.id) ? "Removing..." : "Delete"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="cart-action-btn cart-save-btn"
+                            onClick={() => saveForLater(item)}
+                            title="Save for later"
+                          >
+                            <Heart size={13} />
+                            <span>Save for later</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
               </div>
-              <p className="cart-subtotal-inline">
-                Subtotal ({itemCount} items): <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
-              </p>
+
+              <div className="cart-subtotal-inline-bar">
+                <span className="cart-subtotal-label">Subtotal ({itemCount} items):</span>
+                <strong className="cart-subtotal-value">
+                  {formatCurrencyExact(totals.subtotal, displayCurrency)}
+                </strong>
+              </div>
             </>
           ) : (
-            <div className="cart-empty-card">
-              <h2>Your cart is empty</h2>
-              <Link to="/">Go Shopping</Link>
-            </div>
+            <EmptyCartView user={user} wishlist={wishlist} />
           )}
+
           {savedForLaterItems.length > 0 && (
             <div className="saved-later-section">
-              <h3>Saved for later ({savedForLaterItems.length})</h3>
+              <div className="saved-later-head">
+                <Heart size={18} className="saved-later-head-icon" />
+                <h3>Saved for later ({savedForLaterItems.length})</h3>
+              </div>
               <div className="saved-later-list">
-                {savedForLaterItems.map((item, index) => (
-                  <div key={item._id || item.id || `saved-${index}`} className="saved-later-item">
-                    <img
-                      src={item.image || "https://picsum.photos/200"}
-                      alt={item.name}
-                      className="saved-later-image"
-                    />
-                    <div className="saved-later-info">
-                      <span className="cart-item-category">{item.category || item.product?.category || "General"}</span>
-                      <strong>{item.name}</strong>
-                      <span>{formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))}</span>
+                {savedForLaterItems.map((item, index) => {
+                  const savedId = item.productId || item.product?._id || item._id || item.id;
+                  return (
+                    <div key={item._id || item.id || `saved-${index}`} className="saved-later-item">
+                      <Link to={`/product/${savedId}`} className="saved-later-image-link">
+                        <img
+                          src={item.image || "https://picsum.photos/200"}
+                          alt={item.name}
+                          className="saved-later-image"
+                        />
+                      </Link>
+                      <div className="saved-later-info">
+                        <span className="cart-item-category-pill">
+                          {item.category || item.product?.category || "Product"}
+                        </span>
+                        <Link to={`/product/${savedId}`} className="saved-later-title-link">
+                          <strong>{item.name}</strong>
+                        </Link>
+                        <span className="saved-later-price">
+                          {formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))}
+                        </span>
+                      </div>
+                      <div className="saved-later-actions">
+                        <button
+                          type="button"
+                          className="saved-move-btn"
+                          onClick={() => moveToCartFromSaved(item)}
+                        >
+                          <ShoppingBag size={13} />
+                          <span>Move to Cart</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="saved-remove-btn"
+                          onClick={() => removeSavedForLater(item._id || item.id)}
+                        >
+                          <Trash2 size={13} />
+                          <span>Remove</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="saved-later-actions">
-                      <button onClick={() => moveToCartFromSaved(item)}>Move to cart</button>
-                      <button onClick={() => removeSavedForLater(item._id || item.id)}>Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
         <div className="cart-summary">
-          <p className="cart-total">
-            Subtotal ({itemCount} items): <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
-          </p>
-          <p>
-            {totals.isInternational
-              ? `GST (Export 0%): ${formatCurrencyExact(0, displayCurrency)}`
-              : `GST (${charges.gstPercent}% Included): ${formatCurrencyExact(totals.gstAmount, displayCurrency)}`}
-          </p>
-          {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-            <p className="cart-delivery-charge-info">
-              Delivery: <strong style={{ color: "#2e7d32" }}>FREE (Instant Digital Access)</strong>
-            </p>
-          ) : (
-            <p className="cart-delivery-charge-info">
-              Delivery Charge: {totals.deliveryCharge === 0 ? (
-                <strong style={{ color: "#2e7d32" }}>FREE</strong>
-              ) : (
-                formatCurrencyExact(totals.deliveryCharge, displayCurrency)
-              )}
-            </p>
-          )}
-          {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
-            <p>Estimated warehouse distance: {deliveryDetails.distanceKm.toFixed(1)} km</p>
-          )}
-          {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
-            <p>International delivery applied for {deliveryDetails.matchedCountry}.</p>
-          )}
-          <h3 style={{ marginBottom: "2px" }}>Order Total: {formatCurrencyExact(totals.grandTotal, displayCurrency)}</h3>
-          <p style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", margin: "0 0 16px 0" }}>(Inclusive of all taxes)</p>
+          <div className="cart-summary-head">
+            <ShieldCheck size={20} className="summary-shield-icon" />
+            <h3>Order Summary</h3>
+          </div>
+
+          <div className="cart-summary-breakdown">
+            <div className="cart-summary-row">
+              <span className="summary-row-label">Subtotal ({itemCount} items)</span>
+              <span className="summary-row-val">{formatCurrencyExact(totals.subtotal, displayCurrency)}</span>
+            </div>
+
+            <div className="cart-summary-row">
+              <span className="summary-row-label">
+                {totals.isInternational
+                  ? "GST (Export 0%)"
+                  : `GST (${charges.gstPercent}% Included)`}
+              </span>
+              <span className="summary-row-val">
+                {totals.isInternational
+                  ? formatCurrencyExact(0, displayCurrency)
+                  : formatCurrencyExact(totals.gstAmount, displayCurrency)}
+              </span>
+            </div>
+
+            <div className="cart-summary-row">
+              <span className="summary-row-label">Delivery</span>
+              <span className="summary-row-val">
+                {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                  <span className="delivery-free-badge">FREE (Instant Access)</span>
+                ) : totals.deliveryCharge === 0 ? (
+                  <span className="delivery-free-badge">FREE</span>
+                ) : (
+                  formatCurrencyExact(totals.deliveryCharge, displayCurrency)
+                )}
+              </span>
+            </div>
+
+            {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
+              <div className="cart-summary-note">
+                Estimated warehouse distance: {deliveryDetails.distanceKm.toFixed(1)} km
+              </div>
+            )}
+
+            {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
+              <div className="cart-summary-note">
+                International delivery applied for {deliveryDetails.matchedCountry}.
+              </div>
+            )}
+          </div>
+
+          <div className="cart-summary-grand-total">
+            <div className="grand-total-left">
+              <span className="grand-total-label">Order Total</span>
+              <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
+            </div>
+            <span className="grand-total-val">{formatCurrencyExact(totals.grandTotal, displayCurrency)}</span>
+          </div>
 
           {isIntlPhysicalRestricted && (
-            <div style={{
-              margin: "14px 0",
-              padding: "12px 14px",
-              borderRadius: "8px",
-              backgroundColor: "#fff3cd",
-              border: "1px solid #ffeeba",
-              color: "#856404",
-              fontSize: "13px",
-              lineHeight: "1.4"
-            }}>
-              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items to proceed.
+            <div className="cart-intl-warning">
+              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to{" "}
+              {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products
+              (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items to proceed.
             </div>
           )}
 
           {cartItems.length > 0 ? (
             isIntlPhysicalRestricted ? (
               <button
-                className="checkout-btn"
+                className="checkout-btn disabled"
                 disabled
-                style={{ backgroundColor: "#94a3b8", cursor: "not-allowed" }}
                 title="Remove physical items or change delivery location to proceed"
               >
                 Physical Items Restricted Internationally
               </button>
             ) : (
               <Link to="/checkout" className="checkout-link">
-                <button className="checkout-btn">Proceed to checkout</button>
+                <button className="checkout-btn">
+                  <Lock size={16} />
+                  <span>Proceed to Checkout</span>
+                  <ArrowRight size={16} />
+                </button>
               </Link>
             )
           ) : null}

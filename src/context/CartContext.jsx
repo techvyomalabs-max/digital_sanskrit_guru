@@ -48,7 +48,12 @@ const normalizeGuestCartItems = (items) =>
         description: String(item?.description || "").trim(),
         category: String(item?.category || "General").trim() || "General",
         stock: Number(item?.stock || 0),
-        quantity: Math.max(1, Number(item?.quantity || 1))
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+        festiveOffer: Boolean(item?.festiveOffer),
+        festiveDiscountPercent: Number(item?.festiveDiscountPercent || 0),
+        discountType: String(item?.discountType || "").trim(),
+        hsnSac: String(item?.hsnSac || "").trim(),
+        format: String(item?.format || "").trim()
       };
     })
     .filter(Boolean);
@@ -261,7 +266,12 @@ export function CartProvider({ children }) {
             description: String(product?.description || "").trim(),
             category: String(product?.category || "General").trim() || "General",
             stock: Number(product?.stock || 0),
-            quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty)
+            quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+            festiveOffer: Boolean(product?.festiveOffer),
+            festiveDiscountPercent: Number(product?.festiveDiscountPercent || 0),
+            discountType: String(product?.discountType || "").trim(),
+            hsnSac: String(product?.hsnSac || "").trim(),
+            format: String(product?.format || "").trim()
           }
         ];
       });
