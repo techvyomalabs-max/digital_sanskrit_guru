@@ -76,7 +76,8 @@ function Login() {
             theme: "outline",
             size: "large",
             type: "standard",
-            shape: "rectangular",
+            shape: "pill",
+            text: "continue_with",
             logo_alignment: "left",
             width: validWidth
           });
