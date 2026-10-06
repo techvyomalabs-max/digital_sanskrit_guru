@@ -1,15 +1,18 @@
 const express = require("express");
 const Wishlist = require("../models/Wishlist");
 const protect = require("../middleware/authMiddleware");
+const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 
 const router = express.Router();
 
 // GET /api/wishlist — get the logged-in user's server-side wishlist populated with Product details
 router.get("/", protect, async (req, res) => {
   try {
-    const wishlist = await Wishlist.findOne({ user: req.user }).populate("productIds").lean();
+    const wishlist = await Wishlist.findOne({ user: req.user })
+      .populate({ path: "productIds", select: PUBLIC_PRODUCT_EXCLUDE })
+      .lean();
     const products = wishlist && Array.isArray(wishlist.productIds)
-      ? wishlist.productIds.filter(Boolean)
+      ? wishlist.productIds.filter(Boolean).map(toPublicProduct)
       : [];
     res.json({ products });
   } catch (error) {
@@ -28,10 +31,10 @@ router.post("/sync", protect, async (req, res) => {
       { user: req.user },
       { $set: { productIds } },
       { upsert: true, returnDocument: 'after' }
-    ).populate("productIds");
+    ).populate({ path: "productIds", select: PUBLIC_PRODUCT_EXCLUDE });
 
     const products = wishlist && Array.isArray(wishlist.productIds)
-      ? wishlist.productIds.filter(Boolean)
+      ? wishlist.productIds.filter(Boolean).map(toPublicProduct)
       : [];
     res.json({ products });
   } catch (error) {
@@ -49,10 +52,10 @@ router.post("/add", protect, async (req, res) => {
       { user: req.user },
       { $addToSet: { productIds: productId } },
       { upsert: true, returnDocument: 'after' }
-    ).populate("productIds");
+    ).populate({ path: "productIds", select: PUBLIC_PRODUCT_EXCLUDE });
 
     const products = wishlist && Array.isArray(wishlist.productIds)
-      ? wishlist.productIds.filter(Boolean)
+      ? wishlist.productIds.filter(Boolean).map(toPublicProduct)
       : [];
     res.json({ products });
   } catch (error) {
@@ -70,10 +73,10 @@ router.delete("/:productId", protect, async (req, res) => {
       { user: req.user },
       { $pull: { productIds: productId } },
       { returnDocument: 'after' }
-    ).populate("productIds");
+    ).populate({ path: "productIds", select: PUBLIC_PRODUCT_EXCLUDE });
 
     const products = wishlist && Array.isArray(wishlist.productIds)
-      ? wishlist.productIds.filter(Boolean)
+      ? wishlist.productIds.filter(Boolean).map(toPublicProduct)
       : [];
     res.json({ products });
   } catch (error) {

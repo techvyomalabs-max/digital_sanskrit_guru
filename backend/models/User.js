@@ -80,16 +80,16 @@ const userSchema = mongoose.Schema({
   },
   adminRole: {
     type: String,
-    default: "Super Admin"
+    default: "Staff"
   },
   adminLevel: {
     type: Number,
     enum: [1, 2],
-    default: 1
+    default: 2
   },
   allowedPages: {
     type: [String],
-    default: ["dashboard", "orders", "products", "add-products", "coupons", "marketing", "users", "theme"]
+    default: []
   },
   adminGrantedAt: {
     type: Date,
@@ -123,6 +123,18 @@ const userSchema = mongoose.Schema({
     type: Date,
     default: null
   },
+  tokenVersion: {
+    type: Number,
+    default: 0
+  },
+  googleSub: {
+    type: String,
+    default: null
+  },
+  hasLocalPassword: {
+    type: Boolean,
+    default: true
+  },
   isDeleted: {
     type: Boolean,
     default: false
@@ -138,5 +150,9 @@ const userSchema = mongoose.Schema({
 });
 
 userSchema.index({ isDeleted: 1 });
+userSchema.index(
+  { googleSub: 1 },
+  { unique: true, partialFilterExpression: { googleSub: { $type: "string", $gt: "" } } }
+);
 
 module.exports = mongoose.model("User", userSchema);

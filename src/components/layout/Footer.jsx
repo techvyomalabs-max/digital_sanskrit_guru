@@ -72,14 +72,10 @@ function Footer() {
               <Link to="/login">My Account</Link>
             </li>
             <li>
-              <a href="terms_and_condtions.html" target="_blank" rel="noopener noreferrer">
-                Terms and Conditions
-              </a>
+              <Link to="/terms-and-conditions">Terms and Conditions</Link>
             </li>
             <li>
-              <a href="privacy.html" target="_blank" rel="noopener noreferrer">
-                Privacy Policy
-              </a>
+              <Link to="/privacy-policy">Privacy Policy</Link>
             </li>
             <li>
               <Link to="/shipping-refund-policy">Shipping & Refund Policy</Link>

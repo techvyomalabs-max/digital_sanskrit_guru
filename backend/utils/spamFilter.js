@@ -66,7 +66,21 @@ const paymentRateLimiter = rateLimit({
   message: { message: "Too many payment requests. Please wait a few minutes before trying again." }
 });
 
+// Bulk enquiry rate limiter (prevents wholesale quote request flooding)
+const bulkEnquiryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,                   // max 5 bulk enquiries per 15 mins per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many bulk enquiry submissions from this connection. Please try again after 15 minutes." }
+});
+
 // ── 3. Cloudflare Turnstile Verifier ──────────────────────────────────────────
+
+const IS_PROD = process.env.NODE_ENV === "production";
+const DEV_BYPASS = !IS_PROD && process.env.TURNSTILE_DEV_BYPASS === "true";
+const TEST_TOKENS = new Set(["1x00000000000000000000AA", "XXXX.DUMMY.TOKEN.XXXX"]);
+const getTurnstileSecret = () => process.env.TURNSTILE_SECRET_KEY || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY || "";
 
 /**
  * Verify Cloudflare Turnstile Token
@@ -75,49 +89,21 @@ const paymentRateLimiter = rateLimit({
  * @returns {Promise<boolean>}
  */
 async function verifyTurnstileToken(token, remoteip) {
-  const secretKey = process.env.TURNSTILE_SECRET_KEY || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-  
-  // If no secret key is configured (local dev / demo mode), allow test tokens or bypass gracefully
-  if (!secretKey) {
-    if (process.env.NODE_ENV === "production") {
-      console.warn("[SpamEngine] TURNSTILE_SECRET_KEY is not configured in production environment.");
-    }
-    return true; // Graceful fallback so legitimate users are not locked out
-  }
-
-  // Always-pass test secret key support or disabled bypass
-  if (
-    secretKey.startsWith("1x0000000000000000000000000000000AA") ||
-    token === "1x00000000000000000000AA" ||
-    token === "bypass"
-  ) {
-    return true;
-  }
-
-  if (!token) {
-    return false;
-  }
-
+  const s = getTurnstileSecret();
+  if (!s || token === "bypass") return DEV_BYPASS;
+  if (TEST_TOKENS.has(token) || s.startsWith("1x0000000000000000000000000000000AA")) return !IS_PROD;
+  if (typeof token !== "string" || !token || token.length > 2048) return false;
   try {
-    const formData = new URLSearchParams();
-    formData.append("secret", secretKey);
-    formData.append("response", token);
-    if (remoteip) formData.append("remoteip", remoteip);
-
-    const res = await axios.post(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      formData.toString(),
-      {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        timeout: 5000
-      }
-    );
-
-    return Boolean(res.data?.success);
-  } catch (err) {
-    console.error("[SpamEngine] Cloudflare Turnstile verification request error:", err.message);
-    // In case Cloudflare API is temporarily unreachable, don't break the entire user experience
-    return true;
+    const form = new URLSearchParams({ secret: s, response: token });
+    if (remoteip) form.append("remoteip", String(remoteip));
+    const r = await axios.post("https://challenges.cloudflare.com/turnstile/v0/siteverify", form.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 5000
+    });
+    return r.data?.success === true;
+  } catch (e) {
+    console.error("[SpamEngine] Turnstile error:", e.message);
+    return DEV_BYPASS;
   }
 }
 
@@ -126,51 +112,27 @@ async function verifyTurnstileToken(token, remoteip) {
  */
 const turnstileMiddleware = async (req, res, next) => {
   if (process.env.TURNSTILE_ENABLED === "false") {
-    return next(); // Disabled in .env
+    if (IS_PROD) console.warn("[SpamEngine] captcha disabled by env in production");
+    return next();
   }
-
   try {
     const StoreSettings = require("../models/StoreSettings");
-    const settings = await StoreSettings.findOne().select("turnstileEnabled").lean();
-    if (settings && settings.turnstileEnabled === false) {
-      return next(); // Disabled by admin in Store Settings
-    }
-  } catch (err) {
-    // If database check fails, continue with normal flow
+    const st = await StoreSettings.findOne().select("turnstileEnabled").lean();
+    if (st?.turnstileEnabled === false) return next();
+  } catch {}
+
+  const s = getTurnstileSecret();
+  if (!s && IS_PROD) {
+    return res.status(503).json({ message: "Security verification is temporarily unavailable." });
   }
-
-  const secretKey = process.env.TURNSTILE_SECRET_KEY || process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-  
-  // If secret key is not set, skip verification
-  if (!secretKey) {
-    return next();
-  }
-
-  const token =
-    req.body?.turnstileToken ||
-    req.body?.["cf-turnstile-response"] ||
-    req.headers["x-turnstile-token"];
-
-  if (token === "bypass") {
-    return next();
-  }
-
-  const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-
+  const token = req.body?.turnstileToken || req.body?.["cf-turnstile-response"] || req.headers["x-turnstile-token"];
   if (!token) {
-    return res.status(400).json({
-      message: "Security verification required. Please complete the captcha challenge."
-    });
+    return res.status(400).json({ message: "Security verification required." });
   }
-
-  const isValid = await verifyTurnstileToken(token, ip);
-  if (!isValid) {
-    console.warn(`[SpamEngine] Failed Turnstile verification from IP ${ip}`);
-    return res.status(403).json({
-      message: "Security verification failed. Please refresh and try again."
-    });
+  const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  if (!(await verifyTurnstileToken(token, ip))) {
+    return res.status(403).json({ message: "Security verification failed. Please refresh and try again." });
   }
-
   next();
 };
 
@@ -180,6 +142,7 @@ module.exports = {
   reviewRateLimiter,
   orderRateLimiter,
   paymentRateLimiter,
+  bulkEnquiryLimiter,
   verifyTurnstileToken,
   turnstileMiddleware
 };

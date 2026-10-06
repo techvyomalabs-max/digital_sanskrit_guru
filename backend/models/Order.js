@@ -149,7 +149,7 @@ const orderSchema = new mongoose.Schema(
     status: {
       type: String,
       default: "Pending",
-      enum: ["Pending", "Shipped", "Delivered", "Cancelled"]
+      enum: ["Pending", "Shipped", "Delivered", "Completed", "Cancelled"]
     },
     trackingId: {
       type: String,
@@ -167,7 +167,7 @@ const orderSchema = new mongoose.Schema(
     paymentStatus: {
       type: String,
       default: "Pending",
-      enum: ["Pending", "Paid", "Failed"]
+      enum: ["Pending", "Paid", "Failed", "Refunded"]
     },
     paymentMethod: {
       type: String,
@@ -193,12 +193,86 @@ const orderSchema = new mongoose.Schema(
       refundedAt: {
         type: Date,
         default: null
-      }
+      },
+      paidAmountMinor: {
+        type: Number,
+        default: null
+      },
+      paidCurrency: {
+        type: String,
+        default: ""
+      },
+      refundedAmountMinor: {
+        type: Number,
+        default: 0
+      },
+      refundLock: {
+        type: Date,
+        default: null
+      },
+      refundRequestId: {
+        type: String,
+        default: ""
+      },
+      refundMethod: {
+        type: String,
+        default: "",
+        enum: ["", "razorpay", "manual"]
+      },
+      refunds: [
+        {
+          refundId: String,
+          amountMinor: Number,
+          currency: String,
+          method: String,
+          reference: String,
+          reason: String,
+          byEmail: String,
+          at: Date,
+          _id: false
+        }
+      ]
     },
     refundStatus: {
       type: String,
       default: "Not Applicable",
-      enum: ["Not Applicable", "Pending", "Processing", "Refunded", "Rejected"]
+      enum: ["Not Applicable", "Pending", "Processing", "Partially Refunded", "Refunded", "Rejected"]
+    },
+    stockReserved: {
+      type: Boolean,
+      default: false
+    },
+    couponClaimed: {
+      type: Boolean,
+      default: false
+    },
+    stockIssue: {
+      type: Boolean,
+      default: false
+    },
+    stockIssueDetails: {
+      type: [String],
+      default: []
+    },
+    fxRateToInr: {
+      type: Number,
+      default: null
+    },
+    totalInInr: {
+      type: Number,
+      default: null
+    },
+    refundedAmountInInr: {
+      type: Number,
+      default: 0
+    },
+    sellerDetails: {
+      legalName: { type: String, default: "" },
+      gstin: { type: String, default: "" },
+      address: { type: String, default: "" },
+      state: { type: String, default: "" },
+      stateCode: { type: String, default: "" },
+      email: { type: String, default: "" }
     },
     deliveredAt: {
       type: Date,
@@ -278,7 +352,7 @@ orderSchema.pre("save", function() {
   }
 });
 
-// ── Indexes (Tier-1 performance) ──────────────────────────────────────────────
+// ── Indexes (Tier-1 performance & Security) ──────────────────────────────────
 
 // 1. User's own orders — most frequent query (GET /api/orders/my)
 orderSchema.index({ user: 1, createdAt: -1 });
@@ -291,5 +365,18 @@ orderSchema.index({ createdAt: -1 });
 
 // 4. Payment verification by Razorpay order ID
 orderSchema.index({ "paymentMeta.razorpayOrderId": 1 });
+
+// 5. Payment ID Unique Constraint (Prevents Replay Attacks C1)
+orderSchema.index(
+  { "paymentMeta.razorpayPaymentId": 1 },
+  {
+    unique: true,
+    name: "uniq_razorpay_payment_id",
+    partialFilterExpression: { "paymentMeta.razorpayPaymentId": { $type: "string", $gt: "" } }
+  }
+);
+
+// 6. Payment Status Index for Revenue & Financial Reports
+orderSchema.index({ paymentStatus: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", orderSchema);

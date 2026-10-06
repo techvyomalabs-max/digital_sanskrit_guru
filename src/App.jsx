@@ -50,6 +50,8 @@ const About = lazy(() => import("./pages/About"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Contact = lazy(() => import("./pages/Contact"));
 const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("./pages/TermsAndConditions"));
 
 function RouteLoadingFallback() {
   return (
@@ -514,6 +516,11 @@ function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/shipping-refund-policy" element={<ShippingPolicy />} />
           <Route path="/refund-policy" element={<ShippingPolicy />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+          <Route path="/terms-conditions" element={<TermsAndConditions />} />
+          <Route path="/terms" element={<TermsAndConditions />} />
           <Route path="/buy/:id" element={<GuestBuy />} />
         </Routes>
       </Suspense>

@@ -1024,13 +1024,6 @@ function MyAccount() {
     setProfileMessage("");
     setProfileError("");
 
-    const cleanEmail = String(profileEmail || "").trim();
-
-    if (!cleanEmail) {
-      setProfileError("Email Address is required.");
-      return;
-    }
-
     if (!profilePassword) {
       setProfileError("Please enter a new password.");
       return;
@@ -1058,7 +1051,6 @@ function MyAccount() {
       const res = await axios.put(
         "/api/auth/profile",
         {
-          email: cleanEmail,
           password: profilePassword
         },
         {
@@ -1068,14 +1060,14 @@ function MyAccount() {
 
       if (res.data?.success) {
         updateProfileState(res.data);
-        setProfileMessage("Password and security settings updated successfully!");
+        setProfileMessage("Password updated successfully!");
         setProfilePassword("");
         setProfilePasswordConfirm("");
         setShowProfilePassword(false);
         setShowProfileConfirmPassword(false);
         setEditingSection(null);
       } else {
-        setProfileError("Failed to update security settings.");
+        setProfileError("Failed to update password.");
       }
     } catch (err) {
       console.error(err);
@@ -1830,22 +1822,25 @@ function MyAccount() {
             {editingSection === "security" ? (
               <form onSubmit={handleSecuritySave} className="my-account-card-edit-form">
                 <div className="my-account-form-fields-stack">
-                  <label className="my-account-form-field">
+                  <div className="my-account-form-field">
                     <span className="my-account-input-label">
-                      Email Address <strong className="required-star">*</strong>
+                      Registered Email Address
                     </span>
-                    <div className="my-account-input-with-icon">
+                    <div className="my-account-input-with-icon" style={{ opacity: 0.85 }}>
                       <Mail size={16} className="my-account-input-icon" />
                       <input
                         id="profile-email-input"
                         type="email"
-                        value={profileEmail}
-                        onChange={(e) => setProfileEmail(e.target.value)}
-                        placeholder="name@example.com"
-                        required
+                        value={user?.email || profileEmail}
+                        disabled
+                        readOnly
+                        style={{ cursor: "not-allowed", backgroundColor: "#f1f5f9" }}
                       />
                     </div>
-                  </label>
+                    <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
+                      🔒 Registered email is permanent and cannot be modified.
+                    </span>
+                  </div>
 
                   <label className="my-account-form-field">
                     <span className="my-account-input-label">

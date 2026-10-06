@@ -8,13 +8,14 @@ const StoreSettings = require("../models/StoreSettings");
 const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
 const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload } = require("../utils/webPush");
 
 const router = express.Router();
 
-// All routes require admin
-router.use(protect, admin);
+// All routes require admin with marketing permission
+router.use(protect, admin, requireAdminPage("marketing"));
 
 async function getTotalSpentExpression() {
   const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();

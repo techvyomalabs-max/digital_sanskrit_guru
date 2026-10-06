@@ -5,12 +5,13 @@ const User = require("../models/User");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage, requireSuperAdmin } = require("../middleware/adminMiddleware");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 
 const router = express.Router();
 
-router.post("/", protect, admin, async (req, res) => {
+router.post("/", protect, admin, requireAdminPage("coupons"), async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const code = String(req.body?.code || "").trim().toUpperCase();
@@ -127,7 +128,7 @@ router.get("/", async (_req, res) => {
 });
 
 // Admin: returns full coupon details
-router.get("/admin/all", protect, admin, async (_req, res) => {
+router.get("/admin/all", protect, admin, requireAdminPage("coupons"), async (_req, res) => {
   try {
     const coupons = await Coupon.find({ isDeleted: { $ne: true } })
       .populate("applicableProducts", "name")
@@ -139,7 +140,7 @@ router.get("/admin/all", protect, admin, async (_req, res) => {
 });
 
 // Soft delete coupon
-router.delete("/:id", protect, admin, async (req, res) => {
+router.delete("/:id", protect, admin, requireAdminPage("coupons"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const coupon = await Coupon.findById(req.params.id);
   if (!coupon) {
@@ -168,7 +169,7 @@ router.delete("/:id", protect, admin, async (req, res) => {
 });
 
 // Restore soft-deleted coupon
-router.post("/:id/restore", protect, admin, async (req, res) => {
+router.post("/:id/restore", protect, admin, requireAdminPage("coupons"), async (req, res) => {
   try {
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {
@@ -197,7 +198,7 @@ router.post("/:id/restore", protect, admin, async (req, res) => {
 });
 
 // Permanently purge coupon
-router.delete("/:id/purge", protect, admin, async (req, res) => {
+router.delete("/:id/purge", protect, admin, requireAdminPage("coupons"), async (req, res) => {
   try {
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {

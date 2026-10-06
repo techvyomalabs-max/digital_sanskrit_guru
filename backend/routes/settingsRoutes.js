@@ -2,6 +2,7 @@ const express = require("express");
 const StoreSettings = require("../models/StoreSettings");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../utils/currency");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
@@ -460,11 +461,35 @@ async function getOrCreateSettings() {
   return settings;
 }
 
-// Full settings (requires admin authentication)
-router.get("/", protect, admin, async (req, res) => {
+const THEME_KEYS = new Set([
+  "siteTheme",
+  "customThemes",
+  "heroBanners",
+  "heroBannerImage",
+  "heroBannerProductId",
+  "festiveAnimation",
+  "festiveBanner",
+  "storeIcons",
+  "homeSectionVisibility",
+  "collectionFilterVisibility",
+  "sponsors"
+]);
+
+// Full settings (requires admin authentication with settings, theme, or products permission)
+router.get("/", protect, admin, (req, res, next) => {
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  if (req.adminLevel === 1 || pages.includes("settings") || pages.includes("theme") || pages.includes("products") || pages.includes("add-products")) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied. Settings permission required." });
+}, async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const settings = await getOrCreateSettings();
-  res.json(normalizeSettings(settings));
+  const normalized = normalizeSettings(settings);
+  if (req.adminLevel !== 1 && normalized.whatsappSettings?.metaAccessToken) {
+    normalized.whatsappSettings.metaAccessToken = "••••••••";
+  }
+  res.json(normalized);
 });
 
 // Public: checkout/pricing settings (no browser cache to prevent configuration lag)
@@ -485,7 +510,20 @@ router.get(["/detect-country", "/detect_country"], (req, res) => {
   res.json({ country: String(country).toUpperCase() });
 });
 
-router.put("/", protect, admin, async (req, res) => {
+router.put("/", protect, admin, (req, res, next) => {
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  if (req.adminLevel === 1 || pages.includes("settings")) {
+    return next();
+  }
+  const bodyKeys = Object.keys(req.body || {});
+  if (bodyKeys.length > 0 && bodyKeys.every(k => THEME_KEYS.has(k)) && pages.includes("theme")) {
+    return next();
+  }
+  if (bodyKeys.length > 0 && bodyKeys.every(k => k === "productCategories") && (pages.includes("products") || pages.includes("add-products"))) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied. Insufficient permissions to update settings." });
+}, async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const hasEnableCurrentLocation = req.body?.enableCurrentLocation !== undefined;
   const rawGst = Number(req.body?.gstPercent);
@@ -559,6 +597,12 @@ router.put("/", protect, admin, async (req, res) => {
 
   const hasWhatsappSettings = Boolean(req.body?.whatsappSettings && typeof req.body.whatsappSettings === "object");
   if (hasWhatsappSettings) {
+    const existingToken = settings.whatsappSettings?.metaAccessToken || "";
+    const incomingToken = String(req.body.whatsappSettings.metaAccessToken || "").trim();
+    const finalToken = (incomingToken === "••••••••" || !incomingToken) && req.adminLevel !== 1
+      ? existingToken
+      : (incomingToken === "••••••••" ? existingToken : incomingToken);
+
     settings.whatsappSettings = {
       mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
         ? req.body.whatsappSettings.mode
@@ -569,7 +613,7 @@ router.put("/", protect, admin, async (req, res) => {
         "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."
       ).trim(),
       metaPhoneNumberId: String(req.body.whatsappSettings.metaPhoneNumberId || "").trim(),
-      metaAccessToken: String(req.body.whatsappSettings.metaAccessToken || "").trim(),
+      metaAccessToken: finalToken,
       metaWabaId: String(req.body.whatsappSettings.metaWabaId || "").trim(),
       autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false,
       enableOtpVerification: req.body.whatsappSettings.enableOtpVerification !== false
@@ -708,6 +752,9 @@ router.put("/", protect, admin, async (req, res) => {
   settings.lastUpdatedAt = new Date();
   await settings.save();
   const normalizedSettings = normalizeSettings(settings);
+  if (req.adminLevel !== 1 && normalizedSettings.whatsappSettings?.metaAccessToken) {
+    normalizedSettings.whatsappSettings.metaAccessToken = "••••••••";
+  }
   const changedSections = summarizeSettingsChanges(previousSettings, normalizedSettings);
 
   await logAdminAction({

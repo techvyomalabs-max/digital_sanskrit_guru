@@ -7,12 +7,24 @@
 
 const nodemailer = require("nodemailer");
 const EmailLog = require("../models/EmailLog");
+const { generateInvoicePdfBuffer } = require("./invoicePdfGenerator");
 
 const EMAIL_ENABLED = String(process.env.EMAIL_ENABLED || "false").toLowerCase() === "true";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
 const SITE_NAME = "Digital Sanskrit Guru";
 const SITE_COLOR = "#1a1a2e";
 const ACCENT_COLOR = "#e94560";
+
+const escapeHtml = (s) =>
+  String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]));
+
+const cleanSubject = (s) => String(s || "").replace(/[\r\n]+/g, " ").trim();
 
 // ── Transporter ──────────────────────────────────────────────────────────────
 
@@ -53,12 +65,12 @@ async function getTransporter() {
 
 // ── Core send function ────────────────────────────────────────────────────────
 
-async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "" }) {
+async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "", attachments = [] }) {
   const logEntry = { to, subject, type, orderId, productId, status: "sent", error: "" };
 
   try {
     if (!EMAIL_ENABLED) {
-      console.log(`[Email DISABLED] Would send "${subject}" to ${to}`);
+      console.log(`[Email DISABLED] Would send "${subject}" to ${to} (with ${attachments.length} attachment(s))`);
       await EmailLog.create({ ...logEntry, status: "sent" });
       return { skipped: true };
     }
@@ -71,12 +83,18 @@ async function sendEmail({ to, subject, html, type = "campaign", orderId = "", p
 
     const senderAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER;
     const transporterInstance = await getTransporter();
-    const info = await transporterInstance.sendMail({
+    const mailOptions = {
       from: `"${SITE_NAME}" <${senderAddress}>`,
       to,
       subject,
       html
-    });
+    };
+
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      mailOptions.attachments = attachments;
+    }
+
+    const info = await transporterInstance.sendMail(mailOptions);
 
     await EmailLog.create({ ...logEntry, status: "sent" });
     return { messageId: info.messageId };
@@ -158,17 +176,17 @@ function buildOrderItemsTable(items = []) {
       bundleHtml = `<div style="margin-top: 4px; padding-left: 8px; border-left: 2px solid #ccc; font-size: 12px; color: #555;">
         <strong>Pack Includes:</strong>
         <ul style="margin: 2px 0 0 0; padding: 0 0 0 12px;">
-          ${item.bundleItems.map(bi => `<li>${bi.name} (Qty: ${bi.quantity * (item.quantity || 1)})</li>`).join("")}
+          ${item.bundleItems.map(bi => `<li>${escapeHtml(bi.name)} (Qty: ${Number(bi.quantity || 1) * Number(item.quantity || 1)})</li>`).join("")}
         </ul>
       </div>`;
     }
     return `<tr>
       <td>
-        <strong>${String(item.name || "Product")}</strong>
+        <strong>${escapeHtml(item.name || "Product")}</strong>
         ${bundleHtml}
       </td>
       <td style="text-align:center">${Number(item.quantity || 1)}</td>
-      <td style="text-align:right">${item.currency || "INR"} ${Number(item.price || 0).toFixed(2)}</td>
+      <td style="text-align:right">${escapeHtml(item.currency || "INR")} ${Number(item.price || 0).toFixed(2)}</td>
     </tr>`;
   }).join("");
   return `
@@ -208,21 +226,28 @@ async function sendOrderConfirmation(order, user) {
     console.error("[Email] Failed to load settings for order confirmation:", err);
   }
 
-  const userName = String(user?.name || "Customer");
-  const orderId = String(order._id || "").slice(-8).toUpperCase();
-  const rawOrderId = String(order._id || "");
-  const orderTotal = `${order.currencyDisplay?.currency || "INR"} ${Number(order.total || 0).toFixed(2)}`;
+  const userName = escapeHtml(String(user?.name || "Customer"));
+  const orderId = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
+  const rawOrderId = escapeHtml(String(order._id || ""));
+  const currencyStr = escapeHtml(order.currencyDisplay?.currency || "INR");
+  const orderTotal = `${currencyStr} ${Number(order.total || 0).toFixed(2)}`;
 
   const itemsTableHtml = buildOrderItemsTable(order.items || []);
   const summaryTableHtml = `
     <table>
-      <tr><td>Subtotal</td><td style="text-align:right">${order.currencyDisplay?.currency || "INR"} ${Number(order.subtotal || 0).toFixed(2)}</td></tr>
-      <tr><td>GST (${Number(order.gstPercent || 0)}%)</td><td style="text-align:right">${order.currencyDisplay?.currency || "INR"} ${Number(order.gstAmount || 0).toFixed(2)}</td></tr>
-      <tr><td>Delivery</td><td style="text-align:right">${order.currencyDisplay?.currency || "INR"} ${Number(order.deliveryCharge || 0).toFixed(2)}</td></tr>
-      ${Number(order.discount || 0) > 0 ? `<tr><td>Discount</td><td style="text-align:right">- ${order.currencyDisplay?.currency || "INR"} ${Number(order.discount || 0).toFixed(2)}</td></tr>` : ""}
-      <tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${order.currencyDisplay?.currency || "INR"} ${Number(order.total || 0).toFixed(2)}</strong></td></tr>
+      <tr><td>Subtotal</td><td style="text-align:right">${currencyStr} ${Number(order.subtotal || 0).toFixed(2)}</td></tr>
+      <tr><td>GST (${Number(order.gstPercent || 0)}%)</td><td style="text-align:right">${currencyStr} ${Number(order.gstAmount || 0).toFixed(2)}</td></tr>
+      <tr><td>Delivery</td><td style="text-align:right">${currencyStr} ${Number(order.deliveryCharge || 0).toFixed(2)}</td></tr>
+      ${Number(order.discount || 0) > 0 ? `<tr><td>Discount</td><td style="text-align:right">- ${currencyStr} ${Number(order.discount || 0).toFixed(2)}</td></tr>` : ""}
+      <tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${currencyStr} ${Number(order.total || 0).toFixed(2)}</strong></td></tr>
     </table>`;
-  const shippingInfoHtml = `${String(order.shipping?.name || "")} — ${String(order.shipping?.address || "")}, ${String(order.shipping?.city || "")}, ${String(order.shipping?.state || "")} ${String(order.shipping?.pincode || "")}`;
+  
+  const shipName = escapeHtml(order.shipping?.name || "");
+  const shipAddr = escapeHtml(order.shipping?.address || "");
+  const shipCity = escapeHtml(order.shipping?.city || "");
+  const shipState = escapeHtml(order.shipping?.state || "");
+  const shipPin = escapeHtml(order.shipping?.pincode || "");
+  const shippingInfoHtml = `${shipName} — ${shipAddr}, ${shipCity}, ${shipState} ${shipPin}`.trim();
 
   const hasDigitalItems = Array.isArray(order.items) && order.items.some((item) =>
     Boolean(
@@ -340,7 +365,7 @@ async function sendOrderConfirmation(order, user) {
     const { sendWhatsAppOrderConfirmation } = require("./whatsapp");
     sendWhatsAppOrderConfirmation({
       ...order,
-      userName: userName,
+      userName: String(user?.name || "Customer"),
       userPhone: user?.phone || order?.shippingAddress?.phone
     }).catch((err) => console.error("[WhatsApp] Async dispatch error:", err?.message || err));
   } catch (err) {
@@ -361,17 +386,122 @@ function getCourierTrackingUrl(courierName, trackingId) {
   const name = String(courierName || "").trim().toLowerCase();
   const trId = String(trackingId).trim();
   if (name.includes("delhivery")) {
-    return `https://www.delhivery.com/track/package/${trId}`;
+    return `https://www.delhivery.com/track/package/${encodeURIComponent(trId)}`;
   } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
     return "https://www.indiapost.gov.in/";
   } else if (name.includes("dtdc")) {
-    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${trId}`;
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${encodeURIComponent(trId)}`;
   } else if (name.includes("professional") || name.includes("tpc")) {
     return "https://www.tpcindia.com/";
   } else if (name.includes("shiprocket")) {
-    return `https://www.shiprocket.in/shipment-tracking/${trId}`;
+    return `https://www.shiprocket.in/shipment-tracking/${encodeURIComponent(trId)}`;
   }
   return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
+}
+
+function buildShippedInvoiceHtml(order, user) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const orderCode = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
+  const rawCurrency = String(
+    order.currencyDisplay?.currency || order.displayCurrency || order.currency || "INR"
+  ).trim().toUpperCase();
+  const currency = escapeHtml(rawCurrency);
+  const symbol = rawCurrency === "INR" ? "₹" : (currency + " ");
+
+  const subtotal = Number(order.subtotal || order.total || 0);
+  const delivery = Number(order.deliveryCharge || 0);
+  const discount = Number(order.discount || 0);
+  const gst = Number(order.gstAmount || 0);
+  const total = Number(order.currencyDisplay?.amount || order.total || 0);
+
+  const shipping = order.shippingAddress || order.shipping || {};
+  const customerState = String(shipping.state || "").trim();
+  const isIntrastate =
+    customerState.toLowerCase() === "karnataka" || customerState.toLowerCase() === "ka";
+
+  const rows = items
+    .map((item) => {
+      const qty = Number(item.quantity || 1);
+      const price = Number(item.price || 0);
+      const lineTotal = qty * price;
+      return `<tr>
+        <td style="padding: 8px 10px; border: 1px solid #e2e8f0; font-size: 13px;"><strong>${escapeHtml(item.name || "Item")}</strong></td>
+        <td style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${qty}</td>
+        <td style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: right; font-size: 13px;">${symbol}${price.toFixed(2)}</td>
+        <td style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: right; font-size: 13px;"><strong>${symbol}${lineTotal.toFixed(2)}</strong></td>
+      </tr>`;
+    })
+    .join("");
+
+  let gstRow = "";
+  if (gst > 0) {
+    if (isIntrastate) {
+      gstRow = `
+        <tr>
+          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">CGST (9%) + SGST (9%):</td>
+          <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${symbol}${gst.toFixed(2)}</td>
+        </tr>
+      `;
+    } else {
+      gstRow = `
+        <tr>
+          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">IGST (18%):</td>
+          <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${symbol}${gst.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+  }
+
+  return `
+    <div style="margin-top: 24px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; font-family: sans-serif;">
+      <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">🧾 OFFICIAL TAX INVOICE COPY</span>
+        <span style="font-size: 12px; opacity: 0.85;">Invoice #${orderCode}</span>
+      </div>
+      
+      <div style="padding: 14px 16px; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #475569; line-height: 1.5;">
+        <div style="margin-bottom: 4px;"><strong>Seller:</strong> Vyoma Linguistic Labs Foundation &nbsp;|&nbsp; <strong>GSTIN:</strong> 29AABTV0911M1ZE</div>
+        <div><strong>Place of Supply:</strong> ${escapeHtml(customerState || "Karnataka")} &nbsp;|&nbsp; <strong>Payment Status:</strong> ${escapeHtml(order.paymentStatus || "Paid")} (${escapeHtml(order.paymentMethod || "Online")})</div>
+      </div>
+
+      <div style="padding: 12px 16px;">
+        <table style="width: 100%; border-collapse: collapse; margin: 0 0 12px 0;">
+          <thead>
+            <tr style="background-color: #f1f5f9; color: #334155; font-size: 12px;">
+              <th style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: left;">Item Description</th>
+              <th style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; width: 40px;">Qty</th>
+              <th style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: right; width: 85px;">Unit Price</th>
+              <th style="padding: 8px 10px; border: 1px solid #e2e8f0; text-align: right; width: 95px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            <tr>
+              <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">Subtotal:</td>
+              <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${symbol}${subtotal.toFixed(2)}</td>
+            </tr>
+            ${discount > 0 ? `<tr>
+              <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #166534;">Discount:</td>
+              <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #166534;">-${symbol}${discount.toFixed(2)}</td>
+            </tr>` : ''}
+            <tr>
+              <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">Delivery Fee:</td>
+              <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${delivery > 0 ? `${symbol}${delivery.toFixed(2)}` : "FREE"}</td>
+            </tr>
+            ${gstRow}
+            <tr style="background-color: #f8fafc; font-weight: bold;">
+              <td colspan="3" style="text-align: right; padding: 8px 10px; border: 1px solid #cbd5e1; font-size: 13.5px; color: #0f172a;">Total Amount Paid:</td>
+              <td style="text-align: right; padding: 8px 10px; border: 1px solid #cbd5e1; font-size: 13.5px; color: #0f172a;">${symbol}${total.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="background-color: #eff6ff; border: 1px dashed #93c5fd; border-radius: 6px; padding: 10px 12px; font-size: 12.5px; color: #1e40af;">
+          📎 <strong>PDF Invoice Attached:</strong> A formal GST Tax Invoice PDF has been generated and attached to this email for your records.
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 async function sendOrderStatusUpdate(order, user, newStatus) {
@@ -385,45 +515,69 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   };
 
   const info = statusMessages[newStatus] || { emoji: "📦", title: `Order status: ${newStatus}`, body: `Your order status has been updated to ${newStatus}.` };
-  const badgeClass = `badge-${newStatus.toLowerCase()}`;
+  const badgeClass = `badge-${encodeURIComponent(String(newStatus).toLowerCase())}`;
 
   let emailBody = info.body;
-  if (newStatus === "Shipped" && order.trackingId) {
+  const attachments = [];
+
+  if (newStatus === "Shipped") {
     const courier = order.courierPartner || "Delhivery";
-    const trackingUrl = getCourierTrackingUrl(courier, order.trackingId);
-    emailBody = `
-      Your order is on its way and will reach you soon.<br/><br/>
+    const trackingInfo = order.trackingId ? `
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; font-family: sans-serif;">
-        <h4 style="margin: 0 0 8px; color: #1e293b; font-size: 14px;">📦 Shipping Details</h4>
+        <h4 style="margin: 0 0 8px; color: #1e293b; font-size: 14px;">📦 Shipping & Tracking Details</h4>
         <p style="margin: 0 0 6px; font-size: 13px; color: #475569;">
-          <strong>Courier Partner:</strong> ${courier}
+          <strong>Courier Partner:</strong> ${escapeHtml(courier)}
         </p>
         <p style="margin: 0 0 12px; font-size: 13px; color: #475569;">
-          <strong>Tracking ID:</strong> <code>${order.trackingId}</code>
+          <strong>Tracking ID:</strong> <code>${escapeHtml(order.trackingId)}</code>
         </p>
-        <a href="${trackingUrl}" style="display: inline-block; padding: 8px 16px; background-color: #1e293b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12.5px; margin-top: 4px;" target="_blank">🔗 Track Consignment ↗</a>
+        <a href="${getCourierTrackingUrl(courier, order.trackingId)}" style="display: inline-block; padding: 8px 16px; background-color: #1e293b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 12.5px; margin-top: 4px;" target="_blank">🔗 Track Consignment ↗</a>
       </div>
+    ` : '';
+
+    const invoiceHtml = buildShippedInvoiceHtml(order, user);
+    emailBody = `
+      Your order is on its way and will reach you soon.<br/>
+      ${trackingInfo}
+      ${invoiceHtml}
     `;
+
+    try {
+      const pdfBuffer = await generateInvoicePdfBuffer(order, user);
+      const orderCode = String(order._id || "").slice(-8).toUpperCase();
+      attachments.push({
+        filename: `Tax-Invoice-${orderCode}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf"
+      });
+    } catch (pdfErr) {
+      console.error("[Email] Failed to generate invoice PDF attachment:", pdfErr.message);
+    }
   }
 
+  const safeUserName = escapeHtml(String(user?.name || "Customer"));
+  const safeOrderId = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
+  const safeStatus = escapeHtml(newStatus);
+
   const html = htmlWrapper(info.title, `
-    <h2>${info.emoji} ${info.title}</h2>
-    <p>Hi <strong>${String(user?.name || "Customer")}</strong>,</p>
+    <h2>${info.emoji} ${escapeHtml(info.title)}</h2>
+    <p>Hi <strong>${safeUserName}</strong>,</p>
     <p>${emailBody}</p>
     <p>
-      <strong>Order ID:</strong> ${String(order._id || "").slice(-8).toUpperCase()}&nbsp;&nbsp;
-      <span class="badge ${badgeClass}">${newStatus}</span>
+      <strong>Order ID:</strong> ${safeOrderId}&nbsp;&nbsp;
+      <span class="badge ${badgeClass}">${safeStatus}</span>
     </p>
-    ${buildOrderItemsTable(order.items || [])}
+    ${newStatus !== "Shipped" ? buildOrderItemsTable(order.items || []) : ""}
     <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
   `);
 
   return sendEmail({
     to,
-    subject: `${info.emoji} Order ${newStatus} — ${SITE_NAME}`,
+    subject: `${info.emoji} Order ${cleanSubject(newStatus)} — ${SITE_NAME}`,
     html,
     type: "status-update",
-    orderId: String(order._id || "")
+    orderId: String(order._id || ""),
+    attachments
   });
 }
 
@@ -445,14 +599,17 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
   };
 
   const badgeClass = refundStatus === "Refunded" ? "badge-delivered" : refundStatus === "Rejected" ? "badge-cancelled" : "badge-shipped";
+  const safeUserName = escapeHtml(String(user?.name || "Customer"));
+  const safeOrderId = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
+  const safeRefundStatus = escapeHtml(refundStatus);
 
   const html = htmlWrapper(info.title, `
-    <h2>${info.emoji} ${info.title}</h2>
-    <p>Hi <strong>${String(user?.name || "Customer")}</strong>,</p>
-    <p>${info.body}</p>
+    <h2>${info.emoji} ${escapeHtml(info.title)}</h2>
+    <p>Hi <strong>${safeUserName}</strong>,</p>
+    <p>${escapeHtml(info.body)}</p>
     <p>
-      <strong>Order ID:</strong> ${String(order._id || "").slice(-8).toUpperCase()}&nbsp;&nbsp;
-      <span class="badge ${badgeClass}">Refund: ${refundStatus}</span>
+      <strong>Order ID:</strong> ${safeOrderId}&nbsp;&nbsp;
+      <span class="badge ${badgeClass}">Refund: ${safeRefundStatus}</span>
     </p>
     ${buildOrderItemsTable(order.items || [])}
     <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
@@ -460,7 +617,7 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
 
   return sendEmail({
     to,
-    subject: `${info.emoji} Refund Update: ${refundStatus} — Order #${String(order._id || "").slice(-8).toUpperCase()}`,
+    subject: `${info.emoji} Refund Update: ${cleanSubject(refundStatus)} — Order #${safeOrderId}`,
     html,
     type: "refund-update",
     orderId: String(order._id || "")
@@ -471,10 +628,10 @@ async function sendLowStockAdminAlert(products) {
   if (!ADMIN_EMAIL) return;
   const rows = products.map((p) =>
     `<tr>
-      <td>${String(p.name || "")}</td>
+      <td>${escapeHtml(p.name || "")}</td>
       <td><span class="badge badge-low">${Number(p.stock || 0)} left</span></td>
-      <td>${String(p.category || "")}</td>
-      <td>${p.wishlistCount > 0 ? `<strong>${p.wishlistCount} user(s) have wishlisted this</strong>` : "—"}</td>
+      <td>${escapeHtml(p.category || "")}</td>
+      <td>${p.wishlistCount > 0 ? `<strong>${Number(p.wishlistCount)} user(s) have wishlisted this</strong>` : "—"}</td>
     </tr>`
   ).join("");
 
@@ -503,15 +660,17 @@ async function sendWishlistLowStockAlert(user, products) {
 
   const rows = products.map((p) =>
     `<tr>
-      <td>${String(p.name || "")}</td>
+      <td>${escapeHtml(p.name || "")}</td>
       <td><span class="badge badge-low">Only ${Number(p.stock || 0)} left!</span></td>
-      <td>${String(p.category || "")}</td>
+      <td>${escapeHtml(p.category || "")}</td>
     </tr>`
   ).join("");
 
+  const safeUserName = escapeHtml(String(user?.name || "Customer"));
+
   const html = htmlWrapper("Items in Your Wishlist Are Running Low", `
     <h2>🔔 Items in Your Wishlist Are Running Low!</h2>
-    <p>Hi <strong>${String(user?.name || "Customer")}</strong>,</p>
+    <p>Hi <strong>${safeUserName}</strong>,</p>
     <p>Some products you've saved in your wishlist are running low on stock. Don't miss out!</p>
     <table>
       <thead><tr><th>Product</th><th>Stock</th><th>Category</th></tr></thead>
@@ -549,16 +708,20 @@ async function sendTestEmail(to) {
 }
 
 async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId }) {
+  const safeBuyerName = escapeHtml(buyerName);
+  const safeProductName = escapeHtml(productName);
+  const safeGiftCode = escapeHtml(giftCode);
+
   const html = htmlWrapper("You've Received a Sanskrit Gift Pass!", `
     <h2>🎁 You've Received a Sanskrit Gift Pass!</h2>
     <p>Pranam,</p>
-    <p><strong>${buyerName}</strong> has purchased a Sanskrit digital flipbook for you as a gift!</p>
+    <p><strong>${safeBuyerName}</strong> has purchased a Sanskrit digital flipbook for you as a gift!</p>
     
     <div style="margin: 24px 0; padding: 18px; border: 2px dashed #ff9900; background-color: #fffbeb; border-radius: 8px; text-align: center;">
       <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #d97706; text-transform: uppercase; letter-spacing: 0.5px;">Your Gift Item</p>
-      <h3 style="margin: 0 0 14px 0; font-size: 18px; color: #1e293b;">${productName}</h3>
+      <h3 style="margin: 0 0 14px 0; font-size: 18px; color: #1e293b;">${safeProductName}</h3>
       <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">Gift Pass Code</p>
-      <code style="font-size: 22px; font-weight: bold; color: #1e293b; letter-spacing: 1px; background-color: #f1f5f9; padding: 6px 12px; border-radius: 4px; border: 1px solid #cbd5e1; display: inline-block;">${giftCode}</code>
+      <code style="font-size: 22px; font-weight: bold; color: #1e293b; letter-spacing: 1px; background-color: #f1f5f9; padding: 6px 12px; border-radius: 4px; border: 1px solid #cbd5e1; display: inline-block;">${safeGiftCode}</code>
     </div>
 
     <p><strong>How to redeem your gift:</strong></p>
@@ -573,7 +736,7 @@ async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId
 
   return sendEmail({
     to,
-    subject: `🎁 You received a gift: ${productName} — ${SITE_NAME}`,
+    subject: `🎁 You received a gift: ${cleanSubject(productName)} — ${SITE_NAME}`,
     html,
     type: "gift-pass",
     orderId
@@ -582,6 +745,14 @@ async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId
 
 async function sendBulkEnquiryEmail({ name, email, phone, quantity, productName, institution, message }) {
   const adminEmail = process.env.ADMIN_EMAIL || "admin@digitalsanskritguru.com";
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safePhone = escapeHtml(phone || "Not Provided");
+  const safeQuantity = escapeHtml(quantity);
+  const safeProductName = escapeHtml(productName);
+  const safeInstitution = escapeHtml(institution || "Not Provided");
+  const safeMessage = escapeHtml(message || "No message provided.");
+
   const html = htmlWrapper(
     "New Bulk Purchase Enquiry",
     `
@@ -590,40 +761,40 @@ async function sendBulkEnquiryEmail({ name, email, phone, quantity, productName,
     <table style="width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px;">
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; width: 180px; background-color: #f8fafc;">Product Name</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${productName}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${safeProductName}</td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Quantity Requested</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${quantity} units</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; font-weight: 600;">${safeQuantity} units</td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Name</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${name}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${safeName}</td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Email</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;"><a href="mailto:${email}">${email}</a></td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;"><a href="mailto:${safeEmail}">${safeEmail}</a></td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Phone Number</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${phone || "Not Provided"}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${safePhone}</td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Institution / School</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${institution || "Not Provided"}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${safeInstitution}</td>
       </tr>
       <tr>
         <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; background-color: #f8fafc;">Customer Message</td>
-        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${message || "No message provided."}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155;">${safeMessage}</td>
       </tr>
     </table>
-    <p>Please reply directly to the customer at <a href="mailto:${email}">${email}</a> to send the wholesale pricing and shipping details.</p>
+    <p>Please reply directly to the customer at <a href="mailto:${safeEmail}">${safeEmail}</a> to send the wholesale pricing and shipping details.</p>
     `
   );
 
   return sendEmail({
     to: adminEmail,
-    subject: `✉️ New Wholesale Bulk Enquiry for ${productName} (${quantity} units)`,
+    subject: `✉️ New Wholesale Bulk Enquiry for ${cleanSubject(productName)} (${cleanSubject(quantity)} units)`,
     html,
     type: "bulk-enquiry"
   });
@@ -634,18 +805,21 @@ async function sendWelcomeCredentialsEmail(user, plainPassword) {
   if (!to) return;
 
   const siteUrl = process.env.SITE_URL || "http://localhost:5173";
+  const safeName = escapeHtml(user?.name || "Student");
+  const safeEmail = escapeHtml(to);
+  const safePassword = escapeHtml(plainPassword);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #d97706; margin-bottom: 16px;">Welcome to ${SITE_NAME}!</h2>
-      <p>Namaste <strong>${user.name || "Student"}</strong>,</p>
+      <p>Namaste <strong>${safeName}</strong>,</p>
       <p>Thank you for purchasing our course. We have created a student account for you so you can access your digital library, view courses, and track order shipments.</p>
       
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
         <h3 style="margin-top: 0; color: #1e293b;">Your Student Login Credentials:</h3>
         <p style="margin: 8px 0;"><strong>Login URL:</strong> <a href="${siteUrl}/#/login">${siteUrl}/#/login</a></p>
-        <p style="margin: 8px 0;"><strong>Username / Email:</strong> ${to}</p>
-        <p style="margin: 8px 0;"><strong>Temporary Password:</strong> <code style="font-family: monospace; font-size: 14px; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${plainPassword}</code></p>
+        <p style="margin: 8px 0;"><strong>Username / Email:</strong> ${safeEmail}</p>
+        <p style="margin: 8px 0;"><strong>Temporary Password:</strong> <code style="font-family: monospace; font-size: 14px; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${safePassword}</code></p>
       </div>
 
       <p style="color: #64748b; font-size: 13px;">For security, we highly recommend logging in and changing your password under the "My Account" settings page.</p>
@@ -667,13 +841,13 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
   if (!to || !Array.isArray(wishlistItems) || wishlistItems.length === 0) return;
 
   const siteUrl = process.env.SITE_URL || "https://digitalsanskritguru.com";
-  const userName = user.name || "Sanskrit Enthusiast";
+  const userName = escapeHtml(user.name || "Sanskrit Enthusiast");
 
   const productRowsHtml = wishlistItems.slice(0, 5).map((item) => {
-    const pName = item.name || "Product";
-    const pPrice = item.price ? `₹${item.price}` : "Available now";
-    const pImg = item.image || "https://digitalsanskritguru.com/placeholder.png";
-    const pLink = `${siteUrl}/#/product/${item._id || ""}`;
+    const pName = escapeHtml(item.name || "Product");
+    const pPrice = item.price ? `₹${Number(item.price)}` : "Available now";
+    const pImg = escapeHtml(item.image || "https://digitalsanskritguru.com/placeholder.png");
+    const pLink = `${siteUrl}/#/product/${encodeURIComponent(String(item._id || ""))}`;
 
     return `
       <tr>
@@ -721,7 +895,7 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
 
   return sendEmail({
     to,
-    subject: `🎁 Items in your wishlist are waiting for you, ${userName}!`,
+    subject: `🎁 Items in your wishlist are waiting for you, ${cleanSubject(user?.name || "Sanskrit Enthusiast")}!`,
     html,
     type: "wishlist-reminder"
   });

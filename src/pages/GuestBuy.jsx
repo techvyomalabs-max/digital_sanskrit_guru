@@ -258,14 +258,18 @@ function GuestBuy() {
     try {
       const RazorpayConstructor = await loadRazorpayCheckout();
 
-      // 1. Create Razorpay Order (converting to INR paise)
-      const amountInInr = convertCurrencyAmount(grandTotal, {
-        sourceCurrency: displayCurrency,
-        currency: "INR"
-      });
-
+      // 1. Create Razorpay Order with authoritative server pricing
       const { data: rpOrder } = await axios.post("/api/payment/create-order", {
-        amount: Math.round(amountInInr * 100) / 100,
+        items: [
+          {
+            product: product._id,
+            price: unitPrice,
+            quantity: buyQuantity,
+            currency: displayCurrency
+          }
+        ],
+        shipping: shippingInfo,
+        couponCode: "",
         honey_pot_field: honeyPot
       });
 
@@ -437,8 +441,8 @@ function GuestBuy() {
           id: product._id,
           name: product.name,
           image: product.image,
-          price: finalTotal,
-          quantity: 1,
+          price: unitPrice,
+          quantity: buyQuantity,
           isDigital,
           weight: product.weight,
           height: product.height,

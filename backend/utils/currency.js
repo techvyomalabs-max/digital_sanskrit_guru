@@ -56,10 +56,43 @@ function convertCurrencyAmount(value, options = {}) {
   return inBaseCurrency * targetRate;
 }
 
+const ZERO_DECIMAL = new Set(["JPY", "KRW", "VND", "CLP", "PYG", "ISK", "UGX", "XAF", "XOF"]);
+const THREE_DECIMAL = new Set(["KWD", "BHD", "OMR", "JOD", "TND"]);
+
+function getCurrencyExponent(c = BASE_CURRENCY) {
+  const code = String(c || BASE_CURRENCY).toUpperCase();
+  return ZERO_DECIMAL.has(code) ? 0 : THREE_DECIMAL.has(code) ? 3 : 2;
+}
+
+function toMinorUnits(amount, currency = BASE_CURRENCY) {
+  const v = Number(amount);
+  if (!Number.isFinite(v)) return Number.NaN;
+  const e = getCurrencyExponent(currency);
+  if (e === 0) return Math.round(v);
+  if (e === 3) return Math.round(Number((v * 100).toFixed(6))) * 10;
+  return Math.round(Number((v * 100).toFixed(6))); // avoids 1.005*100 float error
+}
+
+function fromMinorUnits(minor, currency = BASE_CURRENCY) {
+  const v = Number(minor);
+  if (!Number.isFinite(v)) return Number.NaN;
+  const e = getCurrencyExponent(currency);
+  return Number((v / Math.pow(10, e)).toFixed(e));
+}
+
+function resolveItemsCurrency(items = []) {
+  const set = [...new Set((items || []).map((i) => normalizeCurrencyCode(i?.currency, BASE_CURRENCY)))];
+  return set.length === 1 ? { ok: true, currency: set[0] } : { ok: false, currency: "", currencies: set };
+}
+
 module.exports = {
   BASE_CURRENCY,
   DEFAULT_CURRENCY_EXCHANGE_RATES,
   normalizeCurrencyRates,
   normalizeCurrencyCode,
-  convertCurrencyAmount
+  convertCurrencyAmount,
+  getCurrencyExponent,
+  toMinorUnits,
+  fromMinorUnits,
+  resolveItemsCurrency
 };

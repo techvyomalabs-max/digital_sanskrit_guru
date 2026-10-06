@@ -37,6 +37,24 @@ const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
 const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Rejected", "Refunded"];
 const RETURN_FILTER_KEY = "Return Requests";
 
+function getCourierTrackingUrl(courierName, trackingId) {
+  if (!trackingId) return "";
+  const name = String(courierName || "").trim().toLowerCase();
+  const trId = String(trackingId).trim();
+  if (name.includes("delhivery")) {
+    return `https://www.delhivery.com/track/package/${trId}`;
+  } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
+    return "https://www.indiapost.gov.in/";
+  } else if (name.includes("dtdc")) {
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${trId}`;
+  } else if (name.includes("professional") || name.includes("tpc")) {
+    return "https://www.tpcindia.com/";
+  } else if (name.includes("shiprocket")) {
+    return `https://www.shiprocket.in/shipment-tracking/${trId}`;
+  }
+  return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
+}
+
 function AdminOrders() {
   const { token, user } = useAuth();
   const canUpdateOrders = Boolean(user?.isAdmin);
@@ -1017,235 +1035,272 @@ function AdminOrders() {
                         </div>
                       </td>
                       <td className="col-fulfillment">
-                        <div className="admin-status-update">
-                          <div className="order-status-tracker">
-                            {DISPLAY_STATUSES.filter((status) => {
-                              if (status === "Cancelled") return isCancelled;
-                              return true;
-                            }).map((status, index) => {
-                              const active = statusStep[displayStatus] >= index;
-                              const isCurrent = displayStatus === status;
-                              return (
-                                <div key={`${order._id}-${status}`} className="order-status-step">
-                                  <span className={active ? "tracker-dot active" : "tracker-dot"} />
-                                  <span className={isCurrent ? "tracker-label current" : "tracker-label"}>
-                                    {status}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="status-controls">
-                            <span className={`admin-order-status status-${statusKey}`}>
-                              {displayStatus}
-                            </span>
-                            {displayStatus === "Delivered" && order.deliveredAt && (
-                              <small style={{ display: "block", marginTop: "4px", color: "#16a34a", fontWeight: "600" }}>
-                                Delivered: {formatDate(order.deliveredAt)}
-                              </small>
-                            )}
-                            {canUpdateOrders && displayStatus === "On Hold" && (
-                              <button
-                                className="status-action-btn"
-                                disabled
-                title="Waiting for successful payment"
-                              >
-                                Move to Pending
-                              </button>
-                            )}
-                            {(() => {
-                               const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
-                                 Boolean(
-                                   item.isDigital ||
-                                   item.webReaderLink ||
-                                   item.kindleLink ||
-                                   String(item.name || "").toLowerCase().includes("web") ||
-                                   String(item.name || "").toLowerCase().includes("kindle") ||
-                                   String(item.name || "").toLowerCase().includes("flipbook") ||
-                                   String(item.format || "").toLowerCase().includes("web") ||
-                                   String(item.format || "").toLowerCase().includes("flipbook")
-                                 )
-                               );
+                        {(() => {
+                          const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
+                            Boolean(
+                              item.isDigital ||
+                              item.webReaderLink ||
+                              item.kindleLink ||
+                              String(item.name || "").toLowerCase().includes("web") ||
+                              String(item.name || "").toLowerCase().includes("kindle") ||
+                              String(item.name || "").toLowerCase().includes("flipbook") ||
+                              String(item.format || "").toLowerCase().includes("web") ||
+                              String(item.format || "").toLowerCase().includes("flipbook")
+                            )
+                          );
 
-                               if (isDigitalOnly) {
-                                 return (
-                                   <div style={{ margin: "4px 0", padding: "6px 10px", borderRadius: "6px", backgroundColor: "rgba(37, 99, 235, 0.1)", color: "#2563eb", fontSize: "12px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                     ⚡ Instant Digital Access Granted
-                                   </div>
-                                 );
-                               }
+                          const currentStepIndex = statusStep[displayStatus] ?? 0;
+                          const trackingUrl = getCourierTrackingUrl(order?.courierPartner, order?.trackingId);
 
-                               return (
-                                 <>
-                                   {canUpdateOrders && displayStatus === "Pending" && canProgressStatus && (
-                                     <button
-                                       className="status-action-btn"
-                                       disabled={updatingOrderId === order._id}
-                                       onClick={() => updateStatus(order._id, "Shipped")}
-                                     >
-                                       {updatingOrderId === order._id ? "Updating..." : "Mark Shipped"}
-                                     </button>
-                                   )}
-                                   {canUpdateOrders && displayStatus === "Shipped" && canProgressStatus && (
-                                     <button
-                                       className="status-action-btn"
-                                       disabled={updatingOrderId === order._id}
-                                       onClick={() => updateStatus(order._id, "Delivered")}
-                                     >
-                                       {updatingOrderId === order._id ? "Updating..." : "Mark Delivered"}
-                                     </button>
-                                   )}
-                                 </>
-                               );
-                             })()}
-                            {canUpdateOrders && ["On Hold", "Pending"].includes(displayStatus) && (
-                              <button
-                                className="status-action-btn cancel"
-                                disabled={updatingOrderId === order._id}
-                                onClick={() => updateStatus(order._id, "Cancelled")}
-                              >
-                                {updatingOrderId === order._id ? "Updating..." : "Cancel"}
-                              </button>
-                            )}
-                            {isCancelled && (paymentStatus === "Paid" || (order?.refundStatus && order?.refundStatus !== "Not Applicable")) ? (
-                              <div className="admin-refund-panel">
-                                <div className="admin-refund-header">
-                                  <span className="admin-refund-title">Refund:</span>
-                                  <span className={`admin-order-status status-refund-${String(order?.refundStatus || "Pending").toLowerCase()}`}>
-                                    {order?.refundStatus || "Pending"}
-                                  </span>
-                                </div>
-                                {order?.paymentMeta?.razorpayRefundId ? (
-                                  <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
-                                    ⚡ RZP: {order.paymentMeta.razorpayRefundId}
-                                  </small>
-                                ) : null}
-                                {canUpdateOrders ? (
-                                  order?.refundStatus === "Refunded" ? (
-                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#166534", marginTop: "4px" }}>
-                                      ✓ Refund Completed
-                                    </div>
-                                  ) : (
-                                    <div className="admin-refund-actions">
-                                      {order?.refundStatus === "Pending" && (
-                                        <button
-                                          type="button"
-                                          className="status-action-btn"
-                                          disabled={updatingOrderId === order._id}
-                                          onClick={() => updateRefundStatus(order._id, "Processing")}
-                                          title="Move to Processing"
-                                        >
-                                          {updatingOrderId === order._id ? "Updating..." : "Process Refund"}
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        className="status-action-btn refund-success-btn"
-                                        disabled={updatingOrderId === order._id}
-                                        onClick={() => updateRefundStatus(order._id, "Refunded")}
-                                        title="Mark as Refund Completed"
-                                      >
-                                        {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
-                                      </button>
-                                      {order?.refundStatus !== "Rejected" && (
-                                        <button
-                                          type="button"
-                                          className="status-action-btn cancel"
-                                          disabled={updatingOrderId === order._id}
-                                          onClick={() => updateRefundStatus(order._id, "Rejected")}
-                                          title="Reject Refund"
-                                        >
-                                          {updatingOrderId === order._id ? "Updating..." : "Reject"}
-                                        </button>
-                                      )}
-                                      <select
-                                        id={`refund-select-${order._id}`}
-                                        className="admin-refund-select"
-                                        value={order?.refundStatus || "Pending"}
-                                        disabled={updatingOrderId === order._id}
-                                        onChange={(e) => updateRefundStatus(order._id, e.target.value)}
-                                        aria-label="Change refund status"
-                                      >
-                                        <option value="Pending">Pending</option>
-                                        <option value="Processing">Processing</option>
-                                        <option value="Refunded">Refunded</option>
-                                        <option value="Rejected">Rejected</option>
-                                      </select>
-                                    </div>
-                                  )
-                                ) : null}
+                          return (
+                            <div className="fulfillment-card-box">
+                              {/* Header: Type Badge & Current Status */}
+                              <div className="fulfillment-card-header">
+                                <span className={`fulfillment-type-badge ${isDigitalOnly ? "digital" : "physical"}`}>
+                                  {isDigitalOnly ? "⚡ Digital Order" : "📦 Physical Parcel"}
+                                </span>
+                                <span className={`admin-order-status status-${statusKey}`}>
+                                  {displayStatus}
+                                </span>
                               </div>
-                            ) : !canProgressStatus ? (
-                              <p className="admin-status-note">
-                                {isCancelled
-                                  ? "Cancelled (No payment captured)"
-                                  : paymentStatus === "Failed"
-                                    ? "Payment failed"
-                                    : "Waiting for successful payment"}
-                              </p>
-                            ) : null}
-                            {returnItems.length > 0 ? (
-                              <div className="admin-return-panel">
-                                {returnItems.map((item) => {
-                                  const itemId = String(item?._id || item?.id || item?.product || "").trim();
-                                  const returnStatus = getReturnStatus(item);
-                                  return (
-                                    <div key={`${order._id}-${itemId}`} className="admin-return-item">
-                                      <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                                        {item?.name || "Item"}: {returnStatus}
-                                      </span>
-                                      {item?.returnRequest?.reason ? (
-                                        <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
-                                      ) : null}
-                                      {item?.returnRequest?.adminReason ? (
-                                        <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
-                                      ) : null}
-                                      {canUpdateOrders && returnStatus === "Requested" ? (
-                                        <div className="admin-return-actions">
+
+                              {/* Pipeline Stepper */}
+                              {!isCancelled ? (
+                                isDigitalOnly ? (
+                                  <div className="fulfillment-digital-status">
+                                    <span className="digital-status-dot">✓</span>
+                                    <span>Instant Digital Access Granted</span>
+                                  </div>
+                                ) : (
+                                  <div className="fulfillment-pipeline-stepper">
+                                    {["Pending", "Shipped", "Delivered"].map((stepName, sIdx) => {
+                                      const stepValue = sIdx + 1; // 1 for Pending, 2 for Shipped, 3 for Delivered
+                                      const isPassed = currentStepIndex > stepValue;
+                                      const isCurrent = currentStepIndex === stepValue;
+                                      const isUpcoming = currentStepIndex < stepValue;
+
+                                      return (
+                                        <div
+                                          key={stepName}
+                                          className={`pipeline-step ${isPassed ? "completed" : ""} ${isCurrent ? "current" : ""} ${isUpcoming ? "upcoming" : ""}`}
+                                        >
+                                          <div className="pipeline-dot">
+                                            {isPassed || (isCurrent && stepName === "Delivered") ? "✓" : sIdx + 1}
+                                          </div>
+                                          <span className="pipeline-label">{stepName}</span>
+                                          {sIdx < 2 && <div className="pipeline-connector" />}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )
+                              ) : (
+                                <div className="fulfillment-cancelled-banner">
+                                  <span>✕ Order Cancelled</span>
+                                </div>
+                              )}
+
+                              {/* Shipped / Delivered Timestamps & Tracking Link */}
+                              {order?.trackingId ? (
+                                <div className="fulfillment-tracking-chip-wrapper">
+                                  <a
+                                    href={trackingUrl || "#"}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="fulfillment-tracking-link"
+                                    title="Open Courier Live Tracking"
+                                  >
+                                    <span className="tracking-courier-name">
+                                      🚚 {order.courierPartner || "Courier"}:
+                                    </span>
+                                    <span className="tracking-number-code">#{order.trackingId}</span>
+                                    <span className="tracking-external-icon">↗</span>
+                                  </a>
+                                </div>
+                              ) : null}
+
+                              {displayStatus === "Shipped" && order.shippedAt && !order.trackingId && (
+                                <small className="fulfillment-timestamp shipped">
+                                  Shipped: {formatDate(order.shippedAt)}
+                                </small>
+                              )}
+
+                              {displayStatus === "Delivered" && order.deliveredAt && (
+                                <small className="fulfillment-timestamp delivered">
+                                  Delivered: {formatDate(order.deliveredAt)}
+                                </small>
+                              )}
+
+                              {/* Action Buttons */}
+                              {canUpdateOrders && !isDigitalOnly && (
+                                <div className="fulfillment-actions-wrapper">
+                                  {displayStatus === "Pending" && canProgressStatus && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action ship"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Shipped")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "🚚 Mark Shipped"}
+                                    </button>
+                                  )}
+                                  {displayStatus === "Shipped" && canProgressStatus && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action deliver"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Delivered")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "📦 Mark Delivered"}
+                                    </button>
+                                  )}
+                                  {["On Hold", "Pending"].includes(displayStatus) && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action cancel"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Cancelled")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "✕ Cancel"}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Refund Panel if applicable */}
+                              {isCancelled && (paymentStatus === "Paid" || (order?.refundStatus && order?.refundStatus !== "Not Applicable")) && (
+                                <div className="admin-refund-panel">
+                                  <div className="admin-refund-header">
+                                    <span className="admin-refund-title">Refund:</span>
+                                    <span className={`admin-order-status status-refund-${String(order?.refundStatus || "Pending").toLowerCase()}`}>
+                                      {order?.refundStatus || "Pending"}
+                                    </span>
+                                  </div>
+                                  {order?.paymentMeta?.razorpayRefundId ? (
+                                    <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
+                                      ⚡ RZP: {order.paymentMeta.razorpayRefundId}
+                                    </small>
+                                  ) : null}
+                                  {canUpdateOrders ? (
+                                    order?.refundStatus === "Refunded" ? (
+                                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#166534", marginTop: "4px" }}>
+                                        ✓ Refund Completed
+                                      </div>
+                                    ) : (
+                                      <div className="admin-refund-actions">
+                                        {order?.refundStatus === "Pending" && (
                                           <button
+                                            type="button"
                                             className="status-action-btn"
                                             disabled={updatingOrderId === order._id}
-                                            onClick={() => updateReturnStatus(order._id, itemId, "Approved")}
+                                            onClick={() => updateRefundStatus(order._id, "Processing")}
+                                            title="Move to Processing"
                                           >
-                                            {updatingOrderId === order._id ? "Updating..." : "Approve Return"}
+                                            {updatingOrderId === order._id ? "Updating..." : "Process Refund"}
                                           </button>
-                                          <button
-                                            className="status-action-btn cancel"
-                                            disabled={updatingOrderId === order._id}
-                                            onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
-                                          >
-                                            {updatingOrderId === order._id ? "Updating..." : "Reject"}
-                                          </button>
-                                        </div>
-                                      ) : null}
-                                      {canUpdateOrders && returnStatus === "Approved" ? (
+                                        )}
                                         <button
-                                          className="status-action-btn"
+                                          type="button"
+                                          className="status-action-btn refund-success-btn"
                                           disabled={updatingOrderId === order._id}
-                                          onClick={() => updateReturnStatus(order._id, itemId, "Refunded")}
+                                          onClick={() => updateRefundStatus(order._id, "Refunded")}
+                                          title="Mark as Refund Completed"
                                         >
                                           {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
                                         </button>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                            <select
-                              id={`status-${order._id}`}
-                              value={displayStatus}
-                              disabled={!canUpdateOrders || updatingOrderId === order._id || !canProgressStatus}
-                              onChange={(e) => updateStatus(order._id, e.target.value)}
-                            >
-                              {displayStatus === "On Hold" ? <option value="On Hold">On Hold</option> : null}
-                              <option value="Pending">Pending</option>
-                              <option value="Shipped">Shipped</option>
-                              <option value="Delivered">Delivered</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
-                          </div>
-                        </div>
+                                        {order?.refundStatus !== "Rejected" && (
+                                          <button
+                                            type="button"
+                                            className="status-action-btn cancel"
+                                            disabled={updatingOrderId === order._id}
+                                            onClick={() => updateRefundStatus(order._id, "Rejected")}
+                                            title="Reject Refund"
+                                          >
+                                            {updatingOrderId === order._id ? "Updating..." : "Reject"}
+                                          </button>
+                                        )}
+                                        <select
+                                          id={`refund-select-${order._id}`}
+                                          className="admin-refund-select"
+                                          value={order?.refundStatus || "Pending"}
+                                          disabled={updatingOrderId === order._id}
+                                          onChange={(e) => updateRefundStatus(order._id, e.target.value)}
+                                          aria-label="Change refund status"
+                                        >
+                                          <option value="Pending">Pending</option>
+                                          <option value="Processing">Processing</option>
+                                          <option value="Refunded">Refunded</option>
+                                          <option value="Rejected">Rejected</option>
+                                        </select>
+                                      </div>
+                                    )
+                                  ) : null}
+                                </div>
+                              )}
+
+                              {!canProgressStatus && !isCancelled && (
+                                <p className="admin-status-note">
+                                  {paymentStatus === "Failed"
+                                    ? "Payment failed"
+                                    : "Waiting for successful payment"}
+                                </p>
+                              )}
+
+                              {/* Return Items Panel if applicable */}
+                              {returnItems.length > 0 ? (
+                                <div className="admin-return-panel">
+                                  {returnItems.map((item) => {
+                                    const itemId = String(item?._id || item?.id || item?.product || "").trim();
+                                    const returnStatus = getReturnStatus(item);
+                                    return (
+                                      <div key={`${order._id}-${itemId}`} className="admin-return-item">
+                                        <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                          {item?.name || "Item"}: {returnStatus}
+                                        </span>
+                                        {item?.returnRequest?.reason ? (
+                                          <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
+                                        ) : null}
+                                        {item?.returnRequest?.adminReason ? (
+                                          <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
+                                        ) : null}
+                                        {canUpdateOrders && returnStatus === "Requested" ? (
+                                          <div className="admin-return-actions">
+                                            <button
+                                              type="button"
+                                              className="status-action-btn"
+                                              disabled={updatingOrderId === order._id}
+                                              onClick={() => updateReturnStatus(order._id, itemId, "Approved")}
+                                            >
+                                              {updatingOrderId === order._id ? "Updating..." : "Approve Return"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="status-action-btn cancel"
+                                              disabled={updatingOrderId === order._id}
+                                              onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                            >
+                                              {updatingOrderId === order._id ? "Updating..." : "Reject"}
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                        {canUpdateOrders && returnStatus === "Approved" ? (
+                                          <button
+                                            type="button"
+                                            className="status-action-btn"
+                                            disabled={updatingOrderId === order._id}
+                                            onClick={() => updateReturnStatus(order._id, itemId, "Refunded")}
+                                          >
+                                            {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="admin-order-actions-cell col-actions">
                         <div className="admin-order-actions">

@@ -415,22 +415,11 @@ function AdminAddProducts() {
   }, []);
 
   const saveCategoryOptions = async (nextCategories) => {
-    const { data: currentSettings } = await axios.get("/api/settings", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const payload = {
-      gstPercent: currentSettings?.gstPercent ?? 0,
-      deliveryCharge: currentSettings?.deliveryCharge ?? 0,
-      siteTheme: currentSettings?.siteTheme,
-      customThemes: currentSettings?.customThemes || [],
-      productCategories: nextCategories,
-      pricingMarkets: currentSettings?.pricingMarkets || [],
-      heroBanners: currentSettings?.heroBanners || []
-    };
-
-    const { data } = await axios.put("/api/settings", payload, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const { data } = await axios.put(
+      "/api/settings",
+      { productCategories: nextCategories },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
     const normalized = Array.isArray(data?.productCategories) && data.productCategories.length > 0
       ? data.productCategories

@@ -4,20 +4,32 @@ const Coupon = require("../models/Coupon");
 const User = require("../models/User");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { logAdminAction } = require("../utils/adminAudit");
 const { invalidateProductCache } = require("../utils/cache");
 
 const router = express.Router();
 
-// GET /api/trash - Fetch all soft-deleted items (ADMIN)
-router.get("/", protect, admin, async (req, res) => {
+// GET /api/trash - Fetch soft-deleted items with permission filtering (ADMIN)
+router.get("/", protect, admin, (req, res, next) => {
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  const canAccess = req.adminLevel === 1 || pages.includes("products") || pages.includes("coupons") || pages.includes("users");
+  if (canAccess) return next();
+  return res.status(403).json({ message: "Access denied. Insufficient permissions to view Recycle Bin." });
+}, async (req, res) => {
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
 
+    const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+    const isSuper = req.adminLevel === 1;
+    const canSeeProducts = isSuper || pages.includes("products") || pages.includes("add-products");
+    const canSeeCoupons = isSuper || pages.includes("coupons");
+    const canSeeUsers = isSuper || pages.includes("users");
+
     const [deletedProducts, deletedCoupons, deletedUsers] = await Promise.all([
-      Product.find({ isDeleted: true }).lean(),
-      Coupon.find({ isDeleted: true }).lean(),
-      User.find({ isDeleted: true }).lean()
+      canSeeProducts ? Product.find({ isDeleted: true }).lean() : Promise.resolve([]),
+      canSeeCoupons ? Coupon.find({ isDeleted: true }).lean() : Promise.resolve([]),
+      canSeeUsers ? User.find({ isDeleted: true }).lean() : Promise.resolve([])
     ]);
 
     const formattedProducts = deletedProducts.map((p) => ({
@@ -68,8 +80,8 @@ router.get("/", protect, admin, async (req, res) => {
   }
 });
 
-// POST /api/trash/restore-all - Restore all soft-deleted items (ADMIN)
-router.post("/restore-all", protect, admin, async (req, res) => {
+// POST /api/trash/restore-all - Restore all soft-deleted items (SUPER ADMIN)
+router.post("/restore-all", protect, admin, admin.requireSuperAdmin, async (req, res) => {
   try {
     const [pRes, cRes, uRes] = await Promise.all([
       Product.updateMany({ isDeleted: true }, { isDeleted: false, deletedAt: null, deletedBy: { name: "", email: "" } }),
@@ -93,8 +105,8 @@ router.post("/restore-all", protect, admin, async (req, res) => {
   }
 });
 
-// DELETE /api/trash/empty - Permanently delete all soft-deleted items (ADMIN)
-router.delete("/empty", protect, admin, async (req, res) => {
+// DELETE /api/trash/empty - Permanently delete all soft-deleted items (SUPER ADMIN)
+router.delete("/empty", protect, admin, admin.requireSuperAdmin, async (req, res) => {
   try {
     const [pRes, cRes, uRes] = await Promise.all([
       Product.deleteMany({ isDeleted: true }),

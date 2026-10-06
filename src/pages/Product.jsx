@@ -840,22 +840,25 @@ function Product() {
     setBulkSuccess(false);
 
     if (!bulkName || !bulkEmail || !bulkQty) {
-      setBulkError("Please fill in all required fields (Name, Email, and Quantity).");
+      setBulkError("Please fill in all required fields (Name, Email, Phone, and Quantity).");
       return;
     }
 
     const fullPhone = getFullBulkPhoneNumber();
-    if (fullPhone) {
-      const phoneValidation = validatePhoneNumber(fullPhone, bulkPhoneCountry);
-      if (!phoneValidation.isValid) {
-        setBulkPhoneError(phoneValidation.message);
-        return;
-      }
+    if (!bulkPhone || !fullPhone) {
+      setBulkPhoneError("Phone number is required for bulk quotes.");
+      return;
+    }
 
-      if (isBulkOtpRequired && !isBulkPhoneVerified) {
-        setIsBulkOtpModalOpen(true);
-        return;
-      }
+    const phoneValidation = validatePhoneNumber(fullPhone, bulkPhoneCountry);
+    if (!phoneValidation.isValid) {
+      setBulkPhoneError(phoneValidation.message);
+      return;
+    }
+
+    if (isBulkOtpRequired && !isBulkPhoneVerified) {
+      setIsBulkOtpModalOpen(true);
+      return;
     }
 
     try {
@@ -2087,79 +2090,83 @@ function Product() {
                     </div>
                   </div>
 
-                  <div className="product-bulk-modal-row">
-                    <div className="product-bulk-modal-col">
-                      <div className="product-bulk-modal-label-row">
-                        <label className="product-bulk-modal-label">Phone</label>
-                        {isBulkPhoneVerified ? (
-                          <span className="product-bulk-verified-badge">
-                            <CheckCircle2 size={13} /> Verified on WhatsApp
+                  {/* Row 2: Full-Width Phone & WhatsApp Verification */}
+                  <div style={{ marginBottom: "12px" }}>
+                    <div className="product-bulk-modal-label-row">
+                      <label className="product-bulk-modal-label">Phone <span className="product-bulk-modal-req">*</span></label>
+                      {isBulkPhoneVerified ? (
+                        <span className="product-bulk-verified-badge">
+                          <CheckCircle2 size={13} /> Verified on WhatsApp
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="product-bulk-phone-field-row">
+                      <div className={`product-bulk-phone-input-group ${bulkPhoneError ? "invalid-input" : ""}`}>
+                        <div
+                          className="product-bulk-phone-prefix-wrap"
+                          title="Click to change country calling code"
+                        >
+                          <span className="product-bulk-phone-prefix-display">
+                            <span>{currentBulkPhoneData.flag}</span>
+                            <span>{currentBulkPhoneData.code}</span>
+                            <ChevronDown size={13} className="product-bulk-phone-chevron" />
                           </span>
-                        ) : null}
-                      </div>
-                      <div className="product-bulk-phone-field-row">
-                        <div className={`product-bulk-phone-input-group ${bulkPhoneError ? "invalid-input" : ""}`}>
-                          <div
-                            className="product-bulk-phone-prefix-wrap"
-                            title="Click to change country calling code"
-                          >
-                            <span className="product-bulk-phone-prefix-display">
-                              <span>{currentBulkPhoneData.flag}</span>
-                              <span>{currentBulkPhoneData.code}</span>
-                              <ChevronDown size={13} className="product-bulk-phone-chevron" />
-                            </span>
-                            <select
-                              className="product-bulk-phone-select-overlay"
-                              value={bulkPhoneCountry}
-                              onChange={(e) => {
-                                setBulkPhoneCountry(e.target.value);
-                                if (isBulkPhoneVerified) {
-                                  setIsBulkPhoneVerified(false);
-                                  setBulkPhoneVerificationToken("");
-                                }
-                              }}
-                              aria-label="Select Country Phone Code"
-                            >
-                              {COUNTRY_PHONE_CODES.map((item) => (
-                                <option key={`${item.country}-${item.code}`} value={item.country}>
-                                  {item.flag} {item.code} - {item.country}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <input
-                            type="tel"
-                            maxLength={16}
-                            placeholder={currentBulkPhoneData.placeholder || "Phone number"}
-                            value={bulkPhone}
+                          <select
+                            className="product-bulk-phone-select-overlay"
+                            value={bulkPhoneCountry}
                             onChange={(e) => {
-                              setBulkPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
-                              if (bulkPhoneError) setBulkPhoneError("");
+                              setBulkPhoneCountry(e.target.value);
                               if (isBulkPhoneVerified) {
                                 setIsBulkPhoneVerified(false);
                                 setBulkPhoneVerificationToken("");
                               }
                             }}
-                            className="product-bulk-modal-phone-input"
-                          />
-                        </div>
-                        {Boolean(bulkPhone && !isBulkPhoneVerified) && (
-                          <button
-                            type="button"
-                            onClick={handleOpenBulkOtpModal}
-                            className="product-bulk-verify-wa-btn"
-                            title="Verify phone number via WhatsApp OTP"
+                            aria-label="Select Country Phone Code"
                           >
-                            <MessageCircle size={14} /> Verify via WhatsApp
-                          </button>
-                        )}
+                            {COUNTRY_PHONE_CODES.map((item) => (
+                              <option key={`${item.country}-${item.code}`} value={item.country}>
+                                {item.flag} {item.code} - {item.country}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          type="tel"
+                          required
+                          maxLength={16}
+                          placeholder={currentBulkPhoneData.placeholder || "Phone number"}
+                          value={bulkPhone}
+                          onChange={(e) => {
+                            setBulkPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
+                            if (bulkPhoneError) setBulkPhoneError("");
+                            if (isBulkPhoneVerified) {
+                              setIsBulkPhoneVerified(false);
+                              setBulkPhoneVerificationToken("");
+                            }
+                          }}
+                          className="product-bulk-modal-phone-input"
+                        />
                       </div>
-                      {bulkPhoneError && (
-                        <span className="product-bulk-field-error">
-                          {bulkPhoneError}
-                        </span>
+                      {Boolean(bulkPhone && !isBulkPhoneVerified) && (
+                        <button
+                          type="button"
+                          onClick={handleOpenBulkOtpModal}
+                          className="product-bulk-verify-wa-btn"
+                          title="Verify phone number via WhatsApp OTP"
+                        >
+                          <MessageCircle size={14} /> Verify via WhatsApp
+                        </button>
                       )}
                     </div>
+                    {bulkPhoneError && (
+                      <span className="product-bulk-field-error">
+                        {bulkPhoneError}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Row 3: Quantity Needed & Institution / School Name */}
+                  <div className="product-bulk-modal-row">
                     <div className="product-bulk-modal-col">
                       <label className="product-bulk-modal-label">Quantity Needed <span className="product-bulk-modal-req">*</span></label>
                       <input
@@ -2172,17 +2179,16 @@ function Product() {
                         className="product-bulk-modal-input"
                       />
                     </div>
-                  </div>
-
-                  <div style={{ marginBottom: "12px" }}>
-                    <label className="product-bulk-modal-label">Institution / School Name</label>
-                    <input
-                      type="text"
-                      value={bulkInst}
-                      onChange={(e) => setBulkInst(e.target.value)}
-                      placeholder="e.g. Sanskrit Academy / Public School"
-                      className="product-bulk-modal-input"
-                    />
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Institution / School Name</label>
+                      <input
+                        type="text"
+                        value={bulkInst}
+                        onChange={(e) => setBulkInst(e.target.value)}
+                        placeholder="e.g. Sanskrit Academy / Public School"
+                        className="product-bulk-modal-input"
+                      />
+                    </div>
                   </div>
 
                   <div style={{ marginBottom: "20px" }}>

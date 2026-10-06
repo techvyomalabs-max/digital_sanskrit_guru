@@ -13,6 +13,7 @@ const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/curre
 const { getProductPriceDetails, isInternationalCountry } = require("../utils/productPricing");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage, requireSuperAdmin } = require("../middleware/adminMiddleware");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
@@ -35,6 +36,15 @@ const {
 const { getTrackingDetails } = require("../utils/trackingService");
 const { orderRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const getRazorpayClient = require("../utils/razorpay");
+const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
+const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
+const { normalizeOrderItem } = require("../utils/orderItems");
+const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
+const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
+const { reserveStockForOrder, releaseStockForOrder } = require("../utils/stock");
+const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
+const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
+const { processGatewayRefund, previewRefund, RefundError } = require("../utils/refunds");
 
 const router = express.Router();
 
@@ -72,7 +82,7 @@ function verifyRazorpayPaymentSignature({ razorpayOrderId, razorpayPaymentId, ra
 }
 
 // GET /api/orders/audit-migration (Admin only)
-router.get("/audit-migration", protect, admin, async (req, res) => {
+router.get("/audit-migration", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const total = await Order.countDocuments();
     const emptyItemsCount = await Order.countDocuments({ items: { $size: 0 } });
@@ -172,70 +182,6 @@ const canRequestReturnForItem = (order, item) => {
   return msSinceDelivered <= RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 };
 
-// ── Stock helpers ────────────────────────────────────────────────────────────
-
-/**
- * Atomically decrement stock for each item in the order.
- * Uses bulkWrite with a $gte guard so stock can never go below 0.
- * Returns an array of product IDs that were out-of-stock (should be empty on success).
- */
-async function decrementStock(normalizedItems) {
-  const ops = normalizedItems.map((item) => ({
-    updateOne: {
-      filter: { _id: item.product, stock: { $gte: item.quantity } },
-      update: { $inc: { stock: -item.quantity } }
-    }
-  }));
-
-  const result = await Product.bulkWrite(ops, { ordered: false });
-  const modifiedCount = result.modifiedCount || 0;
-
-  if (modifiedCount < normalizedItems.length) {
-    // Some products didn't have enough stock — find which ones
-    const productIds = normalizedItems.map((i) => i.product);
-    const stockRecords = await Product.find({ _id: { $in: productIds } })
-      .select("_id name stock")
-      .lean();
-
-    const stockMap = new Map(stockRecords.map((p) => [String(p._id), p]));
-    const outOfStock = normalizedItems
-      .filter((item) => {
-        const record = stockMap.get(String(item.product));
-        return !record || Number(record.stock) < Number(item.quantity);
-      })
-      .map((item) => {
-        const record = stockMap.get(String(item.product));
-        return `${item.name} (available: ${record ? record.stock : 0}, requested: ${item.quantity})`;
-      });
-
-    return outOfStock;
-  }
-
-  return [];
-}
-
-/**
- * Restore stock for all items in a cancelled order.
- * Safe to call even if decrementStock was partial — $inc up is always safe.
- */
-async function restoreStockForOrder(order) {
-  const items = Array.isArray(order?.items) ? order.items : [];
-  if (items.length === 0) return;
-
-  const ops = items
-    .filter((item) => item.product && item.quantity > 0)
-    .map((item) => ({
-      updateOne: {
-        filter: { _id: item.product },
-        update: { $inc: { stock: item.quantity } }
-      }
-    }));
-
-  if (ops.length > 0) {
-    await Product.bulkWrite(ops, { ordered: false });
-  }
-}
-
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Helper to determine HSN/SAC based on product classification (matching invoicePdf.js)
@@ -289,207 +235,32 @@ router.post("/calculate-totals", protect, async (req, res) => {
     const shipping = req.body.shipping || {};
     const items = Array.isArray(req.body.items) ? req.body.items : [];
     const couponCode = String(req.body?.couponCode || "").trim().toUpperCase();
-    const shippingCountry = String(shipping?.country || "").trim();
-    const requestedProductIds = [...new Set(
-      items.map((item) => String(item?._id || item?.id || item?.product || "").trim()).filter(Boolean)
-    )];
+    const settings = (await StoreSettings.findOne().lean()) || {};
 
-    const products = await Product.find({ _id: { $in: requestedProductIds } })
-      .populate("bundleItems.product")
-      .lean();
-    const productsById = new Map(products.map((product) => [String(product._id), product]));
-    const settings =
-      (await StoreSettings.findOne()) || {
-        gstPercent: 0,
-        deliveryCharge: 0,
-        pricingMarkets: [],
-        internationalPricingDefaults: { currency: "USD" },
-        currencyConversionRates: {}
-      };
-    const pricingConfig = {
-      pricingMarkets: settings?.pricingMarkets || [],
-      internationalPricingDefaults: settings?.internationalPricingDefaults || {},
-      currencyConversionRates: settings?.currencyConversionRates || {}
-    };
-
-    const normalizedItems = items.reduce((acc, item) => {
-      const productId = String(item?._id || item?.id || item?.product || "").trim();
-      const product = productsById.get(productId);
-      if (!product) {
-        return acc;
-      }
-
-      const quantity = Math.max(1, Number(item?.quantity || 1));
-      const pricing = getProductPriceDetails(product, shippingCountry, pricingConfig);
-
-      acc.push({
-        product: productId,
-        _id: productId,
-        id: productId,
-        name: String(product?.name || item?.name || "").trim(),
-        image: String(product?.image || item?.image || "").trim(),
-        category: String(product?.category || item?.category || "General").trim() || "General",
-        format: String(item?.format || item?.selectedFormat || product?.format || "").trim(),
-        isDigital: Boolean(product?.isDigital || item?.isDigital),
-        quantity,
-        price: roundMoney(pricing.price),
-        currency: String(pricing.currency || "INR").trim().toUpperCase()
-      });
-      return acc;
-    }, []);
-
-    if (normalizedItems.length === 0) {
-      return res.status(400).json({ message: "No valid products found for this calculation." });
-    }
-
-    const isInternational = isInternationalCountry(shippingCountry);
-    if (isInternational && settings?.internationalDelivery?.enabled === false) {
-      const hasPhysicalItems = normalizedItems.some((item) => !isDigitalItem(item));
-      if (hasPhysicalItems) {
-        return res.status(400).json({
-          message: "Physical product delivery is currently disabled for international locations. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally."
-        });
-      }
-    }
-
-    const orderCurrency = normalizeCurrencyCode(
-      req.body?.currencyDisplay?.currency || normalizedItems[0]?.currency || "INR",
-      "INR"
-    );
-
-    const gstPercent = isInternational ? 0 : Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
-    const deliveryCharge = roundMoney(
-      convertCurrencyAmount(resolveDeliveryCharge(settings, shipping, normalizedItems), {
-        sourceCurrency: "INR",
-        currency: orderCurrency,
-        rates: settings?.currencyConversionRates || {}
-      })
-    );
-
-    let totalItemBase = 0;
-    let totalItemGst = 0;
-    normalizedItems.forEach((item) => {
-      const qty = Math.max(1, Number(item.quantity || 1));
-      const price = Number(item.price || 0);
-      const lineTotal = qty * price;
-      const hsnSac = getItemHsnSac(item);
-      const gstRate = hsnSac === "4901" ? 0 : gstPercent;
-      
-      const lineBase = Math.round((lineTotal / (1 + gstRate / 100)) * 100) / 100;
-      const gstAmountVal = Math.round((lineTotal - lineBase) * 100) / 100;
-      
-      totalItemBase += lineBase;
-      totalItemGst += gstAmountVal;
+    const totals = await computeOrderTotals({
+      items,
+      shipping,
+      couponCode,
+      userId: req.user,
+      settings
     });
-
-    const subtotal = roundMoney(totalItemBase);
-    const gstAmount = roundMoney(totalItemGst);
-    const grossTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
-
-    let discount = 0;
-    let appliedCouponCode = "";
-    if (couponCode) {
-      const coupon = await Coupon.findOne({ code: couponCode });
-      if (coupon && (!coupon.expiresAt || new Date() <= coupon.expiresAt)) {
-        if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
-          return res.status(400).json({ message: "You have already used this coupon code." });
-        }
-
-        if (coupon.assignedUserEmail) {
-          const user = await User.findById(req.user).select("email").lean();
-          if (String(coupon.assignedUserEmail).toLowerCase() !== String(user?.email || "").toLowerCase()) {
-            return res.status(400).json({ message: "This coupon is gifted/assigned to another user's account." });
-          }
-        }
-
-        if (Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0) {
-          const matchingItems = normalizedItems.filter((item) => {
-            const itemId = String(item.product || item._id || item.id || "");
-            return coupon.applicableProducts.some((pId) => String(pId) === itemId);
-          });
-
-          if (matchingItems.length === 0) {
-            return res.status(400).json({ message: "This coupon code is not applicable to the products in your order." });
-          }
-
-          const matchingTotal = matchingItems.reduce(
-            (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
-            0
-          );
-          const minOrder = roundMoney(
-            convertCurrencyAmount(Number(coupon.minOrder || 0), {
-              sourceCurrency: "INR",
-              currency: orderCurrency,
-              rates: settings?.currencyConversionRates || {}
-            })
-          );
-
-          if (matchingTotal < minOrder) {
-            return res.status(400).json({
-              message: `Minimum order for qualifying products is ${minOrder} ${orderCurrency}`
-            });
-          }
-
-          if (coupon.type === "percentage") {
-            discount = roundMoney((matchingTotal * Number(coupon.value || 0)) / 100);
-          } else if (coupon.type === "fixed") {
-            discount = roundMoney(
-              convertCurrencyAmount(Number(coupon.value || 0), {
-                sourceCurrency: "INR",
-                currency: orderCurrency,
-                rates: settings?.currencyConversionRates || {}
-              })
-            );
-          }
-
-          discount = Math.max(0, Math.min(matchingTotal, discount));
-          appliedCouponCode = couponCode;
-        } else {
-          const minOrder = roundMoney(
-            convertCurrencyAmount(Number(coupon.minOrder || 0), {
-              sourceCurrency: "INR",
-              currency: orderCurrency,
-              rates: settings?.currencyConversionRates || {}
-            })
-          );
-          if (grossTotal >= minOrder) {
-            if (coupon.type === "percentage") {
-              discount = roundMoney((grossTotal * Number(coupon.value || 0)) / 100);
-            } else if (coupon.type === "fixed") {
-              discount = roundMoney(
-                convertCurrencyAmount(Number(coupon.value || 0), {
-                  sourceCurrency: "INR",
-                  currency: orderCurrency,
-                  rates: settings?.currencyConversionRates || {}
-                })
-              );
-            }
-            discount = Math.max(0, Math.min(grossTotal, discount));
-            appliedCouponCode = couponCode;
-          } else {
-            return res.status(400).json({ message: `Minimum order ${minOrder} ${orderCurrency}` });
-          }
-        }
-      } else {
-        return res.status(400).json({ message: "Invalid or expired coupon code." });
-      }
-    }
-
-    const total = roundMoney(Math.max(0, grossTotal - discount));
 
     return res.json({
-      subtotal,
-      gstPercent,
-      gstAmount,
-      deliveryCharge,
-      discount,
-      total,
-      currency: orderCurrency,
-      couponCode: appliedCouponCode
+      subtotal: totals.subtotal,
+      gstPercent: totals.gstPercent,
+      gstAmount: totals.gstAmount,
+      deliveryCharge: totals.deliveryCharge,
+      discount: totals.discount,
+      total: totals.total,
+      currency: totals.orderCurrency,
+      couponCode: totals.appliedCouponCode,
+      chargeAmount: totals.chargeAmount,
+      chargeCurrency: totals.chargeCurrency
     });
   } catch (error) {
-    console.error("calculate-totals error:", error);
-    return res.status(500).json({ message: error.message || "Failed to calculate totals." });
+    console.error("[Order] calculate-totals error:", error);
+    const status = error instanceof OrderTotalsError || error?.status ? error.status : 500;
+    return res.status(status).json({ message: error.message || "Failed to calculate totals." });
   }
 });
 
@@ -556,405 +327,100 @@ const ensureGiftPassesForOrder = async (order) => {
 
 // Create order (logged-in user)
 router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res) => {
-  const shipping = req.body.shipping || {};
-  const items = Array.isArray(req.body.items) ? req.body.items : [];
-  const couponCode = String(req.body?.couponCode || "").trim().toUpperCase();
-  const shippingCountry = String(shipping?.country || "").trim();
-  const requestedProductIds = [...new Set(
-    items.map((item) => String(item?._id || item?.id || item?.product || "").trim()).filter(Boolean)
-  )];
-
-  const products = await Product.find({ _id: { $in: requestedProductIds } })
-    .populate("bundleItems.product")
-    .lean();
-  const productsById = new Map(products.map((product) => [String(product._id), product]));
-  const settings =
-    (await StoreSettings.findOne()) || {
-      gstPercent: 0,
-      deliveryCharge: 0,
-      pricingMarkets: [],
-      internationalPricingDefaults: { currency: "USD" },
-      currencyConversionRates: {}
-    };
-  const pricingConfig = {
-    pricingMarkets: settings?.pricingMarkets || [],
-    internationalPricingDefaults: settings?.internationalPricingDefaults || {},
-    currencyConversionRates: settings?.currencyConversionRates || {}
-  };
-
-  const normalizedItems = items.reduce((acc, item) => {
-    const productId = String(item?._id || item?.id || item?.product || "").trim();
-    const product = productsById.get(productId);
-    if (!product) {
-      return acc;
+  try {
+    const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
+    if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
+      return res.status(400).json({ message: "Invalid payment status." });
     }
 
-    const quantity = Math.max(1, Number(item?.quantity || 1));
-    const pricing = getProductPriceDetails(product, shippingCountry, pricingConfig);
+    const shipping = req.body.shipping || {};
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const couponCode = String(req.body?.couponCode || "").trim().toUpperCase();
+    const settings = (await StoreSettings.findOne().lean()) || {};
 
-    acc.push({
-      product: productId,
-      _id: productId,
-      id: productId,
-      name: String(product?.name || item?.name || "").trim(),
-      image: String(product?.image || item?.image || "").trim(),
-      category: String(product?.category || item?.category || "General").trim() || "General",
-      format: String(item?.format || item?.selectedFormat || product?.format || "").trim(),
-      isDigital: Boolean(product?.isDigital || item?.isDigital),
-      digitalType: String(product?.digitalType || item?.digitalType || "Web Version").trim(),
-      webReaderLink: String(product?.webReaderLink || item?.webReaderLink || "").trim(),
-      kindleLink: String(product?.kindleLink || item?.kindleLink || "").trim(),
-      kindleAsin: String(product?.kindleAsin || item?.kindleAsin || "").trim(),
-      digitalInstructions: String(product?.digitalInstructions || item?.digitalInstructions || "").trim(),
-      quantity,
-      price: roundMoney(pricing.price),
-      currency: String(pricing.currency || "INR").trim().toUpperCase(),
-      weight: Number(product?.weight || 0),
-      height: Number(product?.height || 0),
-      width: Number(product?.width || 0),
-      length: Number(product?.length || 0),
-      domesticPrice: roundMoney(pricing.domesticPrice),
-      internationalPrice: roundMoney(pricing.internationalPrice),
-      internationalCountryPrices: Array.isArray(product?.internationalCountryPrices)
-        ? product.internationalCountryPrices.map((entry) => ({
-            country: String(entry?.country || "").trim(),
-            price: roundMoney(Number(entry?.price || 0))
-          }))
-        : [],
-      marketPrices: Array.isArray(product?.marketPrices)
-        ? product.marketPrices.map((entry) => ({
-            market: String(entry?.market || "").trim(),
-            regularPrice: roundMoney(Number(entry?.regularPrice || 0)),
-            salePrice:
-              entry?.salePrice === null || entry?.salePrice === undefined
-                ? null
-                : roundMoney(Number(entry?.salePrice || 0)),
-            startDate: entry?.startDate || null,
-            endDate: entry?.endDate || null
-          }))
-        : [],
-      appliedPriceType: pricing.priceType,
-      matchedMarket: pricing.matchedMarket || "",
-      productType: String(product?.productType || "single"),
-      bundleItems: Array.isArray(product?.bundleItems)
-        ? product.bundleItems.map((bi) => {
-            const bp = bi.product;
-            return {
-              product: bp?._id ? String(bp._id) : String(bp),
-              name: bp?.name || "Product",
-              image: bp?.image || "",
-              quantity: Number(bi.quantity || 1),
-              isDigital: Boolean(bp?.isDigital),
-              digitalType: String(bp?.digitalType || "Web Version").trim(),
-              webReaderLink: String(bp?.webReaderLink || "").trim(),
-              kindleLink: String(bp?.kindleLink || "").trim(),
-              kindleAsin: String(bp?.kindleAsin || "").trim(),
-              digitalInstructions: String(bp?.digitalInstructions || "").trim()
-            };
-          })
-        : [],
-      deliveredAt: null,
-      returnRequest: {
-        status: "Not Requested",
-        requestedAt: null,
-        resolvedAt: null,
-        reason: ""
-      }
+    const totals = await computeOrderTotals({
+      items,
+      shipping,
+      couponCode,
+      userId: req.user,
+      settings
     });
-    return acc;
-  }, []);
 
-  if (normalizedItems.length === 0) {
-    return res.status(400).json({ message: "No valid products found for this order." });
-  }
-
-  const isInternationalOrderCheck = isInternationalCountry(shippingCountry);
-  if (isInternationalOrderCheck && settings?.internationalDelivery?.enabled === false) {
-    const hasPhysicalItems = normalizedItems.some((item) => !isDigitalItem(item));
-    if (hasPhysicalItems) {
+    if (req.body.total !== undefined && Math.abs(totals.total - Number(req.body.total)) > 0.05) {
       return res.status(400).json({
-        message: "Physical product delivery is currently disabled for international locations. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally."
+        message: `Order total mismatch. Server calculated: ${totals.total}, Client provided: ${req.body.total}`
       });
     }
-  }
 
-  // ── Stock check + atomic decrement ───────────────────────────────────────
-  // Only decrement for non-Failed orders (Failed = payment didn't go through,
-  // so we still record the attempt but don't hold stock).
-  const rawPaymentStatusEarly = String(req.body?.paymentStatus || "").trim();
-  if (!allowedPaymentStatuses.has(rawPaymentStatusEarly)) {
-    return res.status(400).json({ message: "Invalid payment status." });
-  }
+    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
 
-  if (rawPaymentStatusEarly !== "Failed") {
-    const outOfStock = await decrementStock(normalizedItems);
-    if (outOfStock.length > 0) {
-      return res.status(409).json({
-        message: "Some items are out of stock: " + outOfStock.join("; ")
-      });
-    }
-  }
-
-  const orderCurrency = normalizeCurrencyCode(
-    req.body?.currencyDisplay?.currency || normalizedItems[0]?.currency || "INR",
-    "INR"
-  );
-
-  const isInternational = isInternationalCountry(shippingCountry);
-  const gstPercent = isInternational ? 0 : Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
-  const deliveryCharge = roundMoney(
-    convertCurrencyAmount(resolveDeliveryCharge(settings, shipping, normalizedItems), {
-      sourceCurrency: "INR",
-      currency: orderCurrency,
-      rates: settings?.currencyConversionRates || {}
-    })
-  );
-
-  let totalItemBase = 0;
-  let totalItemGst = 0;
-  normalizedItems.forEach((item) => {
-    const qty = Math.max(1, Number(item.quantity || 1));
-    const price = Number(item.price || 0);
-    const lineTotal = qty * price;
-    const hsnSac = getItemHsnSac(item);
-    const gstRate = hsnSac === "4901" ? 0 : gstPercent;
-    
-    const lineBase = Math.round((lineTotal / (1 + gstRate / 100)) * 100) / 100;
-    const gstAmountVal = Math.round((lineTotal - lineBase) * 100) / 100;
-    
-    totalItemBase += lineBase;
-    totalItemGst += gstAmountVal;
-  });
-
-  const subtotal = roundMoney(totalItemBase);
-  const gstAmount = roundMoney(totalItemGst);
-  const grossTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
-
-  let discount = 0;
-  let appliedCouponCode = "";
-  if (couponCode) {
-    const coupon = await Coupon.findOne({ code: couponCode });
-    if (coupon && (!coupon.expiresAt || new Date() <= coupon.expiresAt)) {
-      // Check if active
-      if (coupon.isActive === false) {
-        await restoreStockForOrder({ items: normalizedItems });
-        return res.status(400).json({ message: "Coupon is inactive." });
+    let verifiedPayment = null;
+    if (rawPaymentStatus === "Paid") {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ message: "Payment reference is required to place paid order." });
       }
 
-      // Check if usage limit is reached
-      if (coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.usageCount >= coupon.usageLimit) {
-        await restoreStockForOrder({ items: normalizedItems });
-        return res.status(400).json({ message: "Coupon usage limit has been reached." });
+      if (await Order.exists({ "paymentMeta.razorpayPaymentId": razorpayPaymentId })) {
+        return res.status(409).json({ message: "Payment already used" });
       }
 
-      // 1. Check if user already used this coupon
-      if (coupon.usedBy && coupon.usedBy.some((uId) => String(uId) === String(req.user))) {
-        await restoreStockForOrder({ items: normalizedItems });
-        return res.status(400).json({ message: "You have already used this coupon code." });
-      }
-
-      // 2. Check if user email matches assignment
-      if (coupon.assignedUserEmail) {
-        const user = await User.findById(req.user).select("email").lean();
-        if (String(coupon.assignedUserEmail).toLowerCase() !== String(user?.email || "").toLowerCase()) {
-          await restoreStockForOrder({ items: normalizedItems });
-          return res.status(400).json({ message: "This coupon is gifted/assigned to another user's account." });
-        }
-      }
-
-      // 3. Product-restricted check or General check
-      if (Array.isArray(coupon.applicableProducts) && coupon.applicableProducts.length > 0) {
-        const matchingItems = normalizedItems.filter((item) => {
-          const itemId = String(item.product || item._id || item.id || "");
-          return coupon.applicableProducts.some((pId) => String(pId) === itemId);
-        });
-
-        if (matchingItems.length === 0) {
-          await restoreStockForOrder({ items: normalizedItems });
-          return res.status(400).json({ message: "This coupon code is not applicable to the products in your order." });
-        }
-
-        const matchingTotal = matchingItems.reduce(
-          (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
-          0
-        );
-        const minOrder = roundMoney(
-          convertCurrencyAmount(Number(coupon.minOrder || 0), {
-            sourceCurrency: "INR",
-            currency: orderCurrency,
-            rates: settings?.currencyConversionRates || {}
-          })
-        );
-
-        if (matchingTotal < minOrder) {
-          await restoreStockForOrder({ items: normalizedItems });
-          return res.status(400).json({
-            message: `Minimum order for qualifying products is ${minOrder} ${orderCurrency}`
-          });
-        }
-
-        if (coupon.type === "percentage") {
-          discount = roundMoney((matchingTotal * Number(coupon.value || 0)) / 100);
-        } else if (coupon.type === "fixed") {
-          discount = roundMoney(
-            convertCurrencyAmount(Number(coupon.value || 0), {
-              sourceCurrency: "INR",
-              currency: orderCurrency,
-              rates: settings?.currencyConversionRates || {}
-            })
-          );
-        }
-
-        discount = Math.max(0, Math.min(matchingTotal, discount));
-        appliedCouponCode = couponCode;
-      } else {
-        const minOrder = roundMoney(
-          convertCurrencyAmount(Number(coupon.minOrder || 0), {
-            sourceCurrency: "INR",
-            currency: orderCurrency,
-            rates: settings?.currencyConversionRates || {}
-          })
-        );
-        if (grossTotal >= minOrder) {
-          if (coupon.type === "percentage") {
-            discount = roundMoney((grossTotal * Number(coupon.value || 0)) / 100);
-          } else if (coupon.type === "fixed") {
-            discount = roundMoney(
-              convertCurrencyAmount(Number(coupon.value || 0), {
-                sourceCurrency: "INR",
-                currency: orderCurrency,
-                rates: settings?.currencyConversionRates || {}
-              })
-            );
-          }
-          discount = Math.max(0, Math.min(grossTotal, discount));
-          appliedCouponCode = couponCode;
-        } else {
-          await restoreStockForOrder({ items: normalizedItems });
-          return res.status(400).json({ message: `Minimum order ${minOrder} ${orderCurrency}` });
-        }
-      }
-    } else {
-      await restoreStockForOrder({ items: normalizedItems });
-      return res.status(400).json({ message: "Invalid or expired coupon code." });
-    }
-  }
-
-  const total = roundMoney(Math.max(0, grossTotal - discount));
-
-  if (req.body.total !== undefined && Math.abs(total - Number(req.body.total)) > 0.05) {
-    // Roll back stock since we already decremented it
-    await restoreStockForOrder({ items: normalizedItems });
-    return res.status(400).json({
-      message: `Order total mismatch. Server calculated: ${total}, Client provided: ${req.body.total}`
-    });
-  }
-
-  const rawPaymentStatus = rawPaymentStatusEarly;
-
-  const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
-  const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
-  const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
-
-  if (rawPaymentStatus === "Paid") {
-    if (!razorpayOrderId || !razorpayPaymentId) {
-      await restoreStockForOrder({ items: normalizedItems });
-      return res.status(400).json({ message: "Payment reference is required to place paid order." });
-    }
-
-    const userDoc = await User.findById(req.user).select("isAdmin").lean();
-    const isAdmin = Boolean(userDoc?.isAdmin);
-
-    if (!isAdmin) {
-      const isValid = verifyRazorpayPaymentSignature({
+      const v = await verifyRazorpayPaymentForOrder({
         razorpayOrderId,
         razorpayPaymentId,
-        razorpaySignature
+        razorpaySignature,
+        expectedAmount: totals.chargeAmount,
+        expectedCurrency: totals.chargeCurrency
       });
 
-      if (!isValid) {
-        await restoreStockForOrder({ items: normalizedItems });
-        return res.status(400).json({ message: "Payment verification signature is invalid." });
+      if (!v.ok) {
+        return sendPaymentVerificationError(res, v, razorpayPaymentId);
       }
+      verifiedPayment = v.payment;
     }
-  }
 
-  const requestedCurrency = String(req.body?.currencyDisplay?.currency || "")
-    .trim()
-    .toUpperCase();
-  const requestedDisplayAmount = Number(req.body?.currencyDisplay?.amount);
-  const requestedDetectedCountry = String(req.body?.currencyDisplay?.detectedCountry || "")
-    .trim()
-    .toUpperCase();
+    const requestedBilling = req.body.billing || req.body.shipping || {};
+    const isDigitalOnly = totals.normalizedItems.every((item) => item.isDigital === true);
+    const initialStatus = rawPaymentStatus === "Paid" && isDigitalOnly ? "Completed" : "Pending";
 
-  const requestedBilling = req.body.billing || req.body.shipping || {};
-
-  const isDigitalOnlyOrder = normalizedItems.length > 0 && normalizedItems.every((item) =>
-    Boolean(
-      item.isDigital ||
-      item.webReaderLink ||
-      item.kindleLink ||
-      String(item.name || "").toLowerCase().includes("web") ||
-      String(item.name || "").toLowerCase().includes("kindle") ||
-      String(item.name || "").toLowerCase().includes("flipbook") ||
-      String(item.format || "").toLowerCase().includes("web") ||
-      String(item.format || "").toLowerCase().includes("flipbook")
-    )
-  );
-
-  const initialOrderStatus = rawPaymentStatus === "Paid" && isDigitalOnlyOrder
-    ? "Completed"
-    : rawPaymentStatus === "Paid"
-    ? "Pending"
-    : "On Hold";
-
-  const warehouseState = String(settings?.warehouseAddress?.state || "Karnataka").trim().toLowerCase();
-  const billingState = String(requestedBilling?.state || shipping?.state || "Karnataka").trim().toLowerCase();
-  const isLocal = billingState === warehouseState;
-
-  let cgstPercent = 0;
-  let sgstPercent = 0;
-  let igstPercent = 0;
-  let cgstAmount = 0;
-  let sgstAmount = 0;
-  let igstAmount = 0;
-
-  if (isLocal) {
-    cgstPercent = gstPercent / 2;
-    sgstPercent = gstPercent / 2;
-    cgstAmount = roundMoney(gstAmount / 2);
-    sgstAmount = roundMoney(gstAmount / 2);
-  } else {
-    igstPercent = gstPercent;
-    igstAmount = gstAmount;
-  }
-
-  let order;
-  try {
-    order = await Order.create({
+    const order = await Order.create({
       user: req.user,
-      items: normalizedItems,
-      subtotal,
-      gstPercent,
-      gstAmount,
-      couponCode: appliedCouponCode,
-      discount,
-      deliveryCharge,
-      total,
-      orderStatus: initialOrderStatus,
+      items: totals.normalizedItems,
+      subtotal: totals.subtotal,
+      gstPercent: totals.gstPercent,
+      gstAmount: totals.gstAmount,
+      couponCode: totals.appliedCouponCode,
+      discount: totals.discount,
+      deliveryCharge: totals.deliveryCharge,
+      total: totals.total,
+      fxRateToInr: totals.fxRateToInr,
+      totalInInr: totals.totalInInr,
+      taxDetails: totals.taxDetails,
+      sellerDetails: {
+        legalName: String(settings?.businessDetails?.legalName || "Digital Sanskrit Guru"),
+        gstin: String(settings?.businessDetails?.gstin || ""),
+        address: String(settings?.businessDetails?.address || ""),
+        state: String(settings?.businessDetails?.state || ""),
+        stateCode: String(settings?.businessDetails?.stateCode || ""),
+        email: String(settings?.businessDetails?.email || "")
+      },
+      status: initialStatus,
       paymentStatus: rawPaymentStatus,
       paymentMeta: {
-        razorpayOrderId,
-        razorpayPaymentId,
-        paidAt: rawPaymentStatus === "Paid" ? new Date() : null
+        razorpayOrderId: verifiedPayment ? razorpayOrderId : "",
+        razorpayPaymentId: verifiedPayment ? razorpayPaymentId : "",
+        paidAt: verifiedPayment ? new Date() : null,
+        paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : null,
+        paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : ""
       },
       isGift: req.body?.isGift === true,
       giftRecipientEmail: req.body?.isGift === true ? String(req.body?.giftRecipientEmail || "").trim() : "",
       refundStatus: "Not Applicable",
       currencyDisplay: {
-        currency: requestedCurrency || orderCurrency,
-        amount: Number.isFinite(requestedDisplayAmount) ? requestedDisplayAmount : null,
-        detectedCountry: requestedDetectedCountry
+        currency: totals.orderCurrency,
+        amount: totals.total,
+        detectedCountry: String(req.body?.currencyDisplay?.detectedCountry || "").toUpperCase()
       },
       billing: {
         name: requestedBilling.name || "",
@@ -976,52 +442,46 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         country: shipping.country || "",
         latitude: shipping.latitude === null || shipping.latitude === undefined ? null : Number(shipping.latitude),
         longitude: shipping.longitude === null || shipping.longitude === undefined ? null : Number(shipping.longitude)
-      },
-      taxDetails: {
-        hsnCode: "4901",
-        sacCode: "9984",
-        cgstPercent,
-        sgstPercent,
-        igstPercent,
-        cgstAmount,
-        sgstAmount,
-        igstAmount
       }
     });
-  } catch (createErr) {
-    // Order save failed — restore stock so it isn't permanently lost
-    await restoreStockForOrder({ items: normalizedItems });
-    throw createErr;
-  }
 
-  // Record coupon usage
-  if (order && appliedCouponCode) {
-    await Coupon.updateOne(
-      { code: appliedCouponCode },
-      { 
-        $addToSet: { usedBy: req.user },
-        $inc: { usageCount: 1 }
+    if (rawPaymentStatus === "Paid") {
+      const stockRes = await reserveStockForOrder(order._id);
+      if (stockRes && !stockRes.ok) {
+        console.warn(`[Order] Oversold warning for order ${order._id}:`, stockRes.outOfStock);
+        await Order.updateOne({ _id: order._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
       }
-    );
-  }
+      if (totals.appliedCouponCode) {
+        const claimed = await claimCoupon({ code: totals.appliedCouponCode, userId: req.user });
+        if (claimed) {
+          order.couponClaimed = true;
+          await Order.updateOne({ _id: order._id }, { $set: { couponClaimed: true } });
+        }
+      }
+      if (order.isGift) {
+        await issueGiftPassesForOrder(order._id);
+      }
+    }
 
-  await ensureGiftPassesForOrder(order);
-
-  res.json(order);
-
-  // ── Fire-and-forget: order confirmation push + email (only for paid orders) ─
-  if (rawPaymentStatus === "Paid") {
     fireNotifications(async () => {
       const user = await User.findById(req.user).select("name email").lean();
       if (!user) return;
-      await sendPushToUser(req.user, orderPayload(order, "placed"));
-      await sendOrderConfirmation(order, user);
-    });
-  }
 
-  // ── Fire-and-forget: low-stock alerts after stock decrement ───────────────
-  if (rawPaymentStatus !== "Failed") {
-    fireNotifications(() => fireLowStockAlerts(normalizedItems));
+      if (rawPaymentStatus === "Paid") {
+        await sendPushToUser(req.user, orderPayload(order, "placed"));
+        await sendOrderConfirmation(order, user);
+        await fireLowStockAlerts(totals.normalizedItems);
+      }
+    });
+
+    return res.status(201).json(serializeOrderForOwner(order));
+  } catch (err) {
+    console.error("[Order] Create order error:", err.message);
+    if (isDuplicatePaymentIdError(err)) {
+      return res.status(409).json({ message: "Payment already used" });
+    }
+    const status = err instanceof OrderTotalsError || err?.status ? err.status : 500;
+    return res.status(status).json({ message: err.message || "Failed to place order." });
   }
 });
 
@@ -1067,7 +527,7 @@ const autoCompletePaidDigitalOrders = async (orders) => {
 };
 
 // Get all orders (admin only)
-router.get("/", protect, admin, async (req, res) => {
+router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
     const rates = settings?.currencyConversionRates || {};
@@ -1107,24 +567,27 @@ router.get("/", protect, admin, async (req, res) => {
     const fromDateTime = req.query.fromDateTime;
     const toDateTime = req.query.toDateTime;
 
+    const escapeRegex = (str) => String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     // 1. Build base query (matching search text and date range)
     let baseQuery = {};
 
     if (searchText) {
+      const safeSearch = escapeRegex(searchText);
       // Find matching users first (for user.name and user.email search)
       const matchingUsers = await User.find({
         $or: [
-          { name: { $regex: searchText, $options: "i" } },
-          { email: { $regex: searchText, $options: "i" } }
+          { name: { $regex: safeSearch, $options: "i" } },
+          { email: { $regex: safeSearch, $options: "i" } }
         ]
       }).select("_id");
       const userIds = matchingUsers.map((u) => u._id);
 
       const conditions = [
-        { "billing.name": { $regex: searchText, $options: "i" } },
-        { "billing.email": { $regex: searchText, $options: "i" } },
-        { "shipping.name": { $regex: searchText, $options: "i" } },
-        { "items.name": { $regex: searchText, $options: "i" } }
+        { "billing.name": { $regex: safeSearch, $options: "i" } },
+        { "billing.email": { $regex: safeSearch, $options: "i" } },
+        { "shipping.name": { $regex: safeSearch, $options: "i" } },
+        { "items.name": { $regex: safeSearch, $options: "i" } }
       ];
 
       if (mongoose.Types.ObjectId.isValid(searchText)) {
@@ -1288,7 +751,7 @@ router.get("/", protect, admin, async (req, res) => {
 });
 
 // Sales Analytics (Admin only)
-router.get("/analytics/sales", protect, admin, async (req, res) => {
+router.get("/analytics/sales", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const orders = await Order.find({ paymentStatus: "Paid" }).lean();
     
@@ -1388,7 +851,7 @@ router.get("/analytics/sales", protect, admin, async (req, res) => {
 });
 
 // Financial Analytics (Admin only)
-router.get("/analytics/finance", protect, admin, async (req, res) => {
+router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const settings = await StoreSettings.findOne().select("warehouseLocation").lean();
     const warehouseState = String(settings?.warehouseLocation?.state || "Karnataka").trim().toLowerCase();
@@ -1519,7 +982,7 @@ router.get("/analytics/finance", protect, admin, async (req, res) => {
 });
 
 // UPDATE order status (ADMIN)
-router.put("/:id/status", protect, admin, async (req, res) => {
+router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const statusMap = {
     pending: "Pending",
@@ -1585,17 +1048,11 @@ router.put("/:id/status", protect, admin, async (req, res) => {
   order.lastUpdatedAt = new Date();
   const updated = await order.save();
 
-  // Restore stock when admin cancels an order that was still holding stock
-  if (normalizedStatus === "Cancelled" && stockHoldingStates.has(previousStatus)) {
-    await restoreStockForOrder(updated);
-  }
-
-  // Restore coupon eligibility on cancellation
-  if (normalizedStatus === "Cancelled" && updated.couponCode) {
-    await Coupon.updateOne(
-      { code: updated.couponCode.toUpperCase() },
-      { $pull: { usedBy: updated.user } }
-    );
+  // Restore stock, coupon eligibility, and revoke gift passes on cancellation
+  if (normalizedStatus === "Cancelled") {
+    await releaseStockForOrder(updated);
+    await releaseCouponForOrder(updated);
+    await revokeGiftPassesForOrder(updated);
   }
 
   await logAdminAction({
@@ -1665,18 +1122,12 @@ router.put("/:id/cancel", protect, async (req, res) => {
 
   const updated = await order.save();
 
-  // Restore stock — user can only cancel Pending orders, so stock was held
-  await restoreStockForOrder(updated);
+  // Restore stock, coupon eligibility, and revoke any issued gift passes
+  await releaseStockForOrder(updated);
+  await releaseCouponForOrder(updated);
+  await revokeGiftPassesForOrder(updated);
 
-  // Restore coupon eligibility on cancellation
-  if (updated.couponCode) {
-    await Coupon.updateOne(
-      { code: updated.couponCode.toUpperCase() },
-      { $pull: { usedBy: req.user } }
-    );
-  }
-
-  res.json(updated);
+  res.json(serializeOrderForOwner(updated, req.user));
 });
 
 router.put("/:id/payment-status", protect, async (req, res) => {
@@ -1692,26 +1143,64 @@ router.put("/:id/payment-status", protect, async (req, res) => {
   }
 
   const isOwner = String(order.user) === String(req.user);
-  const userDoc = await User.findById(req.user).select("isAdmin").lean();
-  const isAdmin = Boolean(userDoc?.isAdmin);
+  let isAdmin = false;
+  let isSuperAdmin = false;
 
-  if (!isOwner && !isAdmin) {
-    return res.status(403).json({ message: "You can only update your own orders." });
+  if (!isOwner) {
+    const userDoc = await User.findById(req.user).select("isAdmin adminLevel adminRole allowedPages").lean();
+    isAdmin = Boolean(userDoc?.isAdmin);
+    isSuperAdmin = isAdmin && Number(userDoc?.adminLevel) === 1;
+
+    if (!isAdmin) {
+      return res.status(403).json({ message: "You can only update your own orders." });
+    }
+
+    // Changing payment status directly without payment verification is restricted to Level 1 Super Admins
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        message: "Access denied. Only 1st Level Super Admins can manually override order payment status."
+      });
+    }
   }
 
-  if (rawPaymentStatus === "Paid" && !isAdmin) {
-    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
-    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
-    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
+  if (isOwner && (order.paymentStatus === "Paid" || order.paymentStatus === "Refunded")) {
+    return res.status(400).json({ message: "Paid orders cannot have their payment status modified." });
+  }
 
-    const isValid = verifyRazorpayPaymentSignature({
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    });
+  const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+  const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+  const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
 
-    if (!isValid) {
-      return res.status(400).json({ message: "Invalid payment verification signature." });
+  let verifiedPayment = null;
+  if (rawPaymentStatus === "Paid") {
+    // If the customer (owner) is paying, Razorpay payment verification is strictly required
+    if (isOwner) {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ message: "Payment reference is required." });
+      }
+      if (await Order.exists({ _id: { $ne: order._id }, "paymentMeta.razorpayPaymentId": razorpayPaymentId })) {
+        return res.status(409).json({ message: "Payment already used" });
+      }
+
+      const ic = resolveItemsCurrency(order.items);
+      const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
+      const charge = getSettlementCharge({
+        total: order.total,
+        orderCurrency: ic.ok ? ic.currency : normalizeCurrencyCode(order.currencyDisplay?.currency, "INR"),
+        rates: s?.currencyConversionRates || {}
+      });
+
+      const v = await verifyRazorpayPaymentForOrder({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        expectedAmount: charge.amount,
+        expectedCurrency: charge.currency
+      });
+      if (!v.ok) {
+        return sendPaymentVerificationError(res, v, razorpayPaymentId);
+      }
+      verifiedPayment = v.payment;
     }
   }
 
@@ -1719,9 +1208,13 @@ router.put("/:id/payment-status", protect, async (req, res) => {
   order.paymentStatus = rawPaymentStatus;
   if (rawPaymentStatus === "Paid") {
     order.paymentMeta = {
-      razorpayOrderId: String(req.body?.razorpayOrderId || ""),
-      razorpayPaymentId: String(req.body?.razorpayPaymentId || ""),
-      paidAt: new Date()
+      ...(order.paymentMeta || {}),
+      razorpayOrderId: razorpayOrderId || order.paymentMeta?.razorpayOrderId || "",
+      razorpayPaymentId: razorpayPaymentId || order.paymentMeta?.razorpayPaymentId || "",
+      razorpaySignature: razorpaySignature || order.paymentMeta?.razorpaySignature || "",
+      paidAt: order.paymentMeta?.paidAt || new Date(),
+      paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : order.paymentMeta?.paidAmountMinor || null,
+      paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : order.paymentMeta?.paidCurrency || ""
     };
 
     const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
@@ -1738,13 +1231,56 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     );
 
     if (isDigitalOnly) {
-      order.orderStatus = "Completed";
+      order.status = "Completed";
+    }
+
+    if (order.couponCode && !order.couponClaimed) {
+      try {
+        const claimed = await claimCoupon({ code: order.couponCode, userId: order.user });
+        if (claimed) {
+          order.couponClaimed = true;
+        }
+      } catch (couponErr) {
+        console.warn("[Order] Coupon claim warning on retry:", couponErr.message);
+      }
     }
   }
 
-  const updated = await order.save();
-  await ensureGiftPassesForOrder(updated);
-  res.json(updated);
+  let updated;
+  try {
+    updated = await order.save();
+  } catch (err) {
+    if (isDuplicatePaymentIdError(err)) {
+      return res.status(409).json({ message: "This payment reference has already been applied to another order." });
+    }
+    throw err;
+  }
+
+  if (rawPaymentStatus === "Paid") {
+    const stockRes = await reserveStockForOrder(updated._id);
+    if (stockRes && !stockRes.ok) {
+      console.warn(`[Order] Oversold warning for order ${updated._id}:`, stockRes.outOfStock);
+      await Order.updateOne({ _id: updated._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
+    }
+    await issueGiftPassesForOrder(updated._id);
+  }
+
+  if (!isOwner && isAdmin) {
+    await logAdminAction({
+      req,
+      action: "order-payment-status-override",
+      entityType: "order",
+      entityId: String(order._id),
+      entityLabel: String(order._id),
+      summary: `Manual payment status override for order ${String(order._id).slice(-6)}: ${previousPaymentStatus} -> ${rawPaymentStatus}`,
+      details: {
+        previousPaymentStatus,
+        nextPaymentStatus: rawPaymentStatus
+      }
+    });
+  }
+
+  res.json(serializeOrderForOwner(updated, req.user));
 
   // ── Fire-and-forget: order confirmation push + email if payment just succeeded ─
   if (rawPaymentStatus === "Paid" && previousPaymentStatus !== "Paid") {
@@ -1789,10 +1325,10 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
 
   order.markModified("items");
   const updated = await order.save();
-  res.json(updated);
+  res.json(serializeOrderForOwner(updated, req.user));
 });
 
-router.put("/:id/refund-status", protect, admin, async (req, res) => {
+router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const refundStatus = String(req.body?.refundStatus || "").trim();
   if (!allowedRefundStatuses.has(refundStatus)) {
@@ -1810,66 +1346,51 @@ router.put("/:id/refund-status", protect, admin, async (req, res) => {
     return res.status(400).json({ message: "This order has already been refunded. Completed refunds cannot be changed." });
   }
 
-  const isCancelledAndPaid = String(order.status || "").trim() === "Cancelled" && String(order.paymentStatus || "").trim() === "Paid";
-  const isCancelled = String(order.status || "").trim() === "Cancelled";
-  const hasActiveRefund = String(order.refundStatus || "").trim() !== "Not Applicable";
-
-  if (!isCancelled && !hasActiveRefund && String(order.paymentStatus || "").trim() !== "Paid") {
-    return res.status(400).json({ message: "Refund status can be updated only for paid, cancelled, or return-requested orders." });
-  }
-
-  // If marking as Refunded and order was paid through Razorpay, attempt automatic gateway refund
-  let razorpayRefundId = "";
-  const razorpayPaymentId = String(order?.paymentMeta?.razorpayPaymentId || "").trim();
-  const isManualOnly = Boolean(req.body?.manualRefund || req.body?.forceManual);
-
-  if (refundStatus === "Refunded" && razorpayPaymentId && !isManualOnly && !order?.paymentMeta?.razorpayRefundId) {
+  // If refund requested via gateway
+  if (refundStatus === "Refunded" || Number(req.body?.refundAmount) > 0) {
     try {
-      const razorpay = getRazorpayClient();
-      
-      // Check payment status on Razorpay. If authorized (uncaptured), capture it first so Razorpay allows refund
-      const paymentObj = await razorpay.payments.fetch(razorpayPaymentId);
-      if (paymentObj && paymentObj.status === "authorized") {
-        await razorpay.payments.capture(razorpayPaymentId, paymentObj.amount, paymentObj.currency || "INR");
-      }
+      const refundResult = await processGatewayRefund({
+        orderId: req.params.id,
+        refundAmount: req.body?.refundAmount,
+        reason: req.body?.reason || "Admin processed refund",
+        actor,
+        isManualOnly: Boolean(req.body?.manualRefund || req.body?.forceManual),
+        forceManual: Boolean(req.body?.forceManual)
+      });
 
-      const customAmount = Number(req.body?.refundAmount);
-      const amountInINR = Number.isFinite(customAmount) && customAmount > 0
-        ? customAmount
-        : Number(order.total || 0);
+      await logAdminAction({
+        req,
+        action: "order-refund-updated",
+        entityType: "order",
+        entityId: String(order._id),
+        entityLabel: String(order._id),
+        summary: `Processed refund of ₹${refundResult.refundAmount} for order ${String(order._id).slice(-6)}: ${previousRefundStatus} -> ${refundResult.refundStatus}`,
+        details: {
+          previousRefundStatus,
+          nextRefundStatus: refundResult.refundStatus,
+          refundAmount: refundResult.refundAmount,
+          razorpayRefundId: refundResult.razorpayRefundId
+        }
+      });
 
-      const amountInPaise = Math.round(amountInINR * 100);
-
-      if (amountInPaise > 0) {
-        const refundResponse = await razorpay.payments.refund(razorpayPaymentId, {
-          amount: amountInPaise,
-          notes: {
-            orderId: String(order._id),
-            orderNumber: String(order.invoiceNumber || String(order._id).slice(-6)),
-            reason: String(req.body?.reason || "Cancelled order refund")
-          }
-        });
-        razorpayRefundId = String(refundResponse?.id || "");
-      }
-    } catch (razorErr) {
-      console.error("Razorpay automated refund error:", razorErr);
-      const description = razorErr?.error?.description || razorErr?.message || "Razorpay API refund error";
-
-      // If Razorpay API returns an error and admin has not explicitly forced manual override:
-      if (!req.body?.forceManual) {
-        return res.status(400).json({
-          message: `Razorpay Refund Failed: ${description}`,
-          error: description,
-          canForceManual: true
+      if (previousRefundStatus !== refundResult.refundStatus) {
+        fireNotifications(async () => {
+          const populatedOrder = await Order.findById(order._id).populate("user", "name email").lean();
+          if (!populatedOrder?.user) return;
+          await sendRefundStatusUpdate(refundResult.order, populatedOrder.user, refundResult.refundStatus);
         });
       }
+
+      return res.json(refundResult.order);
+    } catch (err) {
+      if (err instanceof RefundError) {
+        return res.status(err.statusCode).json({
+          message: err.message,
+          canForceManual: Boolean(err.details?.canForceManual)
+        });
+      }
+      return res.status(500).json({ message: err.message || "Failed to process refund." });
     }
-  }
-
-  if (razorpayRefundId) {
-    if (!order.paymentMeta) order.paymentMeta = {};
-    order.paymentMeta.razorpayRefundId = razorpayRefundId;
-    order.paymentMeta.refundedAt = new Date();
   }
 
   order.refundStatus = refundStatus;
@@ -1884,17 +1405,15 @@ router.put("/:id/refund-status", protect, admin, async (req, res) => {
     entityType: "order",
     entityId: String(updated._id || ""),
     entityLabel: String(updated._id || ""),
-    summary: `Updated refund for order ${String(updated._id || "").slice(-6)}: ${previousRefundStatus} -> ${refundStatus}${razorpayRefundId ? ` (Razorpay ID: ${razorpayRefundId})` : ""}`,
+    summary: `Updated refund status for order ${String(updated._id || "").slice(-6)}: ${previousRefundStatus} -> ${refundStatus}`,
     details: {
       previousRefundStatus,
-      nextRefundStatus: refundStatus,
-      razorpayRefundId: razorpayRefundId || order?.paymentMeta?.razorpayRefundId || null
+      nextRefundStatus: refundStatus
     }
   });
 
   res.json(updated);
 
-  // Send customer email notification if status changed to an active refund status
   if (previousRefundStatus !== refundStatus && ["Processing", "Refunded", "Rejected"].includes(refundStatus)) {
     fireNotifications(async () => {
       const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
@@ -1904,7 +1423,7 @@ router.put("/:id/refund-status", protect, admin, async (req, res) => {
   }
 });
 
-router.put("/:id/items/:itemId/return-status", protect, admin, async (req, res) => {
+router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const returnStatus = String(req.body?.returnStatus || "").trim();
   const adminReason = String(req.body?.adminReason || "").trim();
@@ -2030,7 +1549,15 @@ router.get("/my", protect, async (req, res) => {
       .populate("product")
       .lean();
 
+    const redeemedProductMapByOrder = new Map();
     if (redeemedPasses.length > 0) {
+      redeemedPasses.forEach((gp) => {
+        const oId = String(gp.order);
+        if (!redeemedProductMapByOrder.has(oId)) {
+          redeemedProductMapByOrder.set(oId, new Set());
+        }
+        redeemedProductMapByOrder.get(oId).add(String(gp.product?._id || gp.product));
+      });
       const redeemedOrderIds = redeemedPasses.map((gp) => String(gp.order));
       const existingOrderIds = new Set(orders.map((o) => String(o._id)));
       const missingOrderIds = redeemedOrderIds.filter((id) => !existingOrderIds.has(id));
@@ -2122,7 +1649,12 @@ router.get("/my", protect, async (req, res) => {
       });
     }
 
-    res.json(orders);
+    const serializedOrders = orders.map((o) => {
+      const oId = String(o._id);
+      const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
+      return serializeOrderForOwner(o, req.user, { redeemedProductIds });
+    });
+    res.json(serializedOrders);
   } catch (err) {
     console.error("Failed to load user orders:", err);
     res.status(500).json({ message: "Failed to load orders" });
@@ -2130,7 +1662,7 @@ router.get("/my", protect, async (req, res) => {
 });
 
 // Get single order (admin only)
-router.get("/:id", protect, admin, async (req, res) => {
+router.get("/:id", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const order = await Order.findById(req.params.id).populate("user", "name email").lean();
 
   if (!order) {
@@ -2164,220 +1696,26 @@ router.get("/:id/tracking", protect, async (req, res) => {
 
 // POST /api/orders/direct-buy (PUBLIC)
 router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res) => {
-  const shipping = req.body.shipping || {};
-  const items = Array.isArray(req.body.items) ? req.body.items : [];
-  const shippingCountry = String(shipping?.country || "").trim();
-  const requestedProductIds = [...new Set(
-    items.map((item) => String(item?._id || item?.id || item?.product || "").trim()).filter(Boolean)
-  )];
-
-  if (requestedProductIds.length === 0) {
-    return res.status(400).json({ message: "No products specified." });
-  }
-
-  const products = await Product.find({ _id: { $in: requestedProductIds } })
-    .populate("bundleItems.product")
-    .lean();
-  const productsById = new Map(products.map((product) => [String(product._id), product]));
-  
-  const settings =
-    (await StoreSettings.findOne()) || {
-      gstPercent: 0,
-      deliveryCharge: 0,
-      pricingMarkets: [],
-      internationalPricingDefaults: { currency: "USD" },
-      currencyConversionRates: {}
-    };
-  const pricingConfig = {
-    pricingMarkets: settings?.pricingMarkets || [],
-    internationalPricingDefaults: settings?.internationalPricingDefaults || {},
-    currencyConversionRates: settings?.currencyConversionRates || {}
-  };
-
-  const normalizedItems = items.reduce((acc, item) => {
-    const productId = String(item?._id || item?.id || item?.product || "").trim();
-    const product = productsById.get(productId);
-    if (!product) return acc;
-
-    const quantity = Math.max(1, Number(item?.quantity || 1));
-    const pricing = getProductPriceDetails(product, shippingCountry, pricingConfig);
-
-    acc.push({
-      product: productId,
-      _id: productId,
-      id: productId,
-      name: String(product?.name || item?.name || "").trim(),
-      image: String(product?.image || item?.image || "").trim(),
-      category: String(product?.category || item?.category || "General").trim() || "General",
-      format: String(item?.format || item?.selectedFormat || product?.format || "").trim(),
-      isDigital: Boolean(product?.isDigital || item?.isDigital),
-      digitalType: String(product?.digitalType || item?.digitalType || "Web Version").trim(),
-      webReaderLink: String(product?.webReaderLink || item?.webReaderLink || "").trim(),
-      kindleLink: String(product?.kindleLink || item?.kindleLink || "").trim(),
-      kindleAsin: String(product?.kindleAsin || item?.kindleAsin || "").trim(),
-      digitalInstructions: String(product?.digitalInstructions || item?.digitalInstructions || "").trim(),
-      quantity,
-      price: roundMoney(pricing.price),
-      currency: String(pricing.currency || "INR").trim().toUpperCase(),
-      weight: Number(product?.weight || 0),
-      height: Number(product?.height || 0),
-      width: Number(product?.width || 0),
-      length: Number(product?.length || 0),
-      domesticPrice: roundMoney(pricing.domesticPrice),
-      internationalPrice: roundMoney(pricing.internationalPrice),
-      internationalCountryPrices: Array.isArray(product?.internationalCountryPrices)
-        ? product.internationalCountryPrices.map((entry) => ({
-            country: String(entry?.country || "").trim(),
-            price: roundMoney(Number(entry?.price || 0))
-          }))
-        : [],
-      marketPrices: Array.isArray(product?.marketPrices)
-        ? product.marketPrices.map((entry) => ({
-            market: String(entry?.market || "").trim(),
-            regularPrice: roundMoney(Number(entry?.regularPrice || 0)),
-            salePrice: entry?.salePrice === null || entry?.salePrice === undefined ? null : roundMoney(Number(entry?.salePrice || 0)),
-            startDate: entry?.startDate || null,
-            endDate: entry?.endDate || null
-          }))
-        : [],
-      appliedPriceType: pricing.priceType,
-      matchedMarket: pricing.matchedMarket || "",
-      productType: String(product?.productType || "single"),
-      bundleItems: Array.isArray(product?.bundleItems)
-        ? product.bundleItems.map((bi) => {
-            const bp = bi.product;
-            return {
-              product: bp?._id ? String(bp._id) : String(bp),
-              name: bp?.name || "Product",
-              image: bp?.image || "",
-              quantity: Number(bi.quantity || 1),
-              isDigital: Boolean(bp?.isDigital),
-              digitalType: String(bp?.digitalType || "Web Version").trim(),
-              webReaderLink: String(bp?.webReaderLink || "").trim(),
-              kindleLink: String(bp?.kindleLink || "").trim(),
-              kindleAsin: String(bp?.kindleAsin || "").trim(),
-              digitalInstructions: String(bp?.digitalInstructions || "").trim()
-            };
-          })
-        : [],
-      deliveredAt: null,
-      returnRequest: {
-        status: "Not Requested",
-        requestedAt: null,
-        resolvedAt: null,
-        reason: ""
-      }
-    });
-    return acc;
-  }, []);
-
-  if (normalizedItems.length === 0) {
-    return res.status(400).json({ message: "No valid products found for this order." });
-  }
-
-  const rawPaymentStatusEarly = String(req.body?.paymentStatus || "").trim();
-  if (!allowedPaymentStatuses.has(rawPaymentStatusEarly)) {
-    return res.status(400).json({ message: "Invalid payment status." });
-  }
-
-  if (rawPaymentStatusEarly !== "Failed") {
-    const outOfStock = await decrementStock(normalizedItems);
-    if (outOfStock.length > 0) {
-      return res.status(409).json({
-        message: "Some items are out of stock: " + outOfStock.join("; ")
-      });
-    }
-  }
-
-  const orderCurrency = normalizeCurrencyCode(
-    req.body?.currencyDisplay?.currency || normalizedItems[0]?.currency || "INR",
-    "INR"
-  );
-
-  const gstPercent = Math.min(50, Math.max(0, Number(settings.gstPercent || 0)));
-  const deliveryCharge = roundMoney(
-    convertCurrencyAmount(resolveDeliveryCharge(settings, shipping, normalizedItems), {
-      sourceCurrency: "INR",
-      currency: orderCurrency,
-      rates: settings?.currencyConversionRates || {}
-    })
-  );
-
-  let totalItemBase = 0;
-  let totalItemGst = 0;
-  normalizedItems.forEach((item) => {
-    const qty = Math.max(1, Number(item.quantity || 1));
-    const price = Number(item.price || 0);
-    const lineTotal = qty * price;
-    const hsnSac = getItemHsnSac(item);
-    const gstRate = hsnSac === "4901" ? 0 : gstPercent;
-    
-    const lineBase = Math.round((lineTotal / (1 + gstRate / 100)) * 100) / 100;
-    const gstAmountVal = Math.round((lineTotal - lineBase) * 100) / 100;
-    
-    totalItemBase += lineBase;
-    totalItemGst += gstAmountVal;
-  });
-
-  const subtotal = roundMoney(totalItemBase);
-  const gstAmount = roundMoney(totalItemGst);
-  const grossTotal = roundMoney(subtotal + gstAmount + deliveryCharge);
-  const discount = 0;
-  const appliedCouponCode = "";
-  const total = roundMoney(grossTotal - discount);
-
-  if (req.body.total !== undefined && Math.abs(total - Number(req.body.total)) > 0.05) {
-    if (rawPaymentStatusEarly !== "Failed") await restoreStockForOrder({ items: normalizedItems });
-    return res.status(400).json({
-      message: `Order total mismatch. Server calculated: ${total}, Client provided: ${req.body.total}`
-    });
-  }
-
-  const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
-  const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
-  const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
-  const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
-  
-  if (rawPaymentStatus === "Paid") {
-    if (!razorpayOrderId || !razorpayPaymentId) {
-      await restoreStockForOrder({ items: normalizedItems });
-      return res.status(400).json({ message: "Payment reference is required to place paid order." });
-    }
-
-    const isValid = verifyRazorpayPaymentSignature({
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    });
-
-    if (!isValid) {
-      await restoreStockForOrder({ items: normalizedItems });
-      return res.status(400).json({ message: "Payment verification signature is invalid." });
-    }
-  }
-
-  const requestedCurrency = String(req.body?.currencyDisplay?.currency || "").trim().toUpperCase();
-  const requestedDisplayAmount = Number(req.body?.currencyDisplay?.amount);
-  const requestedDetectedCountry = String(req.body?.currencyDisplay?.detectedCountry || "").trim().toUpperCase();
-
-  const requestedBilling = req.body.billing || req.body.shipping || {};
-  const guestEmail = String(requestedBilling?.email || shipping?.email || "").trim().toLowerCase();
-  const guestName = String(requestedBilling?.name || shipping?.name || "Customer").trim();
-  const guestPhone = String(requestedBilling?.phone || shipping?.phone || "").trim();
-
-  if (!guestEmail) {
-    if (rawPaymentStatus !== "Failed") {
-      await restoreStockForOrder({ items: normalizedItems });
-    }
-    return res.status(400).json({ message: "Email is required for direct purchase." });
-  }
-
-  let targetUser = null;
-  let tempPassword = "";
-  let isNewUserCreated = false;
-
   try {
-    targetUser = await User.findOne({ email: guestEmail });
+    const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
+    if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
+      return res.status(400).json({ message: "Invalid payment status." });
+    }
+
+    const shipping = req.body.shipping || {};
+    const requestedBilling = req.body.billing || req.body.shipping || {};
+    const guestEmail = String(requestedBilling?.email || shipping?.email || "").trim().toLowerCase();
+    const guestName = String(requestedBilling?.name || shipping?.name || "Customer").trim();
+    const guestPhone = String(requestedBilling?.phone || shipping?.phone || "").trim();
+
+    if (!guestEmail) {
+      return res.status(400).json({ message: "Email is required for direct purchase." });
+    }
+
+    let targetUser = await User.findOne({ email: guestEmail });
+    let tempPassword = "";
+    let isNewUserCreated = false;
+
     if (!targetUser) {
       tempPassword = crypto.randomBytes(5).toString("hex");
       const salt = await bcrypt.genSalt(12);
@@ -2392,86 +1730,139 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       });
       isNewUserCreated = true;
     }
-  } catch (userErr) {
-    console.error("[Order] User provisioning error:", userErr.message);
-    if (rawPaymentStatus !== "Failed") {
-      await restoreStockForOrder({ items: normalizedItems });
+
+    const settings = await StoreSettings.findOne().lean();
+
+    let calc;
+    try {
+      calc = await computeOrderTotals({
+        items: req.body?.items,
+        shipping,
+        couponCode: req.body?.couponCode,
+        userId: targetUser ? targetUser._id : null,
+        settings
+      });
+    } catch (err) {
+      if (err instanceof OrderTotalsError) {
+        return res.status(err.statusCode || err.status || 400).json({ message: err.message });
+      }
+      throw err;
     }
-    return res.status(500).json({ message: "Failed to create user account. Please try again." });
-  }
 
-  const isDigitalOnlyOrder = normalizedItems.length > 0 && normalizedItems.every((item) =>
-    Boolean(
-      item.isDigital ||
-      item.webReaderLink ||
-      item.kindleLink ||
-      String(item.name || "").toLowerCase().includes("web") ||
-      String(item.name || "").toLowerCase().includes("kindle") ||
-      String(item.name || "").toLowerCase().includes("flipbook") ||
-      String(item.format || "").toLowerCase().includes("web") ||
-      String(item.format || "").toLowerCase().includes("flipbook")
-    )
-  );
+    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
 
-  const initialOrderStatus = rawPaymentStatus === "Paid" && isDigitalOnlyOrder
-    ? "Completed"
-    : rawPaymentStatus === "Paid"
-    ? "Pending"
-    : "On Hold";
+    let verifiedPayment = null;
+    if (rawPaymentStatus === "Paid") {
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ message: "Payment reference is required to place paid order." });
+      }
 
-  const warehouseState = String(settings?.warehouseAddress?.state || "Karnataka").trim().toLowerCase();
-  const billingState = String(requestedBilling?.state || shipping?.state || "Karnataka").trim().toLowerCase();
-  const isLocal = billingState === warehouseState;
+      if (await Order.exists({ "paymentMeta.razorpayPaymentId": razorpayPaymentId })) {
+        return res.status(409).json({ message: "Payment already used" });
+      }
 
-  let cgstPercent = 0;
-  let sgstPercent = 0;
-  let igstPercent = 0;
-  let cgstAmount = 0;
-  let sgstAmount = 0;
-  let igstAmount = 0;
+      const v = await verifyRazorpayPaymentForOrder({
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        expectedAmount: calc.chargeAmount || calc.totalInInr || calc.total,
+        expectedCurrency: calc.chargeCurrency || "INR",
+        toleranceMinor: 100
+      });
 
-  if (isLocal) {
-    cgstPercent = gstPercent / 2;
-    sgstPercent = gstPercent / 2;
-    cgstAmount = roundMoney(gstAmount / 2);
-    sgstAmount = roundMoney(gstAmount / 2);
-  } else {
-    igstPercent = gstPercent;
-    igstAmount = gstAmount;
-  }
+      if (!v.ok) {
+        return sendPaymentVerificationError(res, v, razorpayPaymentId);
+      }
+      verifiedPayment = v.payment;
+    }
 
-  let order;
-  try {
-    order = await Order.create({
+    const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
+
+    const isDigitalOnlyOrder = normalizedItems.length > 0 && normalizedItems.every((item) =>
+      Boolean(
+        item.isDigital ||
+        item.webReaderLink ||
+        item.kindleLink ||
+        String(item.name || "").toLowerCase().includes("web") ||
+        String(item.name || "").toLowerCase().includes("kindle") ||
+        String(item.name || "").toLowerCase().includes("flipbook") ||
+        String(item.format || "").toLowerCase().includes("web") ||
+        String(item.format || "").toLowerCase().includes("flipbook")
+      )
+    );
+
+    const initialOrderStatus = rawPaymentStatus === "Paid" && isDigitalOnlyOrder
+      ? "Completed"
+      : "Pending";
+
+    const orderData = {
       user: targetUser._id,
       items: normalizedItems,
-      subtotal,
-      gstPercent,
-      gstAmount,
-      couponCode: appliedCouponCode,
-      discount,
-      deliveryCharge,
-      total,
-      orderStatus: initialOrderStatus,
+      subtotal: calc.subtotal,
+      gstPercent: calc.gstPercent,
+      gstAmount: calc.gstAmount,
+      couponCode: calc.appliedCouponCode || "",
+      discount: calc.discount,
+      deliveryCharge: calc.deliveryCharge,
+      total: calc.total,
+      fxRateToInr: calc.fxRateToInr || 1,
+      totalInInr: calc.totalInInr || calc.total,
+      status: initialOrderStatus,
       paymentStatus: rawPaymentStatus,
-      razorpayOrderId,
-      razorpayPaymentId,
+      paymentMethod: "Razorpay",
       shipping,
       billing: requestedBilling,
-      cgstPercent,
-      sgstPercent,
-      igstPercent,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
       currencyDisplay: {
-        currency: requestedCurrency || orderCurrency,
-        amount: requestedDisplayAmount || total,
-        detectedCountry: requestedDetectedCountry || shippingCountry
+        currency: calc.orderCurrency || "INR",
+        amount: calc.total,
+        detectedCountry: String(shipping?.country || "").trim()
+      },
+      taxDetails: calc.taxDetails,
+      paymentMeta: {
+        razorpayOrderId: verifiedPayment ? razorpayOrderId : "",
+        razorpayPaymentId: verifiedPayment ? razorpayPaymentId : "",
+        razorpaySignature: verifiedPayment ? razorpaySignature : "",
+        settlementAmountMinor: Math.round((calc.chargeAmount || calc.totalInInr || calc.total) * 100),
+        settlementCurrency: calc.chargeCurrency || "INR",
+        paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : null,
+        paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : "",
+        paidAt: rawPaymentStatus === "Paid" ? new Date() : null
       }
-    });
+    };
 
-    const orderSeq = order.orderNumber || order._id;
+    let order;
+    try {
+      order = await Order.create(orderData);
+    } catch (err) {
+      if (isDuplicatePaymentIdError(err)) {
+        return res.status(409).json({ message: "This payment reference has already been applied to another order." });
+      }
+      throw err;
+    }
+
+    if (rawPaymentStatus === "Paid") {
+      const stockRes = await reserveStockForOrder(order._id);
+      if (stockRes && !stockRes.ok) {
+        console.warn(`[Order] Direct-buy oversold warning for order ${order._id}:`, stockRes.outOfStock);
+        await Order.updateOne({ _id: order._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
+      }
+      if (calc.appliedCouponCode) {
+        try {
+          const claimed = await claimCoupon({ code: calc.appliedCouponCode, userId: targetUser._id });
+          if (claimed) {
+            order.couponClaimed = true;
+            await Order.updateOne({ _id: order._id }, { $set: { couponClaimed: true } });
+          }
+        } catch (couponErr) {
+          console.warn("[Order] Coupon claim warning on direct-buy:", couponErr.message);
+        }
+      }
+      if (order.isGift) {
+        await issueGiftPassesForOrder(order._id);
+      }
+    }
 
     fireNotifications(async () => {
       if (rawPaymentStatus === "Paid") {
@@ -2482,21 +1873,18 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         await sendWelcomeCredentialsEmail(targetUser, tempPassword);
       }
 
-      if (rawPaymentStatus !== "Failed") {
+      if (rawPaymentStatus === "Paid") {
         await fireLowStockAlerts(normalizedItems);
       }
     });
 
     res.status(201).json({
-      order,
+      order: serializeOrderForOwner(order, targetUser._id),
       accountCreated: isNewUserCreated,
       email: guestEmail
     });
   } catch (err) {
     console.error("[Order] Direct buy create error:", err.message);
-    if (rawPaymentStatus !== "Failed") {
-      await restoreStockForOrder({ items: normalizedItems });
-    }
     res.status(500).json({ message: "Failed to place order. Please try again." });
   }
 });
@@ -2504,130 +1892,227 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 // ── GET /api/orders/digital-stream/:orderId/:itemId ─────────────────────────
 // Authenticated streaming proxy: verifies order ownership & payment status,
 // then securely streams the media from CDN without exposing CDN link to client DOM
-router.get("/digital-stream/:orderId/:itemId", protect, async (req, res) => {
+// ── GET /api/orders/digital-stream/:orderId/:itemId/ticket & stream ───────
+const dns = require("dns").promises;
+const net = require("net");
+const jwt = require("jsonwebtoken");
+const { Readable, pipeline } = require("stream");
+
+const ALLOWED_STREAM_HOSTS = String(process.env.DIGITAL_MEDIA_ALLOWED_HOSTS || "")
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
+const STREAM_TIMEOUT_MS = Math.max(1000, Number(process.env.DIGITAL_STREAM_TIMEOUT_MS) || 15000);
+const STREAM_OK_TYPES = [
+  /^application\/pdf\b/,
+  /^video\//,
+  /^audio\//,
+  /^image\/(png|jpe?g|gif|webp|avif)\b/,
+  /^application\/epub\+zip\b/,
+  /^application\/octet-stream\b/
+];
+
+const ticketSecret = () =>
+  process.env.STREAM_TICKET_SECRET ||
+  crypto.createHash("sha256").update(`digital-stream-ticket:${process.env.JWT_SECRET || ""}`).digest("hex");
+
+function isPrivateIp(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && (b === 168 || b === 0)) ||
+      (a === 198 && (b === 18 || b === 19))
+    );
+  }
+  const v = String(ip || "").toLowerCase();
+  if (v.startsWith("::ffff:")) return isPrivateIp(v.slice(7));
+  return v === "::" || v === "::1" || v.startsWith("fc") || v.startsWith("fd") || /^fe[89ab]/.test(v);
+}
+
+async function assertSafeStreamUrl(raw) {
+  let u;
+  try {
+    u = new URL(String(raw).trim());
+  } catch {
+    throw Object.assign(new Error("Invalid reader URL."), { status: 400 });
+  }
+  if (u.protocol !== "https:" || u.username || u.password || (u.port && u.port !== "443")) {
+    throw Object.assign(new Error("Reader URL protocol or port is not allowed."), { status: 400 });
+  }
+  const h = u.hostname.toLowerCase();
+  if (net.isIP(h)) {
+    throw Object.assign(new Error("IP literal reader hosts are not allowed."), { status: 403 });
+  }
+  if (ALLOWED_STREAM_HOSTS.length > 0) {
+    const isAllowedHost = ALLOWED_STREAM_HOSTS.some((r) => (r.startsWith(".") ? h.endsWith(r) : h === r));
+    if (!isAllowedHost) {
+      throw Object.assign(new Error("Reader host is not in allowed media hosts."), { status: 403 });
+    }
+  }
+  const addrs = await dns.lookup(h, { all: true, verbatim: true });
+  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) {
+    throw Object.assign(new Error("Reader host resolves to a disallowed private address."), { status: 403 });
+  }
+  return u;
+}
+
+async function fetchSafelyStream(start, headers, signal) {
+  let cur = await assertSafeStreamUrl(start);
+  for (let hop = 0; hop <= 3; hop++) {
+    const r = await fetch(cur, { headers, redirect: "manual", signal });
+    const loc = r.headers.get("location");
+    if (r.status >= 300 && r.status < 400 && loc) {
+      await r.body?.cancel().catch(() => {});
+      cur = await assertSafeStreamUrl(new URL(loc, cur).toString());
+      continue;
+    }
+    return r;
+  }
+  throw Object.assign(new Error("Too many redirects from media host."), { status: 502 });
+}
+
+async function resolveAuthorizedDigitalItem(userId, orderId, itemId) {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw Object.assign(new Error("Order not found"), { status: 404 });
+  }
+  const order = await Order.findById(orderId).select("user items isGift paymentStatus status refundStatus").lean();
+  if (!order) {
+    throw Object.assign(new Error("Order not found"), { status: 404 });
+  }
+  const line = (order.items || []).find((i) => String(i.product) === String(itemId) || String(i._id) === String(itemId));
+  if (!line) {
+    throw Object.assign(new Error("Item not found in this order."), { status: 404 });
+  }
+
+  const userDoc = await User.findById(userId).select("isAdmin").lean();
+  const isAdmin = Boolean(userDoc?.isAdmin);
+
+  if (!isAdmin) {
+    const isGiftLine = Boolean(order.isGift || line.giftCode);
+    const allowed = isGiftLine
+      ? Boolean(
+          await GiftPass.exists({
+            order: order._id,
+            redeemedBy: userId,
+            isRedeemed: true,
+            isRevoked: { $ne: true },
+            product: line.product
+          })
+        )
+      : String(order.user) === String(userId);
+
+    if (!allowed) throw Object.assign(new Error("Access denied for this digital item."), { status: 403 });
+    if (!hasDigitalAccess(order) || line.returnRequest?.status === "Refunded") {
+      throw Object.assign(new Error("Payment required to access digital content."), { status: 402 });
+    }
+  }
+
+  const prod = await Product.findById(line.product).select("webReaderLink").lean();
+  const link = String(prod?.webReaderLink || "").trim();
+  if (!link) {
+    throw Object.assign(new Error("Digital reader link not configured for this item."), { status: 404 });
+  }
+  return { link };
+}
+
+const authStream = async (req, res, next) => {
+  if (req.headers.authorization) return protect(req, res, next);
+  try {
+    const rawTicket = String(req.query?.ticket || "");
+    const d = jwt.verify(rawTicket, ticketSecret());
+    if (d.scope !== "digital-stream" || d.orderId !== req.params.orderId || d.itemId !== req.params.itemId) {
+      return res.status(401).json({ message: "Invalid stream ticket scope." });
+    }
+    const u = await User.findById(d.id).select("isBlocked isDeleted").lean();
+    if (!u || u.isBlocked || u.isDeleted) {
+      return res.status(401).json({ message: "User account inactive." });
+    }
+    req.user = d.id;
+    return next();
+  } catch {
+    return res.status(401).json({ message: "Invalid stream ticket." });
+  }
+};
+
+router.get("/digital-stream/:orderId/:itemId/ticket", protect, async (req, res) => {
   try {
     const { orderId, itemId } = req.params;
+    await resolveAuthorizedDigitalItem(req.user, orderId, itemId);
+    const ticket = jwt.sign(
+      { id: String(req.user), scope: "digital-stream", orderId, itemId },
+      ticketSecret(),
+      { expiresIn: "2h" }
+    );
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      streamPath: `/api/orders/digital-stream/${encodeURIComponent(orderId)}/${encodeURIComponent(itemId)}?ticket=${encodeURIComponent(ticket)}`
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ message: e.status ? e.message : "Failed to prepare digital stream." });
+  }
+});
 
-    const order = await Order.findById(orderId).lean();
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
+router.get("/digital-stream/:orderId/:itemId", authStream, async (req, res) => {
+  const ctrl = new AbortController();
+  let timer = setTimeout(() => ctrl.abort(), STREAM_TIMEOUT_MS);
+  res.on("close", () => ctrl.abort());
+
+  try {
+    const { link } = await resolveAuthorizedDigitalItem(req.user, req.params.orderId, req.params.itemId);
+    const headers = { accept: "*/*" };
+    const range = String(req.headers.range || "");
+    if (/^bytes=\d*-\d*$/.test(range)) headers.range = range;
+
+    const up = await fetchSafelyStream(link, headers, ctrl.signal);
+    clearTimeout(timer);
+
+    if (up.status !== 200 && up.status !== 206) {
+      await up.body?.cancel().catch(() => {});
+      return res.status(502).json({ message: "Media host returned an error." });
     }
 
-    const userDoc = await User.findById(req.user).select("role").lean();
-    const isAdmin = userDoc?.role === "admin";
-    const isOwner = String(order.user) === String(req.user);
-
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ message: "Access denied. You do not own this order." });
+    const ct = String(up.headers.get("content-type") || "application/octet-stream").toLowerCase();
+    if (!STREAM_OK_TYPES.some((re) => re.test(ct))) {
+      await up.body?.cancel().catch(() => {});
+      return res.status(415).json({ message: "Unsupported media type." });
     }
 
-    const isPaid =
-      String(order.paymentStatus || "").toLowerCase() === "paid" ||
-      order.paymentMethod === "cod" ||
-      Boolean(order.isRedeemedGift);
-
-    if (!isPaid && !isAdmin) {
-      return res.status(402).json({ message: "Payment required to access digital content." });
-    }
-
-    // Find the item in order.items or bundleItems
-    let targetLink = "";
-    let itemTitle = "Digital Media";
-    let productId = null;
-
-    if (Array.isArray(order.items)) {
-      for (const item of order.items) {
-        const matchId = String(item._id || item.product || item.id);
-        if (matchId === String(itemId) || String(item.product) === String(itemId)) {
-          targetLink = item.webReaderLink;
-          itemTitle = item.name || itemTitle;
-          productId = item.product;
-          break;
-        }
-        if (Array.isArray(item.bundleItems)) {
-          for (const subItem of item.bundleItems) {
-            const subMatchId = String(subItem._id || subItem.product || subItem.id);
-            if (subMatchId === String(itemId) || String(subItem.product) === String(itemId)) {
-              targetLink = subItem.webReaderLink;
-              itemTitle = subItem.name || itemTitle;
-              productId = subItem.product;
-              break;
-            }
-          }
-          if (targetLink) break;
-        }
-      }
-    }
-
-    // If snapshot didn't have link, fetch latest from Product catalog
-    if (!targetLink && productId) {
-      const prod = await Product.findById(productId).select("webReaderLink name").lean();
-      if (prod?.webReaderLink) {
-        targetLink = prod.webReaderLink;
-        if (prod.name) itemTitle = prod.name;
-      }
-    }
-
-    if (!targetLink) {
-      return res.status(404).json({ message: "Digital reader link not configured for this item." });
-    }
-
-    const cleanUrl = String(targetLink).trim();
-    if (!/^https?:\/\//i.test(cleanUrl)) {
-      return res.status(400).json({ message: "Invalid reader URL format." });
-    }
-
-    // Forward Range header for fast media seeking/buffering
-    const forwardHeaders = {};
-    if (req.headers.range) {
-      forwardHeaders["range"] = req.headers.range;
-    }
-    if (req.headers["accept"]) {
-      forwardHeaders["accept"] = req.headers["accept"];
-    }
-
-    const upstreamRes = await fetch(cleanUrl, {
-      headers: forwardHeaders
+    res.status(up.status).set({
+      "Content-Type": ct,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "sandbox",
+      "Content-Disposition": "inline"
     });
 
-    if (!upstreamRes.ok && upstreamRes.status !== 206) {
-      return res.status(upstreamRes.status).json({
-        message: `Upstream storage responded with status ${upstreamRes.status}`
-      });
-    }
-
-    res.status(upstreamRes.status);
-
-    const contentType = upstreamRes.headers.get("content-type") || "application/octet-stream";
-    const contentLength = upstreamRes.headers.get("content-length");
-    const contentRange = upstreamRes.headers.get("content-range");
-    const acceptRanges = upstreamRes.headers.get("accept-ranges") || "bytes";
-
-    res.setHeader("Content-Type", contentType);
-    if (contentLength) res.setHeader("Content-Length", contentLength);
-    if (contentRange) res.setHeader("Content-Range", contentRange);
-    res.setHeader("Accept-Ranges", acceptRanges);
-
-    // Security headers: protect from external frame injection, prevent disk caching of sensitive media
-    res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    res.setHeader("Content-Disposition", "inline");
-
-    const { Readable } = require("stream");
-    const nodeStream = Readable.fromWeb(upstreamRes.body);
-    nodeStream.on("error", (err) => {
-      console.error("[Digital Stream] Stream pipe error:", err.message);
-      if (!res.headersSent) {
-        res.status(500).end();
-      }
+    ["content-length", "content-range", "accept-ranges"].forEach((h) => {
+      const v = up.headers.get(h);
+      if (v) res.setHeader(h, v);
     });
-    nodeStream.pipe(res);
-  } catch (err) {
-    console.error("[Digital Stream] Error:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ message: "Failed to stream media content." });
-    }
+
+    if (!up.body) return res.end();
+    const body = Readable.fromWeb(up.body);
+    const idle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => ctrl.abort(), 30000);
+    };
+    idle();
+    body.on("data", idle);
+    pipeline(body, res, () => clearTimeout(timer));
+  } catch (e) {
+    clearTimeout(timer);
+    if (res.headersSent) return res.destroy();
+    if (e.name === "AbortError") return res.status(504).json({ message: "Media host timed out." });
+    res.status(e.status || 500).json({ message: e.status ? e.message : "Failed to stream media content." });
   }
 });
 

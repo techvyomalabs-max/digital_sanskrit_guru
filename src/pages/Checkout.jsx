@@ -745,15 +745,22 @@ function Checkout() {
     try {
       const RazorpayConstructor = await loadRazorpayCheckout();
 
-      const { data } = await axios.post("/api/payment/create-order", {
-        amount: roundMoney(
-          convertCurrencyAmount(finalTotal, {
-            sourceCurrency: displayCurrency,
-            currency: "INR"
-          })
-        ),
-        honey_pot_field: honeyPot
-      });
+      const { data } = await axios.post(
+        "/api/payment/create-order",
+        {
+          items: cartItems.map((item) => ({
+            product: item.product || item._id,
+            price: item.price,
+            quantity: item.quantity,
+            currency: item.currency || displayCurrency,
+            selectedMarketCode: item.selectedMarketCode
+          })),
+          shipping: selected,
+          couponCode: couponCode || "",
+          honey_pot_field: honeyPot
+        },
+        token ? { headers: { Authorization: `Bearer ${token}` } } : {}
+      );
 
       const cleanPhone = String(selected.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(user?.email || selected?.email || "").trim();

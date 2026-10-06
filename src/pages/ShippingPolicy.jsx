@@ -187,6 +187,15 @@ function ShippingPolicy() {
             </div>
           </div>
         </section>
+
+        {/* Quick Navigation Links */}
+        <div className="policy-footer-nav" style={{ display: "flex", justifyContent: "center", gap: "20px", flexWrap: "wrap", paddingTop: "20px", marginTop: "24px", borderTop: "1px solid var(--site-border, #e2e8f0)" }}>
+          <Link to="/" className="contact-link">← Back to Store</Link>
+          <Link to="/faq" className="contact-link">Help & FAQs</Link>
+          <Link to="/terms-and-conditions" className="contact-link">Terms and Conditions</Link>
+          <Link to="/privacy-policy" className="contact-link">Privacy Policy</Link>
+          <Link to="/contact" className="contact-link">Contact Seva</Link>
+        </div>
       </div>
     </main>
   );
