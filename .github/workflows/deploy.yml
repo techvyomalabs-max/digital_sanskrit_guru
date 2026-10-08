@@ -1,0 +1,48 @@
+name: Deploy to AWS Lightsail
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy to Lightsail
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.LIGHTSAIL_IP }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: |
+            set -e
+            echo "🚀 Starting automated deployment..."
+            
+            # Go to app directory
+            cd /var/www/ecommerce
+            
+            # Pull latest changes from main branch
+            echo "📥 Pulling latest changes from git..."
+            git checkout main
+            git pull origin main
+            
+            # Install dependencies and build React frontend
+            echo "📦 Installing root & frontend dependencies..."
+            npm install
+            
+            echo "🔨 Building React production frontend..."
+            npm run build
+            
+            # Install backend dependencies if updated
+            echo "📦 Installing backend dependencies..."
+            cd backend
+            npm install
+            
+            # Reload backend with zero downtime
+            echo "🔄 Reloading backend with zero downtime..."
+            pm2 reload ecommerce-api --update-env || pm2 restart ecommerce-api --update-env
+            
+            echo "✅ Deployment completed successfully!"
