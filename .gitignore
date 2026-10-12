@@ -47,7 +47,8 @@ frontend-dist-upload/
 
 # Scratch scripts and load/stress tests
 scratch-*.cjs
-*test*.js
+backend/scripts/acid-test.js
+backend/scripts/test-*.js
 backend/run-load-test.js
 backend/run-stress-test.js
 backend/test-*.js
