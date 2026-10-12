@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const { perWorker } = require("../utils/workerCount");
 const GiftPass = require("../models/GiftPass");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
@@ -11,7 +12,7 @@ const router = express.Router();
 
 const giftRedeemLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                  // max 10 attempts per IP per 15 minutes
+  max: perWorker(10),       // max 10 attempts per IP per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many gift pass redemption attempts. Please try again later." }

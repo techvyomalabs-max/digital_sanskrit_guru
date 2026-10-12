@@ -142,6 +142,26 @@ function AdminOrderDetails() {
           </section>
         ) : order ? (
           <>
+            {order.stockIssue && (
+              <div
+                style={{
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: "8px",
+                  padding: "12px 16px",
+                  marginBottom: "20px",
+                  color: "#991b1b"
+                }}
+              >
+                <strong>⚠ Stock Issue:</strong>
+                <p style={{ margin: "4px 0 0 0", fontSize: "14px" }}>
+                  {order.stockIssueDetails && order.stockIssueDetails.length > 0
+                    ? order.stockIssueDetails.join(", ")
+                    : "Payment was received, but one or more items could not be reserved due to low inventory."}
+                </p>
+              </div>
+            )}
+
             <section className="admin-order-details-grid">
               <article className="admin-order-details-card">
                 <span className="admin-order-details-label">Customer</span>

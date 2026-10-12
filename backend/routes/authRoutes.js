@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const axios = require("axios");
+const { perWorker } = require("../utils/workerCount");
 const User = require("../models/User");
 const PhoneOtp = require("../models/PhoneOtp");
 const StoreSettings = require("../models/StoreSettings");
@@ -35,7 +36,7 @@ const isPhoneTakenByAnotherUser = async (phone, excludeId = null) =>
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                   // max 20 login attempts per window per IP
+  max: perWorker(20),        // max 20 login attempts per window per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many attempts. Please try again in 15 minutes." }
@@ -43,7 +44,7 @@ const authLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,                   // max 10 registrations per IP per hour
+  max: perWorker(10),        // max 10 registrations per IP per hour
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many accounts created. Please try again later." }
@@ -51,7 +52,7 @@ const registerLimiter = rateLimit({
 
 const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,                   // max 5 password reset attempts per IP per hour
+  max: perWorker(5),         // max 5 password reset attempts per IP per hour
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many password reset attempts. Please try again in an hour." }
@@ -59,7 +60,7 @@ const passwordResetLimiter = rateLimit({
 
 const otpLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 6,               // max 6 OTP requests per minute per IP
+  max: perWorker(6),    // max 6 OTP requests per minute per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many OTP attempts. Please wait a minute before trying again." }

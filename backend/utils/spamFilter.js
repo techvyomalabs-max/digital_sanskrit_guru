@@ -11,6 +11,7 @@
 
 const rateLimit = require("express-rate-limit");
 const axios = require("axios");
+const { perWorker } = require("./workerCount");
 
 // ── 1. Honeypot Middleware ───────────────────────────────────────────────────
 // Checks hidden fields that human users leave empty but automated bots autofill
@@ -33,7 +34,7 @@ const honeypotMiddleware = (req, res, next) => {
 // Global API rate limiter (protects against scraping and aggressive flooding)
 const globalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 600,                  // max 600 requests per 15 minutes per IP
+  max: perWorker(600),       // max 600 requests per 15 minutes per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many requests. Please slow down and try again later." }
@@ -42,7 +43,7 @@ const globalApiLimiter = rateLimit({
 // Review submission rate limiter
 const reviewRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,                   // Limit each IP to 5 reviews per 15 minutes
+  max: perWorker(5),        // Limit each IP to 5 reviews per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "You have submitted too many reviews. Please wait 15 minutes before trying again." }
@@ -51,7 +52,7 @@ const reviewRateLimiter = rateLimit({
 // Order creation rate limiter (prevents spam order flooding)
 const orderRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 20,                  // max 20 order placements per 10 mins per IP
+  max: perWorker(20),       // max 20 order placements per 10 mins per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many order attempts. Please wait a few minutes before trying again." }
@@ -60,7 +61,7 @@ const orderRateLimiter = rateLimit({
 // Payment creation rate limiter (prevents card testing & payment gateway abuse)
 const paymentRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 25,                  // max 25 payment attempts per 10 mins per IP
+  max: perWorker(25),       // max 25 payment attempts per 10 mins per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many payment requests. Please wait a few minutes before trying again." }
@@ -69,7 +70,7 @@ const paymentRateLimiter = rateLimit({
 // Bulk enquiry rate limiter (prevents wholesale quote request flooding)
 const bulkEnquiryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,                   // max 5 bulk enquiries per 15 mins per IP
+  max: perWorker(5),        // max 5 bulk enquiries per 15 mins per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many bulk enquiry submissions from this connection. Please try again after 15 minutes." }

@@ -542,7 +542,6 @@ function Product() {
       showToast("Removed from wishlist");
     } else {
       addToWishlist(product);
-      showToast("Added to wishlist");
     }
   };
 

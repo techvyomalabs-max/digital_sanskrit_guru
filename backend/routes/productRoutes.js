@@ -10,7 +10,7 @@ const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
-const { appCache, TTL, invalidateProductCache, cacheAside } = require("../utils/cache");
+const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = require("../utils/cache");
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 
@@ -1109,7 +1109,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
     returnedProduct.reviewsCount = reviewsCount;
 
     // Invalidate single product cache after review
-    appCache.del(`product:${req.params.id}`);
+    invalidateKeys([`product:${req.params.id}`]);
     res.status(201).json(returnedProduct);
   } catch (error) {
     res.status(500).json({ message: "Failed to submit review", error: error.message });

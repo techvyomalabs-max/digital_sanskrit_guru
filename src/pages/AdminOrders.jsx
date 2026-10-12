@@ -1032,6 +1032,14 @@ function AdminOrders() {
                                   ? "Failed"
                                   : "Not Paid"}
                           </span>
+                          {order.stockIssue && (
+                            <span
+                              className="admin-order-stock-issue"
+                              title={(order.stockIssueDetails || []).join("\n") || "Paid but stock could not be reserved"}
+                            >
+                              ⚠ Stock issue
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="col-fulfillment">
