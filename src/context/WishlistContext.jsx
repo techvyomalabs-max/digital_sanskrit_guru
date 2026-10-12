@@ -9,6 +9,7 @@ export function WishlistProvider({ children }) {
   const { token, user } = useAuth();
   const prevTokenRef = useRef(token);
   const syncedTokenRef = useRef(null);
+  const requestSeqRef = useRef(0);
   const [isLoadingWishlist, setIsLoadingWishlist] = useState(() => Boolean(token));
 
   const [wishlist, setWishlist] = useState(() => {
@@ -44,6 +45,19 @@ export function WishlistProvider({ children }) {
     prevTokenRef.current = token;
   }, [token]);
 
+  // Fix 3: Pre-update guest lists on mount if logged out and wishlistOwner is missing
+  useEffect(() => {
+    if (!token) {
+      try {
+        if (localStorage.getItem("wishlistOwner") === null) {
+          localStorage.setItem("wishlistOwner", "guest");
+        }
+      } catch {
+        /* ignore storage error */
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Fix 3: Fresh fetch on login & guest-only merge logic
   useEffect(() => {
     if (!token) {
@@ -57,6 +71,8 @@ export function WishlistProvider({ children }) {
       setIsLoadingWishlist(true);
     });
 
+    const seq = ++requestSeqRef.current;
+
     // Fetch user's wishlist from the database (fresh data)
     axios
       .get("/api/wishlist", {
@@ -65,9 +81,10 @@ export function WishlistProvider({ children }) {
       .then((res) => {
         const serverProducts = Array.isArray(res.data?.products) ? res.data.products : [];
 
-        let owner = "guest";
+        let owner = "user";
         try {
-          owner = localStorage.getItem("wishlistOwner") || "guest";
+          const storedOwner = localStorage.getItem("wishlistOwner");
+          owner = storedOwner === null ? "user" : storedOwner;
         } catch {
           /* ignore storage error */
         }
@@ -99,8 +116,21 @@ export function WishlistProvider({ children }) {
               { headers: { Authorization: `Bearer ${token}` } }
             )
             .then((syncRes) => {
-              const freshProducts = Array.isArray(syncRes.data?.products) ? syncRes.data.products : [];
-              setWishlist(freshProducts);
+              if (seq === requestSeqRef.current) {
+                const freshProducts = Array.isArray(syncRes.data?.products) ? syncRes.data.products : [];
+                setWishlist(freshProducts);
+              } else {
+                axios
+                  .get("/api/wishlist", {
+                    headers: { Authorization: `Bearer ${token}` }
+                  })
+                  .then((freshRes) => {
+                    const freshServer = Array.isArray(freshRes.data?.products) ? freshRes.data.products : [];
+                    setWishlist(freshServer);
+                  })
+                  .catch(() => {});
+              }
+
               if (user && user._id) {
                 try {
                   localStorage.setItem("wishlistOwner", String(user._id));
@@ -110,7 +140,20 @@ export function WishlistProvider({ children }) {
               }
             });
         } else {
-          setWishlist(serverProducts);
+          if (seq === requestSeqRef.current) {
+            setWishlist(serverProducts);
+          } else {
+            axios
+              .get("/api/wishlist", {
+                headers: { Authorization: `Bearer ${token}` }
+              })
+              .then((freshRes) => {
+                const freshServer = Array.isArray(freshRes.data?.products) ? freshRes.data.products : [];
+                setWishlist(freshServer);
+              })
+              .catch(() => {});
+          }
+
           if (user && user._id) {
             try {
               localStorage.setItem("wishlistOwner", String(user._id));
@@ -172,6 +215,7 @@ export function WishlistProvider({ children }) {
 
     // Sync add to server
     if (token) {
+      const seq = ++requestSeqRef.current;
       axios
         .post(
           "/api/wishlist/add",
@@ -179,6 +223,7 @@ export function WishlistProvider({ children }) {
           { headers: { Authorization: `Bearer ${token}` } }
         )
         .then((res) => {
+          if (seq !== requestSeqRef.current) return;
           const returnedProducts = res.data?.products;
           if (Array.isArray(returnedProducts) && returnedProducts.length > 0) {
             setWishlist(returnedProducts);
@@ -195,11 +240,13 @@ export function WishlistProvider({ children }) {
 
     // Sync removal to server
     if (token) {
+      const seq = ++requestSeqRef.current;
       axios
         .delete(`/api/wishlist/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then((res) => {
+          if (seq !== requestSeqRef.current) return;
           const returnedProducts = res.data?.products;
           if (Array.isArray(returnedProducts)) {
             setWishlist(returnedProducts);
