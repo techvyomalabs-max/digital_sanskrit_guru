@@ -1288,9 +1288,12 @@ function AdminOrders() {
                                     const returnStatus = getReturnStatus(item);
                                     return (
                                       <div key={`${order._id}-${itemId}`} className="admin-return-item">
-                                        <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                                          {item?.name || "Item"}: {returnStatus}
-                                        </span>
+                                        <div className="admin-return-item-header">
+                                          <strong className="admin-return-item-name">{item?.name || "Item"}</strong>
+                                          <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                            {returnStatus}
+                                          </span>
+                                        </div>
                                         {item?.returnRequest?.reason ? (
                                           <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
                                         ) : null}
