@@ -1351,7 +1351,7 @@ router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), asyn
     }
   }
 
-  const reason = String(req.query.reason || "customer_choice").trim();
+  const validReason = req.query?.reason === "store_fault" ? "store_fault" : "customer_choice";
   const rawItemIds = req.query.itemIds
     ? String(req.query.itemIds).split(",").map((s) => s.trim()).filter(Boolean)
     : [];
@@ -1359,7 +1359,7 @@ router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), asyn
   const quote = computeRefundQuote({
     order,
     itemIds: rawItemIds,
-    reason,
+    reason: validReason,
     gatewayFeePaise,
     policy: refundPolicy
   });
@@ -1388,7 +1388,7 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
   // If refund requested via gateway or explicit amount
   if (refundStatus === "Refunded" || Number(req.body?.refundAmount) > 0) {
     try {
-      const rawReason = String(req.body?.reason || "").trim();
+      const validReason = req.body?.reason === "store_fault" ? "store_fault" : "customer_choice";
       const itemIds = Array.isArray(req.body?.itemIds)
         ? req.body.itemIds.map(String)
         : (typeof req.body?.itemIds === "string" && req.body.itemIds.trim()
@@ -1397,12 +1397,40 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
       const restock = Boolean(req.body?.restock);
 
       let reasonString = "Admin processed refund";
-      if (rawReason === "store_fault") {
+      if (validReason === "store_fault") {
         reasonString = itemIds.length > 0 ? `Store fault return: ${itemIds.length} item(s)` : "Store fault cancellation";
-      } else if (rawReason === "customer_choice") {
+      } else {
         reasonString = itemIds.length > 0 ? `Customer choice return: ${itemIds.length} item(s)` : "Customer choice cancellation";
-      } else if (rawReason) {
-        reasonString = rawReason;
+      }
+
+      // Compute pre-refund quote for email breakdown before mutating order
+      let preQuote = null;
+      try {
+        let gatewayFeePaise = null;
+        const razorpayPaymentId = String(order.paymentMeta?.razorpayPaymentId || order.razorpayPaymentId || "").trim();
+        if (razorpayPaymentId) {
+          try {
+            const razorpay = getRazorpayClient();
+            const paymentObj = await razorpay.payments.fetch(razorpayPaymentId);
+            if (paymentObj && Number.isFinite(Number(paymentObj.fee))) {
+              gatewayFeePaise = Number(paymentObj.fee);
+            }
+          } catch (feeErr) {
+            console.warn(`[RefundStatus] Could not fetch gateway fee for payment ${razorpayPaymentId}:`, feeErr.message);
+            gatewayFeePaise = null;
+          }
+        }
+
+        preQuote = computeRefundQuote({
+          order,
+          itemIds,
+          reason: validReason,
+          gatewayFeePaise,
+          policy: refundPolicy
+        });
+      } catch (quoteErr) {
+        console.warn("[RefundStatus] Failed to compute pre-refund quote for email:", quoteErr.message);
+        preQuote = null;
       }
 
       const refundResult = await processGatewayRefund({
@@ -1445,8 +1473,29 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
           await incrementStock(physicalItemsToRestock);
         }
 
+        if (
+          refundResult.order.items.length > 0 &&
+          refundResult.order.items.every((it) => it.returnRequest?.status === "Refunded")
+        ) {
+          refundResult.order.refundStatus = "Refunded";
+          refundResult.refundStatus = "Refunded";
+        }
+
         refundResult.order.markModified("items");
         await refundResult.order.save();
+      }
+
+      // Build email lines from preQuote
+      let emailLines = null;
+      if (preQuote && Array.isArray(preQuote.lines)) {
+        emailLines = [...preQuote.lines];
+        const diff = Number(refundResult.refundAmount) - Number(preQuote.refundable);
+        if (Math.abs(diff) > 0.01) {
+          emailLines.push({
+            label: "Adjustment by store",
+            amount: Math.round(diff * 100) / 100
+          });
+        }
       }
 
       await logAdminAction({
@@ -1471,16 +1520,8 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
           const populatedOrder = await Order.findById(order._id).populate("user", "name email").lean();
           if (!populatedOrder?.user) return;
 
-          const quoteForEmail = computeRefundQuote({
-            order: refundResult.order,
-            itemIds,
-            reason: rawReason || "customer_choice",
-            gatewayFeePaise: null,
-            policy: refundPolicy
-          });
-
           await sendRefundStatusUpdate(refundResult.order, populatedOrder.user, refundResult.refundStatus, {
-            lines: quoteForEmail?.lines,
+            lines: emailLines,
             refundAmount: refundResult.refundAmount
           });
         });
