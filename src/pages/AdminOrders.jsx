@@ -13,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
+import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 
 const Icon = ({ name }) => {
@@ -104,6 +105,20 @@ function AdminOrders() {
     reason: "",
     error: ""
   });
+  const [refundModalState, setRefundModalState] = useState({
+    isOpen: false,
+    order: null,
+    itemId: null
+  });
+
+  const isManualRefund = (ord) => {
+    if (ord?.paymentMeta?.refundMethod === "manual") return true;
+    const refunds = ord?.paymentMeta?.refunds;
+    if (Array.isArray(refunds) && refunds.length > 0) {
+      return refunds[refunds.length - 1]?.method === "manual";
+    }
+    return false;
+  };
   const statusStep = {
     "On Hold": 0,
     Pending: 1,
@@ -125,7 +140,7 @@ function AdminOrders() {
     return RETURN_STATUSES.includes(raw) ? raw : "Not Requested";
   };
 
-  const hasReturnRequests = (order) =>
+  const _hasReturnRequests = (order) =>
     Array.isArray(order?.items) && order.items.some((item) => getReturnStatus(item) !== "Not Requested");
 
   const getDisplayStatus = (order) => {
@@ -1184,7 +1199,11 @@ function AdminOrders() {
                                       {order?.refundStatus || "Pending"}
                                     </span>
                                   </div>
-                                  {order?.paymentMeta?.razorpayRefundId ? (
+                                  {isManualRefund(order) ? (
+                                    <small style={{ display: "block", fontSize: "10px", color: "#b45309", fontWeight: 700, margin: "2px 0 4px" }}>
+                                      Manual refund (no money sent via Razorpay)
+                                    </small>
+                                  ) : order?.paymentMeta?.razorpayRefundId ? (
                                     <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
                                       ⚡ RZP: {order.paymentMeta.razorpayRefundId}
                                     </small>
@@ -1204,17 +1223,17 @@ function AdminOrders() {
                                             onClick={() => updateRefundStatus(order._id, "Processing")}
                                             title="Move to Processing"
                                           >
-                                            {updatingOrderId === order._id ? "Updating..." : "Process Refund"}
+                                            {updatingOrderId === order._id ? "Updating..." : "Set status: Processing"}
                                           </button>
                                         )}
                                         <button
                                           type="button"
                                           className="status-action-btn refund-success-btn"
                                           disabled={updatingOrderId === order._id}
-                                          onClick={() => updateRefundStatus(order._id, "Refunded")}
-                                          title="Mark as Refund Completed"
+                                          onClick={() => setRefundModalState({ isOpen: true, order, itemId: null })}
+                                          title="Open Refund Modal"
                                         >
-                                          {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
+                                          Refund…
                                         </button>
                                         {order?.refundStatus !== "Rejected" && (
                                           <button
@@ -1232,7 +1251,14 @@ function AdminOrders() {
                                           className="admin-refund-select"
                                           value={order?.refundStatus || "Pending"}
                                           disabled={updatingOrderId === order._id}
-                                          onChange={(e) => updateRefundStatus(order._id, e.target.value)}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === "Refunded") {
+                                              setRefundModalState({ isOpen: true, order, itemId: null });
+                                            } else {
+                                              updateRefundStatus(order._id, val);
+                                            }
+                                          }}
                                           aria-label="Change refund status"
                                         >
                                           <option value="Pending">Pending</option>
@@ -1296,9 +1322,9 @@ function AdminOrders() {
                                             type="button"
                                             className="status-action-btn"
                                             disabled={updatingOrderId === order._id}
-                                            onClick={() => updateReturnStatus(order._id, itemId, "Refunded")}
+                                            onClick={() => setRefundModalState({ isOpen: true, order, itemId })}
                                           >
-                                            {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
+                                            Refund…
                                           </button>
                                         ) : null}
                                       </div>
@@ -1528,6 +1554,23 @@ function AdminOrders() {
             </div>
           </div>
         )}
+
+        <AdminRefundModal
+          order={refundModalState.order}
+          isOpen={refundModalState.isOpen}
+          preselectedItemId={refundModalState.itemId}
+          token={token}
+          onClose={() => setRefundModalState({ isOpen: false, order: null, itemId: null })}
+          onSuccess={async (updatedOrder) => {
+            await loadOrders();
+            const refundId = updatedOrder?.paymentMeta?.razorpayRefundId;
+            setPageMessage(
+              refundId
+                ? `Razorpay refund initiated! (Refund ID: ${refundId})`
+                : "Refund processed successfully."
+            );
+          }}
+        />
       </main>
     </div>
   );

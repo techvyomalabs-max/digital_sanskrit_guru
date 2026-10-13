@@ -41,10 +41,12 @@ const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrd
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
-const { reserveStockForOrder, releaseStockForOrder } = require("../utils/stock");
+const { reserveStockForOrder, releaseStockForOrder, incrementStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
 const { processGatewayRefund, previewRefund, RefundError } = require("../utils/refunds");
+const { computeRefundQuote } = require("../utils/refundQuote");
+const refundPolicy = require("../config/refundPolicy");
 
 const router = express.Router();
 
@@ -1328,6 +1330,43 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
   res.json(serializeOrderForOwner(updated, req.user));
 });
 
+router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  let gatewayFeePaise = null;
+  const razorpayPaymentId = String(order.paymentMeta?.razorpayPaymentId || order.razorpayPaymentId || "").trim();
+  if (razorpayPaymentId) {
+    try {
+      const razorpay = getRazorpayClient();
+      const paymentObj = await razorpay.payments.fetch(razorpayPaymentId);
+      if (paymentObj && Number.isFinite(Number(paymentObj.fee))) {
+        gatewayFeePaise = Number(paymentObj.fee);
+      }
+    } catch (err) {
+      console.warn(`[RefundQuote] Could not fetch gateway fee for payment ${razorpayPaymentId}:`, err.message);
+      gatewayFeePaise = null;
+    }
+  }
+
+  const validReason = req.query?.reason === "store_fault" ? "store_fault" : "customer_choice";
+  const rawItemIds = req.query.itemIds
+    ? String(req.query.itemIds).split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const quote = computeRefundQuote({
+    order,
+    itemIds: rawItemIds,
+    reason: validReason,
+    gatewayFeePaise,
+    policy: refundPolicy
+  });
+
+  res.json(quote);
+});
+
 router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const refundStatus = String(req.body?.refundStatus || "").trim();
@@ -1346,17 +1385,118 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
     return res.status(400).json({ message: "This order has already been refunded. Completed refunds cannot be changed." });
   }
 
-  // If refund requested via gateway
+  // If refund requested via gateway or explicit amount
   if (refundStatus === "Refunded" || Number(req.body?.refundAmount) > 0) {
     try {
+      const validReason = req.body?.reason === "store_fault" ? "store_fault" : "customer_choice";
+      const itemIds = Array.isArray(req.body?.itemIds)
+        ? req.body.itemIds.map(String)
+        : (typeof req.body?.itemIds === "string" && req.body.itemIds.trim()
+            ? req.body.itemIds.split(",").map((s) => s.trim()).filter(Boolean)
+            : []);
+      const restock = Boolean(req.body?.restock);
+
+      let reasonString = "Admin processed refund";
+      if (validReason === "store_fault") {
+        reasonString = itemIds.length > 0 ? `Store fault return: ${itemIds.length} item(s)` : "Store fault cancellation";
+      } else {
+        reasonString = itemIds.length > 0 ? `Customer choice return: ${itemIds.length} item(s)` : "Customer choice cancellation";
+      }
+
+      // Compute pre-refund quote for email breakdown before mutating order
+      let preQuote = null;
+      try {
+        let gatewayFeePaise = null;
+        const razorpayPaymentId = String(order.paymentMeta?.razorpayPaymentId || order.razorpayPaymentId || "").trim();
+        if (razorpayPaymentId) {
+          try {
+            const razorpay = getRazorpayClient();
+            const paymentObj = await razorpay.payments.fetch(razorpayPaymentId);
+            if (paymentObj && Number.isFinite(Number(paymentObj.fee))) {
+              gatewayFeePaise = Number(paymentObj.fee);
+            }
+          } catch (feeErr) {
+            console.warn(`[RefundStatus] Could not fetch gateway fee for payment ${razorpayPaymentId}:`, feeErr.message);
+            gatewayFeePaise = null;
+          }
+        }
+
+        preQuote = computeRefundQuote({
+          order,
+          itemIds,
+          reason: validReason,
+          gatewayFeePaise,
+          policy: refundPolicy
+        });
+      } catch (quoteErr) {
+        console.warn("[RefundStatus] Failed to compute pre-refund quote for email:", quoteErr.message);
+        preQuote = null;
+      }
+
       const refundResult = await processGatewayRefund({
         orderId: req.params.id,
         refundAmount: req.body?.refundAmount,
-        reason: req.body?.reason || "Admin processed refund",
+        reason: reasonString,
         actor,
         isManualOnly: Boolean(req.body?.manualRefund || req.body?.forceManual),
         forceManual: Boolean(req.body?.forceManual)
       });
+
+      // Post-refund: mark returned items as Refunded and restock if requested
+      if (Array.isArray(refundResult.order?.items)) {
+        const itemIdSet = new Set(itemIds);
+        const targetAll = itemIds.length === 0;
+        const physicalItemsToRestock = [];
+
+        refundResult.order.items.forEach((item) => {
+          const id = String(item?._id || item?.id || item?.product || "");
+          if (targetAll || itemIdSet.has(id)) {
+            if (!item.returnRequest) {
+              item.returnRequest = {};
+            }
+            item.returnRequest.status = "Refunded";
+            if (!item.returnRequest.requestedAt) {
+              item.returnRequest.requestedAt = new Date();
+            }
+            item.returnRequest.resolvedAt = new Date();
+
+            if (restock && !item.isDigital) {
+              physicalItemsToRestock.push({
+                product: item.product || item._id || item.id,
+                quantity: item.quantity
+              });
+            }
+          }
+        });
+
+        if (restock && physicalItemsToRestock.length > 0) {
+          await incrementStock(physicalItemsToRestock);
+        }
+
+        if (
+          refundResult.order.items.length > 0 &&
+          refundResult.order.items.every((it) => it.returnRequest?.status === "Refunded")
+        ) {
+          refundResult.order.refundStatus = "Refunded";
+          refundResult.refundStatus = "Refunded";
+        }
+
+        refundResult.order.markModified("items");
+        await refundResult.order.save();
+      }
+
+      // Build email lines from preQuote
+      let emailLines = null;
+      if (preQuote && Array.isArray(preQuote.lines)) {
+        emailLines = [...preQuote.lines];
+        const diff = Number(refundResult.refundAmount) - Number(preQuote.refundable);
+        if (Math.abs(diff) > 0.01) {
+          emailLines.push({
+            label: "Adjustment by store",
+            amount: Math.round(diff * 100) / 100
+          });
+        }
+      }
 
       await logAdminAction({
         req,
@@ -1369,7 +1509,9 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
           previousRefundStatus,
           nextRefundStatus: refundResult.refundStatus,
           refundAmount: refundResult.refundAmount,
-          razorpayRefundId: refundResult.razorpayRefundId
+          razorpayRefundId: refundResult.razorpayRefundId,
+          restocked: restock,
+          reason: reasonString
         }
       });
 
@@ -1377,7 +1519,11 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
         fireNotifications(async () => {
           const populatedOrder = await Order.findById(order._id).populate("user", "name email").lean();
           if (!populatedOrder?.user) return;
-          await sendRefundStatusUpdate(refundResult.order, populatedOrder.user, refundResult.refundStatus);
+
+          await sendRefundStatusUpdate(refundResult.order, populatedOrder.user, refundResult.refundStatus, {
+            lines: emailLines,
+            refundAmount: refundResult.refundAmount
+          });
         });
       }
 
@@ -1431,6 +1577,10 @@ router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage(
     return res.status(400).json({ message: "Invalid return status" });
   }
 
+  if (returnStatus === "Refunded") {
+    return res.status(400).json({ message: "Use the Refund action to refund returned items." });
+  }
+
   const order = await Order.findById(req.params.id);
   if (!order) {
     return res.status(404).json({ message: "Order not found" });
@@ -1461,8 +1611,6 @@ router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage(
     order.refundStatus = "Processing";
   } else if (returnStatus === "Rejected") {
     order.refundStatus = "Rejected";
-  } else if (returnStatus === "Refunded") {
-    order.refundStatus = "Refunded";
   }
 
   order.markModified("items");
