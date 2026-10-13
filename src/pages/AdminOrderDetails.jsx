@@ -5,6 +5,7 @@ import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDateTime } from "../utils/date";
+import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrderDetails.css";
 
 function AdminOrderDetails() {
@@ -14,7 +15,17 @@ function AdminOrderDetails() {
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isUpdatingRefund, setIsUpdatingRefund] = useState(false);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [pageMessage, setPageMessage] = useState("");
+
+  const isManualRefund = (ord) => {
+    if (ord?.paymentMeta?.refundMethod === "manual") return true;
+    const refunds = ord?.paymentMeta?.refunds;
+    if (Array.isArray(refunds) && refunds.length > 0) {
+      return refunds[refunds.length - 1]?.method === "manual";
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (!token || !id) return;
@@ -205,7 +216,14 @@ function AdminOrderDetails() {
                       <div className="admin-order-details-refund-actions">
                         <select
                           value={displayRefundStatus}
-                          onChange={(e) => updateRefundStatus(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "Refunded") {
+                              setIsRefundModalOpen(true);
+                            } else {
+                              updateRefundStatus(val);
+                            }
+                          }}
                           disabled={isUpdatingRefund}
                           className="admin-order-details-refund-select"
                           aria-label="Change refund status"
@@ -223,16 +241,16 @@ function AdminOrderDetails() {
                             disabled={isUpdatingRefund}
                             onClick={() => updateRefundStatus("Processing")}
                           >
-                            {isUpdatingRefund ? "Updating..." : "Process Refund"}
+                            {isUpdatingRefund ? "Updating..." : "Set status: Processing"}
                           </button>
                         )}
                         <button
                           type="button"
                           className="admin-order-details-refund-btn refund-btn-success"
                           disabled={isUpdatingRefund}
-                          onClick={() => updateRefundStatus("Refunded")}
+                          onClick={() => setIsRefundModalOpen(true)}
                         >
-                          {isUpdatingRefund ? "Updating..." : "Mark Refunded"}
+                          Refund…
                         </button>
                         {displayRefundStatus !== "Rejected" && (
                           <button
@@ -248,7 +266,11 @@ function AdminOrderDetails() {
                     )}
                   </div>
                 ) : null}
-                {order?.paymentMeta?.razorpayRefundId ? (
+                {isManualRefund(order) ? (
+                  <p style={{ marginTop: '8px', color: '#b45309', fontWeight: 600 }}>
+                    Manual refund (no money sent via Razorpay)
+                  </p>
+                ) : order?.paymentMeta?.razorpayRefundId ? (
                   <p style={{ marginTop: '8px', color: '#4f46e5', fontWeight: 600 }}>
                     ⚡ Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
                   </p>
@@ -262,6 +284,31 @@ function AdminOrderDetails() {
                     ? `Paid on ${formatDateTime(order.paymentMeta.paidAt)}`
                     : "Payment not completed yet"}
                 </p>
+
+                {Array.isArray(order?.paymentMeta?.refunds) && order.paymentMeta.refunds.length > 0 && (
+                  <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
+                    <h3 style={{ margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
+                      Refund History
+                    </h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {order.paymentMeta.refunds.map((rf, idx) => (
+                        <div key={rf.refundId || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                            <span>₹{((Number(rf.amountMinor) || 0) / 100).toFixed(2)}</span>
+                            <span style={{ textTransform: "capitalize", color: rf.method === "manual" ? "#b45309" : "#4f46e5" }}>
+                              {rf.method === "manual" ? "Manual" : "Razorpay"}
+                            </span>
+                          </div>
+                          <div style={{ color: "#64748b", marginTop: "4px", display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                            <span>{rf.at ? formatDateTime(rf.at) : "—"}</span>
+                            <span>{rf.reference ? `Ref: ${rf.reference}` : ""}</span>
+                          </div>
+                          {rf.reason ? <div style={{ color: "#475569", marginTop: "4px", fontSize: "11.5px", fontStyle: "italic" }}>"{rf.reason}"</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </article>
             </section>
 
@@ -397,6 +444,22 @@ function AdminOrderDetails() {
             <p>Order not found.</p>
           </section>
         )}
+
+        <AdminRefundModal
+          order={order}
+          isOpen={isRefundModalOpen}
+          token={token}
+          onClose={() => setIsRefundModalOpen(false)}
+          onSuccess={(updatedOrder) => {
+            setOrder(updatedOrder || { ...order, refundStatus: "Refunded" });
+            const rzpId = updatedOrder?.paymentMeta?.razorpayRefundId;
+            setPageMessage(
+              rzpId
+                ? `Razorpay refund initiated successfully! (Refund ID: ${rzpId})`
+                : "Refund processed successfully."
+            );
+          }}
+        />
       </main>
     </div>
   );

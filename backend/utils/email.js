@@ -601,7 +601,7 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   });
 }
 
-async function sendRefundStatusUpdate(order, user, refundStatus) {
+async function sendRefundStatusUpdate(order, user, refundStatus, options = {}) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
 
@@ -623,6 +623,32 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
   const safeOrderId = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
   const safeRefundStatus = escapeHtml(refundStatus);
 
+  let breakdownHtml = "";
+  if (Array.isArray(options?.lines) && options.lines.length > 0) {
+    const rows = options.lines.map((l) =>
+      `<tr>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(String(l.label || ""))}</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">
+          ${Number(l.amount) < 0 ? "-" : ""}₹${Math.abs(Number(l.amount) || 0).toFixed(2)}
+        </td>
+      </tr>`
+    ).join("");
+
+    const displayAmount = Number(options?.refundAmount ?? order.refundedAmountInInr ?? 0).toFixed(2);
+    breakdownHtml = `
+      <div style="margin: 16px 0; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
+        <h4 style="margin: 0 0 8px; font-size: 14px; color: #374151;">Refund Breakdown</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          ${rows}
+          <tr>
+            <td style="padding: 8px 10px 0; font-weight: bold; color: #111827;">Total Refunded</td>
+            <td style="padding: 8px 10px 0; text-align: right; font-weight: bold; color: #166534;">₹${displayAmount}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
   const html = htmlWrapper(info.title, `
     <h2>${info.emoji} ${escapeHtml(info.title)}</h2>
     <p>Hi <strong>${safeUserName}</strong>,</p>
@@ -631,6 +657,7 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
       <strong>Order ID:</strong> ${safeOrderId}&nbsp;&nbsp;
       <span class="badge ${badgeClass}">Refund: ${safeRefundStatus}</span>
     </p>
+    ${breakdownHtml}
     ${buildOrderItemsTable(order.items || [])}
     <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
   `);
