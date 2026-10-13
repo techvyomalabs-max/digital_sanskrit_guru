@@ -77,6 +77,10 @@ async function sendWhatsAppOrderConfirmation(order) {
   }
 }
 
+const IS_PROD = process.env.NODE_ENV === "production";
+const DEV_LOG = !IS_PROD && process.env.WHATSAPP_OTP_DEV_LOG === "true";
+const maskPhone = (p) => (p ? `${"*".repeat(Math.max(0, p.length - 4))}${p.slice(-4)}` : "");
+
 /**
  * Send WhatsApp OTP Verification Code via Meta Cloud API
  * @param {string} phone - Recipient phone number
@@ -92,87 +96,76 @@ async function sendWhatsAppOtp(phone, otp) {
     const settings = await StoreSettings.findOne().lean();
     const ws = settings?.whatsappSettings || {};
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`\n========================================`);
-      console.log(`📲 [WhatsApp OTP - DEV MODE] Code for +${recipientPhone}: ${otp}`);
-      console.log(`========================================\n`);
-    } else {
-      console.log(`📲 [WhatsApp OTP] Dispatching verification code to +${recipientPhone}`);
+    if (!(ws.mode === "api" && ws.metaPhoneNumberId && ws.metaAccessToken)) {
+      if (DEV_LOG) {
+        console.log(`📲 [WhatsApp OTP][DEV ONLY] +${recipientPhone}: ${otp}`);
+        return { success: true, devMode: true };
+      }
+      return { success: false, error: "WhatsApp OTP delivery is not configured." };
     }
 
-    if (ws.mode === "api" && ws.metaPhoneNumberId && ws.metaAccessToken) {
-      const payload = {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: recipientPhone,
-        type: "template",
-        template: {
-          name: "auth_otp",
-          language: { code: "en_US" },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                { type: "text", text: String(otp) }
-              ]
-            },
-            {
-              type: "button",
-              sub_type: "url",
-              index: "0",
-              parameters: [
-                { type: "text", text: String(otp) }
-              ]
-            }
-          ]
-        }
-      };
-
-      const url = `https://graph.facebook.com/v19.0/${ws.metaPhoneNumberId}/messages`;
-      try {
-        const response = await axios.post(url, payload, {
-          headers: {
-            Authorization: `Bearer ${ws.metaAccessToken}`,
-            "Content-Type": "application/json"
+    const url = `https://graph.facebook.com/v19.0/${ws.metaPhoneNumberId}/messages`;
+    const templatePayload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipientPhone,
+      type: "template",
+      template: {
+        name: "auth_otp",
+        language: { code: "en_US" },
+        components: [
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: String(otp) }
+            ]
           },
-          timeout: 10000
-        });
-        console.log(`✅ WhatsApp OTP sent via Meta Cloud API to +${recipientPhone}`);
-        return { success: true, data: response.data };
-      } catch (metaErr) {
-        console.warn("⚠️ Meta template auth_otp failed, trying direct text fallback...", metaErr?.response?.data || metaErr.message);
-        try {
-          const textPayload = {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: recipientPhone,
-            type: "text",
-            text: {
-              body: `Your Digital Sanskrit Guru verification code is: *${otp}*.\n\nThis OTP is valid for 5 minutes. Please do not share it with anyone.`
-            }
-          };
-          const fallbackRes = await axios.post(url, textPayload, {
-            headers: {
-              Authorization: `Bearer ${ws.metaAccessToken}`,
-              "Content-Type": "application/json"
-            },
-            timeout: 10000
-          });
-          return { success: true, data: fallbackRes.data };
-        } catch (fallbackErr) {
-          console.error("❌ Failed to send WhatsApp message via Meta Cloud API:", fallbackErr?.response?.data || fallbackErr?.message);
-          if (process.env.NODE_ENV === "production") {
-            return { success: false, error: "Failed to deliver WhatsApp OTP. Please verify credentials." };
+          {
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [
+              { type: "text", text: String(otp) }
+            ]
           }
-          return { success: true, devMode: true, note: "Logged to console" };
-        }
+        ]
+      }
+    };
+
+    const textPayload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipientPhone,
+      type: "text",
+      text: {
+        body: `Your Digital Sanskrit Guru verification code is: *${otp}*.\n\nThis OTP is valid for 5 minutes. Please do not share it with anyone.`
+      }
+    };
+
+    const postMessage = (payload) =>
+      axios.post(url, payload, {
+        headers: {
+          Authorization: `Bearer ${ws.metaAccessToken}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 10000
+      });
+
+    try {
+      const response = await postMessage(templatePayload);
+      console.log(`✅ WhatsApp OTP sent to +${maskPhone(recipientPhone)}`);
+      return { success: true, data: response.data };
+    } catch (metaErr) {
+      console.warn("⚠️ Meta template auth_otp failed, trying direct text fallback...", metaErr?.response?.data || metaErr.message);
+      try {
+        const fallbackRes = await postMessage(textPayload);
+        console.log(`✅ WhatsApp OTP (fallback) sent to +${maskPhone(recipientPhone)}`);
+        return { success: true, data: fallbackRes.data };
+      } catch (fallbackErr) {
+        console.error("❌ Failed to send WhatsApp message via Meta Cloud API:", fallbackErr?.response?.data || fallbackErr?.message);
+        return { success: false, error: "Failed to deliver WhatsApp OTP. Please verify credentials." };
       }
     }
-
-    if (process.env.NODE_ENV === "production") {
-      return { success: false, error: "WhatsApp API mode is not configured." };
-    }
-    return { success: true, devMode: true, note: "Logged to server console" };
   } catch (error) {
     console.error("❌ WhatsApp OTP Error:", error?.message || error);
     return { success: false, error: error?.message || "Failed to dispatch WhatsApp OTP" };

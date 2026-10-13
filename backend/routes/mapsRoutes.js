@@ -1,12 +1,13 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { isAllowedGoogleMapsUrl, parseGoogleMapsCoordinates } = require("../utils/mapsLink");
+const { perWorker } = require("../utils/workerCount");
 
 const router = express.Router();
 
 const mapsRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30, // 30 requests per 15 minutes per IP
+  max: perWorker(30), // 30 requests per 15 minutes per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many map link resolution requests. Please try again later." }

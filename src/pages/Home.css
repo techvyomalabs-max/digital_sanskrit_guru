@@ -691,6 +691,10 @@
   display: block;
 }
 
+.home-feature-shell:empty {
+  display: none !important;
+}
+
 .home-status-banner {
   margin: 0 0 var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -945,7 +949,7 @@
 .home-highlights {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
 /* ── Mini grid ──────────────────────────────────────────────────────────── */
@@ -1252,9 +1256,7 @@
   }
 
   .home-banner {
-    margin-top: var(--space-3);
-    margin-bottom: 0;
-    margin-inline: 0;
+    margin: 0;
     height: auto;
   }
 
@@ -1431,7 +1433,7 @@
   }
 
   .home-banner {
-    margin-top: var(--space-3);
+    margin-top: 0;
     height: auto;
   }
 
@@ -1562,7 +1564,7 @@
   padding: var(--space-6) !important;
   background: var(--site-section-bg, linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(217, 119, 6, 0.03) 100%));
   border-radius: var(--radius-xl);
-  margin: var(--space-6) auto;
+  margin: 0 auto;
   border: 1px solid var(--site-border, rgba(209, 213, 219, 0.4));
   color: var(--site-section-text, inherit);
 }

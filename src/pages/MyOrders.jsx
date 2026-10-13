@@ -488,7 +488,7 @@ function MyOrders() {
       const RazorpayConstructor = await loadRazorpayCheckout();
 
       const { data } = await axios.post("/api/payment/create-order", {
-        amount: Number(order.total || 0)
+        orderId: order._id
       });
 
       const cleanPhone = String(order?.shipping?.phone || "").replace(/\D/g, "").replace(/^0+/, "");

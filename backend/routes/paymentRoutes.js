@@ -1,33 +1,94 @@
 const express = require("express");
+const mongoose = require("mongoose");
+const protect = require("../middleware/authMiddleware");
+const Order = require("../models/Order");
+const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
-const crypto = require("crypto");
+const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
+const { SETTLEMENT_CURRENCY, getSettlementCharge, verifyRazorpaySignature } = require("../utils/paymentVerification");
+const { computeOrderTotals } = require("../utils/orderTotals");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
+const MAX_CHARGE = Number(process.env.PAYMENT_MAX_CHARGE_AMOUNT || 500000); // 5 Lakhs max
 
-router.post("/create-order", paymentRateLimiter, honeypotMiddleware, async (req, res) => {
+const protectIfOrderId = (req, res, next) => {
+  const authHeader = req.headers?.authorization;
+  if (req.body?.orderId || (authHeader && authHeader.startsWith("Bearer "))) {
+    return protect(req, res, next);
+  }
+  return next();
+};
+
+router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOrderId, async (req, res) => {
   try {
-    const amount = Number(req.body?.amount || 0);
-    const currency = String(req.body?.currency || "INR").trim().toUpperCase();
-    if (Number.isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ message: "Invalid amount" });
+    let amount;
+    let currency;
+    let receipt = `order_${Date.now()}`;
+    const notes = {};
+
+    if (req.body?.orderId) {
+      // Authenticated payment retry mode
+      const id = String(req.body.orderId).trim();
+      if (!mongoose.isValidObjectId(id)) {
+        return res.status(400).json({ message: "Invalid order id" });
+      }
+
+      const o = await Order.findById(id).select("user items total currencyDisplay paymentStatus status").lean();
+      if (!o || String(o.user) !== String(req.user)) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (o.paymentStatus === "Paid") {
+        return res.status(409).json({ message: "Order is already paid" });
+      }
+      if (o.status === "Cancelled") {
+        return res.status(400).json({ message: "Cancelled orders cannot be paid" });
+      }
+
+      const ic = resolveItemsCurrency(o.items);
+      const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
+      const settlement = getSettlementCharge({
+        total: o.total,
+        orderCurrency: ic.ok ? ic.currency : normalizeCurrencyCode(o.currencyDisplay?.currency, "INR"),
+        rates: s?.currencyConversionRates || {}
+      });
+
+      amount = settlement.amount;
+      currency = settlement.currency;
+      receipt = `ord_${id}`;
+      notes.orderId = id;
+    } else if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
+      // Compute authoritative order totals from database products, delivery settings & coupons
+      const settings = (await StoreSettings.findOne().lean()) || {};
+      const totals = await computeOrderTotals({
+        items: req.body.items,
+        shipping: req.body.shipping || {},
+        couponCode: req.body.couponCode,
+        userId: req.user || null,
+        settings
+      });
+      amount = totals.chargeAmount || totals.totalInInr || totals.total;
+      currency = totals.chargeCurrency || SETTLEMENT_CURRENCY;
+    } else {
+      return res.status(400).json({ message: "Order items or order reference required to initiate payment." });
     }
 
-    const keyId = process.env.RAZORPAY_KEY_ID || "";
-    const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
+    if (currency !== SETTLEMENT_CURRENCY) {
+      return res.status(400).json({ message: `Unsupported payment currency: ${currency}` });
+    }
 
-    if (!keyId || !razorpaySecret) {
-      return res.status(500).json({
-        message: "Razorpay credentials not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in backend/.env."
-      });
+    const minor = toMinorUnits(amount, currency);
+    if (!Number.isInteger(minor) || minor < 100 || amount > MAX_CHARGE) {
+      return res.status(400).json({ message: "Invalid amount" });
     }
 
     const razorpay = getRazorpayClient();
     const order = await razorpay.orders.create({
-      amount: Math.round(amount * 100),
+      amount: minor,
       currency,
-      receipt: `order_${Date.now()}`,
-      payment_capture: 1
+      receipt,
+      payment_capture: 1,
+      notes
     });
 
     return res.json(order);
@@ -38,10 +99,8 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, async (req,
       error?.message ||
       "Failed to create Razorpay order";
 
-    console.error("Razorpay create-order failed:", message);
-    return res.status(500).json({
-      message
-    });
+    console.error("[Payment] create-order failed:", message);
+    return res.status(500).json({ message });
   }
 });
 
@@ -49,25 +108,23 @@ router.post("/verify", async (req, res) => {
   const {
     razorpay_order_id,
     razorpay_payment_id,
-    razorpay_signature
+    razorpay_signature,
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature
   } = req.body || {};
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-    return res.status(400).json({ success: false, message: "Missing Razorpay payment verification details" });
-  }
+  const orderId = razorpay_order_id || razorpayOrderId;
+  const paymentId = razorpay_payment_id || razorpayPaymentId;
+  const signature = razorpay_signature || razorpaySignature;
 
-  const razorpaySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || "";
-  if (!razorpaySecret) {
-    return res.status(500).json({ success: false, message: "Razorpay secret not configured on server" });
-  }
+  const isValid = verifyRazorpaySignature({
+    razorpayOrderId: orderId,
+    razorpayPaymentId: paymentId,
+    razorpaySignature: signature
+  });
 
-  const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", razorpaySecret)
-    .update(body)
-    .digest("hex");
-
-  if (expectedSignature === razorpay_signature) {
+  if (isValid) {
     return res.json({ success: true });
   }
 

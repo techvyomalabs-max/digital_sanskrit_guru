@@ -1,16 +1,18 @@
 const express = require("express");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const { perWorker } = require("../utils/workerCount");
 const GiftPass = require("../models/GiftPass");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
+const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 
 const router = express.Router();
 
 const giftRedeemLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                  // max 10 attempts per IP per 15 minutes
+  max: perWorker(10),       // max 10 attempts per IP per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many gift pass redemption attempts. Please try again later." }
@@ -75,12 +77,14 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
     }
 
-    const product = await Product.findById(giftPass.product).lean();
+    const product = await Product.findById(giftPass.product)
+      .select(PUBLIC_PRODUCT_EXCLUDE)
+      .lean();
 
     return res.json({
       success: true,
       message: `Congratulations! You have successfully redeemed "${giftPass.productName || product?.name || 'Digital Item'}"!`,
-      product
+      product: toPublicProduct(product)
     });
   } catch (err) {
     console.error("[GiftRoutes] Redeem error:", err.message);
@@ -92,11 +96,16 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
 router.get("/my-redeemed", protect, async (req, res) => {
   try {
     const redeemedPasses = await GiftPass.find({ redeemedBy: req.user, isRedeemed: true })
-      .populate("product")
+      .populate({ path: "product", select: PUBLIC_PRODUCT_EXCLUDE })
       .sort({ redeemedAt: -1 })
       .lean();
 
-    return res.json(redeemedPasses);
+    const sanitizedPasses = (redeemedPasses || []).map((gp) => ({
+      ...gp,
+      product: toPublicProduct(gp.product)
+    }));
+
+    return res.json(sanitizedPasses);
   } catch (err) {
     console.error("[GiftRoutes] Fetch redeemed error:", err.message);
     return res.status(500).json({ message: "Failed to fetch redeemed gift passes." });

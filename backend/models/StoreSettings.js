@@ -353,6 +353,10 @@ const whatsappSettingsSchema = new mongoose.Schema(
     autoSendOrderConfirmation: {
       type: Boolean,
       default: true
+    },
+    enableOtpVerification: {
+      type: Boolean,
+      default: true
     }
   },
   { _id: false }
@@ -369,7 +373,8 @@ const storeSettingsSchema = new mongoose.Schema(
         metaPhoneNumberId: "",
         metaAccessToken: "",
         metaWabaId: "",
-        autoSendOrderConfirmation: true
+        autoSendOrderConfirmation: true,
+        enableOtpVerification: true
       })
     },
     enableCurrentLocation: {

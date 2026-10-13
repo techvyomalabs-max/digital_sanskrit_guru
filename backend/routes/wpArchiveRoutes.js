@@ -2,11 +2,12 @@ const express = require("express");
 const WpOrder = require("../models/WpOrder");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 
 const router = express.Router();
 
 // GET /api/admin/wp-archive/stats — Summary statistics for WordPress era
-router.get("/stats", protect, admin, async (req, res) => {
+router.get("/stats", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const [totalOrders, totalRevenueResult, deliveredCount, customerCount] = await Promise.all([
       WpOrder.countDocuments(),
@@ -37,7 +38,7 @@ router.get("/stats", protect, admin, async (req, res) => {
 });
 
 // GET /api/admin/wp-archive/orders — Search and paginated list of WP Archive Orders
-router.get("/orders", protect, admin, async (req, res) => {
+router.get("/orders", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
@@ -50,24 +51,27 @@ router.get("/orders", protect, admin, async (req, res) => {
       query.status = statusFilter;
     }
 
+    const escapeRegex = (str) => String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     if (search) {
       const cleanSearch = search.replace(/^#/g, "").trim();
+      const safeSearch = escapeRegex(cleanSearch);
       const numId = Number(cleanSearch);
 
       if (!isNaN(numId) && cleanSearch.length < 10) {
         query.$or = [
           { wpOrderId: numId },
-          { billingEmail: { $regex: cleanSearch, $options: "i" } },
-          { billingName: { $regex: cleanSearch, $options: "i" } },
-          { billingPhone: { $regex: cleanSearch, $options: "i" } }
+          { billingEmail: { $regex: safeSearch, $options: "i" } },
+          { billingName: { $regex: safeSearch, $options: "i" } },
+          { billingPhone: { $regex: safeSearch, $options: "i" } }
         ];
       } else {
         query.$or = [
-          { billingEmail: { $regex: cleanSearch, $options: "i" } },
-          { billingName: { $regex: cleanSearch, $options: "i" } },
-          { billingPhone: { $regex: cleanSearch, $options: "i" } },
-          { couponCode: { $regex: cleanSearch, $options: "i" } },
-          { transactionId: { $regex: cleanSearch, $options: "i" } }
+          { billingEmail: { $regex: safeSearch, $options: "i" } },
+          { billingName: { $regex: safeSearch, $options: "i" } },
+          { billingPhone: { $regex: safeSearch, $options: "i" } },
+          { couponCode: { $regex: safeSearch, $options: "i" } },
+          { transactionId: { $regex: safeSearch, $options: "i" } }
         ];
       }
     }
@@ -99,7 +103,7 @@ router.get("/orders", protect, admin, async (req, res) => {
 });
 
 // GET /api/admin/wp-archive/orders/:wpOrderId — Get detailed view of single WP order
-router.get("/orders/:wpOrderId", protect, admin, async (req, res) => {
+router.get("/orders/:wpOrderId", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const numId = Number(req.params.wpOrderId);
     const order = await WpOrder.findOne({ wpOrderId: numId }).lean();
