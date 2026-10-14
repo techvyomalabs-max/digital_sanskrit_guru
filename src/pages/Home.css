@@ -1249,6 +1249,10 @@
     gap: var(--space-2);
   }
 
+  .home-highlights {
+    gap: var(--space-2);
+  }
+
   .home-page > * {
     border-radius: 0;
     border-left: none;
