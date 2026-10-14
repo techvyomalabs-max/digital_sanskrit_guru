@@ -679,6 +679,7 @@ function MyOrders() {
           const status = String(order.status || "Pending");
           const paymentStatus = getEffectivePaymentStatus(order);
           const isPaid = paymentStatus === "Paid";
+          const isWpOrder = Boolean(order?.isWpArchive || order?.legacyAccess || String(order?._id || "").startsWith("wp_"));
           const orderStatusLabel = status === "Cancelled" ? "Cancelled" : isPaid ? status : "On Hold";
           const refundStatus = String(order?.refundStatus || "Not Applicable");
           const paymentStatusLabel = paymentStatus;
@@ -689,6 +690,7 @@ function MyOrders() {
             items.every((item) =>
               Boolean(
                 item.isDigital ||
+                  item.legacyAccess ||
                   item.webReaderLink ||
                   item.kindleLink ||
                   String(item.name || "").toLowerCase().includes("web") ||
@@ -705,8 +707,8 @@ function MyOrders() {
 
           const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
           const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
-          const canContinuePayment = !isPaid && status !== "Delivered" && status !== "Cancelled";
-          const canCancelOrder = status === "Pending";
+          const canContinuePayment = !isWpOrder && !isPaid && status !== "Delivered" && status !== "Cancelled";
+          const canCancelOrder = !isWpOrder && status === "Pending";
           const shouldShowRefundStatus = refundStatus !== "Not Applicable";
           const deliveryCharge = Number(order?.deliveryCharge || 0);
 
@@ -760,6 +762,23 @@ function MyOrders() {
                       )}
                     </button>
                   </div>
+                  {isWpOrder && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        marginTop: "4px",
+                        padding: "2px 6px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        borderRadius: "4px",
+                        backgroundColor: "#fef3c7",
+                        color: "#92400e",
+                        border: "1px solid #fde68a"
+                      }}
+                    >
+                      Previous website order
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -775,6 +794,7 @@ function MyOrders() {
                       const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
                       const returnWindow = getReturnWindowInfo(order, item);
                       const canRequestReturn =
+                        !isWpOrder &&
                         status === "Delivered" &&
                         isPaid &&
                         Boolean(itemId) &&
@@ -783,11 +803,14 @@ function MyOrders() {
 
                       const isItemDigital = Boolean(
                         item.isDigital ||
+                          item.legacyAccess ||
                           item.webReaderLink ||
                           item.kindleLink ||
                           String(item.name || "").toLowerCase().includes("web") ||
                           String(item.name || "").toLowerCase().includes("kindle") ||
-                          String(item.name || "").toLowerCase().includes("flipbook")
+                          String(item.name || "").toLowerCase().includes("flipbook") ||
+                          String(item.format || "").toLowerCase().includes("web") ||
+                          String(item.format || "").toLowerCase().includes("flipbook")
                       );
 
                       return (
@@ -873,58 +896,72 @@ function MyOrders() {
 
                               {/* Digital Reader Access Box */}
                               {isPaid &&
-                                (item.isDigital ||
-                                  String(item.name || "").toLowerCase().includes("kindle") ||
-                                  String(item.name || "").toLowerCase().includes("web version") ||
-                                  item.webReaderLink ||
-                                  item.kindleLink) &&
+                                isItemDigital &&
                                 (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
-                                  <div className="my-order-digital-box">
-                                    <div className="my-order-digital-head">
-                                      ⚡ Digital Reader Access Granted
+                                  isWpOrder ? (
+                                    <div
+                                      className="my-order-legacy-note-box"
+                                      style={{
+                                        marginTop: "8px",
+                                        padding: "10px 12px",
+                                        backgroundColor: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: "6px",
+                                        fontSize: "12.5px",
+                                        color: "var(--site-text-soft, #475569)",
+                                        lineHeight: 1.4
+                                      }}
+                                    >
+                                      These were purchased on our previous website. Please access them there using the same email address.
                                     </div>
-                                    <div className="my-order-digital-btns">
-                                      {(item.webReaderLink ||
-                                        String(item.name || "").toLowerCase().includes("web") ||
-                                        String(item.name || "").toLowerCase().includes("flipbook") ||
-                                        item.isDigital) && (
+                                  ) : (
+                                    <div className="my-order-digital-box">
+                                      <div className="my-order-digital-head">
+                                        ⚡ Digital Reader Access Granted
+                                      </div>
+                                      <div className="my-order-digital-btns">
+                                        {(item.webReaderLink ||
+                                          String(item.name || "").toLowerCase().includes("web") ||
+                                          String(item.name || "").toLowerCase().includes("flipbook") ||
+                                          item.isDigital) && (
+                                          <button
+                                            type="button"
+                                            className="my-order-digital-btn-read"
+                                            onClick={() => {
+                                              const readerLink = item.webReaderLink || item.product?.webReaderLink;
+                                              navigate("/my-library", {
+                                                state: { autoOpenUrl: readerLink, search: item.name }
+                                              });
+                                            }}
+                                          >
+                                            {String(item.name || "").toLowerCase().includes("flipbook") ||
+                                            String(item.digitalType || item.product?.digitalType || "")
+                                              .toLowerCase()
+                                              .includes("flipbook")
+                                              ? "📖 Read Flipbook"
+                                              : "📖 Read Web Version"}
+                                          </button>
+                                        )}
+                                        {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
+                                          <a
+                                            href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="my-order-digital-btn-kindle"
+                                          >
+                                            📱 View Kindle Edition ↗
+                                          </a>
+                                        )}
                                         <button
                                           type="button"
-                                          className="my-order-digital-btn-read"
-                                          onClick={() => {
-                                            const readerLink = item.webReaderLink || item.product?.webReaderLink;
-                                            navigate("/my-library", {
-                                              state: { autoOpenUrl: readerLink, search: item.name }
-                                            });
-                                          }}
+                                          className="my-order-digital-btn-guide"
+                                          onClick={() => setActiveKindleGuideItem(item)}
                                         >
-                                          {String(item.name || "").toLowerCase().includes("flipbook") ||
-                                          String(item.digitalType || item.product?.digitalType || "")
-                                            .toLowerCase()
-                                            .includes("flipbook")
-                                            ? "📖 Read Flipbook"
-                                            : "📖 Read Web Version"}
+                                          💡 How to Access
                                         </button>
-                                      )}
-                                      {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
-                                        <a
-                                          href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="my-order-digital-btn-kindle"
-                                        >
-                                          📱 View Kindle Edition ↗
-                                        </a>
-                                      )}
-                                      <button
-                                        type="button"
-                                        className="my-order-digital-btn-guide"
-                                        onClick={() => setActiveKindleGuideItem(item)}
-                                      >
-                                        💡 How to Access
-                                      </button>
+                                      </div>
                                     </div>
-                                  </div>
+                                  )
                                 )}
 
                               {/* 1-Time Gift Passcode */}

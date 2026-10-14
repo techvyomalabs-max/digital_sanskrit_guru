@@ -50,6 +50,9 @@ function MyLibrary() {
   }, [activeBlobUrl]);
 
   const openSecureReader = useCallback(async (book) => {
+    if (!book || book.legacyAccess || book.isWpArchive) {
+      return;
+    }
     const rawUrl = String(book.webReaderLink || book.product?.webReaderLink || "").trim();
     if (!rawUrl && !book.orderId) {
       showToast("Digital Reader link is being configured. Please contact support.");
@@ -215,6 +218,7 @@ function MyLibrary() {
     orders.forEach((order) => {
       const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
       if (!isPaid || !Array.isArray(order.items)) return;
+      const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
       order.items.forEach((item) => {
         const isBundle = String(item.productType || "").toLowerCase() === "bundle" || (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
@@ -223,8 +227,10 @@ function MyLibrary() {
           // Iterate over individual bundle items
           item.bundleItems.forEach((subItem) => {
             const subNameLower = String(subItem.name || "").toLowerCase();
+            const isSubLegacy = Boolean(isOrderLegacy || item.legacyAccess || subItem.legacyAccess);
             const isSubDigital = Boolean(
               subItem.isDigital ||
+              subItem.legacyAccess ||
               subItem.webReaderLink ||
               subItem.kindleLink ||
               subNameLower.includes("web") ||
@@ -234,7 +240,7 @@ function MyLibrary() {
             );
 
             if (isSubDigital) {
-              const subKey = String(subItem.product || subItem._id || subItem.name).trim();
+              const subKey = String((subItem.product || subItem._id || subItem.name) + (isSubLegacy ? "_legacy" : "")).trim();
               const subQty = Number(subItem.quantity || 1) * Number(item.quantity || 1);
 
               if (seenMap.has(subKey)) {
@@ -248,9 +254,11 @@ function MyLibrary() {
                   orderDate: order.createdAt,
                   orderNumber: order._id,
                   copies: subQty,
-                  webReaderLink: subItem.webReaderLink || "",
-                  kindleLink: subItem.kindleLink || "",
-                  digitalInstructions: subItem.digitalInstructions || ""
+                  webReaderLink: isSubLegacy ? "" : (subItem.webReaderLink || ""),
+                  kindleLink: isSubLegacy ? "" : (subItem.kindleLink || ""),
+                  digitalInstructions: isSubLegacy ? "" : (subItem.digitalInstructions || ""),
+                  legacyAccess: isSubLegacy,
+                  isWpArchive: isOrderLegacy
                 };
                 seenMap.set(subKey, entry);
                 list.push(entry);
@@ -261,8 +269,10 @@ function MyLibrary() {
           // Handle standard single product
           const nameLower = String(item.name || "").toLowerCase();
           const formatLower = String(item.format || "").toLowerCase();
+          const isItemLegacy = Boolean(isOrderLegacy || item.legacyAccess);
           const isDigital = Boolean(
             item.isDigital ||
+            item.legacyAccess ||
             item.webReaderLink ||
             item.kindleLink ||
             nameLower.includes("web") ||
@@ -279,7 +289,7 @@ function MyLibrary() {
               return;
             }
 
-            const key = String(item.product || item._id || item.name).trim();
+            const key = String((item.product || item._id || item.name) + (isItemLegacy ? "_legacy" : "")).trim();
             if (seenMap.has(key)) {
               const existing = seenMap.get(key);
               existing.copies += Number(item.quantity || 1);
@@ -290,8 +300,10 @@ function MyLibrary() {
                 orderDate: order.createdAt,
                 orderNumber: order._id,
                 copies: Number(item.quantity || 1),
-                webReaderLink: item.webReaderLink || item.product?.webReaderLink || "",
-                kindleLink: item.kindleLink || item.product?.kindleLink || ""
+                webReaderLink: isItemLegacy ? "" : (item.webReaderLink || item.product?.webReaderLink || ""),
+                kindleLink: isItemLegacy ? "" : (item.kindleLink || item.product?.kindleLink || ""),
+                legacyAccess: isItemLegacy,
+                isWpArchive: isOrderLegacy
               };
               seenMap.set(key, entry);
               list.push(entry);
@@ -314,6 +326,15 @@ function MyLibrary() {
     );
   }, [digitalBooks, searchQuery]);
 
+  const nativeBooks = useMemo(
+    () => filteredBooks.filter((book) => !book.legacyAccess && !book.isWpArchive),
+    [filteredBooks]
+  );
+  const legacyBooks = useMemo(
+    () => filteredBooks.filter((book) => Boolean(book.legacyAccess || book.isWpArchive)),
+    [filteredBooks]
+  );
+
   // Auto-open reader if navigated from MyOrders with autoOpenUrl
   useEffect(() => {
     if (location.state?.autoOpenUrl && digitalBooks.length > 0 && !activeReaderItem) {
@@ -321,12 +342,14 @@ function MyLibrary() {
       const targetSearch = location.state.search;
       const match = digitalBooks.find(
         (b) =>
-          (b.webReaderLink && b.webReaderLink === targetUrl) ||
-          (b.name && targetSearch && b.name.toLowerCase().includes(String(targetSearch).toLowerCase()))
+          !b.legacyAccess &&
+          !b.isWpArchive &&
+          ((b.webReaderLink && b.webReaderLink === targetUrl) ||
+            (b.name && targetSearch && b.name.toLowerCase().includes(String(targetSearch).toLowerCase())))
       );
       if (match) {
         openSecureReader(match);
-      } else {
+      } else if (targetUrl) {
         openSecureReader({
           name: targetSearch || "Digital Content",
           webReaderLink: targetUrl
@@ -385,78 +408,129 @@ function MyLibrary() {
             <span>Showing <strong>{filteredBooks.length}</strong> of <strong>{digitalBooks.length}</strong> digital items</span>
           </div>
 
-          <div className="my-library-grid">
-            {filteredBooks.map((book, idx) => {
-              const readerUrl = book.webReaderLink || book.product?.webReaderLink;
-              const isKindle = String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink);
-              const isFlipbook = Boolean(
-                String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
-                String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
-                String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
-                String(book.name || "").toLowerCase().includes("flipbook")
-              );
+          {nativeBooks.length > 0 && (
+            <div className="my-library-grid">
+              {nativeBooks.map((book, idx) => {
+                const isKindle = String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink);
+                const isFlipbook = Boolean(
+                  String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
+                  String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
+                  String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
+                  String(book.name || "").toLowerCase().includes("flipbook")
+                );
 
-              return (
-                <div key={`${book.name}-${idx}`} className="my-library-card">
-                  <div className="my-library-card-cover-container">
-                    <img
-                      src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
-                      alt={book.name}
-                      className="my-library-card-cover"
-                      onError={(e) => {
-                        e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
-                      }}
-                    />
-                    <span className="my-library-format-badge">
-                      {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
-                    </span>
-                  </div>
-
-                  <div className="my-library-card-body">
-                    <h3 className="my-library-card-title">{book.name}</h3>
-
-                    <div className="my-library-card-meta">
-                      <span>Purchased: {formatDate(book.orderDate)}</span>
-                      {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                return (
+                  <div key={`${book.name}-${idx}`} className="my-library-card">
+                    <div className="my-library-card-cover-container">
+                      <img
+                        src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
+                        alt={book.name}
+                        className="my-library-card-cover"
+                        onError={(e) => {
+                          e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
+                        }}
+                      />
+                      <span className="my-library-format-badge">
+                        {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                      </span>
                     </div>
 
-                    {book.digitalInstructions && (
-                      <p className="my-library-instructions-snippet">{book.digitalInstructions}</p>
-                    )}
+                    <div className="my-library-card-body">
+                      <h3 className="my-library-card-title">{book.name}</h3>
 
-                    <div className="my-library-card-actions">
-                      {!isKindle ? (
-                        <button
-                          type="button"
-                          className="my-library-btn-primary"
-                          onClick={() => openSecureReader(book)}
-                        >
-                          {isFlipbook ? "📖 Read Flipbook" : "📖 Read Web Version"}
-                        </button>
-                      ) : (
-                        <a
-                          href={book.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="my-library-btn-kindle"
-                        >
-                          📱 View on Amazon ↗
-                        </a>
+                      <div className="my-library-card-meta">
+                        <span>Purchased: {formatDate(book.orderDate)}</span>
+                        {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                      </div>
+
+                      {book.digitalInstructions && (
+                        <p className="my-library-instructions-snippet">{book.digitalInstructions}</p>
                       )}
 
-                      <button
-                        type="button"
-                        className="my-library-btn-outline"
-                        onClick={() => setActiveGuideItem(book)}
-                      >
-                        💡 Guide
-                      </button>
+                      <div className="my-library-card-actions">
+                        {!isKindle ? (
+                          <button
+                            type="button"
+                            className="my-library-btn-primary"
+                            onClick={() => openSecureReader(book)}
+                          >
+                            {isFlipbook ? "📖 Read Flipbook" : "📖 Read Web Version"}
+                          </button>
+                        ) : (
+                          <a
+                            href={book.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="my-library-btn-kindle"
+                          >
+                            📱 View on Amazon ↗
+                          </a>
+                        )}
+
+                        <button
+                          type="button"
+                          className="my-library-btn-outline"
+                          onClick={() => setActiveGuideItem(book)}
+                        >
+                          💡 Guide
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
+
+          {legacyBooks.length > 0 && (
+            <div className="my-library-legacy-section" style={{ marginTop: nativeBooks.length > 0 ? "40px" : "10px" }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "6px", color: "var(--site-text, #1f2937)" }}>
+                Purchased on our previous website
+              </h2>
+              <p style={{ fontSize: "0.95rem", color: "var(--site-text-soft, #4b5563)", marginBottom: "20px" }}>
+                These were purchased on our previous website. Please access them there using the same email address.
+              </p>
+
+              <div className="my-library-grid">
+                {legacyBooks.map((book, idx) => {
+                  const isKindle = String(book.name || "").toLowerCase().includes("kindle");
+                  const isFlipbook = Boolean(
+                    String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
+                    String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
+                    String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
+                    String(book.name || "").toLowerCase().includes("flipbook")
+                  );
+
+                  return (
+                    <div key={`legacy-${book.name}-${idx}`} className="my-library-card">
+                      <div className="my-library-card-cover-container">
+                        <img
+                          src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
+                          alt={book.name}
+                          className="my-library-card-cover"
+                          onError={(e) => {
+                            e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
+                          }}
+                        />
+                        <span className="my-library-format-badge">
+                          {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                        </span>
+                      </div>
+
+                      <div className="my-library-card-body">
+                        <h3 className="my-library-card-title">{book.name}</h3>
+
+                        <div className="my-library-card-meta">
+                          <span>Purchased: {formatDate(book.orderDate)}</span>
+                          {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 

@@ -1574,6 +1574,7 @@ router.get("/my", protect, async (req, res) => {
     const productIds = [];
     const productNames = [];
     orders.forEach((order) => {
+      if (order.isWpArchive || String(order._id || "").startsWith("wp_")) return;
       if (Array.isArray(order.items)) {
         order.items.forEach((item) => {
           const pId = String(item.product || item._id || item.id || "").trim();
@@ -1615,6 +1616,7 @@ router.get("/my", protect, async (req, res) => {
       });
 
       orders.forEach((order) => {
+        if (order.isWpArchive || String(order._id || "").startsWith("wp_")) return;
         if (Array.isArray(order.items)) {
           order.items.forEach((item) => {
             const pId = String(item.product || item._id || item.id || "").trim();
@@ -1649,10 +1651,52 @@ router.get("/my", protect, async (req, res) => {
       });
     }
 
+    const isWpDigitalLooking = (it) => {
+      if (!it) return false;
+      if (it.isDigital) return true;
+      const name = String(it.name || "").toLowerCase();
+      const format = String(it.format || "").toLowerCase();
+      const indicators = ["web version", "web-version", "flipbook", "pdf", "ebook", "e-book"];
+      return indicators.some((ind) => name.includes(ind) || format.includes(ind)) || format.includes("web");
+    };
+
+    const cleanWpItem = (it) => {
+      if (!it || typeof it !== "object") return it;
+      delete it.webReaderLink;
+      delete it.kindleLink;
+      delete it.kindleAsin;
+      delete it.digitalInstructions;
+      if (isWpDigitalLooking(it)) {
+        it.legacyAccess = true;
+      }
+      if (Array.isArray(it.bundleItems)) {
+        it.bundleItems = it.bundleItems.map((bi) => {
+          const sub = { ...bi };
+          delete sub.webReaderLink;
+          delete sub.kindleLink;
+          delete sub.kindleAsin;
+          delete sub.digitalInstructions;
+          if (isWpDigitalLooking(sub)) {
+            sub.legacyAccess = true;
+          }
+          return sub;
+        });
+      }
+      return it;
+    };
+
     const serializedOrders = orders.map((o) => {
       const oId = String(o._id);
       const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
-      return serializeOrderForOwner(o, req.user, { redeemedProductIds });
+      const serialized = serializeOrderForOwner(o, req.user, { redeemedProductIds });
+      const isWp = Boolean(o.isWpArchive || String(o._id || "").startsWith("wp_") || serialized?.isWpArchive);
+      if (isWp && serialized) {
+        serialized.legacyAccess = true;
+        if (Array.isArray(serialized.items)) {
+          serialized.items = serialized.items.map(cleanWpItem);
+        }
+      }
+      return serialized;
     });
     res.json(serializedOrders);
   } catch (err) {
