@@ -594,15 +594,82 @@ html.banner-active .navbar {
   color: var(--site-header-text);
 }
 
-/* ── Mobile location ────────────────────────────────────────────────────── */
+/* ── Mobile location card (in slide-out drawer) ─────────────────────────── */
 
-.navbar-mobile-location {
-  display: none;
-  background: transparent;
-  border: none;
-  text-align: left;
+.navbar-mobile-location-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
+  padding: 9px 12px;
+  margin: 6px 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  color: var(--site-header-text, #ffffff);
+}
+
+.navbar-mobile-location-card:hover,
+.navbar-mobile-location-card:active {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.navbar-mobile-location-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.navbar-mobile-location-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.navbar-mobile-location-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+}
+
+.navbar-mobile-location-address {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-header-text, #ffffff);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.navbar-mobile-location-arrow {
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.navbar-mobile-location-card:hover .navbar-mobile-location-arrow {
+  color: #ffffff;
+  transform: translateX(2px);
 }
 
 /* ── Sidebar links ──────────────────────────────────────────────────────── */
@@ -696,6 +763,21 @@ html.banner-active .navbar {
   display: flex;
   flex-direction: column;
   animation: modal-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modal-slide-up-sheet {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 .navbar-address-modal-head {
@@ -1303,19 +1385,6 @@ html.banner-active .navbar {
     padding: var(--space-4) 14px var(--space-5);
   }
 
-  .navbar-mobile-location {
-    display: block;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 13px;
-    padding: 8px 10px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    margin-bottom: 4px;
-    text-decoration: none;
-  }
-
-  .navbar-mobile-location strong {
-    color: var(--site-header-text);
-  }
 
   .navbar-link {
     font-size: 14px;
@@ -1348,8 +1417,70 @@ html.banner-active .navbar {
     display: none;
   }
 
+  /* Mobile Address Modal (Bottom-Sheet UX) */
   .navbar-address-modal-backdrop {
-    padding-top: 52px;
+    padding: 0 !important;
+    align-items: flex-end !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+  }
+
+  .navbar-address-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 84dvh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35) !important;
+    animation: modal-slide-up-sheet 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .navbar-address-modal::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: #cbd5e1;
+    margin: 8px auto 0;
+    flex-shrink: 0;
+  }
+
+  .navbar-address-modal-head {
+    padding: 12px 18px 12px;
+  }
+
+  .navbar-address-modal-head h3 {
+    font-size: 16px;
+  }
+
+  .navbar-address-modal-subtitle {
+    font-size: 11.5px;
+  }
+
+  .navbar-address-options {
+    padding: 10px 14px;
+    gap: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navbar-address-option {
+    padding: 12px 12px;
+  }
+
+  .navbar-address-modal-actions {
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    background: #ffffff;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  }
+
+  .navbar-address-add-btn,
+  .navbar-address-manage-btn {
+    padding: 10px 6px;
+    font-size: 12px;
   }
 
   .navbar-attached-bar {

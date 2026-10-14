@@ -425,6 +425,7 @@ img, video, iframe, embed, object {
 
   .home-highlights {
     grid-template-columns: 1fr !important;
+    gap: 12px !important;
   }
 
   .home-catalog-preview-item,

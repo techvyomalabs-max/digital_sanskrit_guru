@@ -146,6 +146,14 @@ const userSchema = mongoose.Schema({
   deletedBy: {
     name: { type: String, default: "" },
     email: { type: String, default: "" }
+  },
+  marketingOptOut: {
+    type: Boolean,
+    default: false
+  },
+  marketingOptOutAt: {
+    type: Date,
+    default: null
   }
 });
 

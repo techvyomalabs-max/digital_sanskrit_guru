@@ -6,8 +6,10 @@
  */
 
 const nodemailer = require("nodemailer");
+const User = require("../models/User");
 const EmailLog = require("../models/EmailLog");
 const { generateInvoicePdfBuffer } = require("./invoicePdfGenerator");
+const { buildUnsubscribeUrl } = require("./unsubscribe");
 
 const EMAIL_ENABLED = String(process.env.EMAIL_ENABLED || "false").toLowerCase() === "true";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
@@ -25,6 +27,20 @@ const escapeHtml = (s) =>
   }[c]));
 
 const cleanSubject = (s) => String(s || "").replace(/[\r\n]+/g, " ").trim();
+
+function marketingExtras(user) {
+  if (!user?._id) {
+    return { footerHtml: "", headers: {} };
+  }
+  const url = buildUnsubscribeUrl(user._id);
+  return {
+    headers: {
+      "List-Unsubscribe": "<" + url + ">",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+    },
+    footerHtml: `<p style="text-align: center; font-size: 12px; color: #64748b; margin-top: 24px;">Don't want these emails? <a href="${url}" style="color: #64748b; text-decoration: underline;">Unsubscribe</a></p>`
+  };
+}
 
 // ── Transporter ──────────────────────────────────────────────────────────────
 
@@ -65,7 +81,7 @@ async function getTransporter() {
 
 // ── Core send function ────────────────────────────────────────────────────────
 
-async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "", attachments = [] }) {
+async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "", attachments = [], headers = {} }) {
   const logEntry = { to, subject, type, orderId, productId, status: "sent", error: "" };
 
   try {
@@ -89,6 +105,10 @@ async function sendEmail({ to, subject, html, type = "campaign", orderId = "", p
       subject,
       html
     };
+
+    if (headers && typeof headers === "object" && Object.keys(headers).length > 0) {
+      mailOptions.headers = headers;
+    }
 
     if (Array.isArray(attachments) && attachments.length > 0) {
       mailOptions.attachments = attachments;
@@ -581,7 +601,7 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   });
 }
 
-async function sendRefundStatusUpdate(order, user, refundStatus) {
+async function sendRefundStatusUpdate(order, user, refundStatus, options = {}) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
 
@@ -603,6 +623,32 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
   const safeOrderId = escapeHtml(String(order._id || "").slice(-8).toUpperCase());
   const safeRefundStatus = escapeHtml(refundStatus);
 
+  let breakdownHtml = "";
+  if (Array.isArray(options?.lines) && options.lines.length > 0) {
+    const rows = options.lines.map((l) =>
+      `<tr>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(String(l.label || ""))}</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">
+          ${Number(l.amount) < 0 ? "-" : ""}₹${Math.abs(Number(l.amount) || 0).toFixed(2)}
+        </td>
+      </tr>`
+    ).join("");
+
+    const displayAmount = Number(options?.refundAmount ?? order.refundedAmountInInr ?? 0).toFixed(2);
+    breakdownHtml = `
+      <div style="margin: 16px 0; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">
+        <h4 style="margin: 0 0 8px; font-size: 14px; color: #374151;">Refund Breakdown</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          ${rows}
+          <tr>
+            <td style="padding: 8px 10px 0; font-weight: bold; color: #111827;">Total Refunded</td>
+            <td style="padding: 8px 10px 0; text-align: right; font-weight: bold; color: #166534;">₹${displayAmount}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
   const html = htmlWrapper(info.title, `
     <h2>${info.emoji} ${escapeHtml(info.title)}</h2>
     <p>Hi <strong>${safeUserName}</strong>,</p>
@@ -611,6 +657,7 @@ async function sendRefundStatusUpdate(order, user, refundStatus) {
       <strong>Order ID:</strong> ${safeOrderId}&nbsp;&nbsp;
       <span class="badge ${badgeClass}">Refund: ${safeRefundStatus}</span>
     </p>
+    ${breakdownHtml}
     ${buildOrderItemsTable(order.items || [])}
     <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
   `);
@@ -655,6 +702,11 @@ async function sendLowStockAdminAlert(products) {
 }
 
 async function sendWishlistLowStockAlert(user, products) {
+  if (user?._id) {
+    const dbUser = await User.findById(user._id).select("marketingOptOut").lean();
+    if (dbUser?.marketingOptOut) return;
+  }
+
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
 
@@ -679,10 +731,13 @@ async function sendWishlistLowStockAlert(user, products) {
     <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/wishlist">View My Wishlist</a>
   `);
 
+  const { footerHtml, headers } = marketingExtras(user);
+
   return sendEmail({
     to,
     subject: `🔔 Items in your wishlist are running low — ${SITE_NAME}`,
-    html,
+    html: html + footerHtml,
+    headers,
     type: "wishlist-alert"
   });
 }
@@ -690,9 +745,11 @@ async function sendWishlistLowStockAlert(user, products) {
 async function sendBroadcastEmail({ subject, html, recipients = [] }) {
   const results = [];
   for (const recipient of recipients) {
+    if (recipient?.marketingOptOut === true) continue;
     const to = String(recipient?.email || recipient || "").trim().toLowerCase();
     if (!to) continue;
-    const result = await sendEmail({ to, subject, html, type: "broadcast" });
+    const { footerHtml, headers } = marketingExtras(recipient);
+    const result = await sendEmail({ to, subject, html: html + footerHtml, headers, type: "broadcast" });
     results.push({ to, ...result });
   }
   return results;
@@ -837,6 +894,11 @@ async function sendWelcomeCredentialsEmail(user, plainPassword) {
 }
 
 async function sendWishlistReminderEmail(user, wishlistItems = []) {
+  if (user?._id) {
+    const dbUser = await User.findById(user._id).select("marketingOptOut").lean();
+    if (dbUser?.marketingOptOut) return;
+  }
+
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to || !Array.isArray(wishlistItems) || wishlistItems.length === 0) return;
 
@@ -893,10 +955,13 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
     "Pick up where you left off"
   );
 
+  const { footerHtml, headers } = marketingExtras(user);
+
   return sendEmail({
     to,
     subject: `🎁 Items in your wishlist are waiting for you, ${cleanSubject(user?.name || "Sanskrit Enthusiast")}!`,
-    html,
+    html: html + footerHtml,
+    headers,
     type: "wishlist-reminder"
   });
 }

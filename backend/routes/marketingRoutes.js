@@ -103,12 +103,12 @@ async function resolveRecipientsList(filterType, filterValue) {
     userIds = spendAgg.map((s) => String(s._id)).filter(Boolean);
   }
 
-    const query = { isDeleted: { $ne: true } };
+    const query = { isDeleted: { $ne: true }, marketingOptOut: { $ne: true } };
     if (userIds !== null) {
       query._id = { $in: userIds };
     }
 
-    return await User.find(query).select("email name").lean();
+    return await User.find(query).select("_id email name marketingOptOut").lean();
   }
 
   // ── GET /api/marketing/targeting-options ─────────────────────────────────────

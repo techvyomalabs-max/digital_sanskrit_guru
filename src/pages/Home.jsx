@@ -562,16 +562,18 @@ function Home() {
         </div>
       ) : null}
 
-      <section className="home-feature-shell">
-        {isRetryingHomeData ? (
-          <p className="home-status-banner">Refreshing homepage content...</p>
-        ) : null}
-        {homeLoadFailed ? (
-          <p className="home-status-banner home-status-banner-warning">
-            Homepage content took too long to load. Refresh once if products are missing.
-          </p>
-        ) : null}
-      </section>
+      {(isRetryingHomeData || homeLoadFailed) && (
+        <section className="home-feature-shell">
+          {isRetryingHomeData ? (
+            <p className="home-status-banner">Refreshing homepage content...</p>
+          ) : null}
+          {homeLoadFailed ? (
+            <p className="home-status-banner home-status-banner-warning">
+              Homepage content took too long to load. Refresh once if products are missing.
+            </p>
+          ) : null}
+        </section>
+      )}
 
       <section id="home-section-top-rated" className="home-section">
         <div className="home-section-head">

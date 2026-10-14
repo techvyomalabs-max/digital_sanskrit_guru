@@ -32,6 +32,14 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     cluster.fork();
   });
 
+  cluster.on("message", (worker, msg) => {
+    if (msg?.type !== "cache:invalidate") return;
+    for (const id in cluster.workers) {
+      const w = cluster.workers[id];
+      if (w && w !== worker) w.send(msg);
+    }
+  });
+
 } else {
   // ── Worker process ──────────────────────────────────────────────────────────
   const dns = require("dns");
@@ -59,6 +67,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const pushRoutes = require("./routes/pushRoutes");
   const wishlistRoutes = require("./routes/wishlistRoutes");
   const marketingRoutes = require("./routes/marketingRoutes");
+  const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
   const trashRoutes = require("./routes/trashRoutes");
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
@@ -188,6 +197,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/push", requireDatabase, pushRoutes);
   app.use("/api/wishlist", requireDatabase, wishlistRoutes);
   app.use("/api/marketing", requireDatabase, marketingRoutes);
+  app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
 

@@ -34,7 +34,7 @@ async function processWishlistNudges() {
         { lastNudgeSentAt: { $lte: frequencyCutoff } }
       ]
     })
-      .populate("user", "name email")
+      .populate("user", "name email marketingOptOut")
       .populate("productIds", "name price image stock");
 
     let sentCount = 0;
@@ -45,6 +45,22 @@ async function processWishlistNudges() {
 
       const products = (wishlist.productIds || []).filter((p) => p && p.name);
       if (products.length === 0) continue;
+
+      // Claim before sending to prevent duplicate sends across cluster workers
+      const claimedAt = new Date();
+      const claimFilter = {
+        _id: wishlist._id,
+        ...(wishlist.lastNudgeSentAt
+          ? { lastNudgeSentAt: wishlist.lastNudgeSentAt }
+          : { $or: [{ lastNudgeSentAt: null }, { lastNudgeSentAt: { $exists: false } }] })
+      };
+      const claim = await Wishlist.updateOne(
+        claimFilter,
+        { $set: { lastNudgeSentAt: claimedAt } }
+      );
+      if (claim.modifiedCount !== 1) continue;
+
+      if (user.marketingOptOut === true) continue;
 
       // 3. Check user's recent orders to filter out products already purchased
       const userOrders = await Order.find({
@@ -71,10 +87,6 @@ async function processWishlistNudges() {
         await sendWishlistReminderEmail(user, unpurchasedProducts);
         sentCount++;
       }
-
-      // Mark nudge as processed to respect anti-spam frequency delay
-      wishlist.lastNudgeSentAt = new Date();
-      await wishlist.save();
     }
 
     if (sentCount > 0) {

@@ -233,6 +233,12 @@ const orderSchema = new mongoose.Schema(
         }
       ]
     },
+    refundLock: {
+      lockedAt: { type: Date, default: null },
+      lockedBy: { type: String, default: "" },
+      token: { type: String, default: "" },
+      expiresAt: { type: Date, default: null }
+    },
     refundStatus: {
       type: String,
       default: "Not Applicable",
