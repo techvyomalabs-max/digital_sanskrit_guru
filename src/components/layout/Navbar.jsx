@@ -20,7 +20,8 @@ import {
   Search,
   Menu,
   X,
-  MapPin
+  MapPin,
+  ChevronRight
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
@@ -678,12 +679,14 @@ function Navbar({ bannerActive = false }) {
         ) : null}
 
         {/* Saved Delivery Addresses Modal */}
-        {isAddressModalOpen && (
-          <div
-            className="navbar-address-modal-backdrop"
-            onClick={() => setIsAddressModalOpen(false)}
-            role="presentation"
-          >
+        {isAddressModalOpen &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div
+              className="navbar-address-modal-backdrop"
+              onClick={() => setIsAddressModalOpen(false)}
+              role="presentation"
+            >
             <div
               className="navbar-address-modal"
               role="dialog"
@@ -859,7 +862,8 @@ function Navbar({ bannerActive = false }) {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Delete Address Confirmation Popup Modal */}
@@ -1066,10 +1070,23 @@ function Navbar({ bannerActive = false }) {
 
           <button
             type="button"
-            className="navbar-mobile-location"
-            onClick={() => setIsAddressModalOpen(true)}
+            className="navbar-mobile-location-card"
+            onClick={() => {
+              setIsMenuOpen(false);
+              setIsAddressModalOpen(true);
+            }}
+            aria-label="Change delivery location"
           >
-            {deliveryLine1} <strong>{deliveryLine2}</strong>
+            <div className="navbar-mobile-location-icon-badge" aria-hidden="true">
+              <MapPin size={15} />
+            </div>
+            <div className="navbar-mobile-location-info">
+              <span className="navbar-mobile-location-kicker">{deliveryLine1}</span>
+              <strong className="navbar-mobile-location-address" title={deliveryLine2}>
+                {deliveryLine2}
+              </strong>
+            </div>
+            <ChevronRight size={15} className="navbar-mobile-location-arrow" aria-hidden="true" />
           </button>
 
           <NavLink className={linkClassName} to="/" end onClick={handleNavClick}>
