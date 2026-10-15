@@ -10,6 +10,7 @@ import {
   X
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
@@ -58,6 +59,7 @@ function getCourierTrackingUrl(courierName, trackingId) {
 
 function AdminOrders() {
   const { token, user } = useAuth();
+  const { confirm, alert, prompt } = useDialog();
   const canUpdateOrders = Boolean(user?.isAdmin);
   const canViewRevenue = Boolean(user?.isAdmin);
   const [orders, setOrders] = useState([]);
@@ -346,13 +348,24 @@ function AdminOrders() {
   };
 
   const handleManualMarkPaid = async (orderId) => {
-    const reason = window.prompt("Enter mandatory reason for marking this order as Paid (min 10 characters):");
+    const reason = await prompt({
+      title: "Mark Order as Paid",
+      message: "Enter mandatory reason for marking this order as Paid (min 10 characters):",
+      required: true,
+      minLength: 10,
+      placeholder: "Reason (min 10 characters)...",
+      confirmText: "Continue"
+    });
     if (reason === null) return;
-    if (reason.trim().length < 10) {
-      alert("A reason (at least 10 characters) is required to mark an order paid manually.");
-      return;
-    }
-    const paymentReference = window.prompt("Optional payment reference (UPI transaction ID, cheque #, bank ref):") || "";
+
+    const paymentReference =
+      (await prompt({
+        title: "Payment Reference",
+        message: "Optional payment reference (UPI transaction ID, cheque #, bank ref):",
+        required: false,
+        placeholder: "e.g. UPI / cheque / bank ref...",
+        confirmText: "Submit"
+      })) ?? "";
 
     setUpdatingOrderId(orderId);
     try {
@@ -432,7 +445,16 @@ function AdminOrders() {
     } catch (err) {
       const errMsg = err?.response?.data?.message || "Unable to update refund status.";
       const canForce = Boolean(err?.response?.data?.canForceManual);
-      if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
+      let shouldForce = false;
+      if (canForce) {
+        shouldForce = await confirm({
+          title: "Mark as Refunded?",
+          message: `${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
+          tone: "danger",
+          confirmText: "Mark Refunded"
+        });
+      }
+      if (shouldForce) {
         return updateRefundStatus(orderId, refundStatus, true);
       }
       setPageMessage(errMsg);
@@ -550,7 +572,10 @@ function AdminOrders() {
       });
       const allMatchingOrders = res.data?.orders || [];
       if (allMatchingOrders.length === 0) {
-        window.alert("No orders to export.");
+        await alert({
+          title: "Export Orders",
+          message: "No orders to export."
+        });
         setPageMessage("");
         return;
       }

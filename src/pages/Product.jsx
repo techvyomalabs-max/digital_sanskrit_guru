@@ -5,6 +5,7 @@ import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useToast } from "../hooks/useToast";
+import { useDialog } from "../hooks/useDialog";
 import { useWishlist } from "../hooks/useWishlist";
 import "./Product.css";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
@@ -272,6 +273,7 @@ function Product() {
   const { user, token } = useAuth();
   const { selectedAddress } = useDeliveryLocation();
   const { showToast } = useToast();
+  const { prompt: dialogPrompt } = useDialog();
   const navigate = useNavigate();
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
 
@@ -597,10 +599,22 @@ function Product() {
       if (successful) {
         showToast("Product link copied to clipboard!");
       } else {
-        prompt("Copy product share link:", shareUrl);
+        await dialogPrompt({
+          title: "Share Link",
+          message: "Copy product share link:",
+          defaultValue: shareUrl,
+          confirmText: "Done",
+          cancelText: "Close"
+        });
       }
-    } catch (e) {
-      prompt("Copy product share link:", shareUrl);
+    } catch {
+      await dialogPrompt({
+        title: "Share Link",
+        message: "Copy product share link:",
+        defaultValue: shareUrl,
+        confirmText: "Done",
+        cancelText: "Close"
+      });
     }
   };
 

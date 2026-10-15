@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import { AlignLeft, AlignCenter, AlignRight, Sliders, Type, Layout, Sparkles } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
@@ -184,6 +185,7 @@ async function optimizeHeroBannerFile(file) {
 
 function AdminThemeSettings() {
   const { token } = useAuth();
+  const { confirm, prompt } = useDialog();
   const [siteTheme, setSiteTheme] = useState(DEFAULT_SITE_THEME);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
@@ -748,7 +750,13 @@ function AdminThemeSettings() {
   };
 
   const deleteCustomTheme = async (themeId) => {
-    if (!window.confirm("Are you sure you want to delete this custom theme?")) {
+    const confirmed = await confirm({
+      title: "Delete Custom Theme?",
+      message: "Are you sure you want to delete this custom theme?",
+      tone: "danger",
+      confirmText: "Delete Theme"
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -1120,8 +1128,15 @@ function AdminThemeSettings() {
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
-                      onClick={() => {
-                        const raw = prompt("Raw Image Data URL:", activeHeroBanner.image);
+                      onClick={async () => {
+                        const raw = await prompt({
+                          title: "Raw Image Data URL",
+                          message: "Edit raw image data URL:",
+                          defaultValue: activeHeroBanner.image || "",
+                          multiline: true,
+                          confirmText: "Update",
+                          cancelText: "Cancel"
+                        });
                         if (raw !== null) updateHeroBanner(activeHeroBannerIndex, "image", raw);
                       }}
                     >
@@ -1172,8 +1187,15 @@ function AdminThemeSettings() {
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
-                      onClick={() => {
-                        const raw = prompt("Raw Mobile Image Data URL:", activeHeroBanner.mobileImage);
+                      onClick={async () => {
+                        const raw = await prompt({
+                          title: "Raw Mobile Image Data URL",
+                          message: "Edit raw mobile image data URL:",
+                          defaultValue: activeHeroBanner.mobileImage || "",
+                          multiline: true,
+                          confirmText: "Update",
+                          cancelText: "Cancel"
+                        });
                         if (raw !== null) updateHeroBanner(activeHeroBannerIndex, "mobileImage", raw);
                       }}
                     >

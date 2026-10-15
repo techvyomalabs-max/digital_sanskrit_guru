@@ -3,11 +3,13 @@ import axios from "axios";
 import { CreditCard, RotateCcw, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import { formatDateTime } from "../utils/date";
 import "./AdminShared.css";
 
 export default function AdminUnmatchedPayments() {
   const { token, user } = useAuth();
+  const { confirm, prompt } = useDialog();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -44,9 +46,12 @@ export default function AdminUnmatchedPayments() {
   const handleRefund = async (item) => {
     if (!item?._id) return;
     const amountStr = `₹${((Number(item.amountMinor) || 0) / 100).toFixed(2)}`;
-    const confirmed = window.confirm(
-      `Confirm Refund:\n\nAre you sure you want to refund ${amountStr} for Razorpay Payment ID "${item.razorpayPaymentId}"?\n\nThis will trigger an immediate Razorpay gateway refund.`
-    );
+    const confirmed = await confirm({
+      title: "Confirm Refund?",
+      message: `Confirm Refund:\n\nAre you sure you want to refund ${amountStr} for Razorpay Payment ID "${item.razorpayPaymentId}"?\n\nThis will trigger an immediate Razorpay gateway refund.`,
+      tone: "danger",
+      confirmText: "Refund Payment"
+    });
     if (!confirmed) return;
 
     setBusyId(item._id);
@@ -69,12 +74,16 @@ export default function AdminUnmatchedPayments() {
 
   const handleResolve = async (item) => {
     if (!item?._id) return;
-    const note = window.prompt("Enter resolution note (at least 10 characters):");
+    const note = await prompt({
+      title: "Resolve Payment",
+      message: "Enter resolution note (at least 10 characters):",
+      required: true,
+      minLength: 10,
+      placeholder: "Reason for resolution...",
+      multiline: true,
+      confirmText: "Resolve"
+    });
     if (note === null) return;
-    if (note.trim().length < 10) {
-      alert("A resolution note of at least 10 characters is required.");
-      return;
-    }
 
     setBusyId(item._id);
     setActionError("");

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
@@ -18,6 +19,7 @@ function formatTimeSpent(totalSec) {
 
 function AdminUsers() {
   const { token, user } = useAuth();
+  const { confirm, alert } = useDialog();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,12 +69,19 @@ function AdminUsers() {
 
   const handleDeleteUser = async (userItem) => {
     if (userItem._id === user?._id) {
-      alert("You cannot delete your own account.");
+      await alert({
+        title: "Action Not Allowed",
+        message: "You cannot delete your own account.",
+        tone: "danger"
+      });
       return;
     }
-    const confirmed = window.confirm(
-      `Move user "${userItem.email}" to Recycle Bin?\n\nThey will no longer be able to log in, but can be restored anytime.`
-    );
+    const confirmed = await confirm({
+      title: "Delete User?",
+      message: `Move user "${userItem.email}" to Recycle Bin?\n\nThey will no longer be able to log in, but can be restored anytime.`,
+      tone: "danger",
+      confirmText: "Delete User"
+    });
     if (!confirmed) return;
 
     try {
@@ -81,7 +90,11 @@ function AdminUsers() {
       });
       fetchMetrics(page);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to soft delete user.");
+      await alert({
+        title: "Error",
+        message: err.response?.data?.message || "Failed to soft delete user.",
+        tone: "danger"
+      });
     }
   };
 

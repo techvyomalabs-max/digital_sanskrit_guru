@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import "./AdminShared.css";
 import "./AdminProducts.css";
 
-const isDigitalProduct = (p) =>
-  Boolean(p?.isDigital) ||
-  Boolean(p?.webReaderLink) ||
-  Boolean(p?.kindleLink) ||
-  Boolean(p?.courseLink) ||
-  ["web", "kindle", "e-book", "ebook", "flipbook", "course", "pdf"].some((k) =>
-    String(p?.category || p?.digitalType || "").toLowerCase().includes(k)
-  );
+const isDigitalProduct = (p) => p?.isDigital === true;
 
 function AdminProducts() {
   const { token } = useAuth();
+  const { confirm } = useDialog();
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
@@ -245,9 +240,12 @@ function AdminProducts() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Restock ${critical.length} physical product(s)? This will set all 0-stock items to 10 units.`
-    );
+    const confirmed = await confirm({
+      title: "Restock Out-of-Stock?",
+      message: `Restock ${critical.length} physical product(s)? This will set all 0-stock items to 10 units.`,
+      tone: "danger",
+      confirmText: "Restock 0-Stock"
+    });
     if (!confirmed) return;
 
     setStockActionLoading("bulk-critical");
@@ -281,9 +279,12 @@ function AdminProducts() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Restock ${lowStockItems.length} physical product(s)? This will add +10 units to all items with 5 or fewer units in stock.`
-    );
+    const confirmed = await confirm({
+      title: "Restock Low Stock?",
+      message: `Restock ${lowStockItems.length} physical product(s)? This will add +10 units to all items with 5 or fewer units in stock.`,
+      tone: "danger",
+      confirmText: "Restock All Low"
+    });
     if (!confirmed) return;
 
     setStockActionLoading("bulk-low");
@@ -535,28 +536,25 @@ function AdminProducts() {
                 </option>
               ))}
             </select>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--admin-text, #0f172a)", cursor: "pointer", userSelect: "none" }}>
+            <label className="warehouse-toggle">
               <input
                 type="checkbox"
                 checked={lowStockOnly}
                 onChange={(e) => setLowStockOnly(e.target.checked)}
-                style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#2563eb" }}
               />
               <span>Low stock only</span>
             </label>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--admin-text, #0f172a)", cursor: "pointer", userSelect: "none" }}>
+            <label className="warehouse-toggle">
               <input
                 type="checkbox"
                 checked={showDigital}
                 onChange={(e) => setShowDigital(e.target.checked)}
-                style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#2563eb" }}
               />
               <span>Show digital products</span>
             </label>
             <button
               type="button"
-              className="warehouse-action-btn"
-              style={{ padding: "8px 14px", fontSize: "13px" }}
+              className="warehouse-action-btn warehouse-resort-btn"
               onClick={recomputeRowOrder}
               title="Re-sort rows by stock and name"
             >

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatTime } from "../utils/date";
@@ -276,6 +277,7 @@ async function optimizeHeroBannerFile(file) {
 
 function AdminAddProducts() {
   const { token } = useAuth();
+  const { confirm } = useDialog();
   const formSectionRef = useRef(null);
   const nameInputRef = useRef(null);
   const [products, setProducts] = useState([]);
@@ -656,7 +658,7 @@ function AdminAddProducts() {
         getFormSnapshotRef.current() !== initialSnapshotRef.current
     );
 
-  const requestCloseForm = () => {
+  const requestCloseForm = async () => {
     if (!isFormDirty()) {
       initialSnapshotRef.current = null;
       resetForm();
@@ -664,7 +666,13 @@ function AdminAddProducts() {
       return;
     }
 
-    if (window.confirm("You have unsaved changes. Discard them?")) {
+    const confirmed = await confirm({
+      title: "Discard Changes?",
+      message: "You have unsaved changes. Discard them?",
+      tone: "danger",
+      confirmText: "Discard"
+    });
+    if (confirmed) {
       initialSnapshotRef.current = null;
       resetForm();
       setIsFormOpen(false);
@@ -1106,9 +1114,12 @@ function AdminAddProducts() {
   const handleDeleteCategory = async () => {
     if (!editingCategoryName) return;
 
-    const confirmed = window.confirm(
-      `Delete the category "${editingCategoryName}"?\n\nAll products currently in this category will be moved to "General".`
-    );
+    const confirmed = await confirm({
+      title: "Delete Category?",
+      message: `Delete the category "${editingCategoryName}"?\n\nAll products currently in this category will be moved to "General".`,
+      tone: "danger",
+      confirmText: "Delete Category"
+    });
     if (!confirmed) return;
 
     try {
@@ -1378,7 +1389,12 @@ function AdminAddProducts() {
   };
 
   const deleteProduct = async (id) => {
-    const shouldDelete = window.confirm("Delete this product? This action cannot be undone.");
+    const shouldDelete = await confirm({
+      title: "Delete Product?",
+      message: "Delete this product? This action cannot be undone.",
+      tone: "danger",
+      confirmText: "Delete"
+    });
     if (!shouldDelete) return;
 
     await axios.delete(`/api/products/${id}`, {

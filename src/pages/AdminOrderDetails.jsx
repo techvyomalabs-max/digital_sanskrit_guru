@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDateTime } from "../utils/date";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
@@ -11,6 +12,7 @@ import "./AdminOrderDetails.css";
 function AdminOrderDetails() {
   const { id } = useParams();
   const { token, user } = useAuth();
+  const { confirm, prompt } = useDialog();
   const [order, setOrder] = useState(null);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
@@ -77,7 +79,16 @@ function AdminOrderDetails() {
     } catch (err) {
       const errMsg = err?.response?.data?.message || "Unable to update refund status.";
       const canForce = Boolean(err?.response?.data?.canForceManual);
-      if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
+      let shouldForce = false;
+      if (canForce) {
+        shouldForce = await confirm({
+          title: "Mark as Refunded?",
+          message: `${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
+          tone: "danger",
+          confirmText: "Mark Refunded"
+        });
+      }
+      if (shouldForce) {
         return updateRefundStatus(newRefundStatus, true);
       }
       setPageMessage(errMsg);
@@ -88,13 +99,24 @@ function AdminOrderDetails() {
 
   const handleManualMarkPaid = async () => {
     if (!order?._id) return;
-    const reason = window.prompt("Enter mandatory reason for marking this order as Paid (min 10 characters):");
+    const reason = await prompt({
+      title: "Mark Order as Paid",
+      message: "Enter mandatory reason for marking this order as Paid (min 10 characters):",
+      required: true,
+      minLength: 10,
+      placeholder: "Reason (min 10 characters)...",
+      confirmText: "Continue"
+    });
     if (reason === null) return;
-    if (reason.trim().length < 10) {
-      alert("A reason (at least 10 characters) is required to mark an order paid manually.");
-      return;
-    }
-    const paymentReference = window.prompt("Optional payment reference (UPI transaction ID, cheque #, bank ref):") || "";
+
+    const paymentReference =
+      (await prompt({
+        title: "Payment Reference",
+        message: "Optional payment reference (UPI transaction ID, cheque #, bank ref):",
+        required: false,
+        placeholder: "e.g. UPI / cheque / bank ref...",
+        confirmText: "Submit"
+      })) ?? "";
 
     setIsUpdatingRefund(true);
     setPageMessage("");
