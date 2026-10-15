@@ -43,7 +43,7 @@ const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrd
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
-const { reserveStockForOrder, releaseStockForOrder, incrementStock } = require("../utils/stock");
+const { reserveStockForOrder, releaseStockForOrder, incrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
 const { processGatewayRefund, previewRefund, RefundError } = require("../utils/refunds");
@@ -1551,7 +1551,7 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
       if (Array.isArray(refundResult.order?.items)) {
         const itemIdSet = new Set(itemIds);
         const targetAll = itemIds.length === 0;
-        const physicalItemsToRestock = [];
+        const refundedItems = [];
 
         refundResult.order.items.forEach((item) => {
           const id = String(item?._id || item?.id || item?.product || "");
@@ -1566,16 +1566,25 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
             item.returnRequest.resolvedAt = new Date();
 
             if (restock && !item.isDigital) {
-              physicalItemsToRestock.push({
-                product: item.product || item._id || item.id,
-                quantity: item.quantity
-              });
+              refundedItems.push(item);
             }
           }
         });
 
-        if (restock && physicalItemsToRestock.length > 0) {
-          await incrementStock(physicalItemsToRestock);
+        if (restock && refundedItems.length > 0) {
+          if (order.stockReserved === true) {
+            const includeComponents =
+              order.stockComponentsReserved === true ||
+              refundResult.order.stockComponentsReserved === true;
+            const itemsToRestock = expandItemsForStock(refundedItems, {
+              includeComponents
+            });
+            if (itemsToRestock.length > 0) {
+              await incrementStock(itemsToRestock);
+            }
+          } else {
+            console.log("[RefundRestock] Stock was already returned when the order was cancelled; no restock needed.");
+          }
         }
 
         if (
