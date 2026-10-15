@@ -604,7 +604,94 @@ function AdminAddProducts() {
     setLength("0");
     setEditingProduct(null);
     setFormMessage("");
+    initialSnapshotRef.current = null;
   };
+
+  const initialSnapshotRef = useRef(null);
+
+  const getFormSnapshot = () =>
+    JSON.stringify({
+      name,
+      price,
+      internationalPrice,
+      internationalCountryPrices,
+      marketPrices,
+      image,
+      imagesInput,
+      trailerVideoUrl,
+      description,
+      aboutProduct,
+      discountType,
+      festiveOffer,
+      festiveDiscountPercent,
+      productType,
+      isDigital,
+      digitalType,
+      webReaderLink,
+      kindleLink,
+      kindleAsin,
+      digitalInstructions,
+      courseLink,
+      bundleItems,
+      relatedProductItems,
+      category,
+      stock,
+      weight,
+      height,
+      width,
+      length
+    });
+
+  const getFormSnapshotRef = useRef(getFormSnapshot);
+  getFormSnapshotRef.current = getFormSnapshot;
+
+  const isFormDirty = () =>
+    Boolean(
+      isFormOpen &&
+        initialSnapshotRef.current !== null &&
+        getFormSnapshotRef.current() !== initialSnapshotRef.current
+    );
+
+  const requestCloseForm = () => {
+    if (!isFormDirty()) {
+      initialSnapshotRef.current = null;
+      resetForm();
+      setIsFormOpen(false);
+      return;
+    }
+
+    if (window.confirm("You have unsaved changes. Discard them?")) {
+      initialSnapshotRef.current = null;
+      resetForm();
+      setIsFormOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isFormOpen) {
+      initialSnapshotRef.current = getFormSnapshot();
+    } else {
+      initialSnapshotRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormOpen, editingProduct]);
+
+  useEffect(() => {
+    if (!isFormOpen) return;
+
+    const handleBeforeUnload = (e) => {
+      if (isFormDirty()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormOpen]);
 
   const saveHeroBanner = async () => {
     setIsSavingHeroBanner(true);
@@ -1545,7 +1632,7 @@ function AdminAddProducts() {
             className="admin-primary-btn"
             onClick={() => {
               if (isFormOpen && !editingProduct) {
-                setIsFormOpen(false);
+                requestCloseForm();
               } else {
                 resetForm();
                 setIsFormOpen(true);
@@ -1593,12 +1680,6 @@ function AdminAddProducts() {
               justifyContent: "center",
               padding: "16px",
               boxSizing: "border-box"
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                resetForm();
-                setIsFormOpen(false);
-              }
             }}
           >
             <div
@@ -1654,10 +1735,7 @@ function AdminAddProducts() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      resetForm();
-                      setIsFormOpen(false);
-                    }}
+                    onClick={requestCloseForm}
                     style={{
                       width: "32px",
                       height: "32px",
@@ -2492,10 +2570,7 @@ function AdminAddProducts() {
                   <button
                     type="button"
                     className="danger"
-                    onClick={() => {
-                      resetForm();
-                      setIsFormOpen(false);
-                    }}
+                    onClick={requestCloseForm}
                     style={{
                       padding: "9px 18px",
                       borderRadius: "8px",
