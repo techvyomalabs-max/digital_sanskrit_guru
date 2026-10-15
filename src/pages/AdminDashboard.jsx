@@ -48,6 +48,12 @@ import "./AdminShared.css";
 import "./AdminDashboard.css";
 
 const LOW_STOCK_THRESHOLD = 5;
+const NON_DISMISSIBLE_NOTIFICATION_IDS = [
+  "return-requests",
+  "cancel-refunds",
+  "refund-processing",
+  "unmatched-payments"
+];
 
 function normalizeStatus(status) {
   if (status === "Shipped" || status === "Delivered" || status === "Cancelled") return status;
@@ -82,6 +88,10 @@ function AdminDashboard() {
   const [orders, setOrders] = useState([]);
   const [orderLoadError, setOrderLoadError] = useState("");
   const [dismissedNotifications, setDismissedNotifications] = useState([]);
+  const [unmatchedPaymentsCount, setUnmatchedPaymentsCount] = useState(0);
+  const adminLevel = Number(user?.adminLevel || 1);
+  const allowedPages = Array.isArray(user?.allowedPages) ? user.allowedPages : ["dashboard"];
+  const canAccessOrders = Boolean(user?.isAdmin) && (adminLevel === 1 || allowedPages.includes("orders"));
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -172,6 +182,22 @@ function AdminDashboard() {
           setIsRefreshing(false);
         }
       }
+
+      if (canAccessOrders && token) {
+        try {
+          const orphanRes = await axios.get("/api/admin/payments/orphans?status=orphan", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!active) return;
+          const data = orphanRes.data;
+          const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+          const count = typeof data?.count === "number" ? data.count : items.length;
+          setUnmatchedPaymentsCount(count);
+        } catch {
+          if (!active) return;
+          setUnmatchedPaymentsCount(0);
+        }
+      }
     };
 
     loadDashboard();
@@ -183,7 +209,7 @@ function AdminDashboard() {
       active = false;
       clearInterval(pollId);
     };
-  }, [token]);
+  }, [token, canAccessOrders]);
 
   useEffect(() => {
     let active = true;
@@ -942,6 +968,51 @@ function AdminDashboard() {
 
   const notifications = useMemo(() => {
     const list = [];
+    const returnRequests = orders.filter((o) => {
+      if (o?.refundStatus === "Refunded") return false;
+      return Array.isArray(o?.items) && o.items.some((item) => {
+        const s = item?.returnRequest?.status;
+        return s === "Requested" || s === "Approved";
+      });
+    }).length;
+    if (returnRequests > 0) {
+      list.push({
+        id: "return-requests",
+        type: "alert",
+        text: `${returnRequests} return request(s) waiting for review.`,
+        link: "/admin/orders?tab=returns"
+      });
+    }
+
+    const cancelRefunds = orders.filter(
+      (o) => o?.status === "Cancelled" && o?.refundStatus === "Pending"
+    ).length;
+    if (cancelRefunds > 0) {
+      list.push({
+        id: "cancel-refunds",
+        type: "alert",
+        text: `${cancelRefunds} cancelled order(s) awaiting refund.`,
+        link: "/admin/orders?tab=cancelled"
+      });
+    }
+
+    const refundProcessing = orders.filter((o) => o?.refundStatus === "Processing").length;
+    if (refundProcessing > 0) {
+      list.push({
+        id: "refund-processing",
+        type: "warning",
+        text: `${refundProcessing} refund(s) in progress.`,
+        link: "/admin/orders"
+      });
+    }
+    if (unmatchedPaymentsCount > 0) {
+      list.push({
+        id: "unmatched-payments",
+        type: "alert",
+        text: `${unmatchedPaymentsCount} payment(s) received without an order.`,
+        link: "/admin/unmatched-payments"
+      });
+    }
     if (analytics.statuses.Pending >= 5) {
       list.push({
         id: "pending",
@@ -963,8 +1034,15 @@ function AdminDashboard() {
         text: `Repeat customer rate is ${Math.round(analytics.repeatRate)}%.`
       });
     }
-    return list.filter((item) => !dismissedNotifications.includes(item.id));
-  }, [analytics.statuses.Pending, analytics.repeatRate, dismissedNotifications, lowStockProducts.length]);
+    return list.filter((item) => NON_DISMISSIBLE_NOTIFICATION_IDS.includes(item.id) || !dismissedNotifications.includes(item.id));
+  }, [
+    orders,
+    unmatchedPaymentsCount,
+    analytics.statuses.Pending,
+    analytics.repeatRate,
+    dismissedNotifications,
+    lowStockProducts.length
+  ]);
 
   return (
     <div className="admin-layout">
@@ -1738,10 +1816,32 @@ function AdminDashboard() {
                     {item.type === "alert" && <AlertTriangle size={16} />}
                     {item.type === "success" && <CheckCircle2 size={16} />}
                   </span>
-                  <p>{item.text}</p>
-                  <button onClick={() => setDismissedNotifications((prev) => [...prev, item.id])}>
-                    <X size={14} />
-                  </button>
+                  <p>
+                    {item.link ? (
+                      <Link
+                        to={item.link}
+                        style={{
+                          color: "inherit",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        <span>{item.text}</span>
+                        <span style={{ fontSize: "12px", opacity: 0.85, textDecoration: "underline", whiteSpace: "nowrap" }}>
+                          View &rarr;
+                        </span>
+                      </Link>
+                    ) : (
+                      item.text
+                    )}
+                  </p>
+                  {!NON_DISMISSIBLE_NOTIFICATION_IDS.includes(item.id) && (
+                    <button onClick={() => setDismissedNotifications((prev) => [...prev, item.id])}>
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

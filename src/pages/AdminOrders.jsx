@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   Search,
   Calendar,
@@ -74,13 +74,32 @@ function AdminOrders() {
     fulfilledOrders: 0
   });
 
+  const location = useLocation();
   const [fromDateTime, setFromDateTime] = useState("");
   const [toDateTime, setToDateTime] = useState("");
   const [activeQuickFilter, setActiveQuickFilter] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
+      return RETURN_FILTER_KEY;
+    }
+    if (params.get("tab") === "cancelled") {
+      return "Cancelled";
+    }
+    return "All";
+  });
   const [searchText, setSearchText] = useState("");
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [sortOrder, setSortOrder] = useState("newest");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
+      setSelectedStatus(RETURN_FILTER_KEY);
+    } else if (params.get("tab") === "cancelled") {
+      setSelectedStatus("Cancelled");
+    }
+  }, [location.state, location.search]);
 
   const hasActiveFilters = useMemo(() => {
     return Boolean(
