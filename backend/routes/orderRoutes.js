@@ -1173,14 +1173,20 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     return res.status(404).json({ message: "Order not found" });
   }
 
+  if (order.status === "Cancelled" && rawPaymentStatus === "Paid") {
+    return res.status(400).json({ message: "Cancelled orders cannot be marked paid." });
+  }
+
   const isOwner = String(order.user) === String(req.user);
   let isAdmin = false;
   let isSuperAdmin = false;
+  let adminEmail = "";
 
   if (!isOwner) {
-    const userDoc = await User.findById(req.user).select("isAdmin adminLevel adminRole allowedPages").lean();
+    const userDoc = await User.findById(req.user).select("isAdmin adminLevel adminRole allowedPages email").lean();
     isAdmin = Boolean(userDoc?.isAdmin);
     isSuperAdmin = isAdmin && Number(userDoc?.adminLevel) === 1;
+    adminEmail = String(userDoc?.email || "").trim().toLowerCase();
 
     if (!isAdmin) {
       return res.status(403).json({ message: "You can only update your own orders." });
@@ -1196,6 +1202,19 @@ router.put("/:id/payment-status", protect, async (req, res) => {
 
   if (isOwner && (order.paymentStatus === "Paid" || order.paymentStatus === "Refunded")) {
     return res.status(400).json({ message: "Paid orders cannot have their payment status modified." });
+  }
+
+  let manualReason = "";
+  let manualPaymentReference = "";
+
+  if (!isOwner && rawPaymentStatus === "Paid") {
+    manualReason = String(req.body?.reason || "").trim();
+    if (manualReason.length < 10) {
+      return res.status(400).json({
+        message: "A reason (at least 10 characters) is required to mark an order paid manually."
+      });
+    }
+    manualPaymentReference = String(req.body?.paymentReference || "").trim().slice(0, 100);
   }
 
   const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
@@ -1247,6 +1266,15 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : order.paymentMeta?.paidAmountMinor || null,
       paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : order.paymentMeta?.paidCurrency || ""
     };
+
+    if (!isOwner) {
+      order.paymentMeta.manualOverride = {
+        by: adminEmail || String(req.user),
+        reason: manualReason,
+        paymentReference: manualPaymentReference,
+        at: new Date()
+      };
+    }
 
     const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
       Boolean(
@@ -1307,7 +1335,9 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       summary: `Manual payment status override for order ${String(order._id).slice(-6)}: ${previousPaymentStatus} -> ${rawPaymentStatus}`,
       details: {
         previousPaymentStatus,
-        nextPaymentStatus: rawPaymentStatus
+        nextPaymentStatus: rawPaymentStatus,
+        reason: manualReason,
+        paymentReference: manualPaymentReference
       }
     });
   }

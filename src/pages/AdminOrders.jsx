@@ -326,6 +326,35 @@ function AdminOrders() {
     }
   };
 
+  const handleManualMarkPaid = async (orderId) => {
+    const reason = window.prompt("Enter mandatory reason for marking this order as Paid (min 10 characters):");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      alert("A reason (at least 10 characters) is required to mark an order paid manually.");
+      return;
+    }
+    const paymentReference = window.prompt("Optional payment reference (UPI transaction ID, cheque #, bank ref):") || "";
+
+    setUpdatingOrderId(orderId);
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/payment-status`,
+        {
+          paymentStatus: "Paid",
+          reason: reason.trim(),
+          paymentReference: paymentReference.trim()
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await loadOrders();
+      setPageMessage("Order marked as Paid successfully.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Failed to update payment status.");
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
   const updateReturnStatus = async (orderId, itemId, returnStatus) => {
     if (returnStatus === "Rejected") {
       setActionModal({
@@ -1284,6 +1313,21 @@ function AdminOrders() {
                                       onClick={() => updateStatus(order._id, "Cancelled")}
                                     >
                                       {updatingOrderId === order._id ? "Updating..." : "✕ Cancel"}
+                                    </button>
+                                  )}
+                                  {Number(user?.adminLevel) === 1 &&
+                                    paymentStatus !== "Paid" &&
+                                    paymentStatus !== "Refunded" &&
+                                    order.status !== "Cancelled" && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action"
+                                      style={{ backgroundColor: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => handleManualMarkPaid(order._id)}
+                                      title="Mark Paid with mandatory reason"
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "✓ Mark Paid"}
                                     </button>
                                   )}
                                 </div>
