@@ -175,10 +175,17 @@
 }
 
 .warehouse-zone-list,
-.warehouse-restock-list,
+.warehouse-restock-list {
+  display: grid;
+  gap: 10px;
+}
+
 .warehouse-manager-list {
   display: grid;
   gap: 10px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .warehouse-zone-row {
@@ -192,13 +199,20 @@
   background: var(--admin-surface, #ffffff);
 }
 
-.warehouse-restock-tools,
-.warehouse-manager-tools {
+.warehouse-restock-tools {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
   flex-wrap: wrap;
+}
+
+.warehouse-manager-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 14px;
 }
 
 .warehouse-action-btn {
@@ -321,7 +335,7 @@
   cursor: not-allowed;
 }
 
-.warehouse-manager-tools input,
+.warehouse-manager-tools input:not([type="checkbox"]),
 .warehouse-manager-tools select {
   border: 1px solid var(--admin-border, #e2e8f0);
   background: var(--admin-surface, #ffffff);
@@ -332,14 +346,47 @@
   outline: none;
 }
 
-.warehouse-manager-tools input:focus,
+.warehouse-manager-tools input:not([type="checkbox"]):focus,
 .warehouse-manager-tools select:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-.warehouse-manager-tools input {
+.warehouse-manager-tools input:not([type="checkbox"]) {
   min-width: 240px;
+  flex: 1 1 240px;
+}
+
+.warehouse-manager-tools input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  accent-color: #2563eb;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.warehouse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-text, #0f172a);
+  cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.warehouse-resort-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 13px;
 }
 
 /* Pills & Tags */
@@ -396,6 +443,10 @@
   }
   .inventory-bar-row {
     grid-template-columns: 1fr;
+  }
+  .warehouse-manager-tools input:not([type="checkbox"]) {
+    flex-basis: 100%;
+    min-width: 100%;
   }
   .warehouse-manager-row,
   .warehouse-restock-row {
