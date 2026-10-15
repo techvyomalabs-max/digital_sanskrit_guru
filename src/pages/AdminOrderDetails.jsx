@@ -10,7 +10,7 @@ import "./AdminOrderDetails.css";
 
 function AdminOrderDetails() {
   const { id } = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [order, setOrder] = useState(null);
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
@@ -80,6 +80,38 @@ function AdminOrderDetails() {
       if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
         return updateRefundStatus(newRefundStatus, true);
       }
+      setPageMessage(errMsg);
+    } finally {
+      setIsUpdatingRefund(false);
+    }
+  };
+
+  const handleManualMarkPaid = async () => {
+    if (!order?._id) return;
+    const reason = window.prompt("Enter mandatory reason for marking this order as Paid (min 10 characters):");
+    if (reason === null) return;
+    if (reason.trim().length < 10) {
+      alert("A reason (at least 10 characters) is required to mark an order paid manually.");
+      return;
+    }
+    const paymentReference = window.prompt("Optional payment reference (UPI transaction ID, cheque #, bank ref):") || "";
+
+    setIsUpdatingRefund(true);
+    setPageMessage("");
+    try {
+      const res = await axios.put(
+        `/api/orders/${order._id}/payment-status`,
+        {
+          paymentStatus: "Paid",
+          reason: reason.trim(),
+          paymentReference: paymentReference.trim()
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOrder(res.data || { ...order, paymentStatus: "Paid" });
+      setPageMessage("Order marked as Paid successfully via manual override.");
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Failed to update payment status.";
       setPageMessage(errMsg);
     } finally {
       setIsUpdatingRefund(false);
@@ -196,7 +228,23 @@ function AdminOrderDetails() {
               </article>
 
               <article className="admin-order-details-card">
-                <span className="admin-order-details-label">Payment</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="admin-order-details-label">Payment</span>
+                  {Number(user?.adminLevel) === 1 &&
+                    displayPaymentStatus !== "Paid" &&
+                    displayPaymentStatus !== "Refunded" &&
+                    order?.status !== "Cancelled" && (
+                    <button
+                      type="button"
+                      className="admin-order-details-btn"
+                      style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                      disabled={isUpdatingRefund}
+                      onClick={handleManualMarkPaid}
+                    >
+                      {isUpdatingRefund ? "Updating..." : "Mark Paid"}
+                    </button>
+                  )}
+                </div>
                 <strong className={`admin-order-chip payment-${displayPaymentStatus.toLowerCase()}`}>
                   {displayPaymentStatus}
                 </strong>
@@ -284,6 +332,17 @@ function AdminOrderDetails() {
                     ? `Paid on ${formatDateTime(order.paymentMeta.paidAt)}`
                     : "Payment not completed yet"}
                 </p>
+
+                {order?.paymentMeta?.manualOverride?.reason && (
+                  <div style={{ marginTop: "10px", padding: "8px 10px", background: "#fef3c7", borderRadius: "6px", border: "1px solid #fde68a", fontSize: "12px", color: "#92400e" }}>
+                    <strong style={{ display: "block", marginBottom: "2px" }}>Manual Payment Override:</strong>
+                    <div>Reason: {order.paymentMeta.manualOverride.reason}</div>
+                    {order.paymentMeta.manualOverride.paymentReference && (
+                      <div>Ref: {order.paymentMeta.manualOverride.paymentReference}</div>
+                    )}
+                    <div>By: {order.paymentMeta.manualOverride.by} {order.paymentMeta.manualOverride.at ? `on ${formatDateTime(order.paymentMeta.manualOverride.at)}` : ""}</div>
+                  </div>
+                )}
 
                 {Array.isArray(order?.paymentMeta?.refunds) && order.paymentMeta.refunds.length > 0 && (
                   <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>

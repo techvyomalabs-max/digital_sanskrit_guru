@@ -71,6 +71,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const trashRoutes = require("./routes/trashRoutes");
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
+  const { initPaymentReconciler } = require("./services/paymentReconciler");
+  const { paymentWebhookHandler } = require("./routes/paymentWebhook");
+  const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
   const { globalApiLimiter } = require("./utils/spamFilter");
 
@@ -108,6 +111,18 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       ? { origin: corsOrigin, credentials: true }
       : undefined
   ));
+
+  const requireDatabase = (req, res, next) => {
+    if (!dbConnected) {
+      return res.status(503).json({
+        message: "Database is not connected. Start MongoDB or update MONGO_URI."
+      });
+    }
+    next();
+  };
+
+  // ── Razorpay Webhook (Raw body required before JSON parsers & vulnerabilityGuard)
+  app.post("/api/payment/webhook", requireDatabase, express.raw({ type: "application/json", limit: "1mb" }), paymentWebhookHandler);
 
   // 2. Smart JSON body limits: 25mb for authenticated admin media/banner upload routes, 1mb default everywhere else
   const defaultJson = express.json({ limit: "1mb" });
@@ -163,15 +178,6 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const protect = require("./middleware/authMiddleware");
   const admin = require("./middleware/adminMiddleware");
 
-  const requireDatabase = (req, res, next) => {
-    if (!dbConnected) {
-      return res.status(503).json({
-        message: "Database is not connected. Start MongoDB or update MONGO_URI."
-      });
-    }
-    next();
-  };
-
   // ── Cache stats endpoint (admin only reference) ─────────────────────────────
   app.get("/api/cache/stats", requireDatabase, protect, admin, admin.requireSuperAdmin, (req, res) => {
     try {
@@ -199,6 +205,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/marketing", requireDatabase, marketingRoutes);
   app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
+  app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
 
   // ── Static files (served after API routes) ─────────────────────────────────
@@ -262,6 +269,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   connectToDatabase();
   initVapid();
   initWishlistScheduler();
+  initPaymentReconciler();
 
   // Retry connection if disconnected
   setInterval(() => {

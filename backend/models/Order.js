@@ -231,7 +231,13 @@ const orderSchema = new mongoose.Schema(
           at: Date,
           _id: false
         }
-      ]
+      ],
+      manualOverride: {
+        by: { type: String, default: "" },
+        reason: { type: String, default: "" },
+        paymentReference: { type: String, default: "" },
+        at: { type: Date, default: null }
+      }
     },
     refundLock: {
       lockedAt: { type: Date, default: null },

@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const protect = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
+const PaymentIntent = require("../models/PaymentIntent");
 const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
 const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
@@ -26,6 +27,9 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
     let currency;
     let receipt = `order_${Date.now()}`;
     const notes = {};
+    if (req.user) {
+      notes.userId = String(req.user);
+    }
 
     if (req.body?.orderId) {
       // Authenticated payment retry mode
@@ -90,6 +94,19 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       payment_capture: 1,
       notes
     });
+
+    try {
+      await PaymentIntent.create({
+        razorpayOrderId: order.id,
+        amountMinor: minor,
+        currency,
+        user: req.user || null,
+        mode: req.body?.orderId ? "retry" : "checkout",
+        orderId: req.body?.orderId ? req.body.orderId : null
+      });
+    } catch (intentErr) {
+      console.error("[Payment] Failed to record PaymentIntent:", intentErr?.message || intentErr);
+    }
 
     return res.json(order);
   } catch (error) {
