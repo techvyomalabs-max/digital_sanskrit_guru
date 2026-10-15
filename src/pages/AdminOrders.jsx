@@ -680,6 +680,94 @@ function AdminOrders() {
     return `Captured ${inferredCurrencyMap[normalizedCountry] || "INR"}`;
   };
 
+  const getReceivedInfo = (order) => {
+    const rawPayment = String(order?.paymentStatus || "").trim();
+    const paymentStatus = PAYMENT_STATUSES.includes(rawPayment) ? rawPayment : "Paid";
+    const isPaid = paymentStatus === "Paid";
+
+    const refundStatus = String(order?.refundStatus || "").trim();
+    const refundedInr = Number(order?.refundedAmountInInr || 0);
+
+    const formatDisplayAmount = (val) =>
+      formatOrderDisplayCurrency(order, null, val, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+        fallbackToUserCurrency: true
+      });
+
+    // Any order whose payment status is not Paid but whose refundStatus is "Refunded" (old data from the previous item-return button)
+    if (!isPaid && refundStatus === "Refunded") {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: `Order value ${formatCustomerPaid(order)} (no payment recorded)`,
+        tone: "muted"
+      };
+    }
+
+    // NOT PAID (Failed / Pending / anything else, and not refunded)
+    if (!isPaid) {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: `Order value ${formatCustomerPaid(order)}`,
+        tone: "muted"
+      };
+    }
+
+    // PAID with no refund (refundStatus not "Refunded"/"Partially Refunded" and refundedAmountInInr is 0 or missing)
+    const isRefundedOrPartial =
+      refundStatus === "Refunded" || refundStatus === "Partially Refunded";
+    const hasRefund = isRefundedOrPartial || refundedInr > 0;
+
+    if (!hasRefund) {
+      const currencyCode =
+        getCapturedCurrencyLabel(order).replace(/^Captured\s*/i, "").trim() || "INR";
+      return {
+        amountText: formatCustomerPaid(order),
+        subText: `Received ${currencyCode}`,
+        tone: "normal"
+      };
+    }
+
+    // PAID with refunds
+    const totalInr = Number(order?.totalInInr ?? order?.total ?? 0);
+
+    if (refundedInr > 0 && totalInr > 0) {
+      const ratio = Math.min(1, refundedInr / totalInr);
+      const rawStoredDisplayAmount = order?.currencyDisplay?.amount;
+      const hasStoredDisplayAmount =
+        rawStoredDisplayAmount !== null &&
+        rawStoredDisplayAmount !== undefined &&
+        rawStoredDisplayAmount !== "";
+      const displayTotal =
+        hasStoredDisplayAmount && Number.isFinite(Number(rawStoredDisplayAmount))
+          ? Number(rawStoredDisplayAmount)
+          : Number(order?.total || 0);
+
+      const netDisplay = Math.round(displayTotal * (1 - ratio) * 100) / 100;
+      return {
+        amountText: formatDisplayAmount(netDisplay),
+        subText: `Refunded ₹${refundedInr.toFixed(2)}`,
+        tone: "refunded"
+      };
+    }
+
+    if (refundStatus === "Refunded" && (!refundedInr || refundedInr === 0)) {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: "Refunded",
+        tone: "refunded"
+      };
+    }
+
+    const currencyCode =
+      getCapturedCurrencyLabel(order).replace(/^Captured\s*/i, "").trim() || "INR";
+    return {
+      amountText: formatCustomerPaid(order),
+      subText: `Received ${currencyCode}`,
+      tone: "normal"
+    };
+  };
+
   const getCustomerName = (order) => order?.user?.name || order?.shipping?.name || "Unknown customer";
 
   const getCustomerInitials = (order) => {
@@ -937,7 +1025,7 @@ function AdminOrders() {
                   <th className="col-customer">Customer</th>
                   <th className="col-country">Country</th>
                   <th className="col-items">Items</th>
-                  <th className="col-customer-paid">Customer Paid</th>
+                  <th className="col-customer-paid">Received</th>
                   <th className="col-store-total">Store Total</th>
                   <th className="col-payment">Payment</th>
                   <th className="col-fulfillment">Fulfillment</th>
@@ -972,7 +1060,7 @@ function AdminOrders() {
                   <th className="col-customer">Customer</th>
                   <th className="col-country">Country</th>
                   <th className="col-items">Items</th>
-                  <th className="col-customer-paid">Customer Paid</th>
+                  <th className="col-customer-paid">Received</th>
                   <th className="col-store-total">Store Total</th>
                   <th className="col-payment">Payment</th>
                   <th className="col-fulfillment">Fulfillment</th>
@@ -990,6 +1078,7 @@ function AdminOrders() {
                   const returnItems = Array.isArray(order?.items)
                     ? order.items.filter((item) => getReturnStatus(item) !== "Not Requested")
                     : [];
+                  const receivedInfo = getReceivedInfo(order);
                   return (
                     <tr key={order._id}>
                       <td className="col-order">
@@ -1026,8 +1115,18 @@ function AdminOrders() {
                       </td>
                       <td className="col-customer-paid">
                         <div className="admin-order-amount-inner">
-                          <strong>{formatCustomerPaid(order)}</strong>
-                          <small>{getCapturedCurrencyLabel(order)}</small>
+                          <strong
+                            style={
+                              receivedInfo.tone === "muted"
+                                ? { color: "#94a3b8" }
+                                : receivedInfo.tone === "refunded"
+                                  ? { color: "#b45309" }
+                                  : undefined
+                            }
+                          >
+                            {receivedInfo.amountText}
+                          </strong>
+                          <small>{receivedInfo.subText}</small>
                         </div>
                       </td>
                       <td className="col-store-total">
