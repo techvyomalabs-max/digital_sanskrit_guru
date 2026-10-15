@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import SalesChart from "../components/SalesChart";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
@@ -35,8 +36,6 @@ import {
   MessageCircle,
   Zap,
   ShieldCheck,
-  Eye,
-  EyeOff,
   ExternalLink,
   Check,
   Lock,
@@ -82,8 +81,217 @@ function normalizePricingMarketsInput(pricingMarkets = []) {
     : [];
 }
 
+function formatPricingSettingsFromData(data = {}) {
+  return {
+    enableCurrentLocation: data?.enableCurrentLocation !== false,
+    gstPercent: String(Number(data?.gstPercent || 0)),
+    deliveryCharge: String(Number(data?.deliveryCharge || 0)),
+    warehouseLocation: {
+      name: String(data?.warehouseLocation?.name || ""),
+      address: String(data?.warehouseLocation?.address || ""),
+      mapUrl: String(data?.warehouseLocation?.mapUrl || ""),
+      latitude:
+        data?.warehouseLocation?.latitude === null || data?.warehouseLocation?.latitude === undefined
+          ? ""
+          : String(data.warehouseLocation.latitude),
+      longitude:
+        data?.warehouseLocation?.longitude === null || data?.warehouseLocation?.longitude === undefined
+          ? ""
+          : String(data.warehouseLocation.longitude)
+    },
+    distancePricing: {
+      enabled: data?.distancePricing?.enabled !== false,
+      baseFee: String(Number(data?.distancePricing?.baseFee ?? data?.deliveryCharge ?? 0)),
+      perKmCharge: String(Number(data?.distancePricing?.perKmCharge || 0)),
+      freeRadiusKm: String(Number(data?.distancePricing?.freeRadiusKm || 0)),
+      maxCharge:
+        data?.distancePricing?.maxCharge === null || data?.distancePricing?.maxCharge === undefined
+          ? ""
+          : String(Number(data.distancePricing.maxCharge))
+    },
+    internationalDelivery: {
+      enabled: data?.internationalDelivery?.enabled === true,
+      domesticCountry: String(data?.internationalDelivery?.domesticCountry || "India"),
+      defaultFee: String(Number(data?.internationalDelivery?.defaultFee ?? data?.deliveryCharge ?? 0)),
+      countryRates: Array.isArray(data?.internationalDelivery?.countryRates)
+        ? data.internationalDelivery.countryRates.map((item) => ({
+            country: String(item?.country || ""),
+            fee: String(Number(item?.fee || 0))
+          }))
+        : []
+    },
+    pricingMarkets: normalizePricingMarketsInput(data?.pricingMarkets || []),
+    internationalPricingDefaults: {
+      currency: String(data?.internationalPricingDefaults?.currency || "USD").toUpperCase()
+    },
+    currencyConversionRates: {
+      INR: String(Number(data?.currencyConversionRates?.INR || 1)),
+      USD: String(Number(data?.currencyConversionRates?.USD || 0.012)),
+      EUR: String(Number(data?.currencyConversionRates?.EUR || 0.011)),
+      GBP: String(Number(data?.currencyConversionRates?.GBP || 0.009)),
+      AED: String(Number(data?.currencyConversionRates?.AED || 0.044)),
+      CAD: String(Number(data?.currencyConversionRates?.CAD || 0.016)),
+      AUD: String(Number(data?.currencyConversionRates?.AUD || 0.019))
+    },
+    homeSectionVisibility: {
+      festiveOffers: data?.homeSectionVisibility?.festiveOffers !== false
+    },
+    collectionFilterVisibility: {
+      festiveOffers: data?.collectionFilterVisibility?.festiveOffers !== false
+    },
+    whatsappSettings: {
+      mode: data?.whatsappSettings?.mode || "free",
+      phoneNumber: data?.whatsappSettings?.phoneNumber || "",
+      welcomeMessage: data?.whatsappSettings?.welcomeMessage || "",
+      metaPhoneNumberId: data?.whatsappSettings?.metaPhoneNumberId || "",
+      metaAccessTokenSet: Boolean(data?.whatsappSettings?.metaAccessTokenSet),
+      metaAccessTokenLast4: String(data?.whatsappSettings?.metaAccessTokenLast4 || ""),
+      newAccessToken: "",
+      clearAccessToken: false,
+      apiConfigured: Boolean(data?.whatsappSettings?.apiConfigured),
+      metaWabaId: data?.whatsappSettings?.metaWabaId || "",
+      autoSendOrderConfirmation: data?.whatsappSettings?.autoSendOrderConfirmation !== false,
+      enableOtpVerification: data?.whatsappSettings?.enableOtpVerification !== false
+    },
+    lastUpdatedByName: String(data?.lastUpdatedByName || ""),
+    lastUpdatedByEmail: String(data?.lastUpdatedByEmail || ""),
+    lastUpdatedAt: data?.lastUpdatedAt || null
+  };
+}
+
+function getPricingChangesList(saved = {}, next = {}) {
+  const lines = [];
+
+  const prevGst = Number(saved?.gstPercent || 0);
+  const nextGst = Math.max(0, Number(next?.gstPercent || 0));
+  if (prevGst !== nextGst) {
+    lines.push(`GST: ${prevGst}% → ${nextGst}%`);
+  }
+
+  const prevDelivery = Number(saved?.deliveryCharge || 0);
+  const nextDelivery = Math.max(0, Number(next?.deliveryCharge || 0));
+  if (prevDelivery !== nextDelivery) {
+    lines.push(`Base delivery fee: Rs ${prevDelivery} → Rs ${nextDelivery}`);
+  }
+
+  const prevDistEnabled = saved?.distancePricing?.enabled !== false;
+  const nextDistEnabled = next?.distancePricing?.enabled !== false;
+  if (prevDistEnabled !== nextDistEnabled) {
+    lines.push(`Distance pricing: ${prevDistEnabled ? "Enabled" : "Disabled"} → ${nextDistEnabled ? "Enabled" : "Disabled"}`);
+  }
+
+  const prevDistBase = Number(saved?.distancePricing?.baseFee ?? saved?.deliveryCharge ?? 0);
+  const nextDistBase = Number(next?.distancePricing?.baseFee ?? next?.deliveryCharge ?? 0);
+  if (prevDistBase !== nextDistBase) {
+    lines.push(`Distance base fee: Rs ${prevDistBase} → Rs ${nextDistBase}`);
+  }
+
+  const prevPerKm = Number(saved?.distancePricing?.perKmCharge || 0);
+  const nextPerKm = Number(next?.distancePricing?.perKmCharge || 0);
+  if (prevPerKm !== nextPerKm) {
+    lines.push(`Distance per-km charge: Rs ${prevPerKm} → Rs ${nextPerKm}`);
+  }
+
+  const prevFreeRadius = Number(saved?.distancePricing?.freeRadiusKm || 0);
+  const nextFreeRadius = Number(next?.distancePricing?.freeRadiusKm || 0);
+  if (prevFreeRadius !== nextFreeRadius) {
+    lines.push(`Distance free radius: ${prevFreeRadius} km → ${nextFreeRadius} km`);
+  }
+
+  const prevMaxCharge = saved?.distancePricing?.maxCharge ? Number(saved.distancePricing.maxCharge) : null;
+  const nextMaxCharge = next?.distancePricing?.maxCharge ? Number(next.distancePricing.maxCharge) : null;
+  if (prevMaxCharge !== nextMaxCharge) {
+    lines.push(`Distance max fee: ${prevMaxCharge !== null ? `Rs ${prevMaxCharge}` : "None"} → ${nextMaxCharge !== null ? `Rs ${nextMaxCharge}` : "None"}`);
+  }
+
+  const prevIntlEnabled = saved?.internationalDelivery?.enabled === true;
+  const nextIntlEnabled = next?.internationalDelivery?.enabled === true;
+  if (prevIntlEnabled !== nextIntlEnabled) {
+    lines.push(`International delivery: ${prevIntlEnabled ? "Enabled" : "Disabled"} → ${nextIntlEnabled ? "Enabled" : "Disabled"}`);
+  }
+
+  const prevIntlDefaultFee = Number(saved?.internationalDelivery?.defaultFee ?? saved?.deliveryCharge ?? 0);
+  const nextIntlDefaultFee = Number(next?.internationalDelivery?.defaultFee ?? next?.deliveryCharge ?? 0);
+  if (prevIntlDefaultFee !== nextIntlDefaultFee) {
+    lines.push(`International default fee: Rs ${prevIntlDefaultFee} → Rs ${nextIntlDefaultFee}`);
+  }
+
+  const prevCountryRates = JSON.stringify(saved?.internationalDelivery?.countryRates || []);
+  const nextCountryRates = JSON.stringify(next?.internationalDelivery?.countryRates || []);
+  if (prevCountryRates !== nextCountryRates) {
+    lines.push("International country shipping rates changed");
+  }
+
+  const prevCurRates = saved?.currencyConversionRates || {};
+  const nextCurRates = next?.currencyConversionRates || {};
+  SUPPORTED_PRICING_CURRENCIES.forEach((code) => {
+    if (code === "INR") return;
+    const prevRate = Number(prevCurRates[code] || 0);
+    const nextRate = Number(nextCurRates[code] || 0);
+    if (prevRate !== nextRate) {
+      lines.push(`Currency conversion rate ${code}: ${prevRate} → ${nextRate}`);
+    }
+  });
+
+  const prevMarkets = JSON.stringify(normalizePricingMarketsInput(saved?.pricingMarkets || []));
+  const nextMarkets = JSON.stringify(normalizePricingMarketsInput(next?.pricingMarkets || []));
+  if (prevMarkets !== nextMarkets) {
+    lines.push("Pricing markets changed");
+  }
+
+  const prevFallbackCurrency = String(saved?.internationalPricingDefaults?.currency || "USD").toUpperCase();
+  const nextFallbackCurrency = String(next?.internationalPricingDefaults?.currency || "USD").toUpperCase();
+  if (prevFallbackCurrency !== nextFallbackCurrency) {
+    lines.push(`International fallback currency: ${prevFallbackCurrency} → ${nextFallbackCurrency}`);
+  }
+
+  if (JSON.stringify(saved?.warehouseLocation || {}) !== JSON.stringify(next?.warehouseLocation || {})) {
+    lines.push("Warehouse location updated");
+  }
+  if (Boolean(saved?.enableCurrentLocation) !== Boolean(next?.enableCurrentLocation)) {
+    lines.push(`Customer geolocation button: ${saved?.enableCurrentLocation ? "Enabled" : "Disabled"} → ${next?.enableCurrentLocation ? "Enabled" : "Disabled"}`);
+  }
+  if (Boolean(saved?.homeSectionVisibility?.festiveOffers) !== Boolean(next?.homeSectionVisibility?.festiveOffers)) {
+    lines.push(`Homepage festive offers: ${saved?.homeSectionVisibility?.festiveOffers ? "Show" : "Hide"} → ${next?.homeSectionVisibility?.festiveOffers ? "Show" : "Hide"}`);
+  }
+  if (Boolean(saved?.collectionFilterVisibility?.festiveOffers) !== Boolean(next?.collectionFilterVisibility?.festiveOffers)) {
+    lines.push(`Collection festive filter: ${saved?.collectionFilterVisibility?.festiveOffers ? "Show" : "Hide"} → ${next?.collectionFilterVisibility?.festiveOffers ? "Show" : "Hide"}`);
+  }
+
+  if (next?.whatsappSettings?.clearAccessToken) {
+    lines.push("WhatsApp access token removed");
+  } else if (next?.whatsappSettings?.newAccessToken) {
+    lines.push("WhatsApp access token replaced");
+  }
+  if (saved?.whatsappSettings?.mode !== next?.whatsappSettings?.mode) {
+    lines.push(`WhatsApp mode: ${saved?.whatsappSettings?.mode || "free"} → ${next?.whatsappSettings?.mode || "free"}`);
+  }
+  if (saved?.whatsappSettings?.metaPhoneNumberId !== next?.whatsappSettings?.metaPhoneNumberId) {
+    lines.push("WhatsApp Phone Number ID updated");
+  }
+  if (saved?.whatsappSettings?.metaWabaId !== next?.whatsappSettings?.metaWabaId) {
+    lines.push("WhatsApp WABA ID updated");
+  }
+  if (saved?.whatsappSettings?.phoneNumber !== next?.whatsappSettings?.phoneNumber) {
+    lines.push("WhatsApp support phone number updated");
+  }
+  if (saved?.whatsappSettings?.welcomeMessage !== next?.whatsappSettings?.welcomeMessage) {
+    lines.push("WhatsApp welcome message updated");
+  }
+  if (saved?.whatsappSettings?.autoSendOrderConfirmation !== next?.whatsappSettings?.autoSendOrderConfirmation) {
+    lines.push(`WhatsApp order receipts: ${next?.whatsappSettings?.autoSendOrderConfirmation !== false ? "Enabled" : "Disabled"}`);
+  }
+  if (saved?.whatsappSettings?.enableOtpVerification !== next?.whatsappSettings?.enableOtpVerification) {
+    lines.push(`WhatsApp OTP verification: ${next?.whatsappSettings?.enableOtpVerification !== false ? "Enabled" : "Disabled"}`);
+  }
+
+  return lines;
+}
+
 function AdminDashboard() {
+  const { confirm } = useDialog();
   const { token, user } = useAuth();
+  const isSuperAdmin = Number(user?.adminLevel) === 1;
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [orderLoadError, setOrderLoadError] = useState("");
@@ -96,54 +304,9 @@ function AdminDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
-  const [showMetaToken, setShowMetaToken] = useState(false);
-  const [pricingSettings, setPricingSettings] = useState({
-    enableCurrentLocation: true,
-    gstPercent: 0,
-    deliveryCharge: 0,
-    warehouseLocation: {
-      name: "",
-      address: "",
-      mapUrl: "",
-      latitude: "",
-      longitude: ""
-    },
-    distancePricing: {
-      enabled: true,
-      baseFee: 0,
-      perKmCharge: 0,
-      freeRadiusKm: 0,
-      maxCharge: ""
-    },
-    internationalDelivery: {
-      enabled: false,
-      domesticCountry: "India",
-      defaultFee: 0,
-      countryRates: []
-    },
-    pricingMarkets: [],
-    internationalPricingDefaults: {
-      currency: "USD"
-    },
-    currencyConversionRates: {
-      INR: "1",
-      USD: "0.012",
-      EUR: "0.011",
-      GBP: "0.009",
-      AED: "0.044",
-      CAD: "0.016",
-      AUD: "0.019"
-    },
-    homeSectionVisibility: {
-      festiveOffers: true
-    },
-    collectionFilterVisibility: {
-      festiveOffers: true
-    },
-    lastUpdatedByName: "",
-    lastUpdatedByEmail: "",
-    lastUpdatedAt: null
-  });
+  const [isPricingUnlocked, setIsPricingUnlocked] = useState(false);
+  const [savedPricingSettings, setSavedPricingSettings] = useState(null);
+  const [pricingSettings, setPricingSettings] = useState(() => formatPricingSettingsFromData({}));
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [isGettingWarehouseLocation, setIsGettingWarehouseLocation] = useState(false);
   const [pricingMessage, setPricingMessage] = useState("");
@@ -224,114 +387,49 @@ function AdminDashboard() {
           internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
           currencyConversionRates: res.data?.currencyConversionRates || {}
         });
-        setPricingSettings({
-          enableCurrentLocation: res.data?.enableCurrentLocation !== false,
-          gstPercent: String(Number(res.data?.gstPercent || 0)),
-          deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
-          warehouseLocation: {
-            name: String(res.data?.warehouseLocation?.name || ""),
-            address: String(res.data?.warehouseLocation?.address || ""),
-            mapUrl: String(res.data?.warehouseLocation?.mapUrl || ""),
-            latitude:
-              res.data?.warehouseLocation?.latitude === null || res.data?.warehouseLocation?.latitude === undefined
-                ? ""
-                : String(res.data.warehouseLocation.latitude),
-            longitude:
-              res.data?.warehouseLocation?.longitude === null || res.data?.warehouseLocation?.longitude === undefined
-                ? ""
-                : String(res.data.warehouseLocation.longitude)
-          },
-          distancePricing: {
-            enabled: res.data?.distancePricing?.enabled !== false,
-            baseFee: String(Number(res.data?.distancePricing?.baseFee ?? res.data?.deliveryCharge ?? 0)),
-            perKmCharge: String(Number(res.data?.distancePricing?.perKmCharge || 0)),
-            freeRadiusKm: String(Number(res.data?.distancePricing?.freeRadiusKm || 0)),
-            maxCharge:
-              res.data?.distancePricing?.maxCharge === null || res.data?.distancePricing?.maxCharge === undefined
-                ? ""
-                : String(Number(res.data.distancePricing.maxCharge))
-          },
-          internationalDelivery: {
-            enabled: res.data?.internationalDelivery?.enabled === true,
-            domesticCountry: String(res.data?.internationalDelivery?.domesticCountry || "India"),
-            defaultFee: String(Number(res.data?.internationalDelivery?.defaultFee ?? res.data?.deliveryCharge ?? 0)),
-            countryRates: Array.isArray(res.data?.internationalDelivery?.countryRates)
-              ? res.data.internationalDelivery.countryRates.map((item) => ({
-                  country: String(item?.country || ""),
-                  fee: String(Number(item?.fee || 0))
-                }))
-              : []
-          },
-          pricingMarkets: normalizePricingMarketsInput(res.data?.pricingMarkets || []),
-          internationalPricingDefaults: {
-            currency: String(res.data?.internationalPricingDefaults?.currency || "USD").toUpperCase()
-          },
-          currencyConversionRates: {
-            INR: String(Number(res.data?.currencyConversionRates?.INR || 1)),
-            USD: String(Number(res.data?.currencyConversionRates?.USD || 0.012)),
-            EUR: String(Number(res.data?.currencyConversionRates?.EUR || 0.011)),
-            GBP: String(Number(res.data?.currencyConversionRates?.GBP || 0.009)),
-            AED: String(Number(res.data?.currencyConversionRates?.AED || 0.044)),
-            CAD: String(Number(res.data?.currencyConversionRates?.CAD || 0.016)),
-            AUD: String(Number(res.data?.currencyConversionRates?.AUD || 0.019))
-          },
-          homeSectionVisibility: {
-            festiveOffers: res.data?.homeSectionVisibility?.festiveOffers !== false
-          },
-          collectionFilterVisibility: {
-            festiveOffers: res.data?.collectionFilterVisibility?.festiveOffers !== false
-          },
-          lastUpdatedByName: String(res.data?.lastUpdatedByName || ""),
-          lastUpdatedByEmail: String(res.data?.lastUpdatedByEmail || ""),
-          lastUpdatedAt: res.data?.lastUpdatedAt || null
-        });
+        const formatted = formatPricingSettingsFromData(res.data);
+        setPricingSettings(formatted);
+        setSavedPricingSettings(formatted);
       })
       .catch(() => {
         if (!active) return;
-        setPricingSettings({
-          enableCurrentLocation: true,
-          gstPercent: "0",
-          deliveryCharge: "0",
-          warehouseLocation: { name: "", address: "", mapUrl: "", latitude: "", longitude: "" },
-          distancePricing: { enabled: true, baseFee: "0", perKmCharge: "0", freeRadiusKm: "0", maxCharge: "" },
-          internationalDelivery: { enabled: false, domesticCountry: "India", defaultFee: "0", countryRates: [] },
-          pricingMarkets: [],
-          internationalPricingDefaults: { currency: "USD" },
-          currencyConversionRates: {
-            INR: "1",
-            USD: "0.012",
-            EUR: "0.011",
-            GBP: "0.009",
-            AED: "0.044",
-            CAD: "0.016",
-            AUD: "0.019"
-          },
-          homeSectionVisibility: { festiveOffers: true },
-          collectionFilterVisibility: { festiveOffers: true },
-          whatsappSettings: {
-            mode: "free",
-            phoneNumber: "919999999999",
-            welcomeMessage: "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.",
-            metaPhoneNumberId: "",
-            metaAccessToken: "",
-            metaWabaId: "",
-            autoSendOrderConfirmation: true,
-            enableOtpVerification: true
-          },
-          lastUpdatedByName: "",
-          lastUpdatedByEmail: "",
-          lastUpdatedAt: null
-        });
+        const fallback = formatPricingSettingsFromData({});
+        setPricingSettings(fallback);
+        setSavedPricingSettings(fallback);
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [token]);
+
+  const handleCancelPricingEdit = () => {
+    if (savedPricingSettings) {
+      setPricingSettings(JSON.parse(JSON.stringify(savedPricingSettings)));
+    }
+    setIsPricingUnlocked(false);
+    setPricingMessage("");
+  };
 
   const savePricingSettings = async () => {
-    setIsSavingPricing(true);
     setPricingMessage("");
+    const lines = getPricingChangesList(savedPricingSettings, pricingSettings);
+    if (lines.length === 0) {
+      setPricingMessage("No changes to save.");
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Apply new pricing settings?",
+      message: `These changes apply to all new orders immediately:\n\n${lines.join("\n")}`,
+      tone: "danger",
+      confirmText: "Save changes"
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setIsSavingPricing(true);
     try {
       const payload = {
         enableCurrentLocation: pricingSettings.enableCurrentLocation,
@@ -367,84 +465,34 @@ function AdminDashboard() {
         collectionFilterVisibility: {
           festiveOffers: pricingSettings.collectionFilterVisibility.festiveOffers
         },
-        whatsappSettings: pricingSettings.whatsappSettings
+        whatsappSettings: {
+          mode: pricingSettings.whatsappSettings?.mode || "free",
+          phoneNumber: pricingSettings.whatsappSettings?.phoneNumber || "",
+          welcomeMessage: pricingSettings.whatsappSettings?.welcomeMessage || "",
+          ...(isSuperAdmin ? {
+            metaPhoneNumberId: pricingSettings.whatsappSettings?.metaPhoneNumberId || "",
+            metaWabaId: pricingSettings.whatsappSettings?.metaWabaId || "",
+            ...(pricingSettings.whatsappSettings?.newAccessToken
+              ? { metaAccessToken: pricingSettings.whatsappSettings.newAccessToken }
+              : {}),
+            ...(pricingSettings.whatsappSettings?.clearAccessToken
+              ? { clearAccessToken: true }
+              : {})
+          } : {}),
+          autoSendOrderConfirmation: pricingSettings.whatsappSettings?.autoSendOrderConfirmation !== false,
+          enableOtpVerification: pricingSettings.whatsappSettings?.enableOtpVerification !== false
+        }
       };
 
       const res = await axios.put("/api/settings", payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      setPricingSettings({
-        enableCurrentLocation: res.data?.enableCurrentLocation !== false,
-        gstPercent: String(Number(res.data?.gstPercent || 0)),
-        deliveryCharge: String(Number(res.data?.deliveryCharge || 0)),
-        warehouseLocation: {
-          name: String(res.data?.warehouseLocation?.name || ""),
-          address: String(res.data?.warehouseLocation?.address || ""),
-          mapUrl: String(res.data?.warehouseLocation?.mapUrl || ""),
-          latitude:
-            res.data?.warehouseLocation?.latitude === null || res.data?.warehouseLocation?.latitude === undefined
-              ? ""
-              : String(res.data.warehouseLocation.latitude),
-          longitude:
-            res.data?.warehouseLocation?.longitude === null || res.data?.warehouseLocation?.longitude === undefined
-              ? ""
-              : String(res.data.warehouseLocation.longitude)
-        },
-        distancePricing: {
-          enabled: res.data?.distancePricing?.enabled !== false,
-          baseFee: String(Number(res.data?.distancePricing?.baseFee ?? res.data?.deliveryCharge ?? 0)),
-          perKmCharge: String(Number(res.data?.distancePricing?.perKmCharge || 0)),
-          freeRadiusKm: String(Number(res.data?.distancePricing?.freeRadiusKm || 0)),
-          maxCharge:
-            res.data?.distancePricing?.maxCharge === null || res.data?.distancePricing?.maxCharge === undefined
-              ? ""
-              : String(Number(res.data.distancePricing.maxCharge))
-        },
-        internationalDelivery: {
-          enabled: res.data?.internationalDelivery?.enabled === true,
-          domesticCountry: String(res.data?.internationalDelivery?.domesticCountry || "India"),
-          defaultFee: String(Number(res.data?.internationalDelivery?.defaultFee ?? res.data?.deliveryCharge ?? 0)),
-          countryRates: Array.isArray(res.data?.internationalDelivery?.countryRates)
-            ? res.data.internationalDelivery.countryRates.map((item) => ({
-                country: String(item?.country || ""),
-                fee: String(Number(item?.fee || 0))
-              }))
-            : []
-        },
-        pricingMarkets: normalizePricingMarketsInput(res.data?.pricingMarkets || []),
-        internationalPricingDefaults: {
-          currency: String(res.data?.internationalPricingDefaults?.currency || "USD").toUpperCase()
-        },
-        currencyConversionRates: {
-          INR: String(Number(res.data?.currencyConversionRates?.INR || 1)),
-          USD: String(Number(res.data?.currencyConversionRates?.USD || 0.012)),
-          EUR: String(Number(res.data?.currencyConversionRates?.EUR || 0.011)),
-          GBP: String(Number(res.data?.currencyConversionRates?.GBP || 0.009)),
-          AED: String(Number(res.data?.currencyConversionRates?.AED || 0.044)),
-          CAD: String(Number(res.data?.currencyConversionRates?.CAD || 0.016)),
-          AUD: String(Number(res.data?.currencyConversionRates?.AUD || 0.019))
-        },
-        homeSectionVisibility: {
-          festiveOffers: res.data?.homeSectionVisibility?.festiveOffers !== false
-        },
-        collectionFilterVisibility: {
-          festiveOffers: res.data?.collectionFilterVisibility?.festiveOffers !== false
-        },
-        whatsappSettings: {
-          mode: res.data?.whatsappSettings?.mode || "free",
-          phoneNumber: res.data?.whatsappSettings?.phoneNumber || "",
-          welcomeMessage: res.data?.whatsappSettings?.welcomeMessage || "",
-          metaPhoneNumberId: res.data?.whatsappSettings?.metaPhoneNumberId || "",
-          metaAccessToken: res.data?.whatsappSettings?.metaAccessToken || "",
-          metaWabaId: res.data?.whatsappSettings?.metaWabaId || "",
-          autoSendOrderConfirmation: res.data?.whatsappSettings?.autoSendOrderConfirmation !== false,
-          enableOtpVerification: res.data?.whatsappSettings?.enableOtpVerification !== false
-        },
-        lastUpdatedByName: String(res.data?.lastUpdatedByName || ""),
-        lastUpdatedByEmail: String(res.data?.lastUpdatedByEmail || ""),
-        lastUpdatedAt: res.data?.lastUpdatedAt || null
-      });
+      const formatted = formatPricingSettingsFromData(res.data);
+      setPricingSettings(formatted);
+      setSavedPricingSettings(formatted);
+      setIsPricingUnlocked(false);
+
       storePricingConfig({
         pricingMarkets: res.data?.pricingMarkets || [],
         internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
@@ -1076,7 +1124,15 @@ function AdminDashboard() {
           <button
             type="button"
             className="pricing-controls-toggle"
-            onClick={() => setIsPricingOpen((prev) => !prev)}
+            onClick={() => {
+              setIsPricingOpen((prev) => {
+                const next = !prev;
+                if (!next) {
+                  setIsPricingUnlocked(false);
+                }
+                return next;
+              });
+            }}
             aria-expanded={isPricingOpen}
           >
             <div className="pricing-controls-toggle-left">
@@ -1100,6 +1156,52 @@ function AdminDashboard() {
           </button>
 
           {isPricingOpen && (<>
+          <div className="pricing-lock-toolbar">
+            <div className="pricing-lock-status-group">
+              <span className={`pricing-lock-pill ${isPricingUnlocked ? "pricing-lock-pill--unlocked" : "pricing-lock-pill--locked"}`}>
+                {isPricingUnlocked ? "🔓 Editing" : "🔒 Locked"}
+              </span>
+              {!isSuperAdmin && (
+                <span className="pricing-lock-notice">Only super admins can change these settings.</span>
+              )}
+            </div>
+            <div className="pricing-lock-actions">
+              {isSuperAdmin && !isPricingUnlocked && (
+                <button
+                  type="button"
+                  className="pricing-unlock-btn"
+                  onClick={() => {
+                    setIsPricingUnlocked(true);
+                    setPricingMessage("");
+                  }}
+                >
+                  Unlock to edit
+                </button>
+              )}
+              {isSuperAdmin && isPricingUnlocked && (
+                <>
+                  <button
+                    type="button"
+                    className="pricing-cancel-btn"
+                    onClick={handleCancelPricingEdit}
+                    disabled={isSavingPricing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="pricing-save-btn pricing-save-btn--sm"
+                    onClick={savePricingSettings}
+                    disabled={isSavingPricing}
+                  >
+                    {isSavingPricing ? "Saving..." : "Save All Settings"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <fieldset disabled={!isPricingUnlocked} className="pricing-fieldset">
 
           {/* Section 1: Core Tax & Delivery */}
           <div className="pricing-panel">
@@ -1441,12 +1543,13 @@ function AdminDashboard() {
               {/* Mode 1: Free Mode */}
               <div
                 className={`wa-mode-card ${pricingSettings.whatsappSettings?.mode === "free" ? "active" : ""}`}
-                onClick={() =>
+                onClick={() => {
+                  if (!isPricingUnlocked) return;
                   setPricingSettings((prev) => ({
                     ...prev,
                     whatsappSettings: { ...prev.whatsappSettings, mode: "free" }
-                  }))
-                }
+                  }));
+                }}
               >
                 <div className="wa-mode-card-top">
                   <div className="wa-mode-icon-wrap">
@@ -1470,12 +1573,13 @@ function AdminDashboard() {
               {/* Mode 2: Automated API Mode */}
               <div
                 className={`wa-mode-card ${pricingSettings.whatsappSettings?.mode === "api" ? "active" : ""}`}
-                onClick={() =>
+                onClick={() => {
+                  if (!isPricingUnlocked) return;
                   setPricingSettings((prev) => ({
                     ...prev,
                     whatsappSettings: { ...prev.whatsappSettings, mode: "api" }
-                  }))
-                }
+                  }));
+                }}
               >
                 <div className="wa-mode-card-top">
                   <div className="wa-mode-icon-wrap" style={{ background: "#ecfdf5", color: "#047857" }}>
@@ -1499,12 +1603,13 @@ function AdminDashboard() {
               {/* Mode 3: Disabled */}
               <div
                 className={`wa-mode-card ${pricingSettings.whatsappSettings?.mode === "disabled" ? "active" : ""}`}
-                onClick={() =>
+                onClick={() => {
+                  if (!isPricingUnlocked) return;
                   setPricingSettings((prev) => ({
                     ...prev,
                     whatsappSettings: { ...prev.whatsappSettings, mode: "disabled" }
-                  }))
-                }
+                  }));
+                }}
               >
                 <div className="wa-mode-card-top">
                   <div className="wa-mode-icon-wrap" style={{ background: "#f1f5f9", color: "#64748b" }}>
@@ -1644,83 +1749,118 @@ function AdminDashboard() {
                   </a>
                 </div>
 
-                <div className="pricing-panel-grid pricing-panel-grid--3">
-                  <label className="pricing-field">
-                    <span className="pricing-label">Phone Number ID <strong style={{ color: "#ef4444" }}>*</strong></span>
-                    <input
-                      type="text"
-                      className="pricing-text-input"
-                      placeholder="e.g. 10482910482019"
-                      value={pricingSettings.whatsappSettings?.metaPhoneNumberId || ""}
-                      onChange={(e) =>
-                        setPricingSettings((prev) => ({
-                          ...prev,
-                          whatsappSettings: {
-                            ...prev.whatsappSettings,
-                            metaPhoneNumberId: e.target.value.trim()
-                          }
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <label className="pricing-field">
-                    <span className="pricing-label">Permanent System User Token <strong style={{ color: "#ef4444" }}>*</strong></span>
-                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                {!isSuperAdmin ? (
+                  <div style={{
+                    background: pricingSettings.whatsappSettings?.apiConfigured ? "#f0fdf4" : "#f8fafc",
+                    border: `1px solid ${pricingSettings.whatsappSettings?.apiConfigured ? "#bbf7d0" : "var(--admin-border)"}`,
+                    padding: "14px 16px",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    fontSize: "13px",
+                    color: pricingSettings.whatsappSettings?.apiConfigured ? "#166534" : "var(--admin-muted)"
+                  }}>
+                    <ShieldCheck size={18} color={pricingSettings.whatsappSettings?.apiConfigured ? "#16a34a" : "#64748b"} style={{ flexShrink: 0 }} />
+                    <span>
+                      WhatsApp Business API: <strong>{pricingSettings.whatsappSettings?.apiConfigured ? "Connected" : "Not configured"}</strong> (managed by super admin)
+                    </span>
+                  </div>
+                ) : (
+                  <div className="pricing-panel-grid pricing-panel-grid--3">
+                    <label className="pricing-field">
+                      <span className="pricing-label">Phone Number ID <strong style={{ color: "#ef4444" }}>*</strong></span>
                       <input
-                        type={showMetaToken ? "text" : "password"}
+                        type="text"
                         className="pricing-text-input"
-                        style={{ paddingRight: "40px" }}
-                        placeholder="EAAG..."
-                        value={pricingSettings.whatsappSettings?.metaAccessToken || ""}
+                        placeholder="e.g. 10482910482019"
+                        value={pricingSettings.whatsappSettings?.metaPhoneNumberId || ""}
                         onChange={(e) =>
                           setPricingSettings((prev) => ({
                             ...prev,
                             whatsappSettings: {
                               ...prev.whatsappSettings,
-                              metaAccessToken: e.target.value.trim()
+                              metaPhoneNumberId: e.target.value.trim()
                             }
                           }))
                         }
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowMetaToken((p) => !p)}
-                        style={{
-                          position: "absolute",
-                          right: "10px",
-                          background: "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "#64748b",
-                          padding: "4px"
-                        }}
-                        title={showMetaToken ? "Hide token" : "Show token"}
-                      >
-                        {showMetaToken ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </label>
+                    </label>
 
-                  <label className="pricing-field">
-                    <span className="pricing-label">WhatsApp Business Account ID (WABA)</span>
-                    <input
-                      type="text"
-                      className="pricing-text-input"
-                      placeholder="e.g. 102938475610293 (Optional)"
-                      value={pricingSettings.whatsappSettings?.metaWabaId || ""}
-                      onChange={(e) =>
-                        setPricingSettings((prev) => ({
-                          ...prev,
-                          whatsappSettings: {
-                            ...prev.whatsappSettings,
-                            metaWabaId: e.target.value.trim()
+                    <label className="pricing-field">
+                      <span className="pricing-label">Permanent System User Token <strong style={{ color: "#ef4444" }}>*</strong></span>
+                      <span className="pricing-hint">
+                        {pricingSettings.whatsappSettings?.clearAccessToken
+                          ? "Token will be removed on save"
+                          : pricingSettings.whatsappSettings?.metaAccessTokenSet
+                            ? `Access token saved (ending ••••${pricingSettings.whatsappSettings?.metaAccessTokenLast4 || "XXXX"})`
+                            : "No access token saved"}
+                      </span>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <input
+                          type="password"
+                          className="pricing-text-input"
+                          placeholder="Replace access token"
+                          value={pricingSettings.whatsappSettings?.newAccessToken || ""}
+                          onChange={(e) =>
+                            setPricingSettings((prev) => ({
+                              ...prev,
+                              whatsappSettings: {
+                                ...prev.whatsappSettings,
+                                newAccessToken: e.target.value.trim(),
+                                clearAccessToken: false
+                              }
+                            }))
                           }
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
+                        />
+                        {(pricingSettings.whatsappSettings?.metaAccessTokenSet || pricingSettings.whatsappSettings?.newAccessToken) && !pricingSettings.whatsappSettings?.clearAccessToken && (
+                          <button
+                            type="button"
+                            className="pricing-link-btn pricing-link-btn--sm"
+                            style={{ color: "#dc2626", borderColor: "#fca5a5", whiteSpace: "nowrap" }}
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: "Remove WhatsApp access token?",
+                                tone: "danger"
+                              });
+                              if (ok) {
+                                setPricingSettings((prev) => ({
+                                  ...prev,
+                                  whatsappSettings: {
+                                    ...prev.whatsappSettings,
+                                    clearAccessToken: true,
+                                    newAccessToken: ""
+                                  }
+                                }));
+                              }
+                            }}
+                          >
+                            Remove token
+                          </button>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="pricing-field">
+                      <span className="pricing-label">WhatsApp Business Account ID (WABA)</span>
+                      <input
+                        type="text"
+                        className="pricing-text-input"
+                        placeholder="e.g. 102938475610293 (Optional)"
+                        value={pricingSettings.whatsappSettings?.metaWabaId || ""}
+                        onChange={(e) =>
+                          setPricingSettings((prev) => ({
+                            ...prev,
+                            whatsappSettings: {
+                              ...prev.whatsappSettings,
+                              metaWabaId: e.target.value.trim()
+                            }
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
 
                 {/* 2 Feature Toggle Switch Cards */}
                 <div>
@@ -1774,11 +1914,16 @@ function AdminDashboard() {
               </div>
             )}
           </div>
+          </fieldset>
 
           {/* Save Row */}
           <div className="pricing-save-row">
             <div className="pricing-save-row-left">
-              <button className="pricing-save-btn" onClick={savePricingSettings} disabled={isSavingPricing}>
+              <button
+                className="pricing-save-btn"
+                onClick={savePricingSettings}
+                disabled={!isSuperAdmin || !isPricingUnlocked || isSavingPricing}
+              >
                 {isSavingPricing ? "Saving..." : "Save All Settings"}
               </button>
               {pricingMessage && (
