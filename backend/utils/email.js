@@ -701,6 +701,39 @@ async function sendLowStockAdminAlert(products) {
   });
 }
 
+async function sendOrphanPaymentAlert({ razorpayPaymentId, razorpayOrderId, amountMinor, currency = "INR", capturedAt, userEmail = "" } = {}) {
+  if (!ADMIN_EMAIL) {
+    console.warn("[PaymentReconciler] No ADMIN_EMAIL set for orphan payment alert");
+    return;
+  }
+
+  const formattedAmount = (Number(amountMinor || 0) / 100).toFixed(2);
+  const timeStr = capturedAt ? new Date(capturedAt).toUTCString() : new Date().toUTCString();
+
+  const bodyHtml = `
+    <h2>⚠️ Unmatched / Orphan Payment Alert</h2>
+    <p>A payment was captured in Razorpay but has no corresponding order in the store after 15 minutes.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+      <tr><td style="padding: 6px; font-weight: bold;">Payment ID:</td><td style="padding: 6px; font-family: monospace;">${escapeHtml(razorpayPaymentId)}</td></tr>
+      <tr><td style="padding: 6px; font-weight: bold;">Razorpay Order ID:</td><td style="padding: 6px; font-family: monospace;">${escapeHtml(razorpayOrderId)}</td></tr>
+      <tr><td style="padding: 6px; font-weight: bold;">Amount:</td><td style="padding: 6px;">${escapeHtml(currency)} ${formattedAmount}</td></tr>
+      <tr><td style="padding: 6px; font-weight: bold;">Captured At:</td><td style="padding: 6px;">${escapeHtml(timeStr)}</td></tr>
+      <tr><td style="padding: 6px; font-weight: bold;">Customer Email:</td><td style="padding: 6px;">${escapeHtml(userEmail || "Unknown / Guest")}</td></tr>
+    </table>
+    <p>Please review and refund or resolve this payment in the admin dashboard.</p>
+    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/admin/unmatched-payments">Review Unmatched Payments</a>
+  `;
+
+  const html = htmlWrapper("Orphan Payment Alert", bodyHtml);
+
+  return sendEmail({
+    to: ADMIN_EMAIL,
+    subject: `⚠️ Unmatched Payment Alert: ${razorpayPaymentId} (${currency} ${formattedAmount}) — ${SITE_NAME}`,
+    html,
+    type: "orphan-payment-admin"
+  });
+}
+
 async function sendWishlistLowStockAlert(user, products) {
   if (user?._id) {
     const dbUser = await User.findById(user._id).select("marketingOptOut").lean();
@@ -972,6 +1005,7 @@ module.exports = {
   sendOrderStatusUpdate,
   sendRefundStatusUpdate,
   sendLowStockAdminAlert,
+  sendOrphanPaymentAlert,
   sendWishlistLowStockAlert,
   sendBroadcastEmail,
   sendTestEmail,

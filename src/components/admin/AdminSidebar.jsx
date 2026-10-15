@@ -37,6 +37,7 @@ const adminNavSections = [
     title: "MANAGEMENT",
     items: [
       { to: "/admin/orders", label: "Orders", icon: <Package size={17} />, pageKey: "orders" },
+      { to: "/admin/unmatched-payments", label: "Unmatched Payments", icon: <CreditCard size={17} />, pageKey: "orders" },
       { to: "/admin/wp-archive", label: "WP Archive", icon: <Globe size={17} />, pageKey: "orders" },
       { to: "/admin/users", label: "User Insights", icon: <Users size={17} />, pageKey: "users" },
       { to: "/admin/admin-access", label: "Admin Roles", icon: <ShieldCheck size={17} />, pageKey: "admin-access" },

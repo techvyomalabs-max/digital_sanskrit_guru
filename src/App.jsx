@@ -44,6 +44,7 @@ const AdminThemeSettings = lazy(() => import("./pages/AdminThemeSettings"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 const AdminSecurityLogs = lazy(() => import("./pages/AdminSecurityLogs"));
 const AdminTrash = lazy(() => import("./pages/AdminTrash"));
+const AdminUnmatchedPayments = lazy(() => import("./pages/AdminUnmatchedPayments"));
 const WpArchiveDashboard = lazy(() => import("./pages/admin/WpArchiveDashboard"));
 const GuestBuy = lazy(() => import("./pages/GuestBuy"));
 const About = lazy(() => import("./pages/About"));
@@ -426,6 +427,14 @@ function App() {
             element={
               <AdminRoute requiredPage="orders">
                 <AdminOrderDetails />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/unmatched-payments"
+            element={
+              <AdminRoute requiredPage="orders">
+                <AdminUnmatchedPayments />
               </AdminRoute>
             }
           />
