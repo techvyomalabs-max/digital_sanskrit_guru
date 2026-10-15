@@ -960,21 +960,21 @@ router.post("/forgot-password", passwordResetLimiter, honeypotMiddleware, turnst
 
 router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
-    const { token, password } = req.body;
-    if (!token) {
-      return res.status(400).json({ message: "Password reset token is required." });
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
+      return res.status(400).json({ message: "Password reset token is invalid or has expired." });
     }
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
       return res.status(400).json({ message: passwordValidation.message });
     }
 
-    const hashedToken = crypto.createHash("sha256").update(String(token)).digest("hex");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
     const user = await User.findOne({
-      $or: [
-        { resetPasswordToken: hashedToken, resetPasswordExpires: { $gt: Date.now() } },
-        { resetPasswordToken: token, resetPasswordExpires: { $gt: Date.now() } }
-      ]
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() }
     });
 
     if (!user) {

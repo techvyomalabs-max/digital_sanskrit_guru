@@ -487,9 +487,13 @@ function MyOrders() {
     try {
       const RazorpayConstructor = await loadRazorpayCheckout();
 
-      const { data } = await axios.post("/api/payment/create-order", {
-        orderId: order._id
-      });
+      const { data } = await axios.post(
+        "/api/payment/create-order",
+        {
+          orderId: order._id
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       const cleanPhone = String(order?.shipping?.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(order?.user?.email || order?.shipping?.email || "").trim();
