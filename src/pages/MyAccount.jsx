@@ -832,8 +832,10 @@ function MyAccount() {
   const [profileEmail, setProfileEmail] = useState(user?.email || "");
   const [profilePhone, setProfilePhone] = useState(user?.phone || "");
   const [profilePhoneCountry, setProfilePhoneCountry] = useState("India");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [profilePassword, setProfilePassword] = useState("");
   const [profilePasswordConfirm, setProfilePasswordConfirm] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showProfilePassword, setShowProfilePassword] = useState(false);
   const [showProfileConfirmPassword, setShowProfileConfirmPassword] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
@@ -943,8 +945,10 @@ function MyAccount() {
       setProfilePhoneCountry("India");
       setProfilePhone("");
     }
+    setCurrentPassword("");
     setProfilePassword("");
     setProfilePasswordConfirm("");
+    setShowCurrentPassword(false);
     setShowProfilePassword(false);
     setShowProfileConfirmPassword(false);
     setProfileError("");
@@ -1051,6 +1055,7 @@ function MyAccount() {
       const res = await axios.put(
         "/api/auth/profile",
         {
+          currentPassword,
           password: profilePassword
         },
         {
@@ -1061,8 +1066,10 @@ function MyAccount() {
       if (res.data?.success) {
         updateProfileState(res.data);
         setProfileMessage("Password updated successfully!");
+        setCurrentPassword("");
         setProfilePassword("");
         setProfilePasswordConfirm("");
+        setShowCurrentPassword(false);
         setShowProfilePassword(false);
         setShowProfileConfirmPassword(false);
         setEditingSection(null);
@@ -1841,6 +1848,33 @@ function MyAccount() {
                       🔒 Registered email is permanent and cannot be modified.
                     </span>
                   </div>
+
+                  <label className="my-account-form-field">
+                    <span className="my-account-input-label">
+                      Current Password
+                    </span>
+                    <div className="password-input-wrapper">
+                      <input
+                        id="profile-current-password-input"
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Enter current password"
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle-btn"
+                        onClick={() => setShowCurrentPassword((prev) => !prev)}
+                        aria-label={showCurrentPassword ? "Hide current password" : "Show current password"}
+                      >
+                        {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
+                      Leave blank if you only sign in with Google.
+                    </span>
+                  </label>
 
                   <label className="my-account-form-field">
                     <span className="my-account-input-label">
