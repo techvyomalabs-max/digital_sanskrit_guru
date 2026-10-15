@@ -69,7 +69,6 @@ function AdminProducts() {
       if (!acc[category]) {
         acc[category] = {
           category,
-          zone: `Zone-${Object.keys(acc).length + 1}`,
           units: 0
         };
       }
@@ -77,15 +76,16 @@ function AdminProducts() {
       return acc;
     }, {});
 
-    const zones = Object.values(zoneMap).map((zone) => {
-      const capacity = Math.max(50, Math.ceil(zone.units * 1.4));
-      const utilization = capacity > 0 ? Math.round((zone.units / capacity) * 100) : 0;
-      return { ...zone, capacity, utilization };
-    });
+    const rawZones = Object.values(zoneMap);
+    const totalUnits = rawZones.reduce((sum, zone) => sum + zone.units, 0);
 
-    const totalUnits = zones.reduce((sum, zone) => sum + zone.units, 0);
-    const totalCapacity = zones.reduce((sum, zone) => sum + zone.capacity, 0);
-    const warehouseUtilization = totalCapacity > 0 ? Math.round((totalUnits / totalCapacity) * 100) : 0;
+    const zones = rawZones
+      .map((zone) => ({
+        category: zone.category,
+        units: zone.units,
+        share: totalUnits > 0 ? Math.round((zone.units / totalUnits) * 100) : 0
+      }))
+      .sort((a, b) => b.units - a.units);
 
     const restockQueue = [...products]
       .filter((product) => Number(product?.stock || 0) <= 5)
@@ -96,7 +96,7 @@ function AdminProducts() {
         priority: Number(product?.stock || 0) === 0 ? "Critical" : "Medium"
       }));
 
-    return { zones, totalUnits, totalCapacity, warehouseUtilization, restockQueue };
+    return { zones, totalUnits, restockQueue };
   }, [products]);
 
   const warehouseStockRows = useMemo(() => {
@@ -216,7 +216,7 @@ function AdminProducts() {
           <div>
             <h1>Warehouse Management</h1>
             <p style={{ margin: "4px 0 0", color: "var(--admin-muted)", fontSize: "13.5px" }}>
-              Live inventory tracking, storage zone capacity, and restock queue automation.
+              Live inventory tracking, stock by category, and restock queue automation.
             </p>
           </div>
         </div>
@@ -288,21 +288,21 @@ function AdminProducts() {
 
         {/* Storage Zones & Restock Queue */}
         <section className="card">
-          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>🏭 Warehouse Capacity & Restock Queue</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>🏭 Stock Overview & Restock Queue</h3>
           <div className="warehouse-summary-grid">
             <div className="warehouse-metric">
               <span>Total Stored Units</span>
               <strong>{warehouseAnalytics.totalUnits}</strong>
             </div>
             <div className="warehouse-metric">
-              <span>Warehouse Capacity</span>
-              <strong>{warehouseAnalytics.totalCapacity}</strong>
+              <span>Out of Stock</span>
+              <strong style={{ color: inventoryAnalytics.outOfStockCount > 0 ? "#dc2626" : "#059669" }}>
+                {inventoryAnalytics.outOfStockCount}
+              </strong>
             </div>
             <div className="warehouse-metric">
-              <span>Overall Utilization</span>
-              <strong style={{ color: warehouseAnalytics.warehouseUtilization > 85 ? "#dc2626" : "#2563eb" }}>
-                {warehouseAnalytics.warehouseUtilization}%
-              </strong>
+              <span>Categories</span>
+              <strong>{warehouseAnalytics.zones.length}</strong>
             </div>
             <div className="warehouse-metric">
               <span>Restock Queue</span>
@@ -314,25 +314,24 @@ function AdminProducts() {
 
           <div className="warehouse-zones-grid">
             <div>
-              <h4 className="warehouse-subheading">📍 Storage Zones</h4>
+              <h4 className="warehouse-subheading">📊 Stock by Category</h4>
               <div className="warehouse-zone-list">
                 {warehouseAnalytics.zones.length === 0 ? (
-                  <p style={{ color: "var(--admin-muted)" }}>No zone data available.</p>
+                  <p style={{ color: "var(--admin-muted)" }}>No stock data available.</p>
                 ) : (
                   warehouseAnalytics.zones.map((zone) => (
-                    <div key={zone.zone} className="warehouse-zone-row">
+                    <div key={zone.category} className="warehouse-zone-row">
                       <div className="warehouse-info-col">
-                        <strong>{zone.zone}</strong>
-                        <span>{zone.category}</span>
+                        <strong>{zone.category}</strong>
                       </div>
                       <div className="warehouse-zone-bar-track">
                         <div
                           className="warehouse-zone-bar-fill"
-                          style={{ width: `${Math.min(100, zone.utilization)}%` }}
+                          style={{ width: `${zone.share}%` }}
                         />
                       </div>
                       <p style={{ fontWeight: 700, color: "var(--admin-text)" }}>
-                        {zone.units}/{zone.capacity}
+                        {zone.units} units · {zone.share}%
                       </p>
                     </div>
                   ))
@@ -426,10 +425,10 @@ function AdminProducts() {
               value={warehouseZoneFilter}
               onChange={(e) => setWarehouseZoneFilter(e.target.value)}
             >
-              <option value="All">🌐 All Storage Zones</option>
+              <option value="All">🌐 All Categories</option>
               {warehouseAnalytics.zones.map((zone) => (
                 <option key={zone.category} value={zone.category}>
-                  {zone.zone} ({zone.category})
+                  {zone.category}
                 </option>
               ))}
             </select>
@@ -442,7 +441,7 @@ function AdminProducts() {
               </p>
             ) : warehouseStockRows.length === 0 ? (
               <p style={{ padding: "20px 0", color: "var(--admin-muted)", textAlign: "center" }}>
-                No products match the current search or zone filters.
+                No products match the current search or category filter.
               </p>
             ) : (
               warehouseStockRows.map((product) => {
