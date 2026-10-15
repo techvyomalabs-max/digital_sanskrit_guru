@@ -396,10 +396,11 @@ function AdminAddProducts() {
 
     setIsLoadingProducts(true);
     axios
-      .get("/api/products")
+      .get("/api/products/admin/all", authHeaders)
       .then((res) => {
         if (!active) return;
-        setProducts(res.data);
+        const data = Array.isArray(res.data) ? res.data : (res.data?.products || []);
+        setProducts(data);
       })
       .catch(() => {
         if (!active) return;
@@ -431,8 +432,11 @@ function AdminAddProducts() {
   const loadProducts = async () => {
     setIsLoadingProducts(true);
     try {
-      const res = await axios.get("/api/products");
-      setProducts(res.data);
+      const res = await axios.get("/api/products/admin/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = Array.isArray(res.data) ? res.data : (res.data?.products || []);
+      setProducts(data);
     } finally {
       setIsLoadingProducts(false);
     }

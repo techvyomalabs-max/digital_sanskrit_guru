@@ -1101,7 +1101,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
       .limit(5)
       .lean();
 
-    const returnedProduct = product.toObject();
+    const returnedProduct = toPublicProduct(product.toObject());
     returnedProduct.reviews = latestReviews.map((r) => ({
       ...r,
       user: r.userName

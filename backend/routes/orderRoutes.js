@@ -23,7 +23,8 @@ const {
   sendRefundStatusUpdate,
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
-  sendWelcomeCredentialsEmail
+  sendWelcomeCredentialsEmail,
+  sendGiftPassEmail
 } = require("../utils/email");
 const {
   sendPushToUser,
@@ -327,6 +328,33 @@ const ensureGiftPassesForOrder = async (order) => {
   return order;
 };
 
+async function emailIssuedGiftPasses(order, issued) {
+  if (!order || !order.giftRecipientEmail || !Array.isArray(issued) || issued.length === 0) {
+    return;
+  }
+  let buyerName = null;
+  for (const entry of issued) {
+    const pass = entry?.pass;
+    const item = entry?.item;
+    if (!pass?.code) continue;
+    try {
+      if (buyerName === null) {
+        const buyerUser = order.user ? await User.findById(order.user).lean() : null;
+        buyerName = buyerUser ? (buyerUser.name || buyerUser.email) : (order.shipping?.name || "A friend");
+      }
+      await sendGiftPassEmail({
+        to: order.giftRecipientEmail,
+        buyerName,
+        giftCode: pass.code,
+        productName: item?.name || "Digital Item",
+        orderId: String(order._id)
+      });
+    } catch (err) {
+      console.error("[GiftPass] Email send error:", err.message);
+    }
+  }
+}
+
 // Create order (logged-in user)
 router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res) => {
   try {
@@ -461,7 +489,8 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         }
       }
       if (order.isGift) {
-        await issueGiftPassesForOrder(order._id);
+        const issued = await issueGiftPassesForOrder(order._id);
+        emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
     }
 
@@ -1264,7 +1293,8 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       console.warn(`[Order] Oversold warning for order ${updated._id}:`, stockRes.outOfStock);
       await Order.updateOne({ _id: updated._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
     }
-    await issueGiftPassesForOrder(updated._id);
+    const issued = await issueGiftPassesForOrder(updated._id);
+    emailIssuedGiftPasses(updated, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
   }
 
   if (!isOwner && isAdmin) {
@@ -2052,7 +2082,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         }
       }
       if (order.isGift) {
-        await issueGiftPassesForOrder(order._id);
+        const issued = await issueGiftPassesForOrder(order._id);
+        emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
     }
 
