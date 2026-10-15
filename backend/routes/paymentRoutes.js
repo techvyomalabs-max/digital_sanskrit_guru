@@ -2,12 +2,14 @@ const express = require("express");
 const mongoose = require("mongoose");
 const protect = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
+const Product = require("../models/Product");
 const PaymentIntent = require("../models/PaymentIntent");
 const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
 const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
 const { SETTLEMENT_CURRENCY, getSettlementCharge, verifyRazorpaySignature } = require("../utils/paymentVerification");
 const { computeOrderTotals } = require("../utils/orderTotals");
+const { expandItemsForStock } = require("../utils/stock");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
@@ -26,6 +28,7 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
     let amount;
     let currency;
     let receipt = `order_${Date.now()}`;
+    let itemsToCheck;
     const notes = {};
     if (req.user) {
       notes.userId = String(req.user);
@@ -49,6 +52,7 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         return res.status(400).json({ message: "Cancelled orders cannot be paid" });
       }
 
+      itemsToCheck = o.items;
       const ic = resolveItemsCurrency(o.items);
       const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
       const settlement = getSettlementCharge({
@@ -71,6 +75,7 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         userId: req.user || null,
         settings
       });
+      itemsToCheck = totals.normalizedItems;
       amount = totals.chargeAmount || totals.totalInInr || totals.total;
       currency = totals.chargeCurrency || SETTLEMENT_CURRENCY;
     } else {
@@ -84,6 +89,30 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
     const minor = toMinorUnits(amount, currency);
     if (!Number.isInteger(minor) || minor < 100 || amount > MAX_CHARGE) {
       return res.status(400).json({ message: "Invalid amount" });
+    }
+
+    const needed = expandItemsForStock(itemsToCheck || [], { includeComponents: true });
+    if (needed.length > 0) {
+      const neededIds = needed.map((n) => n.product?._id || n.product).filter(Boolean);
+      const dbProducts = await Product.find({ _id: { $in: neededIds }, isDeleted: { $ne: true } })
+        .select("name stock isDigital")
+        .lean();
+      const productMap = new Map(dbProducts.map((p) => [String(p._id), p]));
+
+      for (const entry of needed) {
+        const pId = String(entry.product?._id || entry.product || "");
+        const prod = productMap.get(pId);
+        if (prod?.isDigital === true) {
+          continue;
+        }
+        const currentStock = prod ? Number(prod.stock || 0) : 0;
+        const name = prod?.name || entry.name || "Item";
+        if (!prod || currentStock < entry.quantity) {
+          return res.status(400).json({
+            message: `Sorry, "${name}" is out of stock (only ${currentStock} left).`
+          });
+        }
+      }
     }
 
     const razorpay = getRazorpayClient();

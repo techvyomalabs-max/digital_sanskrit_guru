@@ -399,6 +399,26 @@ function normalizeSettings(settings) {
   };
 }
 
+function sanitizeSettingsForResponse(normalized, adminLevel) {
+  if (!normalized) return normalized;
+  if (normalized.whatsappSettings) {
+    const wa = normalized.whatsappSettings;
+    const token = String(wa.metaAccessToken || "").trim();
+    const phoneNumberId = String(wa.metaPhoneNumberId || "").trim();
+
+    delete wa.metaAccessToken;
+    wa.metaAccessTokenSet = Boolean(token);
+    wa.metaAccessTokenLast4 = token ? token.slice(-4) : "";
+
+    if (adminLevel !== 1) {
+      delete wa.metaPhoneNumberId;
+      delete wa.metaWabaId;
+      wa.apiConfigured = Boolean(token && phoneNumberId);
+    }
+  }
+  return normalized;
+}
+
 function buildPublicSettingsPayload(settings) {
   const normalized = normalizeSettings(settings);
   return {
@@ -475,6 +495,16 @@ const THEME_KEYS = new Set([
   "sponsors"
 ]);
 
+const PRICING_KEYS = new Set([
+  "gstPercent",
+  "deliveryCharge",
+  "distancePricing",
+  "internationalDelivery",
+  "pricingMarkets",
+  "internationalPricingDefaults",
+  "currencyConversionRates"
+]);
+
 // Full settings (requires admin authentication with settings, theme, or products permission)
 router.get("/", protect, admin, (req, res, next) => {
   const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
@@ -486,10 +516,7 @@ router.get("/", protect, admin, (req, res, next) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const settings = await getOrCreateSettings();
   const normalized = normalizeSettings(settings);
-  if (req.adminLevel !== 1 && normalized.whatsappSettings?.metaAccessToken) {
-    normalized.whatsappSettings.metaAccessToken = "••••••••";
-  }
-  res.json(normalized);
+  res.json(sanitizeSettingsForResponse(normalized, req.adminLevel));
 });
 
 // Public: checkout/pricing settings (no browser cache to prevent configuration lag)
@@ -511,11 +538,16 @@ router.get(["/detect-country", "/detect_country"], (req, res) => {
 });
 
 router.put("/", protect, admin, (req, res, next) => {
+  const bodyKeys = Object.keys(req.body || {});
+  const hasPricingKey = bodyKeys.some(k => PRICING_KEYS.has(k));
+  if (hasPricingKey && req.adminLevel !== 1) {
+    return res.status(403).json({ message: "Only super admins can change tax, delivery, and currency settings." });
+  }
+
   const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
   if (req.adminLevel === 1 || pages.includes("settings")) {
     return next();
   }
-  const bodyKeys = Object.keys(req.body || {});
   if (bodyKeys.length > 0 && bodyKeys.every(k => THEME_KEYS.has(k)) && pages.includes("theme")) {
     return next();
   }
@@ -597,28 +629,86 @@ router.put("/", protect, admin, (req, res, next) => {
 
   const hasWhatsappSettings = Boolean(req.body?.whatsappSettings && typeof req.body.whatsappSettings === "object");
   if (hasWhatsappSettings) {
-    const existingToken = settings.whatsappSettings?.metaAccessToken || "";
-    const incomingToken = String(req.body.whatsappSettings.metaAccessToken || "").trim();
-    const finalToken = (incomingToken === "••••••••" || !incomingToken) && req.adminLevel !== 1
-      ? existingToken
-      : (incomingToken === "••••••••" ? existingToken : incomingToken);
+    const storedWa = settings.whatsappSettings || {};
+    const storedMode = ["disabled", "free", "api"].includes(storedWa.mode) ? storedWa.mode : "free";
+    const storedPhoneNumberId = String(storedWa.metaPhoneNumberId || "").trim();
+    const storedAccessToken = String(storedWa.metaAccessToken || "").trim();
+    const storedWabaId = String(storedWa.metaWabaId || "").trim();
 
-    settings.whatsappSettings = {
-      mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
-        ? req.body.whatsappSettings.mode
-        : "free",
-      phoneNumber: String(req.body.whatsappSettings.phoneNumber || "919999999999").trim(),
-      welcomeMessage: String(
-        req.body.whatsappSettings.welcomeMessage ||
-        "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."
-      ).trim(),
-      metaPhoneNumberId: String(req.body.whatsappSettings.metaPhoneNumberId || "").trim(),
-      metaAccessToken: finalToken,
-      metaWabaId: String(req.body.whatsappSettings.metaWabaId || "").trim(),
-      autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false,
-      enableOtpVerification: req.body.whatsappSettings.enableOtpVerification !== false
-    };
-    settings.markModified("whatsappSettings");
+    if (req.adminLevel !== 1) {
+      const incoming = req.body.whatsappSettings;
+      const isModeChanged = incoming.mode !== undefined && incoming.mode !== storedMode;
+      const isPhoneIdChanged = incoming.metaPhoneNumberId !== undefined &&
+        String(incoming.metaPhoneNumberId).trim() !== storedPhoneNumberId;
+      const isWabaIdChanged = incoming.metaWabaId !== undefined &&
+        String(incoming.metaWabaId).trim() !== storedWabaId;
+      const incomingToken = incoming.metaAccessToken !== undefined ? String(incoming.metaAccessToken).trim() : undefined;
+      const isTokenChanged = incoming.clearAccessToken === true || (
+        incomingToken !== undefined &&
+        incomingToken !== "" &&
+        incomingToken !== "••••••••" &&
+        incomingToken !== storedAccessToken
+      );
+
+      if (isModeChanged || isPhoneIdChanged || isWabaIdChanged || isTokenChanged) {
+        return res.status(403).json({ message: "Only super admins can change WhatsApp API settings." });
+      }
+
+      settings.whatsappSettings = {
+        mode: storedMode,
+        phoneNumber: String(incoming.phoneNumber || storedWa.phoneNumber || "919999999999").trim(),
+        welcomeMessage: String(
+          incoming.welcomeMessage !== undefined
+            ? incoming.welcomeMessage
+            : (storedWa.welcomeMessage || "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.")
+        ).trim(),
+        metaPhoneNumberId: storedPhoneNumberId,
+        metaAccessToken: storedAccessToken,
+        metaWabaId: storedWabaId,
+        autoSendOrderConfirmation: incoming.autoSendOrderConfirmation !== undefined
+          ? incoming.autoSendOrderConfirmation !== false
+          : storedWa.autoSendOrderConfirmation !== false,
+        enableOtpVerification: incoming.enableOtpVerification !== undefined
+          ? incoming.enableOtpVerification !== false
+          : storedWa.enableOtpVerification !== false
+      };
+      settings.markModified("whatsappSettings");
+    } else {
+      let finalToken = storedAccessToken;
+      if (req.body.whatsappSettings.clearAccessToken === true) {
+        finalToken = "";
+      } else if (
+        req.body.whatsappSettings.metaAccessToken !== undefined &&
+        req.body.whatsappSettings.metaAccessToken !== null
+      ) {
+        const incomingToken = String(req.body.whatsappSettings.metaAccessToken).trim();
+        if (incomingToken && incomingToken !== "••••••••") {
+          finalToken = incomingToken;
+        }
+      }
+
+      settings.whatsappSettings = {
+        mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
+          ? req.body.whatsappSettings.mode
+          : storedMode,
+        phoneNumber: String(req.body.whatsappSettings.phoneNumber || storedWa.phoneNumber || "919999999999").trim(),
+        welcomeMessage: String(
+          req.body.whatsappSettings.welcomeMessage !== undefined
+            ? req.body.whatsappSettings.welcomeMessage
+            : (storedWa.welcomeMessage || "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.")
+        ).trim(),
+        metaPhoneNumberId: req.body.whatsappSettings.metaPhoneNumberId !== undefined
+          ? String(req.body.whatsappSettings.metaPhoneNumberId).trim()
+          : storedPhoneNumberId,
+        metaAccessToken: finalToken,
+        metaWabaId: req.body.whatsappSettings.metaWabaId !== undefined
+          ? String(req.body.whatsappSettings.metaWabaId).trim()
+          : storedWabaId,
+        autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false,
+        enableOtpVerification: req.body.whatsappSettings.enableOtpVerification !== false
+      };
+      settings.markModified("whatsappSettings");
+    }
   }
 
   const hasStoreIcons = Boolean(req.body?.storeIcons && typeof req.body.storeIcons === "object");
@@ -752,9 +842,6 @@ router.put("/", protect, admin, (req, res, next) => {
   settings.lastUpdatedAt = new Date();
   await settings.save();
   const normalizedSettings = normalizeSettings(settings);
-  if (req.adminLevel !== 1 && normalizedSettings.whatsappSettings?.metaAccessToken) {
-    normalizedSettings.whatsappSettings.metaAccessToken = "••••••••";
-  }
   const changedSections = summarizeSettingsChanges(previousSettings, normalizedSettings);
 
   await logAdminAction({
@@ -772,7 +859,7 @@ router.put("/", protect, admin, (req, res, next) => {
     }
   });
 
-  res.json(normalizedSettings);
+  res.json(sanitizeSettingsForResponse(normalizedSettings, req.adminLevel));
   // Settings change may affect pricing/home data — flush all relevant caches
   invalidateProductCache();
 });

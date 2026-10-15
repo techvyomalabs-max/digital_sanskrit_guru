@@ -254,6 +254,10 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    stockComponentsReserved: {
+      type: Boolean,
+      default: false
+    },
     couponClaimed: {
       type: Boolean,
       default: false

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
+import { useDialog } from "../../hooks/useDialog";
 
 export default function AdminRefundModal({
   order,
@@ -9,6 +10,7 @@ export default function AdminRefundModal({
   onSuccess,
   preselectedItemId = null
 }) {
+  const { confirm } = useDialog();
   const [reason, setReason] = useState("customer_choice");
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [restock, setRestock] = useState(false);
@@ -134,8 +136,18 @@ export default function AdminRefundModal({
     } catch (err) {
       const errMsg = err?.response?.data?.message || "Failed to process refund.";
       const canForce = Boolean(err?.response?.data?.canForceManual);
+      let shouldForce = false;
 
-      if (canForce && window.confirm(`${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`)) {
+      if (canForce) {
+        shouldForce = await confirm({
+          title: "Mark as Refunded?",
+          message: `${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
+          tone: "danger",
+          confirmText: "Mark Refunded"
+        });
+      }
+
+      if (shouldForce) {
         return handleRefundSubmit(null, true);
       }
 
