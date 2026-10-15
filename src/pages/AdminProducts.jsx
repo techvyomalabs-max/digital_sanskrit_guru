@@ -1,15 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import "./AdminShared.css";
 import "./AdminProducts.css";
 
+const isDigitalProduct = (p) =>
+  Boolean(p?.isDigital) ||
+  Boolean(p?.webReaderLink) ||
+  Boolean(p?.kindleLink) ||
+  Boolean(p?.courseLink) ||
+  ["web", "kindle", "e-book", "ebook", "flipbook", "course", "pdf"].some((k) =>
+    String(p?.category || p?.digitalType || "").toLowerCase().includes(k)
+  );
+
 function AdminProducts() {
   const { token } = useAuth();
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [warehouseAdjustments, setWarehouseAdjustments] = useState({});
+  const [drafts, setDrafts] = useState({});
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [showDigital, setShowDigital] = useState(false);
+  const [rowOrder, setRowOrder] = useState([]);
+  const hasInitializedRowOrder = useRef(false);
+  const productsRef = useRef(products);
+  productsRef.current = products;
+
   const [stockActionLoading, setStockActionLoading] = useState("");
   const [warehouseMessage, setWarehouseMessage] = useState("");
   const [warehouseSearch, setWarehouseSearch] = useState("");
@@ -88,7 +104,7 @@ function AdminProducts() {
       .sort((a, b) => b.units - a.units);
 
     const restockQueue = [...products]
-      .filter((product) => Number(product?.stock || 0) <= 5)
+      .filter((product) => !isDigitalProduct(product) && Number(product?.stock || 0) <= 5)
       .sort((a, b) => Number(a?.stock || 0) - Number(b?.stock || 0))
       .slice(0, 8)
       .map((product) => ({
@@ -99,25 +115,80 @@ function AdminProducts() {
     return { zones, totalUnits, restockQueue };
   }, [products]);
 
-  const warehouseStockRows = useMemo(() => {
+  const physicalOutOfStockCount = useMemo(() => {
+    return products.filter((p) => !isDigitalProduct(p) && Number(p?.stock || 0) === 0).length;
+  }, [products]);
+
+  const physicalLowStockCount = useMemo(() => {
+    return products.filter((p) => !isDigitalProduct(p) && Number(p?.stock || 0) <= 5).length;
+  }, [products]);
+
+  const recomputeRowOrder = useCallback(() => {
     const query = warehouseSearch.trim().toLowerCase();
+    const currentProducts = productsRef.current || [];
 
-    return [...products]
-      .filter((product) => {
-        const category = String(product?.category || "General");
-        if (warehouseZoneFilter !== "All" && category !== warehouseZoneFilter) return false;
-        if (!query) return true;
-        const haystack = `${product?.name || ""} ${category}`.toLowerCase();
-        return haystack.includes(query);
-      })
-      .sort((a, b) => Number(a?.stock || 0) - Number(b?.stock || 0));
-  }, [products, warehouseSearch, warehouseZoneFilter]);
+    const filtered = currentProducts.filter((product) => {
+      const isDigital = isDigitalProduct(product);
+      if (!showDigital && isDigital) return false;
+      if (lowStockOnly && Number(product?.stock || 0) > 5) return false;
 
-  const getAdjustmentValue = (product) => {
-    const raw = warehouseAdjustments[product._id];
-    const numeric = Number(raw);
-    if (Number.isNaN(numeric) || numeric <= 0) return 1;
-    return Math.floor(numeric);
+      const category = String(product?.category || "General");
+      if (warehouseZoneFilter !== "All" && category !== warehouseZoneFilter) return false;
+      if (!query) return true;
+      const haystack = `${product?.name || ""} ${category}`.toLowerCase();
+      return haystack.includes(query);
+    });
+
+    filtered.sort((a, b) => {
+      const stockDiff = Number(a?.stock || 0) - Number(b?.stock || 0);
+      if (stockDiff !== 0) return stockDiff;
+      return String(a?.name || "").localeCompare(String(b?.name || ""));
+    });
+
+    setRowOrder(filtered.map((p) => p._id));
+  }, [warehouseSearch, warehouseZoneFilter, lowStockOnly, showDigital]);
+
+  // Initial load: compute row order once products first arrive
+  useEffect(() => {
+    if (!hasInitializedRowOrder.current && products.length > 0) {
+      hasInitializedRowOrder.current = true;
+      recomputeRowOrder();
+    }
+  }, [products, recomputeRowOrder]);
+
+  // Filter or search changes: recompute row order
+  useEffect(() => {
+    if (hasInitializedRowOrder.current) {
+      recomputeRowOrder();
+    }
+  }, [recomputeRowOrder]);
+
+  const productMap = useMemo(() => {
+    const map = new Map();
+    products.forEach((p) => map.set(p._id, p));
+    return map;
+  }, [products]);
+
+  const warehouseStockRows = useMemo(() => {
+    return rowOrder.map((id) => productMap.get(id)).filter(Boolean);
+  }, [rowOrder, productMap]);
+
+  const handleDraftChange = (productId, val) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [productId]: val
+    }));
+  };
+
+  const handleStepDraft = (product, delta) => {
+    const raw = drafts[product._id];
+    const base = raw !== undefined ? Number(raw) : Number(product.stock ?? 0);
+    const safeBase = Number.isFinite(base) ? base : Number(product.stock ?? 0);
+    const nextVal = Math.max(0, Math.floor(safeBase) + delta);
+    setDrafts((prev) => ({
+      ...prev,
+      [product._id]: String(nextVal)
+    }));
   };
 
   const updateWarehouseStock = async (product, nextStock, message) => {
@@ -139,23 +210,45 @@ function AdminProducts() {
     }
   };
 
+  const handleSaveStock = async (product) => {
+    const raw = drafts[product._id];
+    if (raw === undefined) return;
+    const trimmed = String(raw).trim();
+    if (!/^\d+$/.test(trimmed)) return;
+    const nextStock = Number(trimmed);
+    if (nextStock === Number(product.stock ?? 0)) return;
+
+    await updateWarehouseStock(
+      product,
+      nextStock,
+      `Stock set to ${nextStock} for ${product.name}.`
+    );
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[product._id];
+      return next;
+    });
+  };
+
   const adjustStock = async (product, delta) => {
     const nextStock = Math.max(0, Number(product?.stock || 0) + delta);
     await updateWarehouseStock(product, nextStock, `Stock updated for ${product.name}.`);
   };
 
-  const applySetStock = async (product) => {
-    const nextStock = getAdjustmentValue(product);
-    await updateWarehouseStock(product, nextStock, `Stock set to ${nextStock} for ${product.name}.`);
-  };
-
   const restockCritical = async () => {
-    // Find ALL products with 0 stock across entire catalog
-    const critical = products.filter((product) => Number(product?.stock || 0) === 0);
+    // Find ALL physical products with 0 stock across entire catalog
+    const critical = products.filter(
+      (product) => !isDigitalProduct(product) && Number(product?.stock || 0) === 0
+    );
     if (critical.length === 0) {
-      setWarehouseMessage("No out-of-stock (0 units) products to restock. All items have available inventory.");
+      setWarehouseMessage("No physical out-of-stock products to restock.");
       return;
     }
+
+    const confirmed = window.confirm(
+      `Restock ${critical.length} physical product(s)? This will set all 0-stock items to 10 units.`
+    );
+    if (!confirmed) return;
 
     setStockActionLoading("bulk-critical");
     setWarehouseMessage("");
@@ -169,7 +262,7 @@ function AdminProducts() {
           )
         )
       );
-      setWarehouseMessage(`✓ Successfully restocked ${critical.length} critical product(s) to 10 units!`);
+      setWarehouseMessage(`✓ Successfully restocked ${critical.length} critical physical product(s) to 10 units!`);
       await loadProducts();
     } catch {
       setWarehouseMessage("Bulk restock failed. Please check network connection and retry.");
@@ -179,12 +272,19 @@ function AdminProducts() {
   };
 
   const restockAllLowStock = async () => {
-    // Find ALL products with <= 5 stock across entire catalog
-    const lowStockItems = products.filter((product) => Number(product?.stock || 0) <= 5);
+    // Find ALL physical products with <= 5 stock across entire catalog
+    const lowStockItems = products.filter(
+      (product) => !isDigitalProduct(product) && Number(product?.stock || 0) <= 5
+    );
     if (lowStockItems.length === 0) {
-      setWarehouseMessage("All products have healthy inventory levels (> 5 units).");
+      setWarehouseMessage("All physical products have healthy inventory levels (> 5 units).");
       return;
     }
+
+    const confirmed = window.confirm(
+      `Restock ${lowStockItems.length} physical product(s)? This will add +10 units to all items with 5 or fewer units in stock.`
+    );
+    if (!confirmed) return;
 
     setStockActionLoading("bulk-low");
     setWarehouseMessage("");
@@ -198,7 +298,7 @@ function AdminProducts() {
           )
         )
       );
-      setWarehouseMessage(`✓ Added +10 units to ${lowStockItems.length} low-stock product(s)!`);
+      setWarehouseMessage(`✓ Added +10 units to ${lowStockItems.length} low-stock physical product(s)!`);
       await loadProducts();
     } catch {
       setWarehouseMessage("Low-stock restock failed. Please retry.");
@@ -319,22 +419,25 @@ function AdminProducts() {
                 {warehouseAnalytics.zones.length === 0 ? (
                   <p style={{ color: "var(--admin-muted)" }}>No stock data available.</p>
                 ) : (
-                  warehouseAnalytics.zones.map((zone) => (
-                    <div key={zone.category} className="warehouse-zone-row">
-                      <div className="warehouse-info-col">
-                        <strong>{zone.category}</strong>
+                  warehouseAnalytics.zones.map((zone) => {
+                    const shareText = zone.units > 0 && zone.share === 0 ? "<1%" : `${zone.share}%`;
+                    return (
+                      <div key={zone.category} className="warehouse-zone-row">
+                        <div className="warehouse-info-col">
+                          <strong>{zone.category}</strong>
+                        </div>
+                        <div className="warehouse-zone-bar-track">
+                          <div
+                            className="warehouse-zone-bar-fill"
+                            style={{ width: `${zone.share}%` }}
+                          />
+                        </div>
+                        <p style={{ fontWeight: 700, color: "var(--admin-text)" }}>
+                          {zone.units} units · {shareText}
+                        </p>
                       </div>
-                      <div className="warehouse-zone-bar-track">
-                        <div
-                          className="warehouse-zone-bar-fill"
-                          style={{ width: `${zone.share}%` }}
-                        />
-                      </div>
-                      <p style={{ fontWeight: 700, color: "var(--admin-text)" }}>
-                        {zone.units} units · {zone.share}%
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -345,20 +448,20 @@ function AdminProducts() {
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <button
                     className="warehouse-action-btn"
-                    disabled={Boolean(stockActionLoading) || inventoryAnalytics.outOfStockCount === 0}
+                    disabled={Boolean(stockActionLoading) || physicalOutOfStockCount === 0}
                     onClick={restockCritical}
-                    title="Restock all 0-stock products to 10 units"
-                    style={{ background: inventoryAnalytics.outOfStockCount > 0 ? "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)" : undefined, borderColor: inventoryAnalytics.outOfStockCount > 0 ? "#b91c1c" : undefined }}
+                    title="Restock all 0-stock physical products to 10 units"
+                    style={{ background: physicalOutOfStockCount > 0 ? "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)" : undefined, borderColor: physicalOutOfStockCount > 0 ? "#b91c1c" : undefined }}
                   >
-                    {stockActionLoading === "bulk-critical" ? "Restocking..." : `Restock 0-Stock (${inventoryAnalytics.outOfStockCount})`}
+                    {stockActionLoading === "bulk-critical" ? "Restocking..." : `Restock 0-Stock (${physicalOutOfStockCount})`}
                   </button>
                   <button
                     className="warehouse-action-btn"
-                    disabled={Boolean(stockActionLoading) || warehouseAnalytics.restockQueue.length === 0}
+                    disabled={Boolean(stockActionLoading) || physicalLowStockCount === 0}
                     onClick={restockAllLowStock}
-                    title="Add +10 units to all products with <= 5 stock"
+                    title="Add +10 units to all physical products with <= 5 stock"
                   >
-                    {stockActionLoading === "bulk-low" ? "Restocking..." : `Restock All Low (${warehouseAnalytics.restockQueue.length})`}
+                    {stockActionLoading === "bulk-low" ? "Restocking..." : `Restock All Low (${physicalLowStockCount})`}
                   </button>
                 </div>
               </div>
@@ -432,6 +535,33 @@ function AdminProducts() {
                 </option>
               ))}
             </select>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--admin-text, #0f172a)", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={lowStockOnly}
+                onChange={(e) => setLowStockOnly(e.target.checked)}
+                style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#2563eb" }}
+              />
+              <span>Low stock only</span>
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 600, color: "var(--admin-text, #0f172a)", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={showDigital}
+                onChange={(e) => setShowDigital(e.target.checked)}
+                style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#2563eb" }}
+              />
+              <span>Show digital products</span>
+            </label>
+            <button
+              type="button"
+              className="warehouse-action-btn"
+              style={{ padding: "8px 14px", fontSize: "13px" }}
+              onClick={recomputeRowOrder}
+              title="Re-sort rows by stock and name"
+            >
+              🔄 Re-sort
+            </button>
           </div>
 
           <div className="warehouse-manager-list">
@@ -445,9 +575,21 @@ function AdminProducts() {
               </p>
             ) : (
               warehouseStockRows.map((product) => {
+                const isDigital = isDigitalProduct(product);
                 const stock = Number(product.stock || 0);
                 const pillClass = stock === 0 ? "stock-pill-critical" : stock <= 5 ? "stock-pill-warning" : "stock-pill-ok";
                 const pillText = stock === 0 ? "Out of Stock" : stock <= 5 ? `Low (${stock})` : `In Stock (${stock})`;
+
+                const rawDraft = drafts[product._id];
+                const draftValue = rawDraft !== undefined ? rawDraft : String(stock);
+                const trimmedDraft = String(draftValue).trim();
+                const isValidInteger = /^\d+$/.test(trimmedDraft);
+                const parsedDraft = Number(trimmedDraft);
+                const canSave =
+                  rawDraft !== undefined &&
+                  isValidInteger &&
+                  parsedDraft !== stock &&
+                  stockActionLoading !== product._id;
 
                 return (
                   <div key={product._id} className="warehouse-manager-row">
@@ -455,42 +597,63 @@ function AdminProducts() {
                       <strong>{product.name}</strong>
                       <span>{product.category || "General"} • ₹{(product.price || 0).toLocaleString("en-IN")}</span>
                     </div>
-                    <span className={`stock-pill ${pillClass}`}>{pillText}</span>
-                    <div className="warehouse-stock-controls">
-                      <button
-                        disabled={stockActionLoading === product._id}
-                        onClick={() => adjustStock(product, -getAdjustmentValue(product))}
-                        title="Subtract units"
+
+                    {isDigital ? (
+                      <span
+                        className="stock-pill"
+                        style={{
+                          background: "rgba(148, 163, 184, 0.16)",
+                          color: "#64748b",
+                          border: "1px solid rgba(148, 163, 184, 0.3)"
+                        }}
                       >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min="1"
-                        value={warehouseAdjustments[product._id] ?? "10"}
-                        onChange={(e) =>
-                          setWarehouseAdjustments((prev) => ({
-                            ...prev,
-                            [product._id]: e.target.value
-                          }))
-                        }
-                      />
-                      <button
-                        disabled={stockActionLoading === product._id}
-                        onClick={() => adjustStock(product, getAdjustmentValue(product))}
-                        title="Add units"
-                      >
-                        +
-                      </button>
-                      <button
-                        className="set-btn"
-                        disabled={stockActionLoading === product._id}
-                        onClick={() => applySetStock(product)}
-                        title="Set exact stock"
-                      >
-                        {stockActionLoading === product._id ? "..." : "Set"}
-                      </button>
-                    </div>
+                        Digital – no stock needed
+                      </span>
+                    ) : (
+                      <>
+                        <span className={`stock-pill ${pillClass}`}>{pillText}</span>
+                        <div className="warehouse-stock-controls">
+                          <button
+                            type="button"
+                            disabled={stockActionLoading === product._id}
+                            onClick={() => handleStepDraft(product, -1)}
+                            title="Decrease draft by 1"
+                          >
+                            −1
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={draftValue}
+                            onChange={(e) => handleDraftChange(product._id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && canSave) {
+                                e.preventDefault();
+                                handleSaveStock(product);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={stockActionLoading === product._id}
+                            onClick={() => handleStepDraft(product, 1)}
+                            title="Increase draft by 1"
+                          >
+                            +1
+                          </button>
+                          <button
+                            type="button"
+                            className="set-btn"
+                            disabled={!canSave}
+                            onClick={() => handleSaveStock(product)}
+                            title="Save stock value"
+                          >
+                            {stockActionLoading === product._id ? "..." : "Save"}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })
