@@ -126,6 +126,19 @@ function broadcastPayload(title, body, url = "/") {
   return { title: `${SITE_NAME} — ${title}`, body, url, icon: "/favicon.ico", badge: "/favicon.ico" };
 }
 
+function refundRequestPayload({ orderId, kind, customerName, amountText }) {
+  const shortId = String(orderId || "").slice(-6).toUpperCase();
+  const title = kind === "cancellation" ? "Refund request: cancellation" : "Refund request: return";
+  const body = `${customerName} · Order #${shortId} · ${amountText}`;
+  return {
+    title,
+    body,
+    url: "/#/admin/orders",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
+}
+
 module.exports = {
   initVapid,
   sendPushToSubscription,
@@ -135,5 +148,6 @@ module.exports = {
   lowStockPayload,
   wishlistLowStockPayload,
   broadcastPayload,
+  refundRequestPayload,
   getVapidPublicKey: () => process.env.VAPID_PUBLIC_KEY || ""
 };

@@ -31,7 +31,8 @@ const {
   broadcastPush,
   orderPayload,
   lowStockPayload,
-  wishlistLowStockPayload
+  wishlistLowStockPayload,
+  refundRequestPayload
 } = require("../utils/webPush");
 
 const { getTrackingDetails } = require("../utils/trackingService");
@@ -154,6 +155,43 @@ async function fireLowStockAlerts(normalizedItems) {
   } catch (err) {
     console.error("[Low-Stock Alert] Error:", err.message);
   }
+}
+
+// ── Refund request admin push notification ──────────────────────────────────
+// Sends instant push notification to all admins when a customer creates a refund request
+function notifyAdminsOfRefundRequest(order, kind) {
+  fireNotifications(async () => {
+    const admins = await User.find({ isAdmin: true }).select("_id").lean();
+    if (!admins || admins.length === 0) return;
+
+    let customerName = "Customer";
+    if (order.user && typeof order.user === "object" && order.user.name) {
+      customerName = order.user.name;
+    } else if (order.user) {
+      const u = await User.findById(order.user).select("name").lean();
+      if (u?.name) customerName = u.name;
+    } else if (order.shipping?.name) {
+      customerName = order.shipping.name;
+    }
+
+    const currency = String(order?.currencyDisplay?.currency || order?.currency || "INR").toUpperCase();
+    const rawAmount = order?.currencyDisplay?.amount != null && order?.currencyDisplay?.amount !== ""
+      ? Number(order.currencyDisplay.amount)
+      : Number(order?.totalInInr ?? order?.total ?? 0);
+    const amountNum = Number.isFinite(rawAmount) ? rawAmount : 0;
+    const amountText = currency === "INR" ? `₹${amountNum.toFixed(2)}` : `${currency} ${amountNum.toFixed(2)}`;
+
+    const payload = refundRequestPayload({
+      orderId: order._id,
+      kind,
+      customerName,
+      amountText
+    });
+
+    for (const adminUser of admins) {
+      await sendPushToUser(adminUser._id, payload);
+    }
+  });
 }
 
 const getReturnReferenceDate = (order, item) => {
@@ -1158,6 +1196,10 @@ router.put("/:id/cancel", protect, async (req, res) => {
   await releaseCouponForOrder(updated);
   await revokeGiftPassesForOrder(updated);
 
+  if (updated.refundStatus === "Pending") {
+    notifyAdminsOfRefundRequest(updated, "cancellation");
+  }
+
   res.json(serializeOrderForOwner(updated, req.user));
 });
 
@@ -1387,6 +1429,9 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
 
   order.markModified("items");
   const updated = await order.save();
+
+  notifyAdminsOfRefundRequest(updated, "return");
+
   res.json(serializeOrderForOwner(updated, req.user));
 });
 
