@@ -7,6 +7,7 @@ const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 const { normalizeCountryName } = require("../utils/deliveryPricing");
+const { validateBusinessDetails, normalizeGstin } = require("../utils/gstin");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -287,6 +288,17 @@ function normalizeSponsors(input) {
     .filter((item) => item.name);
 }
 
+function normalizeBusinessDetails(input) {
+  return {
+    legalName: String(input?.legalName || "").trim(),
+    gstin: normalizeGstin(input?.gstin),
+    address: String(input?.address || "").trim(),
+    state: String(input?.state || "").trim(),
+    stateCode: String(input?.stateCode || "").trim(),
+    email: String(input?.email || "").trim()
+  };
+}
+
 function normalizeSettings(settings) {
   const heroBanners = normalizeHeroBanners(
     settings?.heroBanners || [],
@@ -298,6 +310,7 @@ function normalizeSettings(settings) {
   const rawAnimIntensity = String(settings?.festiveAnimation?.intensity || "subtle");
 
   return {
+    businessDetails: normalizeBusinessDetails(settings?.businessDetails || {}),
     enableCurrentLocation: settings?.enableCurrentLocation !== false,
     gstPercent: Number(settings?.gstPercent || 0),
     deliveryCharge: Number(settings?.deliveryCharge || 0),
@@ -422,6 +435,13 @@ function sanitizeSettingsForResponse(normalized, adminLevel) {
 function buildPublicSettingsPayload(settings) {
   const normalized = normalizeSettings(settings);
   return {
+    sellerDetails: {
+      legalName: normalized.businessDetails.legalName,
+      gstin: normalized.businessDetails.gstin,
+      address: normalized.businessDetails.address,
+      state: normalized.businessDetails.state,
+      stateCode: normalized.businessDetails.stateCode
+    },
     enableCurrentLocation: normalized.enableCurrentLocation,
     gstPercent: normalized.gstPercent,
     deliveryCharge: normalized.deliveryCharge,
@@ -451,6 +471,9 @@ function buildPublicSettingsPayload(settings) {
 function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   const changes = [];
 
+  if (JSON.stringify(previousSettings?.businessDetails || {}) !== JSON.stringify(nextSettings?.businessDetails || {})) {
+    changes.push("Business / GST details");
+  }
   if (Boolean(previousSettings?.enableCurrentLocation) !== Boolean(nextSettings?.enableCurrentLocation)) changes.push("current location visibility");
   if (Number(previousSettings?.gstPercent || 0) !== Number(nextSettings?.gstPercent || 0)) changes.push("GST");
   if (Number(previousSettings?.deliveryCharge || 0) !== Number(nextSettings?.deliveryCharge || 0)) changes.push("delivery charge");
@@ -496,6 +519,7 @@ const THEME_KEYS = new Set([
 ]);
 
 const PRICING_KEYS = new Set([
+  "businessDetails",
   "gstPercent",
   "deliveryCharge",
   "distancePricing",
@@ -597,6 +621,16 @@ router.put("/", protect, admin, (req, res, next) => {
 
   const settings = await getOrCreateSettings();
   const previousSettings = normalizeSettings(settings.toObject ? settings.toObject() : settings);
+
+  const hasBusinessDetails = Boolean(req.body?.businessDetails && typeof req.body.businessDetails === "object");
+  if (hasBusinessDetails) {
+    const valResult = validateBusinessDetails(req.body.businessDetails, settings.businessDetails || {});
+    if (!valResult.ok) {
+      return res.status(400).json({ message: valResult.message });
+    }
+    settings.businessDetails = valResult.data;
+  }
+
   const nextDeliveryCharge = Number.isNaN(rawDelivery) ? Number(settings.deliveryCharge || 0) : deliveryCharge;
   const warehouseLocation = hasWarehouseLocation
     ? normalizeWarehouseLocation(req.body?.warehouseLocation)

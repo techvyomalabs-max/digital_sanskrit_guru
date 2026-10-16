@@ -1303,3 +1303,77 @@ to{transform:scaleX(1);}
   opacity: 0.72;
 }
 
+.pricing-input--monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pricing-textarea-input {
+  width: 100%;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  background: var(--admin-surface-2);
+  padding: 9px 12px;
+  color: var(--admin-text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.pricing-textarea-input:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+}
+
+.pricing-select-input {
+  width: 100%;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--radius-sm);
+  background: var(--admin-surface-2);
+  padding: 10px 12px;
+  color: var(--admin-text);
+  font-size: 13px;
+}
+
+.pricing-select-input:focus {
+  outline: none;
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+}
+
+.pricing-label-with-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gstin-state-code-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--admin-muted);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.gstin-validation-error {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  display: block;
+}
+
+.gstin-validation-warning {
+  color: #d97706;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+  display: block;
+}
+

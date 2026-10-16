@@ -1,4 +1,5 @@
 const PDFDocument = require("pdfkit");
+const { determineIsIntrastate } = require("./gstin");
 
 function sanitizeIastString(str) {
   if (!str) return "";
@@ -110,7 +111,7 @@ function getItemHsnSac(item) {
 /**
  * Generates an official Tax Invoice PDF as a Buffer for email attachments.
  */
-function generateInvoicePdfBuffer(order, user) {
+function generateInvoicePdfBuffer(order, user, passedSeller = null) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 40, size: "A4" });
@@ -129,12 +130,15 @@ function generateInvoicePdfBuffer(order, user) {
       const customerState = sanitizeIastString(String(order?.shippingAddress?.state || order?.shipping?.state || "").trim());
       const shippingAddress = sanitizeIastString(formatFullAddress(order?.shippingAddress || order?.shipping));
 
+      const seller = (order?.sellerDetails && String(order.sellerDetails.gstin || "").trim())
+        ? order.sellerDetails
+        : (passedSeller || order?.sellerDetails || {});
+
       const currency = String(
         order?.currencyDisplay?.currency || order?.displayCurrency || order?.currency || "INR"
       ).trim().toUpperCase();
 
-      const isIntrastate =
-        customerState.toLowerCase() === "karnataka" || customerState.toLowerCase() === "ka";
+      const isIntrastate = determineIsIntrastate(order, customerState, seller?.state);
 
       const items = Array.isArray(order?.items) ? order.items : [];
       const subtotal = toSafeNumber(order?.subtotal || order?.total || 0);
@@ -173,10 +177,22 @@ function generateInvoicePdfBuffer(order, user) {
       // Col 2: Seller & GSTIN Details
       doc.fillColor("#0f172a").fontSize(9).font("Helvetica-Bold").text("SELLER DETAILS", 320, boxY + 10);
       doc.fillColor("#334155").fontSize(8).font("Helvetica");
-      doc.text("Vyoma Linguistic Labs Foundation", 320, boxY + 23);
-      doc.text("GSTIN: 29AABTV0911M1ZE", 320, boxY + 34);
-      doc.text("Place of Supply: " + (customerState || "Karnataka"), 320, boxY + 45);
-      doc.text("Support: support@digitalsanskritguru.com", 320, boxY + 56);
+
+      const sellerName = sanitizeIastString(seller.legalName || "Vyoma Linguistic Labs Foundation");
+      const sellerGstin = String(seller.gstin || "").trim();
+      const sellerSupport = seller.email || "support@digitalsanskritguru.com";
+
+      let sellerTextY = boxY + 23;
+      doc.text(sellerName, 320, sellerTextY);
+      sellerTextY += 11;
+      if (sellerGstin) {
+        doc.text(`GSTIN: ${sellerGstin}`, 320, sellerTextY);
+        sellerTextY += 11;
+      }
+      doc.text("Place of Supply: " + (customerState || "Karnataka"), 320, sellerTextY);
+      sellerTextY += 11;
+      doc.text(`Support: ${sellerSupport}`, 320, sellerTextY);
+
 
       // ── Order Items Table ──────────────────────────────────────────────────
       let tableY = 176;
