@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import {
   Chart as ChartJS,
@@ -9,7 +10,6 @@ import {
   PointElement,
   LineElement,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend,
@@ -26,151 +26,323 @@ ChartJS.register(
   PointElement,
   LineElement,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend,
   Filler
 );
 
+const PAGE_SIZE = 50;
+
+function formatISTDate(dateVal) {
+  if (!dateVal) return "—";
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatISTDateDmy(dateVal) {
+  if (!dateVal) return "";
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).formatToParts(d);
+  const day = parts.find((p) => p.type === "day")?.value || "01";
+  const month = parts.find((p) => p.type === "month")?.value || "01";
+  const year = parts.find((p) => p.type === "year")?.value || "2026";
+  return `${day}-${month}-${year}`;
+}
+
+const WARNING_LABELS = {
+  missing_invoice_number: "Missing invoice number",
+  missing_place_of_supply: "Missing Place of Supply",
+  tax_recomputed: "Tax recomputed from GST total",
+  missing_fx_rate: "Missing exchange rate",
+  refund_date_approximate: "Approximate refund date"
+};
+
+function formatWarningTooltip(warnings = []) {
+  if (!warnings || !warnings.length) return "";
+  return warnings.map((w) => WARNING_LABELS[w] || w).join("; ");
+}
+
+const escapeCsv = (val) => {
+  let str = String(val ?? "");
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
 function AdminFinancialDashboard() {
   const { token } = useAuth();
+  const { alert: dialogAlert } = useDialog();
+
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [gstFilter, setGstFilter] = useState("all");
-  const [reconFilter, setReconFilter] = useState("all");
+
+  // Period Selector State
+  const [periodMode, setPeriodMode] = useState("month"); // "month" | "custom"
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    return istStr.slice(0, 7);
+  });
+  const [customFrom, setCustomFrom] = useState(() => {
+    const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    return `${istStr.slice(0, 7)}-01`;
+  });
+  const [customTo, setCustomTo] = useState(() => {
+    const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const ym = istStr.slice(0, 7);
+    const [y, m] = ym.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${ym}-${String(lastDay).padStart(2, "0")}`;
+  });
+
+  // Table Filters & Pagination
   const [searchTerm, setSearchTerm] = useState("");
+  const [gstFilter, setGstFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Active query parameters
+  const activePeriod = useMemo(() => {
+    if (periodMode === "month") {
+      if (!selectedMonth || !/^\d{4}-\d{2}$/.test(selectedMonth)) {
+        return { from: "", to: "" };
+      }
+      const [y, m] = selectedMonth.split("-").map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      return {
+        from: `${selectedMonth}-01`,
+        to: `${selectedMonth}-${String(lastDay).padStart(2, "0")}`
+      };
+    }
+    return {
+      from: customFrom,
+      to: customTo
+    };
+  }, [periodMode, selectedMonth, customFrom, customTo]);
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        const res = await axios.get("/api/orders/analytics/finance", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.data?.success) {
-          setData(res.data);
-        } else {
-          setError("Failed to parse financial analytics.");
+    if (!activePeriod.from || !activePeriod.to) {
+      setIsLoading(false);
+      setData(null);
+      setError("Please select a valid period.");
+      return;
+    }
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(activePeriod.from) || !dateRegex.test(activePeriod.to)) {
+      setIsLoading(false);
+      setData(null);
+      setError("Invalid period date format.");
+      return;
+    }
+
+    if (activePeriod.from > activePeriod.to) {
+      setIsLoading(false);
+      setData(null);
+      setError("'From' date must be before or equal to 'To' date");
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoading(true);
+    setError("");
+
+    axios
+      .get(`/api/orders/analytics/finance?from=${activePeriod.from}&to=${activePeriod.to}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then((res) => {
+        if (isMounted) {
+          if (res.data?.success) {
+            setData(res.data);
+            setCurrentPage(1);
+          } else {
+            setData(null);
+            setError("Failed to parse financial analytics.");
+          }
         }
-      } catch (err) {
-        console.error("Fetch financial analytics error:", err);
-        setError(err.response?.data?.message || "Failed to load financial dashboard analytics.");
-      } finally {
-        setIsLoading(false);
-      }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.error("Fetch financial analytics error:", err);
+          setData(null);
+          setError(err.response?.data?.message || "Failed to load financial dashboard analytics.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
     };
-    fetchAnalytics();
-  }, [token]);
+  }, [token, activePeriod.from, activePeriod.to]);
 
-  // Reconciliation stats computation
-  const reconStats = (() => {
-    if (!data?.recentTransactions) return { total: 0, reconciled: 0, pending: 0 };
-    const txs = data.recentTransactions;
-    const reconciled = txs.filter((t) => t.reconciliationStatus === "Reconciled").length;
-    const pending = txs.filter((t) => t.reconciliationStatus === "Pending Review").length;
-    return {
-      total: txs.length,
-      reconciled,
-      pending
-    };
-  })();
+  // Filtered Invoices
+  const filteredInvoices = useMemo(() => {
+    if (!data?.invoices) return [];
+    let list = data.invoices;
 
-  // Filter transactions for GST place of supply, reconciliation status, and search query
-  const filteredTransactions = (() => {
-    if (!data?.recentTransactions) return [];
-    let list = data.recentTransactions;
-
-    // Search query filter (Order ID, Customer, Place of Supply)
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
-      list = list.filter((t) => 
-        (t._id && t._id.toLowerCase().includes(q)) ||
-        (t.customer && t.customer.toLowerCase().includes(q)) ||
-        (t.placeOfSupply && t.placeOfSupply.toLowerCase().includes(q))
+      list = list.filter(
+        (inv) =>
+          (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(q)) ||
+          (inv.orderId && inv.orderId.toLowerCase().includes(q)) ||
+          (inv.customer && inv.customer.toLowerCase().includes(q)) ||
+          (inv.email && inv.email.toLowerCase().includes(q)) ||
+          (inv.placeOfSupply && inv.placeOfSupply.toLowerCase().includes(q))
       );
     }
 
-    // Place of supply filter
-    const warehouse = String(data.warehouseState || "Karnataka").toLowerCase().trim();
+    const businessState = String(data?.businessState || "Karnataka").toLowerCase().trim();
     if (gstFilter === "intra") {
-      list = list.filter(
-        (t) => String(t.placeOfSupply).toLowerCase().trim() === warehouse
-      );
+      list = list.filter((inv) => String(inv.placeOfSupply).toLowerCase().trim() === businessState);
     } else if (gstFilter === "inter") {
-      list = list.filter(
-        (t) => String(t.placeOfSupply).toLowerCase().trim() !== warehouse
-      );
-    }
-
-    // Reconciliation status filter
-    if (reconFilter === "reconciled") {
-      list = list.filter((t) => t.reconciliationStatus === "Reconciled");
-    } else if (reconFilter === "pending") {
-      list = list.filter((t) => t.reconciliationStatus === "Pending Review");
+      list = list.filter((inv) => String(inv.placeOfSupply).toLowerCase().trim() !== businessState);
     }
 
     return list;
-  })();
+  }, [data?.invoices, data?.businessState, searchTerm, gstFilter]);
 
-  // Visible rows aggregate totals for quick auditing reconciliation
-  const visibleTotals = (() => {
-    return filteredTransactions.reduce(
-      (acc, tx) => {
-        acc.subtotal += tx.subtotal || 0;
-        acc.tax += (tx.cgst || 0) + (tx.sgst || 0) + (tx.igst || 0);
-        acc.total += tx.total || 0;
-        return acc;
-      },
-      { subtotal: 0, tax: 0, total: 0 }
-    );
-  })();
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
+  const paginatedInvoices = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredInvoices.slice(start, start + PAGE_SIZE);
+  }, [filteredInvoices, currentPage]);
 
-  // GSTR-1 CSV Report Export
-  const exportGstr1Csv = () => {
-    if (!data?.recentTransactions) return;
-    
-    // CSV headers matching GSTR-1 format guidelines
+  // CSV Export Handlers
+  const exportInvoicesCsv = () => {
+    if (!data?.invoices || !data.invoices.length) {
+      if (dialogAlert) {
+        dialogAlert("No invoices available to export for the selected period.");
+      }
+      return;
+    }
+
     const headers = [
       "Invoice Number",
-      "Invoice Date",
+      "Invoice Date (IST)",
       "Customer",
-      "Place Of Supply (State)",
-      "Taxable Subtotal (INR)",
+      "Email",
+      "Place Of Supply",
+      "Export",
+      "Currency",
+      "Original Total",
+      "Taxable Value (INR)",
       "CGST (INR)",
       "SGST (INR)",
       "IGST (INR)",
-      "Shipping Charge (INR)",
-      "Discount Applied (INR)",
-      "Invoice Value (INR)",
-      "Reconciliation Status"
+      "Delivery (INR)",
+      "Discount (INR)",
+      "Total (INR)",
+      "Refunded (INR)",
+      "Refund Status",
+      "Payment Ref",
+      "Tax Source",
+      "Warnings"
     ];
 
-    const rows = data.recentTransactions.map((tx) => [
-      `"${tx._id}"`,
-      `"${new Date(tx.createdAt).toLocaleDateString("en-IN")}"`,
-      `"${tx.customer.replace(/"/g, '""')}"`,
-      `"${tx.placeOfSupply}"`,
-      tx.subtotal.toFixed(2),
-      tx.cgst.toFixed(2),
-      tx.sgst.toFixed(2),
-      tx.igst.toFixed(2),
-      tx.deliveryCharge.toFixed(2),
-      tx.discount.toFixed(2),
-      tx.total.toFixed(2),
-      `"${tx.reconciliationStatus}"`
+    const rows = data.invoices.map((inv) => [
+      escapeCsv(inv.invoiceNumber || ""),
+      escapeCsv(formatISTDateDmy(inv.invoiceDate)),
+      escapeCsv(inv.customer || ""),
+      escapeCsv(inv.email || ""),
+      escapeCsv(inv.placeOfSupply || ""),
+      escapeCsv(inv.isExport ? "Yes" : "No"),
+      escapeCsv(inv.currency || "INR"),
+      (Number(inv.originalTotal) || 0).toFixed(2),
+      (Number(inv.taxableValueInr) || 0).toFixed(2),
+      (Number(inv.cgst) || 0).toFixed(2),
+      (Number(inv.sgst) || 0).toFixed(2),
+      (Number(inv.igst) || 0).toFixed(2),
+      (Number(inv.deliveryInr) || 0).toFixed(2),
+      (Number(inv.discountInr) || 0).toFixed(2),
+      (Number(inv.totalInr) || 0).toFixed(2),
+      (Number(inv.refundedInr) || 0).toFixed(2),
+      escapeCsv(inv.refundStatus || ""),
+      escapeCsv(inv.paymentRef || ""),
+      escapeCsv(inv.taxSource || ""),
+      escapeCsv((inv.warnings || []).join(", "))
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `GSTR1_Reconciliation_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("href", url);
+    const periodLabel = `${data.period?.from || "from"}_to_${data.period?.to || "to"}`;
+    link.setAttribute("download", `DSG_invoices_${periodLabel}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCreditNotesCsv = () => {
+    if (!data?.creditNotes || !data.creditNotes.length) {
+      if (dialogAlert) {
+        dialogAlert("No credit notes available to export for the selected period.");
+      }
+      return;
+    }
+
+    const headers = [
+      "Invoice Number",
+      "Refund Date (IST)",
+      "Refund ID",
+      "Method",
+      "Reason",
+      "Place Of Supply",
+      "Refund Amount (INR)",
+      "Taxable Reversal (INR)",
+      "CGST Reversal (INR)",
+      "SGST Reversal (INR)",
+      "IGST Reversal (INR)",
+      "Tax Treatment",
+      "Warnings"
+    ];
+
+    const rows = data.creditNotes.map((cn) => [
+      escapeCsv(cn.invoiceNumber || ""),
+      escapeCsv(formatISTDateDmy(cn.refundDate)),
+      escapeCsv(cn.refundId || ""),
+      escapeCsv(cn.method || ""),
+      escapeCsv(cn.reason || ""),
+      escapeCsv(cn.placeOfSupply || ""),
+      (Number(cn.refundInr) || 0).toFixed(2),
+      (Number(cn.taxableValueInr) || 0).toFixed(2),
+      (Number(cn.cgst) || 0).toFixed(2),
+      (Number(cn.sgst) || 0).toFixed(2),
+      (Number(cn.igst) || 0).toFixed(2),
+      escapeCsv(cn.taxTreatment || "proportional"),
+      escapeCsv((cn.warnings || []).join(", "))
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const periodLabel = `${data.period?.from || "from"}_to_${data.period?.to || "to"}`;
+    link.setAttribute("download", `DSG_credit_notes_${periodLabel}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Chart Data preparation
@@ -178,7 +350,7 @@ function AdminFinancialDashboard() {
     labels: data?.monthlyTrends?.map((d) => d.month) || [],
     datasets: [
       {
-        label: "Gross Revenue",
+        label: "Gross Revenue (₹)",
         data: data?.monthlyTrends?.map((d) => d.gross) || [],
         borderColor: "#3b82f6",
         backgroundColor: "transparent",
@@ -188,7 +360,7 @@ function AdminFinancialDashboard() {
         pointRadius: 3
       },
       {
-        label: "Net Earnings",
+        label: "Net Earnings (₹)",
         data: data?.monthlyTrends?.map((d) => d.net) || [],
         borderColor: "#10b981",
         backgroundColor: "transparent",
@@ -200,23 +372,19 @@ function AdminFinancialDashboard() {
     ]
   };
 
-  const feesBreakdownData = {
-    labels: ["Subtotal", "GST Collected", "Delivery Collected", "Discounts Applied"],
+  const monthlyTaxRefundData = {
+    labels: data?.monthlyTrends?.map((d) => d.month) || [],
     datasets: [
       {
-        label: "Total Collection (INR)",
-        data: [
-          (data?.summary?.grossRevenue || 0) - (data?.summary?.taxGST || 0) - (data?.summary?.shippingCharges || 0),
-          data?.summary?.taxGST || 0,
-          data?.summary?.shippingCharges || 0,
-          data?.summary?.discountsGiven || 0
-        ],
-        backgroundColor: [
-          "#3b82f6", // Subtotal
-          "#8b5cf6", // GST
-          "#f59e0b", // Delivery
-          "#ef4444"  // Discounts
-        ],
+        label: "GST Tax Collected (₹)",
+        data: data?.monthlyTrends?.map((d) => d.tax) || [],
+        backgroundColor: "#8b5cf6",
+        borderRadius: 4
+      },
+      {
+        label: "Refunds on orders placed this month (₹)",
+        data: data?.monthlyTrends?.map((d) => d.refunds) || [],
+        backgroundColor: "#ef4444",
         borderRadius: 4
       }
     ]
@@ -247,7 +415,10 @@ function AdminFinancialDashboard() {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: false }
+      legend: {
+        position: "top",
+        labels: { color: "var(--admin-text, #0f172a)", boxWidth: 12 }
+      }
     },
     scales: {
       y: {
@@ -261,26 +432,148 @@ function AdminFinancialDashboard() {
     }
   };
 
+  const hasWarnings = Boolean(data?.warnings && Object.keys(data.warnings).length > 0);
+
   return (
     <div className="admin-layout">
       <AdminSidebar />
 
       <main className="admin-main">
+        {/* Header & Period Bar */}
         <header className="fin-header-wrap">
           <div>
             <h1>Financial Dashboard</h1>
             <p className="fin-subtitle">
-              GST compliance calculation, Place of Supply matching, and payment ledger reconciliation.
+              Tax ledger registers, Place of Supply compliance, and GSTR-1 credit note accounting.
             </p>
+            {data?.period && (
+              <div className="fin-period-indicator">
+                <span className="fin-indicator-badge">
+                  📅 Selected Period: <strong>{formatISTDate(data.period.from)}</strong> – <strong>{formatISTDate(data.period.to)}</strong>
+                </span>
+                <span className="fin-indicator-state">
+                  State of Operation: <strong>{data.businessState || "Karnataka"}</strong>
+                </span>
+              </div>
+            )}
           </div>
-          {!isLoading && (
-            <button className="gstr-export-btn" onClick={exportGstr1Csv}>
-              <span>📥</span> Export GSTR-1 Report (CSV)
-            </button>
-          )}
+
+          <div className="fin-header-controls-area">
+            {/* Period Mode Selector */}
+            <div className="fin-period-picker-bar">
+              <div className="fin-period-toggle">
+                <button
+                  type="button"
+                  className={`fin-toggle-btn ${periodMode === "month" ? "active" : ""}`}
+                  onClick={() => setPeriodMode("month")}
+                >
+                  By Month
+                </button>
+                <button
+                  type="button"
+                  className={`fin-toggle-btn ${periodMode === "custom" ? "active" : ""}`}
+                  onClick={() => setPeriodMode("custom")}
+                >
+                  Custom Range
+                </button>
+              </div>
+
+              {periodMode === "month" ? (
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="fin-period-input"
+                  title="Select Month"
+                />
+              ) : (
+                <div className="fin-custom-range-inputs">
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="fin-period-input"
+                    title="From Date"
+                  />
+                  <span className="fin-range-to">to</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="fin-period-input"
+                    title="To Date"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Export Actions */}
+            <div className="fin-export-actions">
+              <div className="fin-export-buttons-row">
+                <button
+                  type="button"
+                  className="gstr-export-btn"
+                  onClick={exportInvoicesCsv}
+                  disabled={isLoading || !data?.invoices?.length}
+                  title="Export invoices as GSTR-1 CSV"
+                >
+                  <span>📥</span> Export invoices (CSV)
+                </button>
+                <button
+                  type="button"
+                  className="gstr-export-btn btn-secondary"
+                  onClick={exportCreditNotesCsv}
+                  disabled={isLoading || !data?.creditNotes?.length}
+                  title="Export credit notes / refunds as CSV"
+                >
+                  <span>📋</span> Export credit notes (CSV)
+                </button>
+              </div>
+              <div className="fin-draft-disclaimer">
+                Draft figures — confirm refund/credit-note, export and digital-sale treatment with your accountant before filing.
+              </div>
+            </div>
+          </div>
         </header>
 
         {error && <p className="pricing-message error" style={{ margin: "0 0 20px" }}>{error}</p>}
+
+        {/* Warnings Banner */}
+        {hasWarnings && (
+          <div className="fin-warning-banner">
+            <div className="fin-warning-banner-title">
+              <span>⚠️</span>
+              <strong>Audit & Compliance Warnings for Period</strong>
+            </div>
+            <ul className="fin-warning-list">
+              {Object.entries(data.warnings).map(([code, info]) => {
+                let label = `${info.count} entry/entries flagged with ${code}`;
+                if (code === "missing_place_of_supply") {
+                  label = `${info.count} invoice(s) have no Place of Supply recorded`;
+                } else if (code === "missing_invoice_number") {
+                  label = `${info.count} invoice(s) have no invoice number`;
+                } else if (code === "tax_recomputed") {
+                  label = `${info.count} invoice(s) had tax recomputed from GST total (missing saved tax split)`;
+                } else if (code === "missing_fx_rate") {
+                  label = `${info.count} non-INR invoice(s) missing FX conversion rate`;
+                } else if (code === "refund_date_approximate") {
+                  label = `${info.count} credit note(s) have approximate refund date`;
+                }
+                return (
+                  <li key={code} className="fin-warning-item">
+                    <span>{label}</span>
+                    {info.invoiceNumbers?.length > 0 && (
+                      <span className="fin-warning-invoices">
+                        ({info.invoiceNumbers.join(", ")}
+                        {info.count > info.invoiceNumbers.length ? "..." : ""})
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="admin-dashboard-loading" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "40px" }}>
@@ -289,123 +582,130 @@ function AdminFinancialDashboard() {
           </div>
         ) : (
           <>
-            {/* Top 5 Financial KPI Cards Grid */}
-            <div className="fin-kpi-grid">
+            {/* 9 Summary Cards Grid (All labelled INR) */}
+            <div className="fin-summary-cards-grid">
+              <div className="fin-kpi-card fin-kpi-invoices">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Invoices</span>
+                  <div className="fin-kpi-icon-wrap">📄</div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-amount">{data?.summary?.invoiceCount || 0}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag blue">Paid Invoices in Period</span>
+                </div>
+              </div>
+
               <div className="fin-kpi-card fin-kpi-revenue">
                 <div className="fin-kpi-top">
-                  <span className="fin-kpi-label">Gross Revenue</span>
-                  <div className="fin-kpi-icon-wrap">
-                    <span>📈</span>
-                  </div>
+                  <span className="fin-kpi-label">Gross Invoiced (INR)</span>
+                  <div className="fin-kpi-icon-wrap">📈</div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
-                  <span className="fin-kpi-amount">{(data?.summary?.grossRevenue || 0).toLocaleString("en-IN")}</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.grossInvoicedInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag blue">Total Invoiced</span>
+                  <span className="fin-kpi-tag blue">Gross Total Invoiced</span>
+                </div>
+              </div>
+
+              <div className="fin-kpi-card fin-kpi-refunds highlight-red">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Refunds (INR)</span>
+                  <div className="fin-kpi-icon-wrap red">↩️</div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.refundsInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag red">Credit Notes / Refunds</span>
                 </div>
               </div>
 
               <div className="fin-kpi-card fin-kpi-earnings highlight-green">
                 <div className="fin-kpi-top">
-                  <span className="fin-kpi-label">Net Earnings</span>
-                  <div className="fin-kpi-icon-wrap green">
-                    <span>💰</span>
-                  </div>
+                  <span className="fin-kpi-label">Net Received (INR)</span>
+                  <div className="fin-kpi-icon-wrap green">💰</div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
-                  <span className="fin-kpi-amount">{(data?.summary?.netRevenue || 0).toLocaleString("en-IN")}</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.netReceivedInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag green">Gross - GST - Shipping</span>
+                  <span className="fin-kpi-tag green">Gross − Refunds</span>
                 </div>
               </div>
 
-              <div className="fin-kpi-card fin-kpi-tax">
+              <div className="fin-kpi-card fin-kpi-taxable">
                 <div className="fin-kpi-top">
-                  <span className="fin-kpi-label">Total GST Tax</span>
-                  <div className="fin-kpi-icon-wrap purple">
-                    <span>🏛️</span>
-                  </div>
+                  <span className="fin-kpi-label">Taxable Value (INR)</span>
+                  <div className="fin-kpi-icon-wrap amber">🏷️</div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
-                  <span className="fin-kpi-amount">{(data?.summary?.taxGST || 0).toLocaleString("en-IN")}</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.taxableValueInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag purple">Tax Collected</span>
+                  <span className="fin-kpi-tag amber">Subtotal Before Tax</span>
                 </div>
               </div>
 
               <div className="fin-kpi-card fin-kpi-intra">
                 <div className="fin-kpi-top">
-                  <span className="fin-kpi-label">CGST + SGST</span>
-                  <div className="fin-kpi-icon-wrap sky">
-                    <span>📍</span>
-                  </div>
+                  <span className="fin-kpi-label">CGST (INR)</span>
+                  <div className="fin-kpi-icon-wrap sky">📍</div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
-                  <span className="fin-kpi-amount">{((data?.summary?.cgst || 0) + (data?.summary?.sgst || 0)).toLocaleString("en-IN")}</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.cgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag sky" title={`Warehouse State: ${data?.warehouseState || "Karnataka"}`}>
-                    Intra-state • {data?.warehouseState || "Karnataka"}
-                  </span>
+                  <span className="fin-kpi-tag sky">Central GST</span>
+                </div>
+              </div>
+
+              <div className="fin-kpi-card fin-kpi-intra">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">SGST (INR)</span>
+                  <div className="fin-kpi-icon-wrap sky">📍</div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.sgst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag sky">State GST</span>
                 </div>
               </div>
 
               <div className="fin-kpi-card fin-kpi-inter">
                 <div className="fin-kpi-top">
-                  <span className="fin-kpi-label">IGST (Inter-state)</span>
-                  <div className="fin-kpi-icon-wrap indigo">
-                    <span>🌐</span>
-                  </div>
+                  <span className="fin-kpi-label">IGST (INR)</span>
+                  <div className="fin-kpi-icon-wrap indigo">🌐</div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
-                  <span className="fin-kpi-amount">{(data?.summary?.igst || 0).toLocaleString("en-IN")}</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.igst || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag indigo">Inter-state Orders</span>
+                  <span className="fin-kpi-tag indigo">Integrated GST</span>
                 </div>
               </div>
-            </div>
 
-            {/* Automated Payment Reconciliation Audit Section */}
-            <div className="fin-recon-section">
-              <div className="fin-recon-header">
-                <div className="fin-recon-title-area">
-                  <h3>🔄 Automated Payment Reconciliation Audit</h3>
+              <div className="fin-kpi-card fin-kpi-tax highlight-purple">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Net Tax after CN (INR)</span>
+                  <div className="fin-kpi-icon-wrap purple">🏛️</div>
                 </div>
-                <span className="fin-recon-badge-live">
-                  <span className="fin-pulse-dot"></span>
-                  Razorpay API Sync Status: Online
-                </span>
-              </div>
-              <div className="fin-recon-stats-grid">
-                <div className="fin-recon-stat-card green">
-                  <div className="fin-recon-icon-box green">✓</div>
-                  <div className="fin-recon-stat-details">
-                    <strong>{reconStats.reconciled}</strong>
-                    <span>Reconciled Transactions</span>
-                  </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.netTaxInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
-                <div className="fin-recon-stat-card orange">
-                  <div className="fin-recon-icon-box orange">⏱</div>
-                  <div className="fin-recon-stat-details">
-                    <strong>{reconStats.pending}</strong>
-                    <span>Pending Review</span>
-                  </div>
-                </div>
-                <div className="fin-recon-stat-card blue">
-                  <div className="fin-recon-icon-box blue">📊</div>
-                  <div className="fin-recon-stat-details">
-                    <strong>{reconStats.total}</strong>
-                    <span>Total Scanned Ledger Logs</span>
-                  </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag purple">Invoice Tax − CN Tax</span>
                 </div>
               </div>
             </div>
@@ -413,49 +713,53 @@ function AdminFinancialDashboard() {
             {/* Charts Row */}
             <div className="fin-charts-grid">
               <div className="fin-chart-card">
-                <h3>📈 Revenue & Profit Growth</h3>
+                <h3>📈 12-Month Revenue & Net Earnings Trend</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
               <div className="fin-chart-card">
-                <h3>📊 Fee Components Breakdown</h3>
+                <h3>📊 12-Month GST Tax & Refunds</h3>
                 <div className="chart-container">
-                  <Bar data={feesBreakdownData} options={barOptions} />
+                  <Bar data={monthlyTaxRefundData} options={barOptions} />
                 </div>
               </div>
             </div>
 
-            {/* Recent Transactions Ledger */}
+            {/* Invoices Ledger Table */}
             <div className="fin-ledger-card">
               <div className="fin-ledger-header">
                 <div className="fin-ledger-title-wrap">
-                  <h3>📒 Transaction Audit Ledger & GSTR Place of Supply</h3>
+                  <h3>📒 Invoices Tax Ledger</h3>
                   <span className="fin-ledger-count-badge">
-                    {filteredTransactions.length} of {data?.recentTransactions?.length || 0} entries
+                    {filteredInvoices.length} of {data?.invoices?.length || 0} invoices
                   </span>
                 </div>
-                
+
                 <div className="fin-ledger-controls">
-                  {/* Search bar */}
                   <div className="fin-search-box">
                     <span className="fin-search-icon">🔍</span>
                     <input
                       type="text"
-                      placeholder="Search ID, customer, state..."
+                      placeholder="Search invoice, customer, state..."
                       value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="fin-search-input"
                     />
                   </div>
 
-                  {/* GST Place of Supply Filter */}
                   <div className="pos-filter-group">
-                    <select 
+                    <select
                       id="pos-filter"
-                      value={gstFilter} 
-                      onChange={(e) => setGstFilter(e.target.value)}
+                      value={gstFilter}
+                      onChange={(e) => {
+                        setGstFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="pos-filter-select"
                       title="Filter by GST Place of Supply"
                     >
@@ -465,30 +769,16 @@ function AdminFinancialDashboard() {
                     </select>
                   </div>
 
-                  {/* Reconciliation Filter */}
-                  <div className="pos-filter-group">
-                    <select 
-                      id="recon-filter"
-                      value={reconFilter} 
-                      onChange={(e) => setReconFilter(e.target.value)}
-                      className="pos-filter-select"
-                      title="Filter by Reconciliation Status"
-                    >
-                      <option value="all">⚡ All Status</option>
-                      <option value="reconciled">✓ Reconciled</option>
-                      <option value="pending">⏱ Pending Review</option>
-                    </select>
-                  </div>
-
-                  {(searchTerm || gstFilter !== "all" || reconFilter !== "all") && (
-                    <button 
-                      className="fin-reset-btn" 
+                  {(searchTerm || gstFilter !== "all") && (
+                    <button
+                      type="button"
+                      className="fin-reset-btn"
                       onClick={() => {
                         setSearchTerm("");
                         setGstFilter("all");
-                        setReconFilter("all");
+                        setCurrentPage(1);
                       }}
-                      title="Reset all filters"
+                      title="Reset filters"
                     >
                       ✕ Reset
                     </button>
@@ -500,66 +790,96 @@ function AdminFinancialDashboard() {
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Order ID</th>
-                      <th style={{ borderColor: "var(--admin-border)" }}>Date</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Invoice No</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Date (IST)</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Customer</th>
                       <th style={{ borderColor: "var(--admin-border)" }}>Place of Supply</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Taxable Subtotal</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>CGST</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>SGST</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>IGST</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Discount</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Total Collected</th>
-                      <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Reconciliation</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Taxable (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>CGST (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>SGST (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>IGST (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Total ₹</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Original</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Refunded ₹</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Payment Ref</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTransactions.length > 0 ? (
-                      filteredTransactions.map((tx) => {
-                        const isIntra = String(tx.placeOfSupply).toLowerCase().trim() === String(data?.warehouseState || "Karnataka").toLowerCase().trim();
+                    {paginatedInvoices.length > 0 ? (
+                      paginatedInvoices.map((inv) => {
+                        const isIntra =
+                          String(inv.placeOfSupply).toLowerCase().trim() ===
+                          String(data?.businessState || "Karnataka").toLowerCase().trim();
+                        const hasRowWarnings = inv.warnings && inv.warnings.length > 0;
+
                         return (
-                          <tr key={tx._id}>
-                            <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                              <span className="fin-order-code-badge">
-                                #{tx._id.slice(-6).toUpperCase()}
-                              </span>
+                          <tr key={inv.orderId || inv.invoiceNumber}>
+                            <td style={{ borderColor: "var(--admin-border-soft)", whiteSpace: "nowrap" }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <span className="fin-order-code-badge">
+                                  {inv.invoiceNumber || "Unassigned"}
+                                </span>
+                                {hasRowWarnings && (
+                                  <span
+                                    className="fin-warning-marker"
+                                    title={formatWarningTooltip(inv.warnings)}
+                                  >
+                                    ⚠️
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", whiteSpace: "nowrap" }}>
-                              {new Date(tx.createdAt).toLocaleDateString("en-IN", {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric"
-                              })}
+                              {formatISTDate(inv.invoiceDate)}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)" }}>
-                              <div style={{ fontWeight: 600, color: "var(--admin-text)" }}>{tx.placeOfSupply}</div>
-                              <small style={{ display: "block", color: "var(--admin-muted)" }}>{tx.customer}</small>
-                              <span className={`fin-pos-pill ${isIntra ? "intra" : "inter"}`}>
-                                {isIntra ? "Intra-state" : "Inter-state"}
+                              <div style={{ fontWeight: 600, color: "var(--admin-text)" }}>{inv.customer}</div>
+                              <small style={{ color: "var(--admin-muted)" }}>{inv.email}</small>
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                              <div style={{ fontWeight: 600, color: "var(--admin-text)" }}>{inv.placeOfSupply}</div>
+                              <span className={`fin-pos-pill ${inv.isExport ? "export" : isIntra ? "intra" : "inter"}`}>
+                                {inv.isExport ? "Export" : isIntra ? "Intra-state" : "Inter-state"}
                               </span>
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace", fontWeight: 600 }}>
-                              ₹{tx.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ₹{(Number(inv.taxableValueInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
-                              {tx.cgst > 0 ? `₹${tx.cgst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                              {inv.cgst > 0 ? `₹${Number(inv.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
-                              {tx.sgst > 0 ? `₹${tx.sgst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                              {inv.sgst > 0 ? `₹${Number(inv.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
-                              {tx.igst > 0 ? `₹${tx.igst.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
-                            </td>
-                            <td className={tx.discount > 0 ? "text-red" : ""} style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
-                              {tx.discount > 0 ? `- ₹${tx.discount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
+                              {inv.igst > 0 ? `₹${Number(inv.igst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
                               <strong style={{ color: "var(--admin-text)", fontSize: "13.5px" }}>
-                                ₹{tx.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ₹{(Number(inv.totalInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </strong>
                             </td>
-                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "center" }}>
-                              <span className={`recon-status-badge ${tx.reconciliationStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                                {tx.reconciliationStatus === "Reconciled" ? "✓ Reconciled" : "⏱ Pending Review"}
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "center", whiteSpace: "nowrap" }}>
+                              {inv.currency && inv.currency !== "INR" ? (
+                                <span className="fin-original-ccy-badge">
+                                  {inv.currency} {Number(inv.originalTotal || 0).toFixed(2)}
+                                </span>
+                              ) : (
+                                <span style={{ color: "var(--admin-muted)" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {inv.refundedInr > 0 ? (
+                                <span className="text-red">
+                                  ₹{Number(inv.refundedInr).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span style={{ color: "var(--admin-muted)" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "center", whiteSpace: "nowrap" }}>
+                              <span className={`fin-payment-ref-badge ${inv.paymentRef === "Razorpay" ? "rzp" : inv.paymentRef.startsWith("Manual") ? "manual" : "none"}`}>
+                                {inv.paymentRef}
                               </span>
                             </td>
                           </tr>
@@ -567,10 +887,10 @@ function AdminFinancialDashboard() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
+                        <td colSpan="12" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
                           <div style={{ fontSize: "28px", marginBottom: "8px" }}>📑</div>
-                          <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching transactions found</p>
-                          <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the Place of Supply filter.</small>
+                          <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching invoices found</p>
+                          <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the period.</small>
                         </td>
                       </tr>
                     )}
@@ -578,28 +898,132 @@ function AdminFinancialDashboard() {
                 </table>
               </div>
 
-              {/* Summary Footer for Filtered Transactions */}
-              {filteredTransactions.length > 0 && (
-                <div className="fin-ledger-summary-footer">
-                  <div className="fin-summary-stats">
-                    <div className="fin-summary-stat-item">
-                      <span>Visible Subtotal:</span>
-                      <strong>₹{visibleTotals.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div className="fin-summary-stat-item">
-                      <span>GST Tax:</span>
-                      <strong style={{ color: "#7c3aed" }}>₹{visibleTotals.tax.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div className="fin-summary-stat-item">
-                      <span>Total Invoiced:</span>
-                      <strong style={{ color: "#2563eb" }}>₹{visibleTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                    </div>
+              {/* Client-side Pagination Footer */}
+              {totalPages > 1 && (
+                <div className="fin-pagination-wrap">
+                  <div className="fin-pagination-info">
+                    Showing {(currentPage - 1) * PAGE_SIZE + 1} to {Math.min(currentPage * PAGE_SIZE, filteredInvoices.length)} of {filteredInvoices.length} invoices
                   </div>
-                  <div style={{ fontSize: "12px", color: "var(--admin-muted)", fontWeight: 600 }}>
-                    Warehouse State: <strong style={{ color: "var(--admin-text)" }}>{data?.warehouseState || "Karnataka"}</strong>
+                  <div className="fin-pagination-controls">
+                    <button
+                      type="button"
+                      className="fin-page-btn"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    >
+                      ← Previous
+                    </button>
+                    <span className="fin-page-current">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="fin-page-btn"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      Next →
+                    </button>
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Separate Credit Notes (Refunds) Table */}
+            <div className="fin-ledger-card" style={{ marginTop: "24px" }}>
+              <div className="fin-ledger-header">
+                <div className="fin-ledger-title-wrap">
+                  <h3>📋 Credit Notes (Refunds Register)</h3>
+                  <span className="fin-ledger-count-badge">
+                    {data?.creditNotes?.length || 0} credit notes in period
+                  </span>
+                </div>
+              </div>
+
+              <div className="admin-table-wrap" style={{ borderColor: "var(--admin-border)" }}>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Invoice No</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Refund Date (IST)</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Refund ID</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Method</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Reason</th>
+                      <th style={{ borderColor: "var(--admin-border)" }}>Place of Supply</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Refund Amount (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Taxable Rev. (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>CGST Rev. (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>SGST Rev. (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>IGST Rev. (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Treatment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data?.creditNotes && data.creditNotes.length > 0 ? (
+                      data.creditNotes.map((cn, idx) => (
+                        <tr key={cn.refundId || `${cn.invoiceNumber}-${idx}`}>
+                          <td style={{ borderColor: "var(--admin-border-soft)", whiteSpace: "nowrap" }}>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <span className="fin-order-code-badge">
+                                {cn.invoiceNumber || "Unassigned"}
+                              </span>
+                              {cn.warnings?.includes("refund_date_approximate") && (
+                                <span className="fin-warning-marker" title="Approximate refund date">
+                                  ⏱
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", whiteSpace: "nowrap" }}>
+                            {formatISTDate(cn.refundDate)}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", fontFamily: "monospace", fontSize: "12px" }}>
+                            {cn.refundId || "Manual"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textTransform: "capitalize" }}>
+                            {cn.method}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", maxWidth: "200px" }}>
+                            <div style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={cn.reason}>
+                              {cn.reason || "—"}
+                            </div>
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)" }}>
+                            {cn.placeOfSupply}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#dc2626" }}>
+                            ₹{(Number(cn.refundInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                            ₹{(Number(cn.taxableValueInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                            {cn.cgst > 0 ? `₹${Number(cn.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                            {cn.sgst > 0 ? `₹${Number(cn.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                            {cn.igst > 0 ? `₹${Number(cn.igst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                          </td>
+                          <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "center" }}>
+                            <span className="fin-tax-treatment-tag">
+                              {cn.taxTreatment || "proportional"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="12" style={{ textAlign: "center", padding: "30px 20px", borderColor: "var(--admin-border-soft)" }}>
+                          <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No credit notes / refunds recorded in this period</p>
+                          <small style={{ color: "var(--admin-muted)" }}>Any processed refunds falling into this date window will appear here as credit notes.</small>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
