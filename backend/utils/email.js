@@ -563,7 +563,15 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
     `;
 
     try {
-      const pdfBuffer = await generateInvoicePdfBuffer(order, user);
+      let seller = (order?.sellerDetails && String(order.sellerDetails.gstin || "").trim())
+        ? order.sellerDetails
+        : null;
+      if (!seller) {
+        const StoreSettings = require("../models/StoreSettings");
+        const settings = await StoreSettings.findOne().select("businessDetails").lean();
+        seller = settings?.businessDetails || null;
+      }
+      const pdfBuffer = await generateInvoicePdfBuffer(order, user, seller);
       const orderCode = String(order._id || "").slice(-8).toUpperCase();
       attachments.push({
         filename: `Tax-Invoice-${orderCode}.pdf`,

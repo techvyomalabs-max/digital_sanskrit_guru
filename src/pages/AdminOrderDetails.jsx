@@ -157,7 +157,7 @@ function AdminOrderDetails() {
 
     try {
       const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      generateInvoicePdf(order, {
+      await generateInvoicePdf(order, {
         customerName: order?.user?.name || order?.shipping?.name || "Customer",
         customerEmail: order?.user?.email || "N/A",
         filePrefix: "invoice"

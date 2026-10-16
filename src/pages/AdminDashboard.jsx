@@ -41,8 +41,16 @@ import {
   Lock,
   Phone,
   Slash,
-  X
+  X,
+  Building2
 } from "lucide-react";
+import {
+  GST_STATE_CODES,
+  normalizeGstin,
+  isValidGstinFormat,
+  isValidGstinChecksum,
+  codeByStateName
+} from "../utils/gstin";
 import "./AdminShared.css";
 import "./AdminDashboard.css";
 
@@ -83,6 +91,14 @@ function normalizePricingMarketsInput(pricingMarkets = []) {
 
 function formatPricingSettingsFromData(data = {}) {
   return {
+    businessDetails: {
+      legalName: String(data?.businessDetails?.legalName || ""),
+      gstin: String(data?.businessDetails?.gstin || ""),
+      address: String(data?.businessDetails?.address || ""),
+      state: String(data?.businessDetails?.state || ""),
+      stateCode: String(data?.businessDetails?.stateCode || ""),
+      email: String(data?.businessDetails?.email || "")
+    },
     enableCurrentLocation: data?.enableCurrentLocation !== false,
     gstPercent: String(Number(data?.gstPercent || 0)),
     deliveryCharge: String(Number(data?.deliveryCharge || 0)),
@@ -161,6 +177,36 @@ function formatPricingSettingsFromData(data = {}) {
 
 function getPricingChangesList(saved = {}, next = {}) {
   const lines = [];
+
+  const prevGstin = String(saved?.businessDetails?.gstin || "").trim();
+  const nextGstin = String(next?.businessDetails?.gstin || "").trim();
+  if (prevGstin !== nextGstin) {
+    lines.push(`GSTIN: ${prevGstin || "None"} → ${nextGstin || "None"}`);
+  }
+
+  const prevState = String(saved?.businessDetails?.state || "").trim();
+  const nextState = String(next?.businessDetails?.state || "").trim();
+  if (prevState !== nextState) {
+    lines.push(`Business state: ${prevState || "None"} → ${nextState || "None"}`);
+  }
+
+  const prevLegalName = String(saved?.businessDetails?.legalName || "").trim();
+  const nextLegalName = String(next?.businessDetails?.legalName || "").trim();
+  if (prevLegalName !== nextLegalName) {
+    lines.push("Legal name updated");
+  }
+
+  const prevAddress = String(saved?.businessDetails?.address || "").trim();
+  const nextAddress = String(next?.businessDetails?.address || "").trim();
+  if (prevAddress !== nextAddress) {
+    lines.push("Business address updated");
+  }
+
+  const prevEmail = String(saved?.businessDetails?.email || "").trim();
+  const nextEmail = String(next?.businessDetails?.email || "").trim();
+  if (prevEmail !== nextEmail) {
+    lines.push("Business email updated");
+  }
 
   const prevGst = Number(saved?.gstPercent || 0);
   const nextGst = Math.max(0, Number(next?.gstPercent || 0));
@@ -411,8 +457,28 @@ function AdminDashboard() {
     setPricingMessage("");
   };
 
+  const currentGstin = normalizeGstin(pricingSettings.businessDetails?.gstin);
+  const currentSelectedState = String(pricingSettings.businessDetails?.state || "").trim();
+  const currentSelectedStateCode = String(pricingSettings.businessDetails?.stateCode || "").trim();
+
+  let gstinError = "";
+  let gstinWarning = "";
+  if (currentGstin) {
+    if (!isValidGstinFormat(currentGstin)) {
+      gstinError = "Enter a valid 15-character GSTIN (e.g. 29AAAAA0000A1Z5).";
+    } else if (currentSelectedStateCode && currentGstin.slice(0, 2) !== currentSelectedStateCode) {
+      gstinError = `GSTIN state code (${currentGstin.slice(0, 2)}) does not match the selected state (${currentSelectedState || "selected"}).`;
+    } else if (!isValidGstinChecksum(currentGstin)) {
+      gstinWarning = "The check digit does not match. Please re-check the number against your GST certificate.";
+    }
+  }
+
   const savePricingSettings = async () => {
     setPricingMessage("");
+    if (gstinError) {
+      setPricingMessage("Please fix the GSTIN validation errors before saving.");
+      return;
+    }
     const lines = getPricingChangesList(savedPricingSettings, pricingSettings);
     if (lines.length === 0) {
       setPricingMessage("No changes to save.");
@@ -432,6 +498,14 @@ function AdminDashboard() {
     setIsSavingPricing(true);
     try {
       const payload = {
+        businessDetails: {
+          legalName: String(pricingSettings.businessDetails?.legalName || "").trim(),
+          gstin: normalizeGstin(pricingSettings.businessDetails?.gstin),
+          address: String(pricingSettings.businessDetails?.address || "").trim(),
+          state: String(pricingSettings.businessDetails?.state || "").trim(),
+          stateCode: String(pricingSettings.businessDetails?.stateCode || "").trim(),
+          email: String(pricingSettings.businessDetails?.email || "").trim()
+        },
         enableCurrentLocation: pricingSettings.enableCurrentLocation,
         gstPercent: Math.max(0, Number(pricingSettings.gstPercent || 0)),
         deliveryCharge: Math.max(0, Number(pricingSettings.deliveryCharge || 0)),
@@ -505,6 +579,19 @@ function AdminDashboard() {
     } finally {
       setIsSavingPricing(false);
     }
+  };
+
+  const updateBusinessDetailsField = (field, value) => {
+    setPricingSettings((prev) => {
+      const nextDetails = { ...(prev.businessDetails || {}), [field]: value };
+      if (field === "gstin") {
+        nextDetails.gstin = String(value || "").toUpperCase();
+      }
+      if (field === "state") {
+        nextDetails.stateCode = codeByStateName(value) || "";
+      }
+      return { ...prev, businessDetails: nextDetails };
+    });
   };
 
   const updateWarehouseField = (field, value) => {
@@ -1202,6 +1289,93 @@ function AdminDashboard() {
           </div>
 
           <fieldset disabled={!isPricingUnlocked} className="pricing-fieldset">
+
+          {/* Section: Business & GST Details */}
+          <div className="pricing-panel">
+            <div className="pricing-panel-header">
+              <Building2 size={16} className="pricing-panel-icon pricing-panel-icon--blue" />
+              <div>
+                <h4>Business &amp; GST details</h4>
+                <p>Printed on every new invoice. Leave GSTIN blank if you are not GST registered.</p>
+              </div>
+            </div>
+            <div className="pricing-panel-grid pricing-panel-grid--3">
+              <label className="pricing-field">
+                <span className="pricing-label">Legal / Trade Name</span>
+                <input
+                  type="text"
+                  className="pricing-text-input"
+                  placeholder="e.g. Vyoma Linguistic Labs Foundation"
+                  maxLength={150}
+                  value={pricingSettings.businessDetails?.legalName || ""}
+                  onChange={(e) => updateBusinessDetailsField("legalName", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">GSTIN</span>
+                <input
+                  type="text"
+                  className="pricing-text-input pricing-input--monospace"
+                  placeholder="15-character GSTIN from your GST certificate"
+                  maxLength={15}
+                  value={pricingSettings.businessDetails?.gstin || ""}
+                  onChange={(e) => updateBusinessDetailsField("gstin", e.target.value)}
+                />
+                {gstinError && <span className="gstin-validation-error">{gstinError}</span>}
+                {!gstinError && gstinWarning && (
+                  <span className="gstin-validation-warning">{gstinWarning}</span>
+                )}
+              </label>
+
+              <label className="pricing-field">
+                <div className="pricing-label-with-badge">
+                  <span className="pricing-label">Business State</span>
+                  <span className="gstin-state-code-badge">
+                    State code: {pricingSettings.businessDetails?.stateCode || "--"}
+                  </span>
+                </div>
+                <select
+                  className="pricing-select-input"
+                  value={pricingSettings.businessDetails?.state || ""}
+                  onChange={(e) => updateBusinessDetailsField("state", e.target.value)}
+                >
+                  <option value="">-- Select state --</option>
+                  {GST_STATE_CODES.map((st) => (
+                    <option key={st.code} value={st.name}>
+                      {st.code} - {st.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="pricing-panel-grid" style={{ marginTop: "12px" }}>
+              <label className="pricing-field pricing-field-wide">
+                <span className="pricing-label">Registered Address</span>
+                <textarea
+                  className="pricing-textarea-input"
+                  rows={2}
+                  maxLength={300}
+                  placeholder="Registered business address printed on invoices"
+                  value={pricingSettings.businessDetails?.address || ""}
+                  onChange={(e) => updateBusinessDetailsField("address", e.target.value)}
+                />
+              </label>
+
+              <label className="pricing-field">
+                <span className="pricing-label">Business Email</span>
+                <input
+                  type="email"
+                  className="pricing-text-input"
+                  placeholder="e.g. support@digitalsanskritguru.com"
+                  maxLength={150}
+                  value={pricingSettings.businessDetails?.email || ""}
+                  onChange={(e) => updateBusinessDetailsField("email", e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
 
           {/* Section 1: Core Tax & Delivery */}
           <div className="pricing-panel">

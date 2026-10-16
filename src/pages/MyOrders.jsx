@@ -567,7 +567,7 @@ function MyOrders() {
 
     try {
       const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      generateInvoicePdf(order, {
+      await generateInvoicePdf(order, {
         customerName: order?.shipping?.name || "Customer",
         customerEmail: "N/A",
         filePrefix: "invoice"

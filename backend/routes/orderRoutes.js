@@ -2185,6 +2185,14 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         detectedCountry: String(shipping?.country || "").trim()
       },
       taxDetails: calc.taxDetails,
+      sellerDetails: {
+        legalName: String(settings?.businessDetails?.legalName || "Digital Sanskrit Guru"),
+        gstin: String(settings?.businessDetails?.gstin || ""),
+        address: String(settings?.businessDetails?.address || ""),
+        state: String(settings?.businessDetails?.state || ""),
+        stateCode: String(settings?.businessDetails?.stateCode || ""),
+        email: String(settings?.businessDetails?.email || "")
+      },
       paymentMeta: {
         razorpayOrderId: verifiedPayment ? razorpayOrderId : "",
         razorpayPaymentId: verifiedPayment ? razorpayPaymentId : "",

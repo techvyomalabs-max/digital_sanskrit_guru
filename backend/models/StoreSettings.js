@@ -362,8 +362,48 @@ const whatsappSettingsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const businessDetailsSchema = new mongoose.Schema(
+  {
+    legalName: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    gstin: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    address: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    state: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    stateCode: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    email: {
+      type: String,
+      default: "",
+      trim: true
+    }
+  },
+  { _id: false }
+);
+
 const storeSettingsSchema = new mongoose.Schema(
   {
+    businessDetails: {
+      type: businessDetailsSchema,
+      default: () => ({})
+    },
     whatsappSettings: {
       type: whatsappSettingsSchema,
       default: () => ({
