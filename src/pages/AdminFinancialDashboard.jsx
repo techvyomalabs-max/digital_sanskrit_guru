@@ -695,6 +695,20 @@ function AdminFinancialDashboard() {
                 </div>
               </div>
 
+              <div className="fin-kpi-card fin-kpi-delivery">
+                <div className="fin-kpi-top">
+                  <span className="fin-kpi-label">Delivery charges</span>
+                  <div className="fin-kpi-icon-wrap amber">🚚</div>
+                </div>
+                <div className="fin-kpi-value-row">
+                  <span className="fin-kpi-currency">₹</span>
+                  <span className="fin-kpi-amount">{(data?.summary?.deliveryInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="fin-kpi-footer">
+                  <span className="fin-kpi-tag amber">Shipping Collected</span>
+                </div>
+              </div>
+
               <div className="fin-kpi-card fin-kpi-tax highlight-purple">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Net Tax after CN (INR)</span>
@@ -798,6 +812,7 @@ function AdminFinancialDashboard() {
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>CGST (₹)</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>SGST (₹)</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>IGST (₹)</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Delivery (₹)</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Total ₹</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Original</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Refunded ₹</th>
@@ -855,6 +870,13 @@ function AdminFinancialDashboard() {
                               {inv.igst > 0 ? `₹${Number(inv.igst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span style={{ color: "var(--admin-muted)" }}>—</span>}
                             </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
+                              {(Number(inv.deliveryInr) || 0) > 0 ? (
+                                `₹${(Number(inv.deliveryInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              ) : (
+                                <span style={{ color: "var(--admin-muted)" }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
                               <strong style={{ color: "var(--admin-text)", fontSize: "13.5px" }}>
                                 ₹{(Number(inv.totalInr) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </strong>
@@ -887,7 +909,7 @@ function AdminFinancialDashboard() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan="12" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
+                        <td colSpan="13" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
                           <div style={{ fontSize: "28px", marginBottom: "8px" }}>📑</div>
                           <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching invoices found</p>
                           <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the period.</small>
