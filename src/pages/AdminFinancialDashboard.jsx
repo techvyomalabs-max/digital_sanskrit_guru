@@ -77,7 +77,7 @@ function formatWarningTooltip(warnings = []) {
 
 const escapeCsv = (val) => {
   let str = String(val ?? "");
-  if (/^[=+\-@\t\r]/.test(str)) {
+  if (/^\s*[=+\-@\t\r]/.test(str)) {
     str = `'${str}`;
   }
   return `"${str.replace(/"/g, '""')}"`;

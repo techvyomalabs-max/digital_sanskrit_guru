@@ -966,7 +966,7 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
       "_id invoiceNumber createdAt user shipping billing currencyDisplay total totalInInr fxRateToInr subtotal taxDetails gstAmount deliveryCharge discount refundedAmountInInr refundStatus paymentMeta razorpayPaymentId updatedAt";
 
     const invoiceOrders = await Order.find({
-      paymentStatus: "Paid",
+      paymentStatus: { $in: ["Paid", "Refunded"] },
       createdAt: { $gte: fromDate, $lt: toExclusiveDate }
     })
       .select(fieldsToSelect)
@@ -977,7 +977,7 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     invoiceRows.sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
     const refundedOrders = await Order.find({
-      paymentStatus: "Paid",
+      paymentStatus: { $in: ["Paid", "Refunded"] },
       refundedAmountInInr: { $gt: 0 },
       $or: [
         { "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } },
@@ -1023,7 +1023,7 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     const trendsAgg = await Order.aggregate([
       {
         $match: {
-          paymentStatus: "Paid",
+          paymentStatus: { $in: ["Paid", "Refunded"] },
           createdAt: { $gte: twelveMonthsAgo }
         }
       },
@@ -1061,11 +1061,17 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     });
 
     const warnings = {};
-    const addWarning = (code, invNum) => {
+    const warningOrderIds = {};
+    const addWarning = (code, orderId, invNum) => {
       if (!warnings[code]) {
         warnings[code] = { count: 0, invoiceNumbers: [] };
+        warningOrderIds[code] = new Set();
       }
-      warnings[code].count += 1;
+      const distinctId = String(orderId || invNum || "Unassigned");
+      if (!warningOrderIds[code].has(distinctId)) {
+        warningOrderIds[code].add(distinctId);
+        warnings[code].count += 1;
+      }
       const num = invNum || "Unassigned";
       if (warnings[code].invoiceNumbers.length < 20 && !warnings[code].invoiceNumbers.includes(num)) {
         warnings[code].invoiceNumbers.push(num);
@@ -1075,14 +1081,14 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     for (const inv of invoiceRows) {
       if (Array.isArray(inv.warnings)) {
         for (const code of inv.warnings) {
-          addWarning(code, inv.invoiceNumber);
+          addWarning(code, inv.orderId, inv.invoiceNumber);
         }
       }
     }
     for (const cn of creditNotes) {
       if (Array.isArray(cn.warnings)) {
         for (const code of cn.warnings) {
-          addWarning(code, cn.invoiceNumber);
+          addWarning(code, cn.orderId, cn.invoiceNumber);
         }
       }
     }

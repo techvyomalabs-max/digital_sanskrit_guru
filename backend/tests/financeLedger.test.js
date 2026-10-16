@@ -242,6 +242,7 @@ describe("financeLedger utility", () => {
       invoiceNumber: "DSG-2026-0007",
       createdAt: new Date("2026-10-01T10:00:00Z"),
       currencyDisplay: { currency: "USD" },
+      fxRateToInr: 83,
       total: 100,
       totalInInr: 8300,
       refundedAmountInInr: 3320,
@@ -272,6 +273,8 @@ describe("financeLedger utility", () => {
     });
 
     assert.strictEqual(creditNotes.length, 2);
+    assert.strictEqual(creditNotes[0].refundInr, 1660);
+    assert.strictEqual(creditNotes[1].refundInr, 1660);
     const totalCnRefundInr = roundMoney(creditNotes[0].refundInr + creditNotes[1].refundInr);
     assert.strictEqual(totalCnRefundInr, 3320);
   });
@@ -336,5 +339,36 @@ describe("financeLedger utility", () => {
     });
 
     assert.strictEqual(creditNotes.length, 0);
+  });
+
+  it("10. USD refund entry on an order with no fx rate and no totalInInr -> row has missing_fx_rate warning", () => {
+    const order = {
+      _id: "order132",
+      invoiceNumber: "DSG-2026-0010",
+      createdAt: new Date("2026-10-02T10:00:00Z"),
+      currencyDisplay: { currency: "USD" },
+      total: 100,
+      refundedAmountInInr: 2000,
+      shipping: { country: "US", state: "NY" },
+      paymentMeta: {
+        refunds: [
+          {
+            refundId: "rfnd_usd_nofx",
+            amountMinor: 2000,
+            currency: "USD",
+            at: new Date("2026-10-05T10:00:00Z")
+          }
+        ]
+      }
+    };
+
+    const invoiceRow = buildInvoiceRow(order, defaultSettings);
+    const creditNotes = buildCreditNoteRows(order, invoiceRow, {
+      from: new Date("2026-10-01T00:00:00+05:30"),
+      to: new Date("2026-11-01T00:00:00+05:30")
+    });
+
+    assert.strictEqual(creditNotes.length, 1);
+    assert.strictEqual(creditNotes[0].warnings.includes("missing_fx_rate"), true);
   });
 });
