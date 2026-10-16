@@ -49,6 +49,7 @@ const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/
 const { processGatewayRefund, previewRefund, RefundError } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
+const { buildInvoiceRow, buildCreditNoteRows, summarize } = require("../utils/financeLedger");
 
 const router = express.Router();
 
@@ -922,127 +923,179 @@ router.get("/analytics/sales", protect, admin, requireAdminPage("orders"), async
 // Financial Analytics (Admin only)
 router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
-    const settings = await StoreSettings.findOne().select("warehouseLocation").lean();
-    const warehouseState = String(settings?.warehouseLocation?.state || "Karnataka").trim().toLowerCase();
+    let fromStr = String(req.query.from || "").trim();
+    let toStr = String(req.query.to || "").trim();
 
-    const orders = await Order.find({ paymentStatus: "Paid" })
+    if (!fromStr || !toStr) {
+      const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+      const ym = istStr.slice(0, 7);
+      const [y, m] = ym.split("-").map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      if (!fromStr) fromStr = `${ym}-01`;
+      if (!toStr) toStr = `${ym}-${String(lastDay).padStart(2, "0")}`;
+    }
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(fromStr) || !dateRegex.test(toStr)) {
+      return res.status(400).json({ success: false, message: "Dates must be in YYYY-MM-DD format" });
+    }
+
+    const fromDate = new Date(`${fromStr}T00:00:00+05:30`);
+    const toStartDate = new Date(`${toStr}T00:00:00+05:30`);
+
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toStartDate.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date provided" });
+    }
+
+    if (fromDate > toStartDate) {
+      return res.status(400).json({ success: false, message: "'from' date cannot be after 'to' date" });
+    }
+
+    const diffMs = toStartDate.getTime() - fromDate.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays > 366) {
+      return res.status(400).json({ success: false, message: "Date range cannot exceed 366 days" });
+    }
+
+    const toExclusiveDate = new Date(toStartDate.getTime() + 24 * 60 * 60 * 1000);
+
+    const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
+    const businessState = settings?.businessDetails?.state || settings?.warehouseLocation?.state || "Karnataka";
+
+    const fieldsToSelect =
+      "_id invoiceNumber createdAt user shipping billing currencyDisplay total totalInInr fxRateToInr subtotal taxDetails gstAmount deliveryCharge discount refundedAmountInInr refundStatus paymentMeta razorpayPaymentId updatedAt";
+
+    const invoiceOrders = await Order.find({
+      paymentStatus: "Paid",
+      createdAt: { $gte: fromDate, $lt: toExclusiveDate }
+    })
+      .select(fieldsToSelect)
       .populate("user", "name email")
-      .sort({ createdAt: -1 })
       .lean();
 
-    let totalGrossRevenue = 0;
-    let totalGST = 0;
-    let totalShipping = 0;
-    let totalDiscounts = 0;
-    let totalCGST = 0;
-    let totalSGST = 0;
-    let totalIGST = 0;
-    const monthlyFinanceMap = {};
+    const invoiceRows = invoiceOrders.map((order) => buildInvoiceRow(order, settings));
+    invoiceRows.sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
-    orders.forEach((order) => {
-      totalGrossRevenue += Number(order.total || 0);
-      totalGST += Number(order.gstAmount || 0);
-      totalShipping += Number(order.deliveryCharge || 0);
-      totalDiscounts += Number(order.discount || 0);
+    const refundedOrders = await Order.find({
+      paymentStatus: "Paid",
+      refundedAmountInInr: { $gt: 0 },
+      $or: [
+        { "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } },
+        { "paymentMeta.refunds.0": { $exists: false }, updatedAt: { $gte: fromDate, $lt: toExclusiveDate } }
+      ]
+    })
+      .select(fieldsToSelect)
+      .populate("user", "name email")
+      .lean();
 
-      // CGST / SGST / IGST logic based on Place of Supply
-      const customerState = String(order.shipping?.state || order.billing?.state || "Karnataka").trim().toLowerCase();
-      const isLocalState = customerState === warehouseState;
-      const orderGst = Number(order.gstAmount || 0);
+    const creditNotes = [];
+    for (const order of refundedOrders) {
+      const invRow = buildInvoiceRow(order, settings);
+      const cnRows = buildCreditNoteRows(order, invRow, { from: fromDate, to: toExclusiveDate });
+      creditNotes.push(...cnRows);
+    }
+    creditNotes.sort((a, b) => new Date(a.refundDate) - new Date(b.refundDate));
 
-      if (isLocalState) {
-        totalCGST += orderGst / 2;
-        totalSGST += orderGst / 2;
-      } else {
-        totalIGST += orderGst;
-      }
+    const summary = summarize(invoiceRows, creditNotes);
 
-      // Monthly breakdown aggregation
-      const date = new Date(order.createdAt);
-      if (!Number.isNaN(date.getTime())) {
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        if (!monthlyFinanceMap[monthKey]) {
-          monthlyFinanceMap[monthKey] = { gross: 0, tax: 0, shipping: 0, discount: 0 };
+    // Monthly trends (last 12 months in IST)
+    const nowIST = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const [nowY, nowM] = nowIST.slice(0, 7).split("-").map(Number);
+    const twelveAgoDate = new Date(Date.UTC(nowY, nowM - 12, 1));
+    const twelveAgoY = twelveAgoDate.getUTCFullYear();
+    const twelveAgoM = String(twelveAgoDate.getUTCMonth() + 1).padStart(2, "0");
+    const twelveMonthsAgo = new Date(`${twelveAgoY}-${twelveAgoM}-01T00:00:00+05:30`);
+
+    const fxRateExpr = { $ifNull: ["$fxRateToInr", 1] };
+    const grossExpr = {
+      $ifNull: [
+        "$totalInInr",
+        { $multiply: [{ $ifNull: ["$total", 0] }, fxRateExpr] }
+      ]
+    };
+    const taxExpr = {
+      $multiply: [
+        { $ifNull: ["$gstAmount", 0] },
+        fxRateExpr
+      ]
+    };
+
+    const trendsAgg = await Order.aggregate([
+      {
+        $match: {
+          paymentStatus: "Paid",
+          createdAt: { $gte: twelveMonthsAgo }
         }
-        monthlyFinanceMap[monthKey].gross += Number(order.total || 0);
-        monthlyFinanceMap[monthKey].tax += Number(order.gstAmount || 0);
-        monthlyFinanceMap[monthKey].shipping += Number(order.deliveryCharge || 0);
-        monthlyFinanceMap[monthKey].discount += Number(order.discount || 0);
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m",
+              date: "$createdAt",
+              timezone: "Asia/Kolkata"
+            }
+          },
+          gross: { $sum: grossExpr },
+          tax: { $sum: taxExpr },
+          refunds: { $sum: { $ifNull: ["$refundedAmountInInr", 0] } }
+        }
+      },
+      {
+        $sort: { _id: 1 }
       }
-    });
+    ]);
 
-    const netRevenue = totalGrossRevenue - totalGST - totalShipping;
-
-    // Formatting monthly list
-    const monthlyFinance = Object.entries(monthlyFinanceMap)
-      .map(([month, data]) => ({
-        month,
-        gross: Math.round(data.gross),
-        tax: Math.round(data.tax),
-        shipping: Math.round(data.shipping),
-        discount: Math.round(data.discount),
-        net: Math.round(data.gross - data.tax - data.shipping)
-      }))
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-12);
-
-    // Ledger for the recent 50 orders
-    const ledger = orders.slice(0, 50).map((order) => {
-      const customerState = String(order.shipping?.state || order.billing?.state || "Karnataka").trim().toLowerCase();
-      const isLocalState = customerState === warehouseState;
-      const orderGst = Number(order.gstAmount || 0);
-      
-      const cgst = isLocalState ? orderGst / 2 : 0;
-      const sgst = isLocalState ? orderGst / 2 : 0;
-      const igst = isLocalState ? 0 : orderGst;
-
-      // Reconciliation matching logic
-      const hasRazorpayId = Boolean(order.paymentMeta?.razorpayPaymentId || order.razorpayPaymentId);
-      const isPaid = order.paymentStatus === "Paid";
-      
-      let reconciliationStatus = "Unreconciled";
-      if (isPaid && hasRazorpayId) {
-        reconciliationStatus = "Reconciled";
-      } else if (isPaid) {
-        reconciliationStatus = "Pending Review";
-      }
-
+    const monthlyTrends = trendsAgg.map((r) => {
+      const gross = Math.round(r.gross || 0);
+      const tax = Math.round(r.tax || 0);
+      const refunds = Math.round(r.refunds || 0);
+      const net = Math.round(gross - refunds);
       return {
-        _id: order._id,
-        createdAt: order.createdAt,
-        customer: order.user?.name || order.shipping?.name || "Customer",
-        email: order.user?.email || "N/A",
-        subtotal: Number(order.subtotal || 0),
-        gstAmount: orderGst,
-        cgst: Number(cgst.toFixed(2)),
-        sgst: Number(sgst.toFixed(2)),
-        igst: Number(igst.toFixed(2)),
-        deliveryCharge: Number(order.deliveryCharge || 0),
-        discount: Number(order.discount || 0),
-        total: Number(order.total || 0),
-        currency: order.currencyDisplay?.currency || "INR",
-        paymentStatus: order.paymentStatus,
-        refundStatus: order.refundStatus,
-        placeOfSupply: String(order.shipping?.state || order.billing?.state || "Karnataka"),
-        reconciliationStatus
+        month: r._id,
+        gross,
+        tax,
+        refunds,
+        net
       };
     });
 
+    const warnings = {};
+    const addWarning = (code, invNum) => {
+      if (!warnings[code]) {
+        warnings[code] = { count: 0, invoiceNumbers: [] };
+      }
+      warnings[code].count += 1;
+      const num = invNum || "Unassigned";
+      if (warnings[code].invoiceNumbers.length < 20 && !warnings[code].invoiceNumbers.includes(num)) {
+        warnings[code].invoiceNumbers.push(num);
+      }
+    };
+
+    for (const inv of invoiceRows) {
+      if (Array.isArray(inv.warnings)) {
+        for (const code of inv.warnings) {
+          addWarning(code, inv.invoiceNumber);
+        }
+      }
+    }
+    for (const cn of creditNotes) {
+      if (Array.isArray(cn.warnings)) {
+        for (const code of cn.warnings) {
+          addWarning(code, cn.invoiceNumber);
+        }
+      }
+    }
+
     res.json({
       success: true,
-      warehouseState: settings?.warehouseLocation?.state || "Karnataka",
-      summary: {
-        grossRevenue: Math.round(totalGrossRevenue),
-        taxGST: Math.round(totalGST),
-        cgst: Math.round(totalCGST),
-        sgst: Math.round(totalSGST),
-        igst: Math.round(totalIGST),
-        shippingCharges: Math.round(totalShipping),
-        discountsGiven: Math.round(totalDiscounts),
-        netRevenue: Math.round(netRevenue)
-      },
-      monthlyTrends: monthlyFinance,
-      recentTransactions: ledger
+      period: { from: fromStr, to: toStr },
+      businessState,
+      summary,
+      monthlyTrends,
+      invoices: invoiceRows,
+      creditNotes,
+      warnings
     });
   } catch (err) {
     console.error("Financial analytics error:", err);
