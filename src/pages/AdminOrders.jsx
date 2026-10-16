@@ -14,6 +14,7 @@ import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
+import { buildOrdersCsv } from "../utils/ordersCsv";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 
@@ -580,40 +581,10 @@ function AdminOrders() {
         return;
       }
 
-      const headers = [
-        "Order ID",
-        "Customer",
-        "Email",
-        "Payment Country",
-        "Items",
-        "Total INR",
-        "Customer Display Total",
-        "Order Status",
-        "Payment Status",
-        "Refund Status",
-        "Created At"
-      ];
-
-      const rows = allMatchingOrders.map((order) => {
-        const itemCount = (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
-        return [
-          order._id,
-          order.user?.name || "Unknown",
-          order.user?.email || "",
-          getPaymentCountry(order),
-          itemCount,
-          Math.round(getOrderBaseTotal(order)),
-          formatCustomerPaid(order),
-          getDisplayStatus(order),
-          getPaymentStatus(order),
-          order?.refundStatus || "Not Applicable",
-          new Date(order.createdAt).toISOString()
-        ];
+      const csv = buildOrdersCsv(allMatchingOrders, {
+        getStatus: getDisplayStatus,
+        getPaymentStatus
       });
-
-      const csv = [headers, ...rows]
-        .map((line) => line.map((cell) => `"${String(cell).replaceAll("\"", "\"\"")}"`).join(","))
-        .join("\n");
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
