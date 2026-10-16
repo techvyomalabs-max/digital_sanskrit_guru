@@ -223,31 +223,65 @@ function buildCreditNoteRows(order, invoiceRow, { from, to } = {}) {
     return [];
   }
 
-  const totalMinor = refunds.reduce((sum, r) => sum + (Number(r?.amountMinor) || 0), 0);
+  const fxRate = getFxRate(order);
+  const convertedEntries = refunds.map((r) => {
+    const minor = Number(r?.amountMinor) || 0;
+    const baseMajor = minor / 100;
+    const curr = String(r?.currency || "INR").trim().toUpperCase();
+    let convertedInr = baseMajor;
+    let missingFx = false;
+
+    if (!curr || curr === "INR") {
+      convertedInr = baseMajor;
+    } else {
+      if (fxRate !== null) {
+        convertedInr = baseMajor * fxRate;
+      } else {
+        convertedInr = baseMajor;
+        missingFx = true;
+      }
+    }
+
+    return {
+      entry: r,
+      convertedInr,
+      missingFx
+    };
+  });
+
+  const totalConvertedInr = convertedEntries.reduce((sum, item) => sum + item.convertedInr, 0);
   let allocated = 0;
-  const allocatedRefunds = refunds.map((r, idx) => {
+  const allocatedRefunds = convertedEntries.map((item, idx) => {
     let refundInr = 0;
-    if (idx === refunds.length - 1) {
+    if (idx === convertedEntries.length - 1) {
       refundInr = roundMoney(totalRefundedInr - allocated);
-    } else if (totalMinor > 0) {
-      const share = (Number(r?.amountMinor) || 0) / totalMinor;
+    } else if (totalConvertedInr > 0) {
+      const share = item.convertedInr / totalConvertedInr;
       refundInr = roundMoney(totalRefundedInr * share);
       allocated = roundMoney(allocated + refundInr);
     } else {
-      refundInr = roundMoney(totalRefundedInr / refunds.length);
+      refundInr = roundMoney(totalRefundedInr / convertedEntries.length);
       allocated = roundMoney(allocated + refundInr);
     }
-    return { entry: r, refundInr };
+    return {
+      entry: item.entry,
+      refundInr,
+      missingFx: item.missingFx
+    };
   });
 
   const rows = [];
-  for (const { entry, refundInr } of allocatedRefunds) {
+  for (const { entry, refundInr, missingFx } of allocatedRefunds) {
     const refundDate = entry?.at
       ? new Date(entry.at)
       : (order?.updatedAt ? new Date(order.updatedAt) : new Date());
 
     if (isWithinPeriod(refundDate, from, to)) {
       const taxReversal = reverseTaxProportionally(invoiceRow, refundInr);
+      const warnings = [];
+      if (missingFx) {
+        warnings.push("missing_fx_rate");
+      }
       rows.push({
         orderId: String(order?._id || invoiceRow?.orderId || ""),
         invoiceNumber: invoiceRow?.invoiceNumber || "",
@@ -262,7 +296,7 @@ function buildCreditNoteRows(order, invoiceRow, { from, to } = {}) {
         sgst: taxReversal.sgst,
         igst: taxReversal.igst,
         taxTreatment: "proportional",
-        warnings: []
+        warnings
       });
     }
   }
