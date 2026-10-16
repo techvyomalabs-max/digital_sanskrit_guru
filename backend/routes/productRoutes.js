@@ -120,6 +120,7 @@ const normalizeBundleItems = (rawBundleItems = []) => {
       name: customName,
       image: String(item?.image || "").trim(),
       price: Math.max(0, Number(item?.price || 0)),
+      isDigital: item?.isDigital === true,
       quantity: Math.max(1, Number(item?.quantity || 1))
     });
     return acc;
@@ -274,7 +275,7 @@ const HOME_PRODUCT_SELECT =
   "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
-  "name image price internationalPrice internationalCountryPrices marketPrices category stock";
+  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType";
 
 const sortByNewest = (a, b) =>
   new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
@@ -612,7 +613,7 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     return res.json(products);
@@ -635,7 +636,7 @@ router.get("/", async (req, res) => {
       // Full product list for public — sanitized
       const products = await Product.find({ isDeleted: { $ne: true } })
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
       return res.json(products.map(toPublicProduct));
@@ -653,7 +654,7 @@ router.get("/", async (req, res) => {
 
     const products = await Product.find({ isDeleted: { $ne: true } })
       .select(PUBLIC_PRODUCT_EXCLUDE)
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     const baseProducts = products.map(toPublicProduct);
@@ -962,7 +963,7 @@ router.get("/:id", async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(targetId)) {
       product = await Product.findById(targetId)
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
     }
@@ -972,7 +973,7 @@ router.get("/:id", async (req, res) => {
       if (!isNaN(numId)) {
         product = await Product.findOne({ wpProductId: numId, isDeleted: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
-          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType")
           .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
           .lean();
       }

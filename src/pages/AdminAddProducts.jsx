@@ -542,6 +542,13 @@ function AdminAddProducts() {
     };
   }, [bundleItems, calculatedBundlePrice, image, name, price, productType, stock]);
 
+  const isLikelyDigital = useMemo(() => {
+    if (isDigital) return false;
+    const keywords = ["web", "kindle", "flipbook", "course", "pdf", "e-book"];
+    const target = `${name || ""} ${category || ""}`.toLowerCase();
+    return keywords.some((kw) => target.includes(kw));
+  }, [isDigital, name, category]);
+
   const productComposerStats = useMemo(() => {
     const extraImageCount = imagesInput
       .split(/\r?\n/)
@@ -1204,12 +1211,16 @@ function AdminAddProducts() {
         }
 
         if (!rawProductId) return null;
+        const linkedProduct = products.find(
+          (product) => String(product?._id || "") === rawProductId
+        );
         return {
           itemType: "existing",
           product: rawProductId,
           name: customName,
           image: String(item.image || "").trim(),
           price: Math.max(0, Number(item.price || 0)),
+          isDigital: linkedProduct ? linkedProduct.isDigital === true : item.isDigital === true,
           quantity: Math.max(1, Number(item.quantity || 1))
         };
       })
@@ -2062,6 +2073,24 @@ function AdminAddProducts() {
                     />
                     <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
                   </label>
+
+                  {isLikelyDigital && (
+                    <div
+                      className="admin-digital-hint"
+                      style={{
+                        margin: "-4px 0 14px",
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        backgroundColor: "#fffbeb",
+                        border: "1px solid #fde68a",
+                        color: "#b45309",
+                        fontSize: "12.5px",
+                        lineHeight: "1.4"
+                      }}
+                    >
+                      {"This looks like a digital product but 'Is Digital' is not ticked. Stock and delivery rules will treat it as a physical book."}
+                    </div>
+                  )}
 
                   {isDigital && (
                     <div className="admin-digital-fields-box">
