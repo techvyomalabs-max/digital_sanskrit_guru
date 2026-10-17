@@ -45,15 +45,15 @@ function getCourierTrackingUrl(courierName, trackingId) {
   const name = String(courierName || "").trim().toLowerCase();
   const trId = String(trackingId).trim();
   if (name.includes("delhivery")) {
-    return `https://www.delhivery.com/track/package/${trId}`;
+    return `https://www.delhivery.com/track/package/${encodeURIComponent(trId)}`;
   } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
     return "https://www.indiapost.gov.in/";
   } else if (name.includes("dtdc")) {
-    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${trId}`;
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${encodeURIComponent(trId)}`;
   } else if (name.includes("professional") || name.includes("tpc")) {
     return "https://www.tpcindia.com/";
   } else if (name.includes("shiprocket")) {
-    return `https://www.shiprocket.in/shipment-tracking/${trId}`;
+    return `https://www.shiprocket.in/shipment-tracking/${encodeURIComponent(trId)}`;
   }
   return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
 }
@@ -1583,6 +1583,14 @@ function AdminOrders() {
                                                   }
                                                 >
                                                   Mark received…
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn cancel"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                                >
+                                                  Reject return…
                                                 </button>
                                               </div>
                                             )}
