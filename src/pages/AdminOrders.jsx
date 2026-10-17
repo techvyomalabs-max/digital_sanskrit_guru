@@ -1162,6 +1162,11 @@ function AdminOrders() {
                           <Link to={`/admin/orders/${order._id}`} className="order-code-link">
                             #{order._id.slice(-6).toUpperCase()}
                           </Link>
+                          {order.invoiceNumber ? (
+                            <small style={{ color: "var(--orders-muted, #64748b)", fontSize: "11px", fontWeight: 500 }}>
+                              {order.invoiceNumber}
+                            </small>
+                          ) : null}
                           <span>{formatOrderDate(order.createdAt)}</span>
                           {order.lastUpdatedAt ? (
                             <small style={{ display: "block", marginTop: "6px", color: "var(--admin-muted)" }}>

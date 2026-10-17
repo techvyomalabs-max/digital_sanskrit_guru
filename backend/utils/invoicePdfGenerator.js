@@ -156,7 +156,7 @@ function generateInvoicePdfBuffer(order, user, passedSeller = null) {
 
       // Right-aligned Invoice Title
       doc.fillColor("#0f172a").fontSize(14).font("Helvetica-Bold").text("TAX INVOICE", 400, 28, { align: "right", width: 155 });
-      doc.fillColor("#64748b").fontSize(8.5).font("Helvetica").text(`Invoice No: #${orderCode}`, 400, 44, { align: "right", width: 155 });
+      doc.fillColor("#64748b").fontSize(8.5).font("Helvetica").text(`Invoice No: ${order?.invoiceNumber || "#" + orderId.slice(-6).toUpperCase()}`, 400, 44, { align: "right", width: 155 });
       doc.text(`Date: ${createdAt}`, 400, 56, { align: "right", width: 155 });
 
       // Divider

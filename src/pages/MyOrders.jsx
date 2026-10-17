@@ -823,7 +823,7 @@ function MyOrders() {
 
                 <div className="order-head-cell my-order-id-wrap">
                   <span>ORDER #</span>
-                  <div className="order-id-inner-row">
+                  <div className="order-id-inner-row" style={{ flexWrap: "wrap", alignItems: "center" }}>
                     <strong>{order._id}</strong>
                     <button
                       type="button"
@@ -838,6 +838,18 @@ function MyOrders() {
                         <Copy size={12} />
                       )}
                     </button>
+                    {isPaid && order.invoiceNumber ? (
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "var(--site-text-soft, #64748b)",
+                          overflowWrap: "anywhere"
+                        }}
+                      >
+                        Invoice: {order.invoiceNumber}
+                      </span>
+                    ) : null}
                   </div>
                   {isWpOrder && (
                     <span
