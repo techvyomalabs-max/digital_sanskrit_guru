@@ -57,6 +57,8 @@ import "./AdminDashboard.css";
 const LOW_STOCK_THRESHOLD = 5;
 const NON_DISMISSIBLE_NOTIFICATION_IDS = [
   "return-requests",
+  "returns-received",
+  "returns-overdue",
   "cancel-refunds",
   "refund-processing",
   "unmatched-payments"
@@ -1103,18 +1105,53 @@ function AdminDashboard() {
 
   const notifications = useMemo(() => {
     const list = [];
-    const returnRequests = orders.filter((o) => {
-      if (o?.refundStatus === "Refunded") return false;
-      return Array.isArray(o?.items) && o.items.some((item) => {
-        const s = item?.returnRequest?.status;
-        return s === "Requested" || s === "Approved";
-      });
-    }).length;
-    if (returnRequests > 0) {
+    let returnRequestsCount = 0;
+    let returnsReceivedCount = 0;
+    let returnsOverdueCount = 0;
+    const nowMs = Date.now();
+
+    orders.forEach((o) => {
+      if (o?.refundStatus === "Refunded") return;
+      if (Array.isArray(o?.items)) {
+        o.items.forEach((item) => {
+          const s = item?.returnRequest?.status;
+          if (s === "Requested") {
+            returnRequestsCount++;
+          } else if (s === "Received") {
+            returnsReceivedCount++;
+          } else if (s === "Approved" && item?.returnRequest?.approvedAt) {
+            const ms = nowMs - new Date(item.returnRequest.approvedAt).getTime();
+            if (ms > 14 * 24 * 60 * 60 * 1000) {
+              returnsOverdueCount++;
+            }
+          }
+        });
+      }
+    });
+
+    if (returnRequestsCount > 0) {
       list.push({
         id: "return-requests",
         type: "alert",
-        text: `${returnRequests} return request(s) waiting for review.`,
+        text: `${returnRequestsCount} return request(s) waiting for review.`,
+        link: "/admin/orders?tab=returns"
+      });
+    }
+
+    if (returnsReceivedCount > 0) {
+      list.push({
+        id: "returns-received",
+        type: "alert",
+        text: `${returnsReceivedCount} returned item(s) received, awaiting refund.`,
+        link: "/admin/orders?tab=returns"
+      });
+    }
+
+    if (returnsOverdueCount > 0) {
+      list.push({
+        id: "returns-overdue",
+        type: "alert",
+        text: `${returnsOverdueCount} approved return(s) not received after 14 days.`,
         link: "/admin/orders?tab=returns"
       });
     }

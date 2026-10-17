@@ -37,7 +37,7 @@ const Icon = ({ name }) => {
 const BACKEND_STATUSES = ["Pending", "Shipped", "Delivered", "Completed", "Cancelled"];
 const DISPLAY_STATUSES = ["On Hold", ...BACKEND_STATUSES];
 const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
-const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Rejected", "Refunded"];
+const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Received", "Rejected", "Refunded"];
 const RETURN_FILTER_KEY = "Return Requests";
 
 function getCourierTrackingUrl(courierName, trackingId) {
@@ -45,15 +45,15 @@ function getCourierTrackingUrl(courierName, trackingId) {
   const name = String(courierName || "").trim().toLowerCase();
   const trId = String(trackingId).trim();
   if (name.includes("delhivery")) {
-    return `https://www.delhivery.com/track/package/${trId}`;
+    return `https://www.delhivery.com/track/package/${encodeURIComponent(trId)}`;
   } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
     return "https://www.indiapost.gov.in/";
   } else if (name.includes("dtdc")) {
-    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${trId}`;
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${encodeURIComponent(trId)}`;
   } else if (name.includes("professional") || name.includes("tpc")) {
     return "https://www.tpcindia.com/";
   } else if (name.includes("shiprocket")) {
-    return `https://www.shiprocket.in/shipment-tracking/${trId}`;
+    return `https://www.shiprocket.in/shipment-tracking/${encodeURIComponent(trId)}`;
   }
   return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
 }
@@ -125,6 +125,8 @@ function AdminOrders() {
     customPartner: "",
     trackingId: "",
     reason: "",
+    condition: "Good",
+    note: "",
     error: ""
   });
   const [refundModalState, setRefundModalState] = useState({
@@ -549,6 +551,36 @@ function AdminOrders() {
         setPageMessage("Return request rejected successfully.");
       } catch (err) {
         setPageMessage(err?.response?.data?.message || "Unable to update return request.");
+      } finally {
+        setUpdatingOrderId("");
+      }
+      return;
+    }
+
+    if (actionModal.type === "markReceived") {
+      const condition = actionModal.condition || "Good";
+      const note = String(actionModal.note || "").trim();
+      if (condition !== "Good" && note.length < 5) {
+        setActionModal((prev) => ({
+          ...prev,
+          error: "Please enter a note of at least 5 characters describing the condition."
+        }));
+        return;
+      }
+
+      const { orderId, itemId } = actionModal;
+      setActionModal((prev) => ({ ...prev, isOpen: false }));
+      setUpdatingOrderId(orderId);
+      try {
+        await axios.put(
+          `/api/orders/${orderId}/items/${itemId}/return-received`,
+          { condition, note },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        await loadOrders();
+        setPageMessage("Return item marked as received successfully.");
+      } catch (err) {
+        setPageMessage(err?.response?.data?.message || "Unable to mark item as received.");
       } finally {
         setUpdatingOrderId("");
       }
@@ -1444,13 +1476,34 @@ function AdminOrders() {
                                   {returnItems.map((item) => {
                                     const itemId = String(item?._id || item?.id || item?.product || "").trim();
                                     const returnStatus = getReturnStatus(item);
+                                    const isApproved = returnStatus === "Approved";
+                                    const isApprovedOverdue =
+                                      isApproved &&
+                                      item?.returnRequest?.approvedAt &&
+                                      Date.now() - new Date(item.returnRequest.approvedAt).getTime() > 14 * 24 * 60 * 60 * 1000;
+
                                     return (
                                       <div key={`${order._id}-${itemId}`} className="admin-return-item">
                                         <div className="admin-return-item-header">
                                           <strong className="admin-return-item-name">{item?.name || "Item"}</strong>
-                                          <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                                            {returnStatus}
-                                          </span>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                              {returnStatus}
+                                            </span>
+                                            {isApprovedOverdue && (
+                                              <span
+                                                className="admin-order-status"
+                                                style={{
+                                                  backgroundColor: "#fee2e2",
+                                                  color: "#b91c1c",
+                                                  borderColor: "#fca5a5",
+                                                  fontWeight: 700
+                                                }}
+                                              >
+                                                Overdue (14+ days)
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
                                         {item?.returnRequest?.reason ? (
                                           <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
@@ -1458,6 +1511,8 @@ function AdminOrders() {
                                         {item?.returnRequest?.adminReason ? (
                                           <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
                                         ) : null}
+
+                                        {/* Requested: Approve / Reject */}
                                         {canUpdateOrders && returnStatus === "Requested" ? (
                                           <div className="admin-return-actions">
                                             <button
@@ -1478,15 +1533,98 @@ function AdminOrders() {
                                             </button>
                                           </div>
                                         ) : null}
-                                        {canUpdateOrders && returnStatus === "Approved" ? (
-                                          <button
-                                            type="button"
-                                            className="status-action-btn"
-                                            disabled={updatingOrderId === order._id}
-                                            onClick={() => setRefundModalState({ isOpen: true, order, itemId })}
-                                          >
-                                            Refund…
-                                          </button>
+
+                                        {/* Approved: Awaiting return + customer courier/tracking + Mark received button */}
+                                        {returnStatus === "Approved" ? (
+                                          <div style={{ marginTop: "4px" }}>
+                                            <p className="admin-status-note" style={{ color: "#d97706", fontWeight: 600 }}>
+                                              ⏳ Awaiting return
+                                            </p>
+                                            {item?.returnRequest?.shipment?.courier && (
+                                              <p className="admin-status-note">
+                                                Courier: <strong>{item.returnRequest.shipment.courier}</strong>
+                                                {item.returnRequest.shipment.trackingNumber && (
+                                                  <>
+                                                    {" "}— Tracking:{" "}
+                                                    <a
+                                                      href={getCourierTrackingUrl(item.returnRequest.shipment.courier, item.returnRequest.shipment.trackingNumber)}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      style={{ textDecoration: "underline", color: "#2563eb" }}
+                                                    >
+                                                      {item.returnRequest.shipment.trackingNumber}
+                                                    </a>
+                                                  </>
+                                                )}
+                                              </p>
+                                            )}
+                                            {canUpdateOrders && (
+                                              <div className="admin-return-actions" style={{ marginTop: "6px" }}>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() =>
+                                                    setActionModal({
+                                                      isOpen: true,
+                                                      type: "markReceived",
+                                                      orderId: order._id,
+                                                      itemId,
+                                                      orderNumber: order.orderNumber || String(order._id).slice(-6),
+                                                      title: "Mark Return Item Received",
+                                                      courierPartner: "Delhivery",
+                                                      customPartner: "",
+                                                      trackingId: "",
+                                                      reason: "",
+                                                      condition: "Good",
+                                                      note: "",
+                                                      error: ""
+                                                    })
+                                                  }
+                                                >
+                                                  Mark received…
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn cancel"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                                >
+                                                  Reject return…
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : null}
+
+                                        {/* Received: Condition & note + Refund button + Reject return button */}
+                                        {returnStatus === "Received" ? (
+                                          <div style={{ marginTop: "4px" }}>
+                                            <p className="admin-status-note" style={{ color: "#166534" }}>
+                                              <strong>Condition:</strong> {item?.returnRequest?.condition || "Good"}
+                                              {item?.returnRequest?.conditionNote ? ` — Note: ${item.returnRequest.conditionNote}` : ""}
+                                            </p>
+                                            {canUpdateOrders && (
+                                              <div className="admin-return-actions" style={{ marginTop: "6px" }}>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => setRefundModalState({ isOpen: true, order, itemId })}
+                                                >
+                                                  Refund…
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn cancel"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                                >
+                                                  Reject return…
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
                                         ) : null}
                                       </div>
                                     );
@@ -1566,6 +1704,7 @@ function AdminOrders() {
                   {actionModal.type === "shipped" && "📦"}
                   {actionModal.type === "cancelled" && "❌"}
                   {actionModal.type === "rejectReturn" && "⚠️"}
+                  {actionModal.type === "markReceived" && "📥"}
                   {actionModal.title} {actionModal.orderNumber ? `#${actionModal.orderNumber}` : ""}
                 </h3>
                 <button
@@ -1690,6 +1829,52 @@ function AdminOrders() {
                       />
                     </div>
                   )}
+
+                  {actionModal.type === "markReceived" && (
+                    <>
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-received-condition">Item Condition *</label>
+                        <select
+                          id="modal-received-condition"
+                          value={actionModal.condition || "Good"}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              condition: e.target.value,
+                              error: ""
+                            }))
+                          }
+                        >
+                          <option value="Good">Good (Eligible for restock)</option>
+                          <option value="Damaged">Damaged (Not eligible for restock)</option>
+                          <option value="Incomplete">Incomplete (Not eligible for restock)</option>
+                        </select>
+                      </div>
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-received-note">
+                          Inspection Note {actionModal.condition !== "Good" ? "*" : "(Optional)"}
+                        </label>
+                        <textarea
+                          id="modal-received-note"
+                          rows={3}
+                          placeholder={
+                            actionModal.condition !== "Good"
+                              ? "Describe why the item is damaged or incomplete (min 5 chars)..."
+                              : "e.g. Returned in original condition and packaging"
+                          }
+                          value={actionModal.note || ""}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              note: e.target.value,
+                              error: ""
+                            }))
+                          }
+                          required={actionModal.condition !== "Good"}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="admin-action-modal-footer">
@@ -1703,12 +1888,13 @@ function AdminOrders() {
                   <button
                     type="submit"
                     className={`admin-action-modal-btn ${
-                      actionModal.type === "shipped" ? "primary" : "danger"
+                      actionModal.type === "shipped" || actionModal.type === "markReceived" ? "primary" : "danger"
                     }`}
                   >
                     {actionModal.type === "shipped" && "Confirm Dispatch"}
                     {actionModal.type === "cancelled" && "Confirm Cancel"}
                     {actionModal.type === "rejectReturn" && "Reject Request"}
+                    {actionModal.type === "markReceived" && "Confirm Received"}
                   </button>
                 </div>
               </form>

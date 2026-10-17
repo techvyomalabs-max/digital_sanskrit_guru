@@ -24,8 +24,16 @@ const {
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
   sendWelcomeCredentialsEmail,
-  sendGiftPassEmail
+  sendGiftPassEmail,
+  sendReturnStatusEmail
 } = require("../utils/email");
+const {
+  isPhysicalItem,
+  isReturnOverdue,
+  checkRefundReceipt,
+  restockableItems,
+  deriveOrderRefundStatus
+} = require("../utils/returnPolicy");
 const {
   sendPushToUser,
   broadcastPush,
@@ -1474,6 +1482,10 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
     return res.status(404).json({ message: "Order item not found" });
   }
 
+  if (!isPhysicalItem(item)) {
+    return res.status(400).json({ message: "Digital items cannot be returned." });
+  }
+
   if (!canRequestReturnForItem(order, item)) {
     return res.status(400).json({ message: "Returns are only available for delivered paid items within 7 days." });
   }
@@ -1484,7 +1496,7 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
     resolvedAt: null,
     reason: String(req.body?.reason || "").trim()
   };
-  order.refundStatus = "Pending";
+  order.refundStatus = deriveOrderRefundStatus(order);
 
   order.markModified("items");
   const updated = await order.save();
@@ -1597,6 +1609,28 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
         preQuote = null;
       }
 
+      const userDoc = await User.findById(req.user).select("isAdmin adminLevel").lean();
+      const isSuperAdmin = Boolean(userDoc?.isAdmin) && Number(userDoc?.adminLevel) === 1;
+      const waive = req.body?.waiveReceipt === true;
+      const waiveReason = req.body?.waiveReason;
+
+      const receiptCheck = checkRefundReceipt({
+        order,
+        itemIds,
+        isSuperAdmin,
+        waive,
+        waiveReason
+      });
+
+      if (!receiptCheck.ok) {
+        const blockedNames = (receiptCheck.blockedItems || []).map((it) => it?.name || "Item");
+        return res.status(400).json({
+          message: receiptCheck.message,
+          blockedItems: blockedNames
+        });
+      }
+      const isWaived = Boolean(receiptCheck.waived);
+
       const refundResult = await processGatewayRefund({
         orderId: req.params.id,
         refundAmount: req.body?.refundAmount,
@@ -1624,25 +1658,34 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
             }
             item.returnRequest.resolvedAt = new Date();
 
-            if (restock && !item.isDigital) {
-              refundedItems.push(item);
+            if (isWaived) {
+              item.returnRequest.receiptWaived = {
+                by: actor.email,
+                reason: String(waiveReason || "").trim(),
+                at: new Date()
+              };
             }
+
+            refundedItems.push(item);
           }
         });
 
-        if (restock && refundedItems.length > 0) {
-          if (order.stockReserved === true) {
-            const includeComponents =
-              order.stockComponentsReserved === true ||
-              refundResult.order.stockComponentsReserved === true;
-            const itemsToRestock = expandItemsForStock(refundedItems, {
-              includeComponents
-            });
-            if (itemsToRestock.length > 0) {
-              await incrementStock(itemsToRestock);
+        if (restock) {
+          const itemsToConsider = restockableItems(refundedItems);
+          if (itemsToConsider.length > 0) {
+            if (order.stockReserved === true) {
+              const includeComponents =
+                order.stockComponentsReserved === true ||
+                refundResult.order.stockComponentsReserved === true;
+              const itemsToRestock = expandItemsForStock(itemsToConsider, {
+                includeComponents
+              });
+              if (itemsToRestock.length > 0) {
+                await incrementStock(itemsToRestock);
+              }
+            } else {
+              console.log("[RefundRestock] Stock was already returned when the order was cancelled; no restock needed.");
             }
-          } else {
-            console.log("[RefundRestock] Stock was already returned when the order was cancelled; no restock needed.");
           }
         }
 
@@ -1684,7 +1727,8 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
           refundAmount: refundResult.refundAmount,
           razorpayRefundId: refundResult.razorpayRefundId,
           restocked: restock,
-          reason: reasonString
+          reason: reasonString,
+          ...(isWaived ? { receiptWaived: true, waiveReason: String(waiveReason || "").trim() } : {})
         }
       });
 
@@ -1766,8 +1810,27 @@ router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage(
 
   const previousReturnStatus = String(item?.returnRequest?.status || "Not Requested").trim();
 
-  if (String(item?.returnRequest?.status || "Not Requested").trim() === "Not Requested") {
+  if (previousReturnStatus === "Not Requested") {
     return res.status(400).json({ message: "This item does not have a return request." });
+  }
+
+  if (previousReturnStatus === "Refunded") {
+    return res.status(400).json({ message: "This item has already been refunded. Completed returns cannot be changed." });
+  }
+
+  let isAllowed = false;
+  if (previousReturnStatus === "Requested") {
+    isAllowed = returnStatus === "Approved" || returnStatus === "Rejected";
+  } else if (previousReturnStatus === "Approved") {
+    isAllowed = returnStatus === "Rejected";
+  } else if (previousReturnStatus === "Received") {
+    isAllowed = returnStatus === "Rejected";
+  }
+
+  if (!isAllowed) {
+    return res.status(400).json({
+      message: `Cannot transition return status from "${previousReturnStatus}" to "${returnStatus}".`
+    });
   }
 
   if (returnStatus === "Rejected" && !adminReason) {
@@ -1775,16 +1838,13 @@ router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage(
   }
 
   item.returnRequest.status = returnStatus;
-  item.returnRequest.resolvedAt = returnStatus === "Requested" ? null : new Date();
+  item.returnRequest.resolvedAt = new Date();
+  if (returnStatus === "Approved") {
+    item.returnRequest.approvedAt = new Date();
+  }
   item.returnRequest.adminReason = returnStatus === "Rejected" ? adminReason : String(item?.returnRequest?.adminReason || "").trim();
 
-  if (returnStatus === "Requested") {
-    order.refundStatus = "Pending";
-  } else if (returnStatus === "Approved") {
-    order.refundStatus = "Processing";
-  } else if (returnStatus === "Rejected") {
-    order.refundStatus = "Rejected";
-  }
+  order.refundStatus = deriveOrderRefundStatus(order);
 
   order.markModified("items");
   order.lastUpdatedByName = actor.name;
@@ -1806,8 +1866,141 @@ router.put("/:id/items/:itemId/return-status", protect, admin, requireAdminPage(
       itemId: String(req.params.itemId || ""),
       itemName: String(item?.name || "").trim(),
       previousReturnStatus,
-      nextReturnStatus: returnStatus
+      nextReturnStatus: returnStatus,
+      ...(returnStatus === "Rejected" ? { adminReason } : {})
     }
+  });
+
+  fireNotifications(async () => {
+    const populatedOrder = await Order.findById(order._id).populate("user", "name email").lean();
+    if (!populatedOrder?.user) return;
+    const settings = await StoreSettings.findOne().select("warehouseLocation").lean();
+    await sendReturnStatusEmail({
+      order: updated,
+      user: populatedOrder.user,
+      item,
+      kind: returnStatus === "Approved" ? "approved" : "rejected",
+      adminReason,
+      returnAddress: settings?.warehouseLocation
+    });
+  });
+
+  res.json(updated);
+});
+
+// NEW PUT /:id/items/:itemId/return-shipment (protect, owner only)
+router.put("/:id/items/:itemId/return-shipment", protect, async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const isOwner = String(order.user) === String(req.user);
+  if (!isOwner) {
+    return res.status(403).json({ message: "You can only update your own orders." });
+  }
+
+  const item = getOrderItemById(order, req.params.itemId);
+  if (!item) {
+    return res.status(404).json({ message: "Order item not found" });
+  }
+
+  if (item?.returnRequest?.status !== "Approved") {
+    return res.status(400).json({ message: "Tracking can only be added for approved return requests." });
+  }
+
+  const courier = String(req.body?.courier || "").trim();
+  const trackingNumber = String(req.body?.trackingNumber || "").trim();
+
+  if (courier.length < 2 || courier.length > 60) {
+    return res.status(400).json({ message: "Courier name must be between 2 and 60 characters." });
+  }
+  if (trackingNumber.length < 3 || trackingNumber.length > 60) {
+    return res.status(400).json({ message: "Tracking number must be between 3 and 60 characters." });
+  }
+
+  if (!item.returnRequest) {
+    item.returnRequest = {};
+  }
+  item.returnRequest.shipment = {
+    courier,
+    trackingNumber,
+    shippedAt: new Date()
+  };
+
+  order.markModified("items");
+  const updated = await order.save();
+
+  res.json(serializeOrderForOwner(updated, req.user));
+});
+
+// NEW PUT /:id/items/:itemId/return-received (protect, admin, requireAdminPage("orders"))
+router.put("/:id/items/:itemId/return-received", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  const actor = await getAdminActorSnapshot(req.user);
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const item = getOrderItemById(order, req.params.itemId);
+  if (!item) {
+    return res.status(404).json({ message: "Order item not found" });
+  }
+
+  if (item?.returnRequest?.status !== "Approved") {
+    return res.status(400).json({ message: "Only approved returns can be marked as received." });
+  }
+
+  const condition = String(req.body?.condition || "").trim();
+  const allowedConditions = new Set(["Good", "Damaged", "Incomplete"]);
+  if (!allowedConditions.has(condition)) {
+    return res.status(400).json({ message: "Condition must be 'Good', 'Damaged', or 'Incomplete'." });
+  }
+
+  const note = String(req.body?.note || "").trim();
+  if (condition !== "Good" && note.length < 5) {
+    return res.status(400).json({ message: "A note of at least 5 characters is required when condition is not Good." });
+  }
+
+  item.returnRequest.status = "Received";
+  item.returnRequest.receivedAt = new Date();
+  item.returnRequest.receivedBy = actor.email;
+  item.returnRequest.condition = condition;
+  item.returnRequest.conditionNote = note;
+
+  order.refundStatus = deriveOrderRefundStatus(order);
+
+  order.markModified("items");
+  order.lastUpdatedByName = actor.name;
+  order.lastUpdatedByEmail = actor.email;
+  order.lastUpdatedAt = new Date();
+  const updated = await order.save();
+
+  await logAdminAction({
+    req,
+    action: "order-return-received",
+    entityType: "order-item-return",
+    entityId: `${String(updated._id || "")}:${String(req.params.itemId || "")}`,
+    entityLabel: String(item?.name || req.params.itemId || "").trim(),
+    summary: `Marked return for item ${String(item?.name || "").trim() || "item"} as Received (${condition}) for order ${String(updated._id || "").slice(-6)}`,
+    details: {
+      orderId: String(updated._id || ""),
+      itemId: String(req.params.itemId || ""),
+      itemName: String(item?.name || "").trim(),
+      condition,
+      conditionNote: note
+    }
+  });
+
+  fireNotifications(async () => {
+    const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
+    if (!populatedOrder?.user) return;
+    await sendReturnStatusEmail({
+      order: updated,
+      user: populatedOrder.user,
+      item,
+      kind: "received"
+    });
   });
 
   res.json(updated);

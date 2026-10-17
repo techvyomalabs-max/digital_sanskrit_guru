@@ -446,6 +446,8 @@ function buildPublicSettingsPayload(settings) {
     gstPercent: normalized.gstPercent,
     deliveryCharge: normalized.deliveryCharge,
     warehouseLocation: normalized.warehouseLocation,
+    warehouseName: normalized.warehouseLocation?.name || "",
+    warehouseAddress: normalized.warehouseLocation?.address || "",
     distancePricing: normalized.distancePricing,
     internationalDelivery: normalized.internationalDelivery,
     pricingMarkets: normalized.pricingMarkets,

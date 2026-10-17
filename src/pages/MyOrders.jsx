@@ -275,8 +275,7 @@ function MyOrders() {
   const [selectedView, setSelectedView] = useState("All");
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ORDERS);
   const [activeTracking, setActiveTracking] = useState({});
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
+  const [_showReviewModal, setShowReviewModal] = useState(false);
   const [activeKindleGuideItem, setActiveKindleGuideItem] = useState(null);
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState("Ordered by mistake");
@@ -288,6 +287,80 @@ function MyOrders() {
   const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [buyingAgainItemId, setBuyingAgainItemId] = useState(null);
+  const [returnAddress, setReturnAddress] = useState("");
+  const [shipmentInputs, setShipmentInputs] = useState({});
+  const [editingShipmentItemIds, setEditingShipmentItemIds] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    axios
+      .get("/api/settings/public")
+      .then((res) => {
+        if (!isMounted) return;
+        const data = res.data;
+        const name = data?.warehouseName || data?.warehouseLocation?.name || data?.sellerDetails?.legalName || "";
+        const address = data?.warehouseAddress || data?.warehouseLocation?.address || data?.sellerDetails?.address || "";
+        const parts = [name, address].map((s) => String(s || "").trim()).filter(Boolean);
+        if (parts.length > 0) {
+          setReturnAddress(parts.join(", "));
+        }
+      })
+      .catch((err) => {
+        console.warn("[MyOrders] Could not fetch public settings for return address:", err.message);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSaveReturnShipment = async (orderId, itemId) => {
+    const form = shipmentInputs[itemId] || {};
+    const courier = String(form.courier || "").trim();
+    const trackingNumber = String(form.trackingNumber || "").trim();
+
+    if (courier.length < 2 || courier.length > 60) {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: "Courier name must be between 2 and 60 characters." }
+      }));
+      return;
+    }
+    if (trackingNumber.length < 3 || trackingNumber.length > 60) {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: "Tracking number must be between 3 and 60 characters." }
+      }));
+      return;
+    }
+
+    setShipmentInputs((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], isSaving: true, error: "" }
+    }));
+
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/items/${itemId}/return-shipment`,
+        { courier, trackingNumber },
+        getAuthHeaders()
+      );
+      await loadOrders();
+      showToast("Return shipment details saved!", "success");
+      setEditingShipmentItemIds((prev) => prev.filter((id) => id !== itemId));
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Failed to save return shipment.";
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: errMsg, isSaving: false }
+      }));
+      showToast(errMsg, "error");
+    } finally {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], isSaving: false }
+      }));
+    }
+  };
 
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
   const deferredSelectedView = useDeferredValue(selectedView);
@@ -797,14 +870,6 @@ function MyOrders() {
                       const itemId = String(item?._id || item?.id || item?.product || "").trim();
                       const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
                       const returnWindow = getReturnWindowInfo(order, item);
-                      const canRequestReturn =
-                        !isWpOrder &&
-                        status === "Delivered" &&
-                        isPaid &&
-                        Boolean(itemId) &&
-                        returnRequestStatus === "Not Requested" &&
-                        returnWindow.eligible;
-
                       const isItemDigital = Boolean(
                         item.isDigital ||
                           item.legacyAccess ||
@@ -816,6 +881,15 @@ function MyOrders() {
                           String(item.format || "").toLowerCase().includes("web") ||
                           String(item.format || "").toLowerCase().includes("flipbook")
                       );
+
+                      const canRequestReturn =
+                        !isWpOrder &&
+                        status === "Delivered" &&
+                        isPaid &&
+                        Boolean(itemId) &&
+                        returnRequestStatus === "Not Requested" &&
+                        returnWindow.eligible &&
+                        !isItemDigital;
 
                       return (
                         <div key={i} className="my-order-item">
@@ -880,22 +954,157 @@ function MyOrders() {
                                   </div>
                                 )}
 
-                              {status === "Delivered" && (
-                                <p className="my-order-item-return-note">
-                                  {returnRequestStatus === "Requested"
-                                    ? "Return requested. Our team will review it."
-                                    : returnRequestStatus === "Approved"
-                                    ? "Return approved. Refund is being processed."
-                                    : returnRequestStatus === "Rejected"
-                                    ? "Return request was rejected."
-                                    : returnRequestStatus === "Refunded"
-                                    ? "Returned and refunded."
-                                    : returnWindow.eligible
-                                    ? `Return available for ${returnWindow.daysLeft} more day${
-                                        returnWindow.daysLeft === 1 ? "" : "s"
-                                      }.`
-                                    : "7-day return window has closed."}
-                                </p>
+                              {status === "Delivered" && !isItemDigital && (
+                                <div className="my-order-item-return-note-block" style={{ marginTop: "6px" }}>
+                                  {returnRequestStatus === "Requested" && (
+                                    <p className="my-order-item-return-note">
+                                      Return requested. Our team will review it.
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Approved" && (
+                                    <div className="my-order-item-return-approved-block">
+                                      {item.returnRequest?.shipment?.courier && !editingShipmentItemIds.includes(itemId) ? (
+                                        <p className="my-order-item-return-note">
+                                          You posted it via <strong>{item.returnRequest.shipment.courier}</strong> ({item.returnRequest.shipment.trackingNumber}). We'll update you when it arrives.
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setShipmentInputs((prev) => ({
+                                                ...prev,
+                                                [itemId]: {
+                                                  courier: item.returnRequest.shipment.courier,
+                                                  trackingNumber: item.returnRequest.shipment.trackingNumber
+                                                }
+                                              }));
+                                              setEditingShipmentItemIds((prev) => [...prev, itemId]);
+                                            }}
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              color: "var(--site-accent, #2563eb)",
+                                              textDecoration: "underline",
+                                              fontSize: "12px",
+                                              cursor: "pointer",
+                                              marginLeft: "8px"
+                                            }}
+                                          >
+                                            Update tracking
+                                          </button>
+                                        </p>
+                                      ) : (
+                                        <>
+                                          <p className="my-order-item-return-note">
+                                            Return approved. Please post the item to: <strong>{returnAddress || "the address in your email"}</strong>, then add the courier and tracking number below.
+                                          </p>
+                                          <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+                                            <input
+                                              type="text"
+                                              placeholder="Courier (e.g. India Post, Delhivery)"
+                                              value={shipmentInputs[itemId]?.courier ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setShipmentInputs((prev) => ({
+                                                  ...prev,
+                                                  [itemId]: { ...prev[itemId], courier: val, error: "" }
+                                                }));
+                                              }}
+                                              style={{
+                                                padding: "6px 10px",
+                                                fontSize: "12.5px",
+                                                borderRadius: "6px",
+                                                border: "1px solid var(--site-border, #cbd5e1)",
+                                                background: "var(--site-surface, #fff)",
+                                                color: "var(--site-text, #0f172a)",
+                                                minWidth: "150px"
+                                              }}
+                                            />
+                                            <input
+                                              type="text"
+                                              placeholder="Tracking number"
+                                              value={shipmentInputs[itemId]?.trackingNumber ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setShipmentInputs((prev) => ({
+                                                  ...prev,
+                                                  [itemId]: { ...prev[itemId], trackingNumber: val, error: "" }
+                                                }));
+                                              }}
+                                              style={{
+                                                padding: "6px 10px",
+                                                fontSize: "12.5px",
+                                                borderRadius: "6px",
+                                                border: "1px solid var(--site-border, #cbd5e1)",
+                                                background: "var(--site-surface, #fff)",
+                                                color: "var(--site-text, #0f172a)",
+                                                minWidth: "150px"
+                                              }}
+                                            />
+                                            <button
+                                              type="button"
+                                              className="my-order-reorder-btn"
+                                              disabled={shipmentInputs[itemId]?.isSaving}
+                                              onClick={() => handleSaveReturnShipment(order._id, itemId)}
+                                              style={{ padding: "6px 14px", fontSize: "12px" }}
+                                            >
+                                              {shipmentInputs[itemId]?.isSaving ? "Saving..." : "Save"}
+                                            </button>
+                                            {editingShipmentItemIds.includes(itemId) && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setEditingShipmentItemIds((prev) => prev.filter((id) => id !== itemId))}
+                                                style={{
+                                                  background: "none",
+                                                  border: "none",
+                                                  color: "var(--site-text-soft, #64748b)",
+                                                  fontSize: "12px",
+                                                  cursor: "pointer"
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            )}
+                                            {shipmentInputs[itemId]?.error && (
+                                              <span style={{ color: "#dc2626", fontSize: "11.5px", width: "100%", display: "block" }}>
+                                                ⚠️ {shipmentInputs[itemId].error}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {returnRequestStatus === "Received" && (
+                                    <p className="my-order-item-return-note">
+                                      {item?.returnRequest?.condition === "Damaged" || item?.returnRequest?.condition === "Incomplete"
+                                        ? "We received your item and will contact you about the refund."
+                                        : "We received your item. Your refund is being processed."}
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Rejected" && (
+                                    <p className="my-order-item-return-note">
+                                      Return request was rejected.{item?.returnRequest?.adminReason ? ` Reason: ${item.returnRequest.adminReason}` : ""}
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Refunded" && (
+                                    <p className="my-order-item-return-note">
+                                      Returned and refunded.
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Not Requested" && (
+                                    <p className="my-order-item-return-note">
+                                      {returnWindow.eligible
+                                        ? `Return available for ${returnWindow.daysLeft} more day${
+                                            returnWindow.daysLeft === 1 ? "" : "s"
+                                          }.`
+                                        : "7-day return window has closed."}
+                                    </p>
+                                  )}
+                                </div>
                               )}
 
                               {/* Digital Reader Access Box */}

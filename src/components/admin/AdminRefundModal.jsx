@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { useDialog } from "../../hooks/useDialog";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function AdminRefundModal({
   order,
@@ -11,9 +12,14 @@ export default function AdminRefundModal({
   preselectedItemId = null
 }) {
   const { confirm } = useDialog();
+  const { user } = useAuth();
+  const isSuperAdmin = Number(user?.adminLevel) === 1;
+
   const [reason, setReason] = useState("customer_choice");
   const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [restock, setRestock] = useState(false);
+  const [waiveReceipt, setWaiveReceipt] = useState(false);
+  const [waiveReason, setWaiveReason] = useState("");
   const [quote, setQuote] = useState(null);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteError, setQuoteError] = useState("");
@@ -23,12 +29,36 @@ export default function AdminRefundModal({
 
   const items = useMemo(() => (Array.isArray(order?.items) ? order.items : []), [order?.items]);
 
+  const isOrderShippedOrDelivered = ["Shipped", "Delivered"].includes(String(order?.status || "").trim());
+
+  const selectedItemsList = useMemo(() => {
+    if (selectedItemIds.length === 0) return items;
+    return items.filter((it) => selectedItemIds.includes(String(it._id || it.id || it.product || "")));
+  }, [items, selectedItemIds]);
+
+  const unreceivedPhysicalItems = useMemo(() => {
+    if (!isOrderShippedOrDelivered) return [];
+    return selectedItemsList.filter((it) => !it.isDigital && it.returnRequest?.status !== "Received");
+  }, [isOrderShippedOrDelivered, selectedItemsList]);
+
+  const isReceiptBlocked = unreceivedPhysicalItems.length > 0;
+  const isReceiptWaived = isSuperAdmin && waiveReceipt && waiveReason.trim().length >= 10;
+  const isRefundBlockedByReceipt = isReceiptBlocked && !isReceiptWaived;
+
+  const hasGoodReceivedItem = useMemo(() => {
+    return selectedItemsList.some(
+      (it) => !it.isDigital && it.returnRequest?.status === "Received" && it.returnRequest?.condition === "Good"
+    );
+  }, [selectedItemsList]);
+
   // Initialize selected items and defaults on open
   useEffect(() => {
     if (!isOpen || !order) return;
 
     setReason("customer_choice");
     setRestock(false);
+    setWaiveReceipt(false);
+    setWaiveReason("");
     setSubmitError("");
     setQuoteError("");
 
@@ -125,8 +155,9 @@ export default function AdminRefundModal({
           refundAmount: numericAmount,
           reason,
           itemIds: selectedItemIds,
-          restock,
-          forceManual
+          restock: hasGoodReceivedItem && restock,
+          forceManual,
+          ...(isReceiptWaived ? { waiveReceipt: true, waiveReason: waiveReason.trim() } : {})
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -135,13 +166,17 @@ export default function AdminRefundModal({
       onClose();
     } catch (err) {
       const errMsg = err?.response?.data?.message || "Failed to process refund.";
+      const blockedNames = err?.response?.data?.blockedItems;
+      const displayErrMsg = Array.isArray(blockedNames) && blockedNames.length > 0
+        ? `${errMsg} (${blockedNames.join(", ")})`
+        : errMsg;
       const canForce = Boolean(err?.response?.data?.canForceManual);
       let shouldForce = false;
 
       if (canForce) {
         shouldForce = await confirm({
           title: "Mark as Refunded?",
-          message: `${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
+          message: `${displayErrMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
           tone: "danger",
           confirmText: "Mark Refunded"
         });
@@ -151,7 +186,7 @@ export default function AdminRefundModal({
         return handleRefundSubmit(null, true);
       }
 
-      setSubmitError(errMsg);
+      setSubmitError(displayErrMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -197,6 +232,91 @@ export default function AdminRefundModal({
             )}
             {quoteError && (
               <p className="admin-action-modal-error">⚠️ {quoteError}</p>
+            )}
+
+            {/* Receipt blocked notice & Super Admin waiver */}
+            {isReceiptBlocked && (
+              <div
+                style={{
+                  margin: "0 0 12px",
+                  padding: "10px 12px",
+                  background: "#fef2f2",
+                  border: "1px solid #fca5a5",
+                  borderRadius: "8px",
+                  color: "#991b1b",
+                  fontSize: "13px"
+                }}
+              >
+                <strong>⚠️ Not received yet: refund blocked</strong>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#b91c1c" }}>
+                  The following physical item(s) have not been marked as received yet:{" "}
+                  {unreceivedPhysicalItems.map((it) => it.name || "Item").join(", ")}.
+                </p>
+
+                {isSuperAdmin ? (
+                  <div style={{ marginTop: "10px", borderTop: "1px solid #fecaca", paddingTop: "8px" }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        color: "#991b1b",
+                        fontSize: "12.5px"
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={waiveReceipt}
+                        onChange={(e) => setWaiveReceipt(e.target.checked)}
+                        style={{ width: "auto" }}
+                      />
+                      <span>Refund without receiving the item</span>
+                    </label>
+
+                    {waiveReceipt && (
+                      <div style={{ marginTop: "8px" }}>
+                        <label
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            color: "#7f1d1d",
+                            display: "block",
+                            marginBottom: "4px"
+                          }}
+                        >
+                          Reason for waiving receipt * (min 10 characters)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={waiveReason}
+                          onChange={(e) => setWaiveReason(e.target.value)}
+                          placeholder="e.g. Authorized exception by supervisor or customer returned via alternate route"
+                          style={{
+                            width: "100%",
+                            padding: "6px 8px",
+                            borderRadius: "6px",
+                            border: "1px solid #fca5a5",
+                            fontSize: "12px",
+                            boxSizing: "border-box"
+                          }}
+                          required
+                        />
+                        {waiveReason.trim().length < 10 && (
+                          <span style={{ fontSize: "11px", color: "#dc2626" }}>
+                            {10 - waiveReason.trim().length} more character(s) required to waive receipt.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#7f1d1d" }}>
+                    Refund is blocked: physical items must be marked as received before processing a refund. Only Super Admins can waive this requirement.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Reason selector */}
@@ -277,15 +397,42 @@ export default function AdminRefundModal({
                             {it.isDigital ? " [Digital]" : ""}
                           </span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                          {returnStatus && returnStatus !== "Not Requested" && (
-                            <span style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "4px", background: "#e0e7ff", color: "#3730a3", fontWeight: 600 }}>
-                              {returnStatus}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px", flexShrink: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {returnStatus && returnStatus !== "Not Requested" && (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: returnStatus === "Received" ? "#dcfce7" : "#e0e7ff",
+                                  color: returnStatus === "Received" ? "#166534" : "#3730a3",
+                                  fontWeight: 600
+                                }}
+                              >
+                                {returnStatus}{it.returnRequest?.condition ? ` (${it.returnRequest.condition})` : ""}
+                              </span>
+                            )}
+                            <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                              ₹{(Number(it.price || 0) * Number(it.quantity || 1)).toFixed(2)}
+                            </span>
+                          </div>
+                          {it.returnRequest?.conditionNote && (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#64748b",
+                                fontStyle: "italic",
+                                maxWidth: "220px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap"
+                              }}
+                              title={it.returnRequest.conditionNote}
+                            >
+                              Note: {it.returnRequest.conditionNote}
                             </span>
                           )}
-                          <span style={{ fontWeight: 600, color: "#0f172a" }}>
-                            ₹{(Number(it.price || 0) * Number(it.quantity || 1)).toFixed(2)}
-                          </span>
                         </div>
                       </label>
                     );
@@ -296,15 +443,31 @@ export default function AdminRefundModal({
 
             {/* Restock checkbox */}
             <div className="admin-action-modal-field">
-              <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "normal", textTransform: "none", cursor: "pointer" }}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontWeight: "normal",
+                  textTransform: "none",
+                  cursor: hasGoodReceivedItem ? "pointer" : "not-allowed",
+                  opacity: hasGoodReceivedItem ? 1 : 0.65
+                }}
+              >
                 <input
                   type="checkbox"
-                  checked={restock}
+                  checked={hasGoodReceivedItem && restock}
+                  disabled={!hasGoodReceivedItem}
                   onChange={(e) => setRestock(e.target.checked)}
                   style={{ width: "auto" }}
                 />
-                <span>Add returned physical items back to stock</span>
+                <span>Add received items in Good condition back to stock</span>
               </label>
+              {!hasGoodReceivedItem && (
+                <span style={{ fontSize: "11.5px", color: "#64748b", marginLeft: "24px", display: "block", marginTop: "2px" }}>
+                  (No selected item was received in Good condition)
+                </span>
+              )}
             </div>
 
             {/* Calculation Breakdown & Quote */}
@@ -374,8 +537,8 @@ export default function AdminRefundModal({
             <button
               type="submit"
               className="admin-action-modal-btn primary"
-              disabled={isSubmitting || isLoadingQuote || !Number(refundAmount)}
-              style={{ background: "#16a34a" }}
+              disabled={isSubmitting || isLoadingQuote || !Number(refundAmount) || isRefundBlockedByReceipt}
+              style={{ background: isRefundBlockedByReceipt ? "#94a3b8" : "#16a34a" }}
             >
               {isSubmitting
                 ? "Processing..."
