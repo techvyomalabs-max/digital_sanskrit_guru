@@ -679,6 +679,116 @@ async function sendRefundStatusUpdate(order, user, refundStatus, options = {}) {
   });
 }
 
+async function sendReturnStatusEmail({ order, user, item, kind, adminReason, returnAddress }) {
+  try {
+    const to = String(user?.email || "").trim().toLowerCase();
+    if (!to) return;
+
+    const safeUserName = escapeHtml(String(user?.name || "Customer"));
+    const safeItemName = escapeHtml(String(item?.name || "Product"));
+    const safeOrderId = escapeHtml(String(order?._id || "").slice(-8).toUpperCase());
+
+    let subject = "";
+    let title = "";
+    let emoji = "";
+    let bodyContent = "";
+
+    if (kind === "approved") {
+      emoji = "📦";
+      title = "Return Request Approved";
+      subject = `${emoji} Return Approved: ${cleanSubject(item?.name || "Product")} — Order #${safeOrderId}`;
+
+      let addressText = "Our team will share the return address shortly";
+      if (returnAddress) {
+        const parts = [returnAddress.name, returnAddress.address]
+          .map((s) => String(s || "").trim())
+          .filter(Boolean);
+        if (parts.length > 0) {
+          addressText = parts.join(", ");
+        }
+      }
+      const safeAddress = escapeHtml(addressText);
+
+      bodyContent = `
+        <h2>${emoji} Return Request Approved</h2>
+        <p>Hi <strong>${safeUserName}</strong>,</p>
+        <p>Your return request for <strong>${safeItemName}</strong> on Order #${safeOrderId} has been approved.</p>
+        <div style="margin: 16px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+          <h4 style="margin: 0 0 6px; font-size: 14px; color: #1e293b;">Return Instructions:</h4>
+          <p style="margin: 0 0 10px; font-size: 13.5px; color: #475569; line-height: 1.5;">
+            Please post the item within <strong>14 days</strong> to the following return address:
+          </p>
+          <div style="background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 13.5px; color: #0f172a; line-height: 1.5;">
+            <strong>Return Address:</strong><br />
+            ${safeAddress}
+          </div>
+          <p style="margin: 10px 0 0; font-size: 13.5px; color: #475569; line-height: 1.5;">
+            Once shipped, please visit <strong>My Orders</strong> on our website and add your courier name and tracking number so we can track its arrival.
+          </p>
+        </div>
+        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">Go to My Orders</a>
+      `;
+    } else if (kind === "rejected") {
+      emoji = "⚠️";
+      title = "Return Request Not Approved";
+      subject = `${emoji} Return Request Update — Order #${safeOrderId}`;
+      const safeReason = escapeHtml(String(adminReason || "Item does not meet return eligibility criteria."));
+
+      bodyContent = `
+        <h2>${emoji} Return Request Update</h2>
+        <p>Hi <strong>${safeUserName}</strong>,</p>
+        <p>Your return request for <strong>${safeItemName}</strong> on Order #${safeOrderId} was not approved.</p>
+        <div style="margin: 16px 0; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; padding: 14px;">
+          <strong style="color: #991b1b; font-size: 13.5px;">Reason for rejection:</strong>
+          <p style="margin: 6px 0 0; color: #7f1d1d; font-size: 13.5px;">${safeReason}</p>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">If you believe this is an error or have questions, please feel free to contact our support team.</p>
+        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View Order</a>
+      `;
+    } else if (kind === "received") {
+      emoji = "📥";
+      title = "Return Item Received";
+      subject = `${emoji} Return Item Received: ${cleanSubject(item?.name || "Product")} — Order #${safeOrderId}`;
+      const condition = String(item?.returnRequest?.condition || "Good").trim();
+      const safeCondition = escapeHtml(condition);
+      const isGood = condition.toLowerCase() === "good";
+      const followUpMsg = isGood
+        ? "your refund will be processed shortly."
+        : "our team has noted the condition and will contact you about the refund.";
+
+      bodyContent = `
+        <h2>${emoji} Returned Item Received</h2>
+        <p>Hi <strong>${safeUserName}</strong>,</p>
+        <p>We have safely received your returned item: <strong>${safeItemName}</strong> for Order #${safeOrderId}.</p>
+        <div style="margin: 16px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+          <p style="margin: 0; font-size: 13.5px; color: #334155;">
+            <strong>Received Condition:</strong> <span style="font-weight: 600; color: ${isGood ? "#166534" : "#b45309"};">${safeCondition}</span>
+          </p>
+          <p style="margin: 8px 0 0; font-size: 13.5px; color: #475569;">
+            ${escapeHtml(followUpMsg)}
+          </p>
+        </div>
+        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
+      `;
+    } else {
+      return;
+    }
+
+    const html = htmlWrapper(title, bodyContent);
+
+    return await sendEmail({
+      to,
+      subject,
+      html,
+      type: "return-status",
+      orderId: String(order?._id || "")
+    });
+  } catch (err) {
+    console.error("[Email] Non-blocking sendReturnStatusEmail error:", err.message);
+  }
+}
+
+
 async function sendLowStockAdminAlert(products) {
   if (!ADMIN_EMAIL) return;
   const rows = products.map((p) =>
@@ -1020,5 +1130,6 @@ module.exports = {
   sendGiftPassEmail,
   sendBulkEnquiryEmail,
   sendWelcomeCredentialsEmail,
-  sendWishlistReminderEmail
+  sendWishlistReminderEmail,
+  sendReturnStatusEmail
 };

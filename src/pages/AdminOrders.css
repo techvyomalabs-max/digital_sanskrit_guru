@@ -818,6 +818,12 @@
   border-color: #bfdbfe;
 }
 
+.admin-order-status.status-return-received {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
 .admin-order-status.status-return-rejected {
   background: #fff1f2;
   color: var(--orders-red);
