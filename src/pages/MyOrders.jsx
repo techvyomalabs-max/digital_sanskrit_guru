@@ -1310,27 +1310,77 @@ function MyOrders() {
                       : "Invoice will be available once this order is paid and shipped."}
                   </p>
 
-                  {shouldShowRefundStatus && (
-                    <div className="my-order-refund-block">
-                      <p className="my-order-refund-note">
-                        <span>Refund:</span>{" "}
-                        <span className={`my-order-status status-refund-${refundStatus.toLowerCase()}`}>
-                          {refundStatus}
-                        </span>
-                      </p>
-                      <p className="my-order-refund-subnote">
-                        {refundStatus === "Pending"
-                          ? "Refund initiated. Processing in 3–5 business days."
-                          : refundStatus === "Processing"
-                          ? "Refund is currently being processed with the bank."
-                          : refundStatus === "Refunded"
-                          ? "Refund has been sent to your original payment source."
-                          : refundStatus === "Rejected"
-                          ? "Refund request could not be processed."
-                          : ""}
-                      </p>
-                    </div>
-                  )}
+                  {shouldShowRefundStatus && (() => {
+                    const activeReturnItems = items.filter(
+                      (item) =>
+                        item?.isDigital !== true &&
+                        item?.returnRequest?.status &&
+                        item.returnRequest.status !== "Refunded" &&
+                        item.returnRequest.status !== "Rejected"
+                    );
+
+                    let returnStage = null;
+                    if (activeReturnItems.some((item) => item.returnRequest.status === "Received")) {
+                      returnStage = "received";
+                    } else if (activeReturnItems.some((item) => item.returnRequest.status === "Approved")) {
+                      returnStage = "approved";
+                    } else if (activeReturnItems.some((item) => item.returnRequest.status === "Requested")) {
+                      returnStage = "requested";
+                    }
+
+                    const isReturnInFlight =
+                      returnStage !== null && (refundStatus === "Pending" || refundStatus === "Processing");
+
+                    let badgeText = refundStatus;
+                    let subnote = "";
+
+                    if (isReturnInFlight) {
+                      if (returnStage === "requested") {
+                        badgeText = "Under review";
+                        subnote =
+                          "Return requested. Our team will review it. Your refund starts after we receive the item.";
+                      } else if (returnStage === "approved") {
+                        badgeText = "Waiting for item";
+                        subnote =
+                          "Return approved. Your refund will be processed after we receive your item. Please post it and add the tracking number.";
+                      } else if (returnStage === "received") {
+                        badgeText = "Item received";
+                        const isDamagedOrIncomplete = activeReturnItems.some(
+                          (item) =>
+                            item.returnRequest?.status === "Received" &&
+                            (item.returnRequest?.condition === "Damaged" ||
+                              item.returnRequest?.condition === "Incomplete")
+                        );
+                        subnote = isDamagedOrIncomplete
+                          ? "We received your item and will contact you about the refund."
+                          : "We received your item. Your refund will be processed shortly.";
+                      }
+                    } else {
+                      if (refundStatus === "Pending") {
+                        subnote = "Refund initiated. Processing in 3–5 business days.";
+                      } else if (refundStatus === "Processing") {
+                        subnote = "Refund is currently being processed with the bank.";
+                      } else if (refundStatus === "Refunded") {
+                        subnote = "Refund has been sent to your original payment source.";
+                      } else if (refundStatus === "Partially Refunded") {
+                        subnote = "Part of your order has been refunded.";
+                      } else if (refundStatus === "Rejected") {
+                        subnote = "Refund request could not be processed.";
+                      }
+                    }
+
+                    return (
+                      <div className="my-order-refund-block">
+                        <p className="my-order-refund-note">
+                          <span>Refund:</span>{" "}
+                          <span className={`my-order-status status-refund-${refundStatus.toLowerCase()}`}>
+                            {badgeText}
+                          </span>
+                        </p>
+                        <p className="my-order-refund-subnote">{subnote}</p>
+                      </div>
+                    );
+                  })()}
 
                   {canContinuePayment && (
                     <button
