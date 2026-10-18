@@ -8,6 +8,7 @@ import { useToast } from "../hooks/useToast";
 import { useDialog } from "../hooks/useDialog";
 import { useWishlist } from "../hooks/useWishlist";
 import "./Product.css";
+import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
@@ -389,8 +390,16 @@ function Product() {
     setShowLightbox(false);
   }, [id]);
 
-  const [purchasedProducts, setPurchasedProducts] = useState([]);
   const [purchaseAsGift, setPurchaseAsGift] = useState(false);
+  const digitalOwnershipItems = useMemo(() => {
+    if (!product?._id) return [];
+    const isDigital = product.isDigital === true;
+    const isCombo =
+      product.productType === "bundle" ||
+      (Array.isArray(product.bundleItems) && product.bundleItems.length > 0);
+    return isDigital || isCombo ? [{ product: product._id, quantity: 1 }] : [];
+  }, [product]);
+  const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift);
   const [storeSettings, setStoreSettings] = useState(null);
 
   useEffect(() => {
@@ -484,34 +493,6 @@ function Product() {
     setBulkPhoneError("");
   };
 
-  useEffect(() => {
-    if (token) {
-      axios.get("/api/orders/my", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then((res) => {
-          const list = [];
-          if (Array.isArray(res.data)) {
-            res.data.forEach((order) => {
-              const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
-              if (!isPaid || !Array.isArray(order.items)) return;
-              order.items.forEach((item) => {
-                const isGiftItem = Boolean(order.isGift || item.giftCode);
-                if (isGiftItem && !order.isRedeemedGift) {
-                  return;
-                }
-                const pId = String(item.product || item._id || item.id || "").trim();
-                if (pId) {
-                  list.push(pId);
-                }
-              });
-            });
-          }
-          setPurchasedProducts(list);
-        })
-        .catch((err) => console.error("Error fetching my orders:", err));
-    }
-  }, [token]);
 
   const thumbnailColumnRef = useRef(null);
 
@@ -967,17 +948,9 @@ function Product() {
     String(product.name || "").toLowerCase().includes("kindle")
   );
 
-  const isWebVersion = product && (
-    product.isDigital &&
-    (String(product.digitalType || "").toLowerCase().includes("web") ||
-      String(product.name || "").toLowerCase().includes("web") ||
-      String(product.name || "").toLowerCase().includes("flipbook") ||
-      String(product.format || "").toLowerCase().includes("web") ||
-      String(product.format || "").toLowerCase().includes("flipbook"))
-  ) && !isKindleBook;
 
-  const alreadyPurchased = product && purchasedProducts.includes(String(product._id));
-  const hasPurchasedWebVersion = isWebVersion && alreadyPurchased;
+
+
 
   const activeMediaIndex = mediaItems.findIndex((item) => item.key === activeMedia?.key);
   const currentMediaNum = activeMediaIndex >= 0 ? activeMediaIndex + 1 : 1;
@@ -1293,20 +1266,57 @@ function Product() {
               </div>
             ) : (
               <>
-                {hasPurchasedWebVersion ? (
+                {digitalOwnership.blocked ? (
                   <div className="product-purchased-alert">
                     <p className="product-purchased-alert-title">
-                      <span>⚠️</span> You have already purchased this web version.
+                      <span>⚠️</span> {digitalOwnership.message || "You have already purchased this web version."}
                     </p>
-                    <label className="product-purchased-gift-label">
-                      <input
-                        type="checkbox"
-                        checked={purchaseAsGift}
-                        onChange={(e) => setPurchaseAsGift(e.target.checked)}
-                        className="product-purchased-checkbox"
-                      />
-                      🎁 Purchase as a gift for someone else
-                    </label>
+                    {digitalOwnership.giftAllowed && (
+                      <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
+                        Tick &quot;Purchase as a gift for someone else&quot; below to proceed.
+                      </p>
+                    )}
+                    {digitalOwnership.giftAllowed && (
+                      <label className="product-purchased-gift-label">
+                        <input
+                          type="checkbox"
+                          checked={purchaseAsGift}
+                          onChange={(e) => setPurchaseAsGift(e.target.checked)}
+                          className="product-purchased-checkbox"
+                        />
+                        🎁 Purchase as a gift for someone else
+                      </label>
+                    )}
+                  </div>
+                ) : digitalOwnership.notice ? (
+                  <div
+                    className="product-ownership-notice"
+                    style={{
+                      margin: "10px 0 16px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #93c5fd",
+                      backgroundColor: "#eff6ff",
+                      color: "#1e40af",
+                      fontSize: "13px",
+                      lineHeight: 1.4,
+                      textAlign: "left"
+                    }}
+                  >
+                    <p style={{ margin: 0, fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>ℹ️</span> {digitalOwnership.message}
+                    </p>
+                    {digitalOwnership.giftAllowed && (
+                      <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
+                        <input
+                          type="checkbox"
+                          checked={purchaseAsGift}
+                          onChange={(e) => setPurchaseAsGift(e.target.checked)}
+                          className="product-purchased-checkbox"
+                        />
+                        🎁 Purchase as a gift for someone else
+                      </label>
+                    )}
                   </div>
                 ) : null}
 
@@ -1379,7 +1389,7 @@ function Product() {
 
                 <button
                   className="add-cart-btn"
-                  disabled={product.stock === 0 || (hasPurchasedWebVersion && !purchaseAsGift) || isIntlPhysicalRestricted}
+                  disabled={product.stock === 0 || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={() => addToCart(product, qty)}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
@@ -1387,7 +1397,7 @@ function Product() {
                 </button>
                 <button
                   className="buy-now-btn"
-                  disabled={product.stock === 0 || (hasPurchasedWebVersion && !purchaseAsGift) || isIntlPhysicalRestricted}
+                  disabled={product.stock === 0 || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={handleBuyNow}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
