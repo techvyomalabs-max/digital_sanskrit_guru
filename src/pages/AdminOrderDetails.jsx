@@ -177,7 +177,22 @@ function AdminOrderDetails() {
         <div className="admin-order-details-head">
           <div>
             <p className="admin-order-details-kicker">Order details</p>
-            <h1>{order ? `Order #${String(order._id || "").slice(-6).toUpperCase()}` : "Order Details"}</h1>
+            <h1>
+              {order ? `Order #${String(order._id || "").slice(-6).toUpperCase()}` : "Order Details"}
+              {order?.invoiceNumber ? (
+                <span
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 500,
+                    color: "var(--admin-muted, #64748b)",
+                    marginLeft: "12px",
+                    verticalAlign: "middle"
+                  }}
+                >
+                  Invoice {order.invoiceNumber}
+                </span>
+              ) : null}
+            </h1>
             <p className="admin-order-details-subtitle">
               Review customer, payment, shipping, and item-level information in one place.
             </p>

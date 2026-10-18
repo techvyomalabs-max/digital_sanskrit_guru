@@ -315,7 +315,7 @@ export async function generateInvoicePdf(order, options = {}) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Invoice No: #${orderCode}`, marginX + 12, y + 18);
+  doc.text(`Invoice No: ${order.invoiceNumber || "#" + orderCode}`, marginX + 12, y + 18);
   doc.text(`Issued Date: ${createdAt}`, marginX + 12, y + 34);
   
   doc.text(`Place of Supply: ${customerState || "N/A"}`, 280, y + 18);
