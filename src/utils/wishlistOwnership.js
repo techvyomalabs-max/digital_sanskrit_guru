@@ -8,6 +8,7 @@
  * @param {Array} [params.storedList] - The wishlist items retrieved from localStorage
  * @returns {{ list: Array, owner: string|null, shouldClearStorage: boolean }}
  */
+// resolveInitialWishlist is shared by the wishlist and saved-for-later.
 export function resolveInitialWishlist({ hasToken, currentUserId, owner, storedList }) {
   const safeList = Array.isArray(storedList) ? storedList : [];
 

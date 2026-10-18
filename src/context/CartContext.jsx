@@ -3,6 +3,7 @@ import axios from "axios";
 import { useToast } from "../hooks/useToast";
 import { useAuth } from "../hooks/useAuth";
 import { isDigitalItem } from "../utils/deliveryPricing";
+import { resolveInitialWishlist } from "../utils/wishlistOwnership";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
@@ -105,9 +106,37 @@ const upsertSavedItem = (items, nextItem) => {
 
 export function CartProvider({ children }) {
   const { showToast } = useToast();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [cartItems, setCartItems] = useState(() => readGuestCart());
-  const [savedForLaterItems, setSavedForLaterItems] = useState(() => readSavedForLater());
+  const [savedForLaterItems, setSavedForLaterItems] = useState(() => {
+    const storedList = readSavedForLater();
+    let owner = null;
+    try {
+      owner = typeof window !== "undefined" ? window.localStorage.getItem("savedForLaterOwner") : null;
+    } catch {
+      owner = null;
+    }
+
+    const { list, shouldClearStorage } = resolveInitialWishlist({
+      hasToken: Boolean(token),
+      currentUserId: user && user._id,
+      owner,
+      storedList
+    });
+
+    if (shouldClearStorage) {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("savedForLaterItems", "[]");
+          window.localStorage.setItem("savedForLaterOwner", "guest");
+        }
+      } catch {
+        /* ignore storage error */
+      }
+    }
+
+    return list;
+  });
   const [isLoadingCart, setIsLoadingCart] = useState(() => Boolean(token));
   const [addedItem, setAddedItem] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -153,9 +182,32 @@ export function CartProvider({ children }) {
       setSavedForLaterItems([]);
       writeGuestCart([]);
       writeSavedForLater([]);
+      try {
+        window.localStorage.setItem("savedForLaterOwner", "guest");
+      } catch {
+        /* ignore storage error */
+      }
     }
     prevTokenRef.current = token;
   }, [token]);
+
+  useEffect(() => {
+    if (token && user && user._id) {
+      try {
+        window.localStorage.setItem("savedForLaterOwner", String(user._id));
+      } catch {
+        /* ignore storage error */
+      }
+    } else if (!token) {
+      try {
+        if (window.localStorage.getItem("savedForLaterOwner") === null) {
+          window.localStorage.setItem("savedForLaterOwner", "guest");
+        }
+      } catch {
+        /* ignore storage error */
+      }
+    }
+  }, [token, user]);
 
   useEffect(() => {
     if (token) return;
