@@ -18,7 +18,7 @@ async function getOwnedDigitalIdsForUser(userId) {
 
   const [orders, redeemedPasses] = await Promise.all([
     Order.find({ user: userObjectId, paymentStatus: "Paid" })
-      .select("status paymentStatus refundStatus isGift items")
+      .select("status paymentStatus refundStatus isGift items.product items.isDigital items.isGift items.giftCode items.returnRequest.status items.bundleItems.product items.bundleItems.isDigital")
       .lean(),
     GiftPass.find({ redeemedBy: userObjectId, isRedeemed: true, isRevoked: { $ne: true } })
       .select("product isRedeemed isRevoked")
