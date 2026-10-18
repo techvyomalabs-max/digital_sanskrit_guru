@@ -400,18 +400,21 @@ function Cart() {
 
     const cartSubtotal = roundMoney(totalItemBase);
     const gstAmount = roundMoney(totalItemGst);
-    const deliveryCharge = roundMoney(
-      convertCurrencyAmount(Number(deliveryDetails.deliveryCharge || 0), {
-        sourceCurrency: "INR",
-        currency: displayCurrency
-      })
-    );
+    const deliveryCharge =
+      cartItems.length === 0
+        ? 0
+        : roundMoney(
+            convertCurrencyAmount(Number(deliveryDetails.deliveryCharge || 0), {
+              sourceCurrency: "INR",
+              currency: displayCurrency
+            })
+          );
 
     return {
       subtotal: cartSubtotal,
       gstAmount,
       deliveryCharge,
-      grandTotal: roundMoney(cartSubtotal + gstAmount + deliveryCharge),
+      grandTotal: cartItems.length === 0 ? 0 : roundMoney(cartSubtotal + gstAmount + deliveryCharge),
       isInternational
     };
   }, [cartItems, charges.gstPercent, deliveryDetails.deliveryCharge, displayCurrency, selectedAddress?.country]);
@@ -667,7 +670,9 @@ function Cart() {
             <div className="cart-summary-row">
               <span className="summary-row-label">Delivery</span>
               <span className="summary-row-val">
-                {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                {cartItems.length === 0 ? (
+                  <span style={{ color: "var(--site-text-soft, #64748b)" }}>—</span>
+                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
                   <span className="delivery-free-badge">FREE (Instant Access)</span>
                 ) : totals.deliveryCharge === 0 ? (
                   <span className="delivery-free-badge">FREE</span>
@@ -677,13 +682,13 @@ function Cart() {
               </span>
             </div>
 
-            {deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
+            {cartItems.length > 0 && deliveryDetails.isDistanceBased && deliveryDetails.distanceKm !== null && (
               <div className="cart-summary-note">
                 Estimated warehouse distance: {deliveryDetails.distanceKm.toFixed(1)} km
               </div>
             )}
 
-            {deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
+            {cartItems.length > 0 && deliveryDetails.pricingMode === "international" && deliveryDetails.matchedCountry && (
               <div className="cart-summary-note">
                 International delivery applied for {deliveryDetails.matchedCountry}.
               </div>
