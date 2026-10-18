@@ -319,4 +319,157 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       }
     );
   });
+
+  describe("combo upgrade pricing integration in computeOrderTotals", () => {
+    const comboProduct = {
+      _id: "prod_combo_1",
+      name: "Sanskrit Master Combo",
+      price: 1500,
+      productType: "bundle",
+      isDigital: false,
+      bundleItems: [
+        {
+          price: 1000,
+          product: {
+            _id: "prod_phys_1",
+            name: "Printed Sanskrit Grammar Book",
+            price: 1000,
+            isDigital: false
+          }
+        },
+        {
+          price: 800,
+          product: {
+            _id: "prod_dig_1",
+            name: "Sanskrit Web Grammar Reader",
+            price: 800,
+            isDigital: true
+          }
+        }
+      ]
+    };
+
+    it("reduces combo price when user owns digital component; subtotal, GST, and total are consistent; upgradeCredit reported", async () => {
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboProduct]
+        })
+      }));
+
+      const ownedDigitalIds = new Set(["prod_dig_1"]);
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_1", quantity: 1 }],
+        shipping: { country: "India", state: "Karnataka" },
+        userId: "user_logged_in_1",
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      // Total value: 1800, owned: 800 -> credit: round(1500 * 800 / 1800) = 666.67
+      assert.equal(result.upgradeCredit, 666.67);
+      assert.deepEqual(result.upgradeCreditItems, [
+        {
+          name: "Sanskrit Master Combo",
+          ownedItems: ["Sanskrit Web Grammar Reader"],
+          credit: 666.67
+        }
+      ]);
+
+      const item = result.normalizedItems[0];
+      assert.equal(item.upgradeCreditPerUnit, 666.67);
+      assert.equal(item.upgradeCredit, 666.67);
+      assert.deepEqual(item.upgradeOwnedItems, ["Sanskrit Web Grammar Reader"]);
+      assert.equal(item.price, 833.33); // 1500 - 666.67
+
+      // Discount remains coupon-only (0 here)
+      assert.equal(result.discount, 0);
+
+      // Verify mathematical consistency: subtotal + gstAmount + deliveryCharge === total
+      const calculatedTotal = Math.round((result.subtotal + result.gstAmount + result.deliveryCharge) * 100) / 100;
+      assert.equal(result.total, calculatedTotal);
+    });
+
+    it("applies coupon on the reduced combo price; discount stays coupon-only", async () => {
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboProduct]
+        })
+      }));
+
+      mock.method(Coupon, "findOne", () => ({
+        lean: async () => ({
+          code: "SAVE10",
+          discountType: "percentage",
+          discountValue: 10
+        })
+      }));
+
+      const ownedDigitalIds = new Set(["prod_dig_1"]);
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_1", quantity: 1 }],
+        shipping: { country: "India", state: "Karnataka" },
+        couponCode: "SAVE10",
+        userId: "user_logged_in_1",
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      // Combo price was reduced to 833.33. 10% coupon on 833.33 -> 83.33
+      assert.equal(result.upgradeCredit, 666.67);
+      assert.equal(result.discount, 83.33);
+      assert.equal(result.appliedCouponCode, "SAVE10");
+
+      // Verify subtotal, GST, and total are mathematically consistent
+      const calculatedTotal = Math.round((result.subtotal + result.gstAmount + result.deliveryCharge) * 100) / 100;
+      assert.equal(result.total, calculatedTotal);
+    });
+
+    it("guest gets no credit even if ownedDigitalIds are provided", async () => {
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboProduct]
+        })
+      }));
+
+      const ownedDigitalIds = new Set(["prod_dig_1"]);
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_1", quantity: 1 }],
+        shipping: { country: "India", state: "Karnataka" },
+        userId: null, // Guest
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      assert.equal(result.upgradeCredit, 0);
+      assert.deepEqual(result.upgradeCreditItems, []);
+      const item = result.normalizedItems[0];
+      assert.equal(item.price, 1500);
+      assert.equal(item.upgradeCreditPerUnit, 0);
+      assert.equal(item.upgradeCredit, 0);
+    });
+
+    it("combo with owned digital component and userId present, but ownedDigitalIds passed as an EMPTY Set -> no credit (upgradeCredit 0, item price unchanged)", async () => {
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboProduct]
+        })
+      }));
+
+      const ownedDigitalIds = new Set();
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_1", quantity: 1 }],
+        shipping: { country: "India", state: "Karnataka" },
+        userId: "user_logged_in_1",
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      assert.equal(result.upgradeCredit, 0);
+      assert.deepEqual(result.upgradeCreditItems, []);
+      const item = result.normalizedItems[0];
+      assert.equal(item.price, 1500);
+      assert.equal(item.upgradeCreditPerUnit, 0);
+      assert.equal(item.upgradeCredit, 0);
+    });
+  });
 });

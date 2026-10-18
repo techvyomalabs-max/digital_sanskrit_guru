@@ -6,6 +6,7 @@ const { normalizeOrderItem } = require("./orderItems");
 const { getItemHsnSac } = require("./tax");
 const { validateCoupon } = require("./coupons");
 const { getSettlementCharge } = require("./paymentVerification");
+const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -35,7 +36,24 @@ function mergeDuplicateItems(items = []) {
   return [...map.values()];
 }
 
-async function computeOrderTotals({ items = [], shipping = {}, couponCode = "", userId = null, settings }) {
+async function computeOrderTotals({
+  items = [],
+  shipping = {},
+  couponCode = "",
+  userId = null,
+  settings,
+  ownedDigitalIds = null
+}) {
+  let ownedSet = null;
+  if (userId) {
+    if (ownedDigitalIds) {
+      ownedSet = ownedDigitalIds instanceof Set ? ownedDigitalIds : new Set(ownedDigitalIds);
+    } else {
+      const { getOwnedDigitalIdsForUser } = require("../services/digitalOwnershipService");
+      ownedSet = await getOwnedDigitalIdsForUser(userId);
+    }
+  }
+
   const country = String(shipping?.country || "India").trim();
   const lines = mergeDuplicateItems(items);
   if (!lines.length) {
@@ -85,6 +103,44 @@ async function computeOrderTotals({ items = [], shipping = {}, couponCode = "", 
 
   const gstPercent = isInternational ? 0 : Math.min(50, Math.max(0, Number(settings?.gstPercent || 0)));
   const deliveryCharge = roundMoney(toCcy(resolveDeliveryCharge(settings, shipping, normalizedItems)));
+
+  for (const it of normalizedItems) {
+    const p = byId.get(String(it.product));
+    const isCombo = Boolean(p && (p.productType === "bundle" || (Array.isArray(p.bundleItems) && p.bundleItems.length > 0)));
+
+    if (isCombo && ownedSet && ownedSet.size > 0) {
+      const components = buildComponentsFromProduct(p);
+      const creditResult = computeUpgradeCreditPerUnit({
+        unitPrice: it.price,
+        components,
+        ownedIds: ownedSet
+      });
+
+      if (creditResult.creditPerUnit > 0) {
+        it.upgradeCreditPerUnit = creditResult.creditPerUnit;
+        it.upgradeCredit = roundMoney(creditResult.creditPerUnit * it.quantity);
+        it.upgradeOwnedItems = creditResult.ownedItems;
+        it.price = roundMoney(it.price - creditResult.creditPerUnit);
+      } else {
+        it.upgradeCreditPerUnit = 0;
+        it.upgradeCredit = 0;
+        it.upgradeOwnedItems = [];
+      }
+    } else {
+      it.upgradeCreditPerUnit = 0;
+      it.upgradeCredit = 0;
+      it.upgradeOwnedItems = [];
+    }
+  }
+
+  const upgradeCredit = roundMoney(normalizedItems.reduce((acc, it) => acc + (it.upgradeCredit || 0), 0));
+  const upgradeCreditItems = normalizedItems
+    .filter((it) => (it.upgradeCredit || 0) > 0)
+    .map((it) => ({
+      name: it.name,
+      ownedItems: it.upgradeOwnedItems || [],
+      credit: it.upgradeCredit
+    }));
 
   const priced = normalizedItems.map((it) => ({
     it,
@@ -179,7 +235,9 @@ async function computeOrderTotals({ items = [], shipping = {}, couponCode = "", 
     totalInInr: roundMoney(total * fxRateToInr),
     taxDetails,
     chargeAmount: settlement.amount,
-    chargeCurrency: settlement.currency
+    chargeCurrency: settlement.currency,
+    upgradeCredit,
+    upgradeCreditItems
   };
 }
 

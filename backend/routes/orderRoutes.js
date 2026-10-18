@@ -307,7 +307,9 @@ router.post("/calculate-totals", protect, async (req, res) => {
       currency: totals.orderCurrency,
       couponCode: totals.appliedCouponCode,
       chargeAmount: totals.chargeAmount,
-      chargeCurrency: totals.chargeCurrency
+      chargeCurrency: totals.chargeCurrency,
+      upgradeCredit: totals.upgradeCredit || 0,
+      upgradeCreditItems: totals.upgradeCreditItems || []
     });
   } catch (error) {
     console.error("[Order] calculate-totals error:", error);
@@ -324,7 +326,36 @@ router.post("/digital-ownership", protect, orderRateLimiter, async (req, res) =>
       items: req.body?.items,
       isGift: req.body?.isGift === true
     });
-    return res.json(analysis);
+
+    let upgradeCredit = 0;
+    let upgradeCreditItems = [];
+    let currency = "INR";
+
+    if (analysis.notice === true && req.user) {
+      try {
+        const country = String(req.body?.shipping?.country || "India").trim();
+        const settings = (await StoreSettings.findOne().lean()) || {};
+        const totals = await computeOrderTotals({
+          items: req.body?.items,
+          shipping: { country },
+          userId: req.user,
+          settings
+        });
+        upgradeCredit = totals.upgradeCredit || 0;
+        upgradeCreditItems = totals.upgradeCreditItems || [];
+        currency = totals.orderCurrency || "INR";
+      } catch {
+        upgradeCredit = 0;
+        upgradeCreditItems = [];
+      }
+    }
+
+    return res.json({
+      ...analysis,
+      upgradeCredit,
+      upgradeCreditItems,
+      currency
+    });
   } catch (err) {
     console.error("[OrderRoutes] digital-ownership error:", err.message);
     return res.status(500).json({ message: "Failed to check digital ownership." });
@@ -2325,12 +2356,14 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 
     let calc;
     try {
+      // Guest direct-buy does not require login; pass an empty Set so upgrade credit is never granted
       calc = await computeOrderTotals({
         items: req.body?.items,
         shipping,
         couponCode: req.body?.couponCode,
         userId: targetUser ? targetUser._id : null,
-        settings
+        settings,
+        ownedDigitalIds: new Set()
       });
     } catch (err) {
       if (err instanceof OrderTotalsError) {
