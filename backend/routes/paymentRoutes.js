@@ -11,6 +11,7 @@ const { SETTLEMENT_CURRENCY, getSettlementCharge, verifyRazorpaySignature } = re
 const { computeOrderTotals } = require("../utils/orderTotals");
 const { expandItemsForStock } = require("../utils/stock");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
+const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
 
 const router = express.Router();
 const MAX_CHARGE = Number(process.env.PAYMENT_MAX_CHARGE_AMOUNT || 500000); // 5 Lakhs max
@@ -41,7 +42,7 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         return res.status(400).json({ message: "Invalid order id" });
       }
 
-      const o = await Order.findById(id).select("user items total currencyDisplay paymentStatus status").lean();
+      const o = await Order.findById(id).select("user items total currencyDisplay paymentStatus status isGift").lean();
       if (!o || String(o.user) !== String(req.user)) {
         return res.status(404).json({ message: "Order not found" });
       }
@@ -50,6 +51,21 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       }
       if (o.status === "Cancelled") {
         return res.status(400).json({ message: "Cancelled orders cannot be paid" });
+      }
+
+      if (!o.isGift) {
+        const ownershipCheck = await checkDigitalOwnership({
+          userId: req.user,
+          items: o.items,
+          isGift: false
+        });
+        if (ownershipCheck.blocked) {
+          return res.status(409).json({
+            code: "DIGITAL_ALREADY_OWNED",
+            message: ownershipCheck.message,
+            ownedItems: ownershipCheck.ownedItems
+          });
+        }
       }
 
       itemsToCheck = o.items;
@@ -66,6 +82,21 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       receipt = `ord_${id}`;
       notes.orderId = id;
     } else if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
+      if (req.user) {
+        const ownershipCheck = await checkDigitalOwnership({
+          userId: req.user,
+          items: req.body.items,
+          isGift: req.body.isGift === true
+        });
+        if (ownershipCheck.blocked) {
+          return res.status(409).json({
+            code: "DIGITAL_ALREADY_OWNED",
+            message: ownershipCheck.message,
+            ownedItems: ownershipCheck.ownedItems
+          });
+        }
+      }
+
       // Compute authoritative order totals from database products, delivery settings & coupons
       const settings = (await StoreSettings.findOne().lean()) || {};
       const totals = await computeOrderTotals({

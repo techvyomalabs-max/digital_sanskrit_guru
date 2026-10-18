@@ -7,6 +7,7 @@ const Product = require("../models/Product");
 const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
+const { getOwnedDigitalIdsForUser } = require("../services/digitalOwnershipService");
 
 const router = express.Router();
 
@@ -42,19 +43,8 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
     }
 
     // Check if the user already owns this product
-    const alreadyPurchased = await Order.findOne({
-      user: req.user,
-      paymentStatus: "Paid",
-      "items.product": existingPass.product
-    });
-
-    const alreadyRedeemed = await GiftPass.findOne({
-      redeemedBy: req.user,
-      product: existingPass.product,
-      isRedeemed: true
-    });
-
-    if (alreadyPurchased || alreadyRedeemed) {
+    const ownedDigitalIds = await getOwnedDigitalIdsForUser(req.user);
+    if (ownedDigitalIds.has(String(existingPass.product))) {
       return res.status(400).json({
         message: "You already own this web version in your library. Please share this Gift Pass code with someone else."
       });

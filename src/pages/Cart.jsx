@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
+import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
@@ -321,6 +322,7 @@ function Cart() {
   } = useCart();
   const [removingId, setRemovingId] = useState(null);
   const { selectedAddress } = useDeliveryLocation();
+  const digitalOwnership = useDigitalOwnership(cartItems, false);
   const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
   const displayCurrency =
     cartItems.length > 0
@@ -703,6 +705,60 @@ function Cart() {
             <span className="grand-total-val">{formatCurrencyExact(totals.grandTotal, displayCurrency)}</span>
           </div>
 
+          {digitalOwnership.notice && (
+            <div
+              className="cart-ownership-notice"
+              style={{
+                margin: "12px 0",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid #93c5fd",
+                backgroundColor: "#eff6ff",
+                color: "#1e40af",
+                fontSize: "13px",
+                lineHeight: "1.4"
+              }}
+            >
+              <span>ℹ️</span> {digitalOwnership.message}
+            </div>
+          )}
+
+          {digitalOwnership.blocked && digitalOwnership.giftAllowed && (
+            <div
+              className="cart-ownership-warning"
+              style={{
+                margin: "12px 0",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid #f59e0b",
+                backgroundColor: "#fffbeb",
+                color: "#b45309",
+                fontSize: "13px",
+                lineHeight: "1.4"
+              }}
+            >
+              <span>⚠️</span> You already own {digitalOwnership.ownedItems?.length > 0 ? digitalOwnership.ownedItems.join(", ") : "digital items in your cart"}. At checkout this can only be bought as a gift for someone else.
+            </div>
+          )}
+
+          {digitalOwnership.blocked && !digitalOwnership.giftAllowed && (
+            <div
+              className="cart-ownership-warning"
+              style={{
+                margin: "12px 0",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid #ef4444",
+                backgroundColor: "#fef2f2",
+                color: "#b91c1c",
+                fontSize: "13px",
+                lineHeight: "1.4"
+              }}
+            >
+              <span>⚠️</span> {digitalOwnership.message || "You already own items in this purchase."}
+            </div>
+          )}
+
           {isIntlPhysicalRestricted && (
             <div className="cart-intl-warning">
               <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to{" "}
@@ -719,6 +775,14 @@ function Cart() {
                 title="Remove physical items or change delivery location to proceed"
               >
                 Physical Items Restricted Internationally
+              </button>
+            ) : digitalOwnership.blocked && !digitalOwnership.giftAllowed ? (
+              <button
+                className="checkout-btn disabled"
+                disabled
+                title={digitalOwnership.message || "Checkout is disabled because already owned items cannot be purchased."}
+              >
+                Checkout Disabled - Already Owned
               </button>
             ) : (
               <Link to="/checkout" className="checkout-link">

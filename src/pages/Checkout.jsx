@@ -4,7 +4,8 @@ import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
-import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
+import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
+import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
@@ -157,59 +158,14 @@ function Checkout() {
   const selectedBillingAddress = addresses[selectedBillingIndex];
   const navigate = useNavigate();
 
-  const [purchasedProducts, setPurchasedProducts] = useState([]);
+  const noGift = useDigitalOwnership(cartItems, false);
+  const current = useDigitalOwnership(cartItems, isGift);
 
   useEffect(() => {
-    if (token) {
-      axios.get("/api/orders/my", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then((res) => {
-        const list = [];
-        if (Array.isArray(res.data)) {
-          res.data.forEach((order) => {
-            const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
-            if (!isPaid || !Array.isArray(order.items)) return;
-            order.items.forEach((item) => {
-              const isGiftItem = Boolean(order.isGift || item.giftCode);
-              if (isGiftItem && !order.isRedeemedGift) {
-                return;
-              }
-              const pId = String(item.product || item._id || item.id || "").trim();
-              if (pId) {
-                list.push(pId);
-              }
-            });
-          });
-        }
-        setPurchasedProducts(list);
-      })
-      .catch((err) => console.error("Error fetching my orders in Checkout:", err));
-    }
-  }, [token]);
-
-  const hasAlreadyPurchasedItemInCart = useMemo(() => {
-    return cartItems.some((item) => {
-      const isDigital = Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      );
-      const isWeb = isDigital && !String(item.name || "").toLowerCase().includes("kindle") && !item.kindleLink;
-      return isWeb && purchasedProducts.includes(String(item.id || item._id));
-    });
-  }, [cartItems, purchasedProducts]);
-
-  useEffect(() => {
-    if (hasAlreadyPurchasedItemInCart) {
+    if (noGift.blocked && noGift.giftAllowed) {
       setIsGift(true);
     }
-  }, [hasAlreadyPurchasedItemInCart]);
+  }, [noGift.blocked, noGift.giftAllowed]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const [charges, setCharges] = useState({
@@ -721,6 +677,11 @@ function Checkout() {
   };
 
   const processCheckout = async () => {
+    if ((noGift.blocked && !noGift.giftAllowed) || current.blocked) {
+      setCheckoutMessage(current.message || noGift.message || "You already own digital items in this order.");
+      return;
+    }
+
     const selected = validateCheckout();
     if (!selected) {
       return;
@@ -757,7 +718,8 @@ function Checkout() {
           })),
           shipping: selected,
           couponCode: couponCode || "",
-          honey_pot_field: honeyPot
+          honey_pot_field: honeyPot,
+          isGift: Boolean(isGift)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -864,7 +826,12 @@ function Checkout() {
       rzp.open();
     } catch (err) {
       setIsPaying(false);
-      setCheckoutMessage(err?.response?.data?.message || err?.message || "Unable to start payment.");
+      const serverMsg = err?.response?.data?.message;
+      if (err?.response?.status === 409 && err?.response?.data?.code === "DIGITAL_ALREADY_OWNED") {
+        setCheckoutMessage(serverMsg || "You already own digital items in this order.");
+        return;
+      }
+      setCheckoutMessage(serverMsg || err?.message || "Unable to start payment.");
     } finally {
       if (!checkoutOpened) {
         setIsPaying(false);
@@ -899,6 +866,50 @@ function Checkout() {
         <div className="checkout-feedback">
           <AlertCircle size={16} />
           <span>{checkoutMessage}</span>
+        </div>
+      )}
+
+      {noGift.notice && (
+        <div
+          className="checkout-ownership-notice"
+          style={{
+            margin: "0 0 16px",
+            padding: "12px 16px",
+            borderRadius: "8px",
+            border: "1px solid #93c5fd",
+            backgroundColor: "#eff6ff",
+            color: "#1e40af",
+            fontSize: "13px",
+            lineHeight: "1.4",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}
+        >
+          <span>ℹ️</span>
+          <span>{noGift.message}</span>
+        </div>
+      )}
+
+      {noGift.blocked && !noGift.giftAllowed && (
+        <div
+          className="checkout-ownership-blocked-banner"
+          style={{
+            margin: "0 0 16px",
+            padding: "12px 16px",
+            borderRadius: "8px",
+            border: "1px solid #ef4444",
+            backgroundColor: "#fef2f2",
+            color: "#b91c1c",
+            fontSize: "13px",
+            lineHeight: "1.4",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}
+        >
+          <AlertCircle size={18} style={{ flexShrink: 0 }} />
+          <span>{noGift.message || "You already own items in this order. Checkout is disabled."}</span>
         </div>
       )}
 
@@ -1304,20 +1315,23 @@ function Checkout() {
                   type="checkbox"
                   checked={isGift}
                   onChange={(e) => {
-                    if (!hasAlreadyPurchasedItemInCart) {
+                    if (!(noGift.blocked && noGift.giftAllowed)) {
                       setIsGift(e.target.checked);
                     }
                   }}
-                  disabled={hasAlreadyPurchasedItemInCart}
+                  disabled={noGift.blocked && noGift.giftAllowed}
                 />
                 <Gift size={18} className="checkout-gift-icon" />
                 <span>Purchase digital items in this order as Gift Passes</span>
               </label>
 
-              {hasAlreadyPurchasedItemInCart && (
+              {noGift.blocked && noGift.giftAllowed && (
                 <p className="checkout-gift-warning">
                   <AlertCircle size={14} />
-                  <span>You already own one or more digital web version products in this order. This order will automatically generate Gift Passes so you can share them.</span>
+                  <span>
+                    You already own {noGift.ownedItems?.length > 0 ? noGift.ownedItems.join(", ") : "digital items in this order"}.
+                    This order will automatically generate Gift Passes so you can share them.
+                  </span>
                 </p>
               )}
 
@@ -1616,11 +1630,35 @@ function Checkout() {
             </div>
           )}
 
+          {noGift.blocked && !noGift.giftAllowed && (
+            <div
+              className="checkout-ownership-blocked-summary"
+              style={{
+                margin: "12px 0",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid #ef4444",
+                backgroundColor: "#fef2f2",
+                color: "#b91c1c",
+                fontSize: "13px",
+                lineHeight: "1.4"
+              }}
+            >
+              <strong>⚠️ Purchase Blocked:</strong> {noGift.message || "You already own items in this order."}
+            </div>
+          )}
+
           <button
             type="button"
             className="pay-now-btn"
             onClick={processCheckout}
-            disabled={isPaying || isIntlPhysicalRestricted || isPriceLoading}
+            disabled={
+              isPaying ||
+              isIntlPhysicalRestricted ||
+              isPriceLoading ||
+              (noGift.blocked && !noGift.giftAllowed) ||
+              current.blocked
+            }
           >
             <Lock size={16} />
             <span>
@@ -1630,6 +1668,8 @@ function Checkout() {
                 ? "Calculating Total..."
                 : isIntlPhysicalRestricted
                 ? "Physical Products Restricted"
+                : (noGift.blocked && !noGift.giftAllowed) || current.blocked
+                ? "Purchase Blocked - Already Owned"
                 : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
             </span>
             <ArrowRight size={16} />

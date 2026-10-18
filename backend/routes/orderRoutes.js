@@ -58,6 +58,8 @@ const { processGatewayRefund, previewRefund, RefundError } = require("../utils/r
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
 const { buildInvoiceRow, buildCreditNoteRows, summarize } = require("../utils/financeLedger");
+const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
+const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
@@ -314,6 +316,21 @@ router.post("/calculate-totals", protect, async (req, res) => {
   }
 });
 
+// POST /api/orders/digital-ownership
+router.post("/digital-ownership", protect, orderRateLimiter, async (req, res) => {
+  try {
+    const analysis = await checkDigitalOwnership({
+      userId: req.user,
+      items: req.body?.items,
+      isGift: req.body?.isGift === true
+    });
+    return res.json(analysis);
+  } catch (err) {
+    console.error("[OrderRoutes] digital-ownership error:", err.message);
+    return res.status(500).json({ message: "Failed to check digital ownership." });
+  }
+});
+
 const ensureGiftPassesForOrder = async (order) => {
   if (!order || String(order.paymentStatus) !== "Paid") return order;
 
@@ -455,6 +472,21 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         return sendPaymentVerificationError(res, v, razorpayPaymentId);
       }
       verifiedPayment = v.payment;
+    }
+
+    if (!verifiedPayment && req.user) {
+      const ownershipCheck = await checkDigitalOwnership({
+        userId: req.user,
+        items: req.body?.items,
+        isGift: req.body?.isGift === true
+      });
+      if (ownershipCheck.blocked) {
+        return res.status(409).json({
+          code: "DIGITAL_ALREADY_OWNED",
+          message: ownershipCheck.message,
+          ownedItems: ownershipCheck.ownedItems
+        });
+      }
     }
 
     const requestedBilling = req.body.billing || req.body.shipping || {};
@@ -2336,6 +2368,32 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       verifiedPayment = v.payment;
     }
 
+    let directBuyUserId = req.user || null;
+    if (!directBuyUserId && req.headers?.authorization?.startsWith("Bearer ")) {
+      try {
+        const token = req.headers.authorization.slice(7).trim();
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+        if (decoded?.id) directBuyUserId = decoded.id;
+      } catch {
+        // ignore invalid token in public route
+      }
+    }
+
+    if (!verifiedPayment && directBuyUserId) {
+      const ownershipCheck = await checkDigitalOwnership({
+        userId: directBuyUserId,
+        items: req.body?.items,
+        isGift: req.body?.isGift === true
+      });
+      if (ownershipCheck.blocked) {
+        return res.status(409).json({
+          code: "DIGITAL_ALREADY_OWNED",
+          message: ownershipCheck.message,
+          ownedItems: ownershipCheck.ownedItems
+        });
+      }
+    }
+
     const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
 
     const isDigitalOnlyOrder = normalizedItems.length > 0 && normalizedItems.every((item) =>
@@ -2462,7 +2520,6 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 // ── GET /api/orders/digital-stream/:orderId/:itemId/ticket & stream ───────
 const dns = require("dns").promises;
 const net = require("net");
-const jwt = require("jsonwebtoken");
 const { Readable, pipeline } = require("stream");
 
 const ALLOWED_STREAM_HOSTS = String(process.env.DIGITAL_MEDIA_ALLOWED_HOSTS || "")

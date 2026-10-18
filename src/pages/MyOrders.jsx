@@ -628,7 +628,12 @@ function MyOrders() {
 
       rzp.open();
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || err?.message || "Unable to continue payment.");
+      const serverMsg = err?.response?.data?.message;
+      if (err?.response?.status === 409) {
+        setPageMessage(serverMsg || "You already own digital items in this order.");
+      } else {
+        setPageMessage(serverMsg || err?.message || "Unable to continue payment.");
+      }
     } finally {
       setRetryingOrderId("");
     }
