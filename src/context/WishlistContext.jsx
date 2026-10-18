@@ -3,6 +3,7 @@ import axios from "axios";
 import { WishlistContext } from "./WishlistStore";
 import { useToast } from "../hooks/useToast";
 import { useAuth } from "../hooks/useAuth";
+import { resolveInitialWishlist } from "../utils/wishlistOwnership";
 
 export function WishlistProvider({ children }) {
   const { showToast } = useToast();
@@ -13,12 +14,33 @@ export function WishlistProvider({ children }) {
   const [isLoadingWishlist, setIsLoadingWishlist] = useState(() => Boolean(token));
 
   const [wishlist, setWishlist] = useState(() => {
+    let parsedList = [];
+    let storedOwner = null;
     try {
       const saved = localStorage.getItem("wishlist");
-      return saved ? JSON.parse(saved) : [];
+      parsedList = saved ? JSON.parse(saved) : [];
+      storedOwner = localStorage.getItem("wishlistOwner");
     } catch {
-      return [];
+      parsedList = [];
     }
+
+    const { list, shouldClearStorage } = resolveInitialWishlist({
+      hasToken: Boolean(token),
+      currentUserId: user && user._id,
+      owner: storedOwner,
+      storedList: parsedList
+    });
+
+    if (shouldClearStorage) {
+      try {
+        localStorage.setItem("wishlist", "[]");
+        localStorage.setItem("wishlistOwner", "guest");
+      } catch {
+        /* ignore storage error */
+      }
+    }
+
+    return list;
   });
 
   // Persist to localStorage whenever wishlist changes
@@ -45,13 +67,32 @@ export function WishlistProvider({ children }) {
     prevTokenRef.current = token;
   }, [token]);
 
-  // Fix 3: Pre-update guest lists on mount if logged out and wishlistOwner is missing
+  // Check wishlist ownership on mount and clear if owned by another user or stale login
   useEffect(() => {
-    if (!token) {
+    let parsedList = [];
+    let storedOwner = null;
+    try {
+      const saved = localStorage.getItem("wishlist");
+      parsedList = saved ? JSON.parse(saved) : [];
+      storedOwner = localStorage.getItem("wishlistOwner");
+    } catch {
+      parsedList = [];
+    }
+
+    const { shouldClearStorage } = resolveInitialWishlist({
+      hasToken: Boolean(token),
+      currentUserId: user && user._id,
+      owner: storedOwner,
+      storedList: parsedList
+    });
+
+    if (shouldClearStorage) {
+      queueMicrotask(() => {
+        setWishlist([]);
+      });
       try {
-        if (localStorage.getItem("wishlistOwner") === null) {
-          localStorage.setItem("wishlistOwner", "guest");
-        }
+        localStorage.setItem("wishlist", "[]");
+        localStorage.setItem("wishlistOwner", "guest");
       } catch {
         /* ignore storage error */
       }
@@ -185,6 +226,12 @@ export function WishlistProvider({ children }) {
       } catch {
         /* ignore storage error */
       }
+    } else if (!isLoadingWishlist && user && user._id) {
+      try {
+        localStorage.setItem("wishlistOwner", String(user._id));
+      } catch {
+        /* ignore storage error */
+      }
     }
 
     showToast("Added to wishlist");
@@ -237,6 +284,14 @@ export function WishlistProvider({ children }) {
     if (!id) return;
 
     setWishlist((prev) => prev.filter((p) => p._id !== id));
+
+    if (!isLoadingWishlist && token && user && user._id) {
+      try {
+        localStorage.setItem("wishlistOwner", String(user._id));
+      } catch {
+        /* ignore storage error */
+      }
+    }
 
     // Sync removal to server
     if (token) {
