@@ -971,6 +971,18 @@ function MyOrders() {
                                   </div>
                                 )}
 
+                              {Number(item.upgradeCredit) > 0 && (
+                                <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--site-text-soft, #64748b)" }}>
+                                  Price includes {formatCurrencyExact(Number(item.upgradeCredit), item?.currency || order?.currencyDisplay?.currency || "INR")} taken off for items already owned: {
+                                    Array.isArray(item.upgradeOwnedDetails) && item.upgradeOwnedDetails.length > 0
+                                      ? item.upgradeOwnedDetails
+                                          .map((od) => `${od.name} (-${formatCurrencyExact(Number(od.amount || 0), item?.currency || order?.currencyDisplay?.currency || "INR")})`)
+                                          .join(", ")
+                                      : (Array.isArray(item.upgradeOwnedItems) ? item.upgradeOwnedItems.join(", ") : "")
+                                  }
+                                </p>
+                              )}
+
                               {status === "Delivered" && !isItemDigital && (
                                 <div className="my-order-item-return-note-block" style={{ marginTop: "6px" }}>
                                   {returnRequestStatus === "Requested" && (

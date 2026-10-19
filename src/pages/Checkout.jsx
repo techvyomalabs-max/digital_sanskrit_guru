@@ -86,6 +86,28 @@ const getItemHsnSac = (item) => {
   return isPrintedBook ? "4901" : "8523";
 };
 
+function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
+  if (!Array.isArray(upgradeCreditItems)) return [];
+  const map = new Map();
+  for (const item of upgradeCreditItems) {
+    if (Array.isArray(item?.ownedDetails) && item.ownedDetails.length > 0) {
+      for (const od of item.ownedDetails) {
+        const name = String(od?.name || "").trim();
+        if (!name) continue;
+        const prev = map.get(name) || 0;
+        map.set(name, Math.round((prev + (Number(od?.amount) || 0)) * 100) / 100);
+      }
+    } else if (Array.isArray(item?.ownedItems)) {
+      for (const nameStr of item.ownedItems) {
+        const name = String(nameStr || "").trim();
+        if (!name || map.has(name)) continue;
+        map.set(name, null);
+      }
+    }
+  }
+  return Array.from(map.entries()).map(([name, amount]) => ({ name, amount }));
+}
+
 const itemStyles = {
   itemWrapper: {
     padding: "8px 0",
@@ -450,7 +472,9 @@ function Checkout() {
     deliveryCharge: 0,
     discount: 0,
     total: 0,
-    currency: "INR"
+    currency: "INR",
+    upgradeCredit: 0,
+    upgradeCreditItems: []
   });
   const [isCalculatingTotals, setIsCalculatingTotals] = useState(cartItems.length > 0);
 
@@ -463,7 +487,9 @@ function Checkout() {
         deliveryCharge: 0,
         discount: 0,
         total: 0,
-        currency: displayCurrency
+        currency: displayCurrency,
+        upgradeCredit: 0,
+        upgradeCreditItems: []
       });
       setIsCalculatingTotals(false);
       return;
@@ -1568,6 +1594,36 @@ function Checkout() {
                 )}
               </span>
             </div>
+
+            {serverTotals.upgradeCredit > 0 && (
+              <div className="summary-item discount-row">
+                <div style={{ flex: 1, paddingRight: "12px" }}>
+                  <span>Taken off for items you already own</span>
+                  <div style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", marginTop: "2px" }}>
+                    (already included in the prices above)
+                  </div>
+                  {(() => {
+                    const mergedDetails = getMergedUpgradeOwnedDetails(serverTotals.upgradeCreditItems);
+                    if (!mergedDetails.length) return null;
+                    return (
+                      <div style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                        {mergedDetails.map((od) => (
+                          <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>{od.name}</span>
+                            <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, displayCurrency)}` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={60} height={18} />
+                ) : (
+                  <strong>-{formatCurrencyExact(serverTotals.upgradeCredit, displayCurrency)}</strong>
+                )}
+              </div>
+            )}
 
             {discount > 0 && (
               <div className="summary-item discount-row">

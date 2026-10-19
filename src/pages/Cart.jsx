@@ -78,6 +78,28 @@ const getItemHsnSac = (item) => {
   return isPrintedBook ? "4901" : "8523";
 };
 
+function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
+  if (!Array.isArray(upgradeCreditItems)) return [];
+  const map = new Map();
+  for (const item of upgradeCreditItems) {
+    if (Array.isArray(item?.ownedDetails) && item.ownedDetails.length > 0) {
+      for (const od of item.ownedDetails) {
+        const name = String(od?.name || "").trim();
+        if (!name) continue;
+        const prev = map.get(name) || 0;
+        map.set(name, Math.round((prev + (Number(od?.amount) || 0)) * 100) / 100);
+      }
+    } else if (Array.isArray(item?.ownedItems)) {
+      for (const nameStr of item.ownedItems) {
+        const name = String(nameStr || "").trim();
+        if (!name || map.has(name)) continue;
+        map.set(name, null);
+      }
+    }
+  }
+  return Array.from(map.entries()).map(([name, amount]) => ({ name, amount }));
+}
+
 function CartQtyInput({ item, currentQty, updateQty }) {
   const [localVal, setLocalVal] = useState(currentQty);
 
@@ -322,7 +344,7 @@ function Cart() {
   } = useCart();
   const [removingId, setRemovingId] = useState(null);
   const { selectedAddress } = useDeliveryLocation();
-  const digitalOwnership = useDigitalOwnership(cartItems, false);
+  const digitalOwnership = useDigitalOwnership(cartItems, false, selectedAddress?.country);
   const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
   const displayCurrency =
     cartItems.length > 0
@@ -695,14 +717,36 @@ function Cart() {
                 International delivery applied for {deliveryDetails.matchedCountry}.
               </div>
             )}
+
+            {digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency && (
+              <div className="cart-summary-row" style={{ color: "#16a34a" }}>
+                <span className="summary-row-label" style={{ color: "#16a34a" }}>
+                  Taken off for items you already own
+                </span>
+                <span className="summary-row-val" style={{ color: "#16a34a", fontWeight: "600" }}>
+                  -{formatCurrencyExact(digitalOwnership.upgradeCredit, displayCurrency)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="cart-summary-grand-total">
             <div className="grand-total-left">
-              <span className="grand-total-label">Order Total</span>
+              <span className="grand-total-label">
+                {digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency
+                  ? "Order Total (after deduction)"
+                  : "Order Total"}
+              </span>
               <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
             </div>
-            <span className="grand-total-val">{formatCurrencyExact(totals.grandTotal, displayCurrency)}</span>
+            <span className="grand-total-val">
+              {formatCurrencyExact(
+                digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency
+                  ? Math.max(0, roundMoney(totals.grandTotal - digitalOwnership.upgradeCredit))
+                  : totals.grandTotal,
+                displayCurrency
+              )}
+            </span>
           </div>
 
           {digitalOwnership.notice && (
@@ -719,7 +763,31 @@ function Cart() {
                 lineHeight: "1.4"
               }}
             >
-              <span>ℹ️</span> {digitalOwnership.message}
+              <div>
+                <span>ℹ️</span> {digitalOwnership.message}
+              </div>
+              {digitalOwnership.upgradeCredit > 0 && (() => {
+                const mergedDetails = getMergedUpgradeOwnedDetails(digitalOwnership.upgradeCreditItems);
+                return (
+                  <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px" }}>
+                    <div style={{ marginBottom: "6px", fontWeight: "500" }}>
+                      You already own these, so {formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)} is taken off the price automatically at checkout.
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                      {mergedDetails.map((od) => (
+                        <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>{od.name}</span>
+                          <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, digitalOwnership.currency)}` : ""}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700", marginTop: "4px", borderTop: "1px dashed #bfdbfe", paddingTop: "4px" }}>
+                        <span>Total taken off</span>
+                        <span>-{formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

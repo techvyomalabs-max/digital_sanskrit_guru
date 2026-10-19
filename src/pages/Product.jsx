@@ -62,6 +62,28 @@ const RATING_DESCRIPTIONS = {
   5: "5.0 - Outstanding / Excellent"
 };
 
+function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
+  if (!Array.isArray(upgradeCreditItems)) return [];
+  const map = new Map();
+  for (const item of upgradeCreditItems) {
+    if (Array.isArray(item?.ownedDetails) && item.ownedDetails.length > 0) {
+      for (const od of item.ownedDetails) {
+        const name = String(od?.name || "").trim();
+        if (!name) continue;
+        const prev = map.get(name) || 0;
+        map.set(name, Math.round((prev + (Number(od?.amount) || 0)) * 100) / 100);
+      }
+    } else if (Array.isArray(item?.ownedItems)) {
+      for (const nameStr of item.ownedItems) {
+        const name = String(nameStr || "").trim();
+        if (!name || map.has(name)) continue;
+        map.set(name, null);
+      }
+    }
+  }
+  return Array.from(map.entries()).map(([name, amount]) => ({ name, amount }));
+}
+
 function StarRating({ rating = 0, size = 16, className = "" }) {
   const num = Number(rating || 0);
   return (
@@ -399,7 +421,7 @@ function Product() {
       (Array.isArray(product.bundleItems) && product.bundleItems.length > 0);
     return isDigital || isCombo ? [{ product: product._id, quantity: 1 }] : [];
   }, [product]);
-  const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift);
+  const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift, selectedAddress?.country);
   const [storeSettings, setStoreSettings] = useState(null);
 
   useEffect(() => {
@@ -1306,6 +1328,28 @@ function Product() {
                     <p style={{ margin: 0, fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
                       <span>ℹ️</span> {digitalOwnership.message}
                     </p>
+                    {digitalOwnership.upgradeCredit > 0 && (() => {
+                      const mergedDetails = getMergedUpgradeOwnedDetails(digitalOwnership.upgradeCreditItems);
+                      return (
+                        <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px" }}>
+                          <p style={{ margin: "0 0 6px", fontWeight: "500" }}>
+                            You already own these, so {formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)} is taken off the price automatically at checkout.
+                          </p>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            {mergedDetails.map((od) => (
+                              <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span>{od.name}</span>
+                                <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, digitalOwnership.currency)}` : ""}</span>
+                              </div>
+                            ))}
+                            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700", marginTop: "4px", borderTop: "1px dashed #bfdbfe", paddingTop: "4px" }}>
+                              <span>Total taken off</span>
+                              <span>-{formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {digitalOwnership.giftAllowed && (
                       <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
                         <input
