@@ -8,7 +8,10 @@ const NEUTRAL_RESULT = {
   notice: false,
   ownedItems: [],
   message: "",
-  isChecking: false
+  isChecking: false,
+  upgradeCredit: 0,
+  upgradeCreditItems: [],
+  currency: "INR"
 };
 
 /**
@@ -16,9 +19,10 @@ const NEUTRAL_RESULT = {
  *
  * @param {Array} items [{ product: string, quantity: number }] or cartItems
  * @param {boolean} [isGift=false]
- * @returns {{ blocked: boolean, giftAllowed: boolean, notice: boolean, ownedItems: string[], message: string, isChecking: boolean }}
+ * @param {string} [country=""]
+ * @returns {{ blocked: boolean, giftAllowed: boolean, notice: boolean, ownedItems: string[], message: string, isChecking: boolean, upgradeCredit: number, upgradeCreditItems: Array, currency: string }}
  */
-export function useDigitalOwnership(items, isGift = false) {
+export function useDigitalOwnership(items, isGift = false, country = "") {
   const { token } = useAuth();
   const [result, setResult] = useState(NEUTRAL_RESULT);
   const [isChecking, setIsChecking] = useState(false);
@@ -37,6 +41,7 @@ export function useDigitalOwnership(items, isGift = false) {
   }, [items]);
 
   const normalizedIsGift = Boolean(isGift);
+  const normalizedCountry = String(country || "").trim();
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const activeReqIdRef = useRef(0);
@@ -65,9 +70,14 @@ export function useDigitalOwnership(items, isGift = false) {
           })
           .filter((it) => Boolean(it.product));
 
+        const payload = { items: payloadItems, isGift: normalizedIsGift };
+        if (normalizedCountry) {
+          payload.shipping = { country: normalizedCountry };
+        }
+
         const res = await axios.post(
           "/api/orders/digital-ownership",
-          { items: payloadItems, isGift: normalizedIsGift },
+          payload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
@@ -79,6 +89,9 @@ export function useDigitalOwnership(items, isGift = false) {
           notice: Boolean(res.data?.notice),
           ownedItems: Array.isArray(res.data?.ownedItems) ? res.data.ownedItems : [],
           message: String(res.data?.message || "").trim(),
+          upgradeCredit: Number(res.data?.upgradeCredit) || 0,
+          upgradeCreditItems: Array.isArray(res.data?.upgradeCreditItems) ? res.data.upgradeCreditItems : [],
+          currency: String(res.data?.currency || "INR").toUpperCase(),
           isChecking: false
         });
       } catch {
@@ -94,7 +107,7 @@ export function useDigitalOwnership(items, isGift = false) {
     return () => {
       clearTimeout(timer);
     };
-  }, [token, productIdsKey, normalizedIsGift]);
+  }, [token, productIdsKey, normalizedIsGift, normalizedCountry]);
 
   return {
     ...result,

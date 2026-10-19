@@ -433,6 +433,17 @@ function AdminOrderDetails() {
                               </ul>
                             </div>
                           )}
+                          {Number(item?.upgradeCredit) > 0 && (
+                            <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+                              Price includes {formatCurrencyExact(Number(item.upgradeCredit), item?.currency || order?.currencyDisplay?.currency || "INR")} taken off for items already owned: {
+                                Array.isArray(item.upgradeOwnedDetails) && item.upgradeOwnedDetails.length > 0
+                                  ? item.upgradeOwnedDetails
+                                      .map((od) => `${od.name} (-${formatCurrencyExact(Number(od.amount || 0), item?.currency || order?.currencyDisplay?.currency || "INR")})`)
+                                      .join(", ")
+                                  : (Array.isArray(item.upgradeOwnedItems) ? item.upgradeOwnedItems.join(", ") : "")
+                              }
+                            </p>
+                          )}
                           <p>Qty: {Math.max(1, Number(item?.quantity || 1))}</p>
                         </div>
                         <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
