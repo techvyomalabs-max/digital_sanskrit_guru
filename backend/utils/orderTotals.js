@@ -120,16 +120,23 @@ async function computeOrderTotals({
         it.upgradeCreditPerUnit = creditResult.creditPerUnit;
         it.upgradeCredit = roundMoney(creditResult.creditPerUnit * it.quantity);
         it.upgradeOwnedItems = creditResult.ownedItems;
+        it.upgradeOwnedDetails = (creditResult.ownedDetails || []).map((od) => ({
+          name: od.name,
+          amountPerUnit: od.creditPerUnit,
+          amount: roundMoney(od.creditPerUnit * it.quantity)
+        }));
         it.price = roundMoney(it.price - creditResult.creditPerUnit);
       } else {
         it.upgradeCreditPerUnit = 0;
         it.upgradeCredit = 0;
         it.upgradeOwnedItems = [];
+        it.upgradeOwnedDetails = [];
       }
     } else {
       it.upgradeCreditPerUnit = 0;
       it.upgradeCredit = 0;
       it.upgradeOwnedItems = [];
+      it.upgradeOwnedDetails = [];
     }
   }
 
@@ -139,7 +146,11 @@ async function computeOrderTotals({
     .map((it) => ({
       name: it.name,
       ownedItems: it.upgradeOwnedItems || [],
-      credit: it.upgradeCredit
+      credit: it.upgradeCredit,
+      ownedDetails: (it.upgradeOwnedDetails || []).map((od) => ({
+        name: od.name,
+        amount: od.amount
+      }))
     }));
 
   const priced = normalizedItems.map((it) => ({

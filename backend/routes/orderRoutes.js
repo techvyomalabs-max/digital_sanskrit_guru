@@ -350,8 +350,15 @@ router.post("/digital-ownership", protect, orderRateLimiter, async (req, res) =>
       }
     }
 
+    let message = analysis.message;
+    if (upgradeCredit > 0) {
+      const ownedList = Array.isArray(analysis?.ownedItems) ? analysis.ownedItems.join(", ") : "";
+      message = `You already own: ${ownedList}.`;
+    }
+
     return res.json({
       ...analysis,
+      message,
       upgradeCredit,
       upgradeCreditItems,
       currency

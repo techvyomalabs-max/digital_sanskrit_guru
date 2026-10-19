@@ -48,7 +48,7 @@ function buildComponentsFromProduct(productDoc) {
  * @param {number} params.unitPrice
  * @param {Array<{ productId: string, name: string, isDigital: boolean, value: number }>} params.components
  * @param {Set<string>|Array<string>} params.ownedIds
- * @returns {{ creditPerUnit: number, ownedItems: string[], ownedValue: number, totalValue: number }}
+ * @returns {{ creditPerUnit: number, ownedItems: string[], ownedDetails: Array<{ name: string, creditPerUnit: number }>, ownedValue: number, totalValue: number }}
  */
 function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
   const uPrice = Number(unitPrice) || 0;
@@ -56,6 +56,7 @@ function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
     return {
       creditPerUnit: 0,
       ownedItems: [],
+      ownedDetails: [],
       ownedValue: 0,
       totalValue: 0
     };
@@ -68,6 +69,7 @@ function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
   let totalValue = 0;
   let ownedValue = 0;
   const ownedItems = [];
+  const ownedComponents = [];
 
   for (const c of components) {
     const val = Number(c?.value) || 0;
@@ -81,6 +83,10 @@ function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
       if (c?.name) {
         ownedItems.push(c.name);
       }
+      ownedComponents.push({
+        name: c?.name || "",
+        value: val
+      });
     }
   }
 
@@ -91,6 +97,7 @@ function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
     return {
       creditPerUnit: 0,
       ownedItems: [],
+      ownedDetails: [],
       ownedValue,
       totalValue
     };
@@ -104,14 +111,39 @@ function computeUpgradeCreditPerUnit({ unitPrice, components = [], ownedIds }) {
     return {
       creditPerUnit: 0,
       ownedItems: [],
+      ownedDetails: [],
       ownedValue,
       totalValue
     };
   }
 
+  let ownedDetails = ownedComponents.map((c) => ({
+    name: c.name,
+    creditPerUnit: roundMoney((uPrice * c.value) / totalValue)
+  }));
+
+  if (creditPerUnit < rawCredit && rawCredit > 0) {
+    ownedDetails = ownedDetails.map((od) => ({
+      name: od.name,
+      creditPerUnit: roundMoney((od.creditPerUnit * creditPerUnit) / rawCredit)
+    }));
+  }
+
+  if (ownedDetails.length > 0) {
+    const sumShares = roundMoney(
+      ownedDetails.reduce((sum, d) => sum + d.creditPerUnit, 0)
+    );
+    const diff = roundMoney(creditPerUnit - sumShares);
+    const lastIndex = ownedDetails.length - 1;
+    ownedDetails[lastIndex].creditPerUnit = roundMoney(
+      ownedDetails[lastIndex].creditPerUnit + diff
+    );
+  }
+
   return {
     creditPerUnit,
     ownedItems,
+    ownedDetails,
     ownedValue,
     totalValue
   };

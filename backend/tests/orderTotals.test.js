@@ -4,6 +4,7 @@ const Product = require("../models/Product");
 const Coupon = require("../models/Coupon");
 const User = require("../models/User");
 const { computeOrderTotals, OrderTotalsError } = require("../utils/orderTotals");
+const { roundMoney } = require("../utils/upgradePricing");
 
 describe("orderTotals utility (computeOrderTotals with mocks)", () => {
   afterEach(() => {
@@ -371,7 +372,13 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
         {
           name: "Sanskrit Master Combo",
           ownedItems: ["Sanskrit Web Grammar Reader"],
-          credit: 666.67
+          credit: 666.67,
+          ownedDetails: [
+            {
+              name: "Sanskrit Web Grammar Reader",
+              amount: 666.67
+            }
+          ]
         }
       ]);
 
@@ -379,6 +386,13 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       assert.equal(item.upgradeCreditPerUnit, 666.67);
       assert.equal(item.upgradeCredit, 666.67);
       assert.deepEqual(item.upgradeOwnedItems, ["Sanskrit Web Grammar Reader"]);
+      assert.deepEqual(item.upgradeOwnedDetails, [
+        {
+          name: "Sanskrit Web Grammar Reader",
+          amountPerUnit: 666.67,
+          amount: 666.67
+        }
+      ]);
       assert.equal(item.price, 833.33); // 1500 - 666.67
 
       // Discount remains coupon-only (0 here)
@@ -470,6 +484,103 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       assert.equal(item.price, 1500);
       assert.equal(item.upgradeCreditPerUnit, 0);
       assert.equal(item.upgradeCredit, 0);
+    });
+
+    it("several owned parts and quantity 2: shares and line amounts add up exactly to credit, names are present, old fields unchanged", async () => {
+      const multiPartCombo = {
+        _id: "prod_combo_multi",
+        name: "Sanskrit Mega Bundle",
+        productType: "bundle",
+        price: 2400,
+        isDigital: false,
+        bundleItems: [
+          {
+            price: 1000,
+            product: {
+              _id: "prod_phys_multi",
+              name: "Hardcover Lexicon",
+              price: 1000,
+              isDigital: false
+            }
+          },
+          {
+            price: 600,
+            product: {
+              _id: "prod_dig_m1",
+              name: "Digital Reader App",
+              price: 600,
+              isDigital: true
+            }
+          },
+          {
+            price: 400,
+            product: {
+              _id: "prod_dig_m2",
+              name: "Chanting Audio Tracks",
+              price: 400,
+              isDigital: true
+            }
+          }
+        ]
+      };
+
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [multiPartCombo]
+        })
+      }));
+
+      const ownedDigitalIds = new Set(["prod_dig_m1", "prod_dig_m2"]);
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_multi", quantity: 2 }],
+        shipping: { country: "India", state: "Karnataka" },
+        userId: "user_logged_in_1",
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      // Old fields unchanged
+      assert.equal(result.upgradeCredit, 2400);
+      assert.equal(result.upgradeCreditItems.length, 1);
+      const creditItem = result.upgradeCreditItems[0];
+      assert.equal(creditItem.name, "Sanskrit Mega Bundle");
+      assert.deepEqual(creditItem.ownedItems, ["Digital Reader App", "Chanting Audio Tracks"]);
+      assert.equal(creditItem.credit, 2400);
+
+      // Names present in ownedDetails and amounts add up exactly to credit
+      assert.deepEqual(
+        creditItem.ownedDetails.map((d) => d.name),
+        ["Digital Reader App", "Chanting Audio Tracks"]
+      );
+      assert.deepEqual(creditItem.ownedDetails, [
+        { name: "Digital Reader App", amount: 1440 },
+        { name: "Chanting Audio Tracks", amount: 960 }
+      ]);
+      const sumCreditItemAmounts = roundMoney(
+        creditItem.ownedDetails.reduce((sum, d) => sum + d.amount, 0)
+      );
+      assert.equal(sumCreditItemAmounts, creditItem.credit);
+
+      // Item level assertions
+      const item = result.normalizedItems[0];
+      assert.equal(item.upgradeCreditPerUnit, 1200);
+      assert.equal(item.upgradeCredit, 2400);
+      assert.deepEqual(item.upgradeOwnedItems, ["Digital Reader App", "Chanting Audio Tracks"]);
+      assert.deepEqual(item.upgradeOwnedDetails, [
+        { name: "Digital Reader App", amountPerUnit: 720, amount: 1440 },
+        { name: "Chanting Audio Tracks", amountPerUnit: 480, amount: 960 }
+      ]);
+      assert.equal(item.price, 1200); // 2400 - 1200
+
+      const sumItemAmounts = roundMoney(
+        item.upgradeOwnedDetails.reduce((sum, d) => sum + d.amount, 0)
+      );
+      assert.equal(sumItemAmounts, item.upgradeCredit);
+
+      const sumItemShares = roundMoney(
+        item.upgradeOwnedDetails.reduce((sum, d) => sum + d.amountPerUnit, 0)
+      );
+      assert.equal(sumItemShares, item.upgradeCreditPerUnit);
     });
   });
 });
