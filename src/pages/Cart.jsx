@@ -8,6 +8,7 @@ import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
+import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import {
@@ -522,7 +523,11 @@ function Cart() {
                             </span>
                             <span className={`cart-stock-status ${isDigital ? "digital" : "in-stock"}`}>
                               <CheckCircle2 size={12} />
-                              {isDigital ? "Instant Digital Access" : "In Stock"}
+                              {isDigital
+                                ? isExternalDelivery(item)
+                                  ? "Digital item, link in My Library"
+                                  : "Instant Digital Access"
+                                : "In Stock"}
                             </span>
                           </div>
 
@@ -697,7 +702,9 @@ function Cart() {
                 {cartItems.length === 0 ? (
                   <span style={{ color: "var(--site-text-soft, #64748b)" }}>—</span>
                 ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-                  <span className="delivery-free-badge">FREE (Instant Access)</span>
+                  <span className="delivery-free-badge">
+                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
+                  </span>
                 ) : totals.deliveryCharge === 0 ? (
                   <span className="delivery-free-badge">FREE</span>
                 ) : (

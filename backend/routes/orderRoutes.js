@@ -380,6 +380,7 @@ const ensureGiftPassesForOrder = async (order) => {
     const isDigital = Boolean(
       item.isDigital ||
       item.webReaderLink ||
+      item.externalAccessLink ||
       item.kindleLink ||
       String(item.name || "").toLowerCase().includes("flipbook") ||
       String(item.name || "").toLowerCase().includes("web") ||
@@ -644,6 +645,7 @@ const autoCompletePaidDigitalOrders = async (orders) => {
       Boolean(
         item.isDigital ||
         item.webReaderLink ||
+        item.externalAccessLink ||
         item.kindleLink ||
         String(item.name || "").toLowerCase().includes("web") ||
         String(item.name || "").toLowerCase().includes("kindle") ||
@@ -1286,6 +1288,7 @@ router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req
         Boolean(
           item.isDigital ||
           item.webReaderLink ||
+          item.externalAccessLink ||
           item.kindleLink ||
           String(item.name || "").toLowerCase().includes("web") ||
           String(item.name || "").toLowerCase().includes("kindle") ||
@@ -1459,6 +1462,7 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       Boolean(
         item.isDigital ||
         item.webReaderLink ||
+        item.externalAccessLink ||
         item.kindleLink ||
         String(item.name || "").toLowerCase().includes("web") ||
         String(item.name || "").toLowerCase().includes("kindle") ||
@@ -2189,7 +2193,7 @@ router.get("/my", protect, async (req, res) => {
 
     if (queryConditions.length > 0) {
       const products = await Product.find({ $or: queryConditions })
-        .select("name isDigital digitalType webReaderLink kindleLink kindleAsin digitalInstructions")
+        .select("name isDigital digitalType digitalDelivery externalAccessLink externalAccessLabel webReaderLink kindleLink kindleAsin digitalInstructions")
         .lean();
 
       const productMapById = new Map();
@@ -2206,8 +2210,13 @@ router.get("/my", protect, async (req, res) => {
             const pId = String(item.product || item._id || item.id || "").trim();
             const pName = String(item.name || "").trim().toLowerCase();
             const prod = productMapById.get(pId) || productMapByName.get(pName);
+            item.digitalDelivery = item.digitalDelivery || "onsite";
             if (prod) {
               if (prod.isDigital !== undefined) item.isDigital = prod.isDigital;
+              if (item.digitalDelivery === "external") {
+                if (prod.externalAccessLink) item.externalAccessLink = prod.externalAccessLink;
+                if (prod.externalAccessLabel) item.externalAccessLabel = prod.externalAccessLabel;
+              }
               if (prod.webReaderLink) item.webReaderLink = prod.webReaderLink;
               if (prod.kindleLink) item.kindleLink = prod.kindleLink;
               if (prod.kindleAsin) item.kindleAsin = prod.kindleAsin;
@@ -2247,6 +2256,8 @@ router.get("/my", protect, async (req, res) => {
     const cleanWpItem = (it) => {
       if (!it || typeof it !== "object") return it;
       delete it.webReaderLink;
+      delete it.externalAccessLink;
+      delete it.externalAccessLabel;
       delete it.kindleLink;
       delete it.kindleAsin;
       delete it.digitalInstructions;
@@ -2257,6 +2268,8 @@ router.get("/my", protect, async (req, res) => {
         it.bundleItems = it.bundleItems.map((bi) => {
           const sub = { ...bi };
           delete sub.webReaderLink;
+          delete sub.externalAccessLink;
+          delete sub.externalAccessLabel;
           delete sub.kindleLink;
           delete sub.kindleAsin;
           delete sub.digitalInstructions;
@@ -2440,6 +2453,7 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       Boolean(
         item.isDigital ||
         item.webReaderLink ||
+        item.externalAccessLink ||
         item.kindleLink ||
         String(item.name || "").toLowerCase().includes("web") ||
         String(item.name || "").toLowerCase().includes("kindle") ||

@@ -221,6 +221,23 @@ const productSchema = new mongoose.Schema(
       default: ""
     },
 
+    digitalDelivery: {
+      type: String,
+      enum: ["onsite", "external"],
+      default: "onsite"
+    },
+
+    externalAccessLink: {
+      type: String,
+      default: ""
+    },
+
+    externalAccessLabel: {
+      type: String,
+      default: ""
+    },
+
+
     bundleItems: {
       type: [bundleItemSchema],
       default: []

@@ -273,6 +273,8 @@ async function sendOrderConfirmation(order, user) {
     Boolean(
       item.isDigital ||
       item.webReaderLink ||
+      item.externalAccessLink ||
+      item.digitalDelivery === "external" ||
       item.kindleLink ||
       String(item.name || "").toLowerCase().includes("web") ||
       String(item.name || "").toLowerCase().includes("kindle") ||
@@ -286,12 +288,21 @@ async function sendOrderConfirmation(order, user) {
     !Boolean(
       item.isDigital ||
       item.webReaderLink ||
+      item.externalAccessLink ||
+      item.digitalDelivery === "external" ||
       item.kindleLink ||
       String(item.name || "").toLowerCase().includes("web") ||
       String(item.name || "").toLowerCase().includes("kindle") ||
       String(item.name || "").toLowerCase().includes("flipbook") ||
       String(item.format || "").toLowerCase().includes("web") ||
       String(item.format || "").toLowerCase().includes("flipbook")
+    )
+  );
+
+  const hasExternalDelivery = Array.isArray(order.items) && order.items.some((item) =>
+    Boolean(
+      item.digitalDelivery === "external" ||
+      item.externalAccessLink
     )
   );
 
@@ -305,8 +316,8 @@ async function sendOrderConfirmation(order, user) {
       <p>Your mixed order has been placed successfully. Below are the details for your digital and physical items:</p>
       
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
-        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">⚡ Instant Digital Access Unlocked!</h3>
-        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now.</p>
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Unlocked!" : "⚡ Instant Digital Access Unlocked!"}</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now."}</p>
         <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
       </div>
 
@@ -326,11 +337,11 @@ async function sendOrderConfirmation(order, user) {
     defaultBody = `
       <h2>Thank you for your order! 🎉</h2>
       <p>Hi <strong>{{USER_NAME}}</strong>,</p>
-      <p>Your order has been placed successfully. Since this order contains only digital items, access has been granted instantly!</p>
+      <p>Your order has been placed successfully. Since this order contains only digital items, ${hasExternalDelivery ? "access has been granted!" : "access has been granted instantly!"}</p>
       
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
-        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">⚡ Instant Digital Access Granted!</h3>
-        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately.</p>
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Granted!" : "⚡ Instant Digital Access Granted!"}</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately."}</p>
         <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
       </div>
 
@@ -338,7 +349,7 @@ async function sendOrderConfirmation(order, user) {
       <h3>Order Details:</h3>
       {{ITEMS_TABLE}}
       {{SUMMARY_TABLE}}
-      <p style="color: #64748b; font-size: 13px; font-style: italic;">Instant Online Delivery — No physical shipping required.</p>
+      <p style="color: #64748b; font-size: 13px; font-style: italic;">${hasExternalDelivery ? "Online Delivery — No physical shipping required." : "Instant Online Delivery — No physical shipping required."}</p>
     `;
   } else {
     defaultBody = `

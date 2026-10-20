@@ -15,6 +15,7 @@ import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
 import { buildOrdersCsv } from "../utils/ordersCsv";
+import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 
@@ -1242,6 +1243,7 @@ function AdminOrders() {
                           const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
                             Boolean(
                               item.isDigital ||
+                              isExternalDelivery(item) ||
                               item.webReaderLink ||
                               item.kindleLink ||
                               String(item.name || "").toLowerCase().includes("web") ||
@@ -1272,7 +1274,11 @@ function AdminOrders() {
                                 isDigitalOnly ? (
                                   <div className="fulfillment-digital-status">
                                     <span className="digital-status-dot">✓</span>
-                                    <span>Instant Digital Access Granted</span>
+                                    <span>
+                                      {hasExternalDelivery(order.items)
+                                        ? "Digital item (external link)"
+                                        : "Instant Digital Access Granted"}
+                                    </span>
                                   </div>
                                 ) : (
                                   <div className="fulfillment-pipeline-stepper">

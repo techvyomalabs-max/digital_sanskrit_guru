@@ -51,13 +51,25 @@ function hasNumericInput(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
 }
 
+function isValidHttpUrl(string) {
+  if (!string || typeof string !== "string") return false;
+  if (/\s/.test(string)) return false;
+  try {
+    const url = new URL(string);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+
 function hasAnyMarketPriceInput(item) {
   return Boolean(
     String(item?.market || "").trim() ||
-    hasNumericInput(item?.regularPrice) ||
-    hasNumericInput(item?.salePrice) ||
-    String(item?.startDate || "").trim() ||
-    String(item?.endDate || "").trim()
+      hasNumericInput(item?.regularPrice) ||
+      hasNumericInput(item?.salePrice) ||
+      String(item?.startDate || "").trim() ||
+      String(item?.endDate || "").trim()
   );
 }
 
@@ -308,6 +320,10 @@ function AdminAddProducts() {
   const [isDigital, setIsDigital] = useState(false);
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   const [digitalType, setDigitalType] = useState("Web Version");
+  const [digitalDelivery, setDigitalDelivery] = useState("onsite");
+  const [externalAccessLink, setExternalAccessLink] = useState("");
+  const [externalAccessLabel, setExternalAccessLabel] = useState("");
+  const [externalLinkError, setExternalLinkError] = useState("");
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
   const [kindleAsin, setKindleAsin] = useState("");
@@ -367,17 +383,17 @@ function AdminAddProducts() {
         const nextHeroBanners =
           Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
             ? res.data.heroBanners.map((item) => ({
-              image: String(item?.image || "").trim(),
-              mobileImage: String(item?.mobileImage || "").trim(),
-              productId: String(item?.productId || "").trim()
-            }))
+                image: String(item?.image || "").trim(),
+                mobileImage: String(item?.mobileImage || "").trim(),
+                productId: String(item?.productId || "").trim()
+              }))
             : [
-              {
-                image: String(res.data?.heroBannerImage || "").trim(),
-                mobileImage: "",
-                productId: String(res.data?.heroBannerProductId || "").trim()
-              }
-            ].filter((item) => item.image);
+                {
+                  image: String(res.data?.heroBannerImage || "").trim(),
+                  mobileImage: "",
+                  productId: String(res.data?.heroBannerProductId || "").trim()
+                }
+              ].filter((item) => item.image);
         setHeroBanners(nextHeroBanners.length > 0 ? nextHeroBanners : [createEmptyHeroBanner()]);
         setActiveHeroBannerIndex(0);
       })
@@ -389,7 +405,7 @@ function AdminAddProducts() {
             : DEFAULT_CATEGORY_OPTIONS;
           setCategoryOptions(nextCategories);
           setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
-        }).catch(() => { });
+        }).catch(() => {});
         if (!active) return;
         setCategoryOptions(DEFAULT_CATEGORY_OPTIONS);
         setPricingMarkets([]);
@@ -604,6 +620,10 @@ function AdminAddProducts() {
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setDigitalType("Web Version");
+    setDigitalDelivery("onsite");
+    setExternalAccessLink("");
+    setExternalAccessLabel("");
+    setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
     setKindleAsin("");
@@ -643,6 +663,9 @@ function AdminAddProducts() {
       isDigital,
       skipOwnershipRules,
       digitalType,
+      digitalDelivery,
+      externalAccessLink,
+      externalAccessLabel,
       webReaderLink,
       kindleLink,
       kindleAsin,
@@ -664,8 +687,8 @@ function AdminAddProducts() {
   const isFormDirty = () =>
     Boolean(
       isFormOpen &&
-      initialSnapshotRef.current !== null &&
-      getFormSnapshotRef.current() !== initialSnapshotRef.current
+        initialSnapshotRef.current !== null &&
+        getFormSnapshotRef.current() !== initialSnapshotRef.current
     );
 
   const requestCloseForm = async () => {
@@ -737,10 +760,10 @@ function AdminAddProducts() {
       const savedHeroBanners =
         Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
           ? res.data.heroBanners.map((item) => ({
-            image: String(item?.image || "").trim(),
-            mobileImage: String(item?.mobileImage || "").trim(),
-            productId: String(item?.productId || "").trim()
-          }))
+              image: String(item?.image || "").trim(),
+              mobileImage: String(item?.mobileImage || "").trim(),
+              productId: String(item?.productId || "").trim()
+            }))
           : [createEmptyHeroBanner()];
       setHeroBanners(savedHeroBanners);
       setActiveHeroBannerIndex((current) => Math.min(current, savedHeroBanners.length - 1));
@@ -975,10 +998,10 @@ function AdminAddProducts() {
         const savedHeroBanners =
           Array.isArray(data?.heroBanners) && data.heroBanners.length > 0
             ? data.heroBanners.map((item) => ({
-              image: String(item?.image || "").trim(),
-              mobileImage: String(item?.mobileImage || "").trim(),
-              productId: String(item?.productId || "").trim()
-            }))
+                image: String(item?.image || "").trim(),
+                mobileImage: String(item?.mobileImage || "").trim(),
+                productId: String(item?.productId || "").trim()
+              }))
             : [createEmptyHeroBanner()];
         setHeroBanners(savedHeroBanners);
       }
@@ -1191,6 +1214,18 @@ function AdminAddProducts() {
       return;
     }
 
+    const isEligibleForExternal = isDigital || productType === "bundle";
+    if (isEligibleForExternal && digitalDelivery === "external") {
+      const trimmedLink = externalAccessLink.trim();
+      if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
+        setExternalLinkError("Please enter a valid access link (http:// or https://) without spaces.");
+        setFormMessage("Please enter a valid access link (http:// or https://) for external delivery.");
+        return;
+      }
+    }
+    setExternalLinkError("");
+
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1263,6 +1298,9 @@ function AdminAddProducts() {
       isDigital,
       skipOwnershipRules: productType === "bundle" ? skipOwnershipRules : false,
       digitalType,
+      digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
+      externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
+      externalAccessLabel: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLabel.trim() : "",
       webReaderLink: webReaderLink.trim(),
       kindleLink: kindleLink.trim(),
       kindleAsin: kindleAsin.trim(),
@@ -1332,21 +1370,21 @@ function AdminAddProducts() {
     setInternationalCountryPrices(
       Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
         ? product.internationalCountryPrices.map((item) => ({
-          country: String(item?.country || ""),
-          price: String(item?.price ?? "")
-        }))
+            country: String(item?.country || ""),
+            price: String(item?.price ?? "")
+          }))
         : [createEmptyCountryPrice()]
     );
     setMarketPrices(
       Array.isArray(product.marketPrices) && product.marketPrices.length > 0
         ? product.marketPrices.map((item) => ({
-          market: String(item?.market || ""),
-          regularPrice: String(item?.regularPrice ?? ""),
-          salePrice:
-            item?.salePrice === null || item?.salePrice === undefined ? "" : String(item?.salePrice ?? ""),
-          startDate: item?.startDate ? String(item.startDate).slice(0, 10) : "",
-          endDate: item?.endDate ? String(item.endDate).slice(0, 10) : ""
-        }))
+            market: String(item?.market || ""),
+            regularPrice: String(item?.regularPrice ?? ""),
+            salePrice:
+              item?.salePrice === null || item?.salePrice === undefined ? "" : String(item?.salePrice ?? ""),
+            startDate: item?.startDate ? String(item.startDate).slice(0, 10) : "",
+            endDate: item?.endDate ? String(item.endDate).slice(0, 10) : ""
+          }))
         : [createEmptyMarketPrice()]
     );
     setImage(product.image || "");
@@ -1362,6 +1400,10 @@ function AdminAddProducts() {
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setDigitalType(product.digitalType || "Web Version");
+    setDigitalDelivery(product.digitalDelivery || "onsite");
+    setExternalAccessLink(product.externalAccessLink || "");
+    setExternalAccessLabel(product.externalAccessLabel || "");
+    setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
     setKindleAsin(product.kindleAsin || "");
@@ -1370,24 +1412,24 @@ function AdminAddProducts() {
     setBundleItems(
       Array.isArray(product.bundleItems) && product.bundleItems.length > 0
         ? product.bundleItems.map((item) => ({
-          itemType: item?.itemType || (item?.product ? "existing" : "custom"),
-          productId: String(item?.product?._id || item?.product || ""),
-          quantity: String(Math.max(1, Number(item?.quantity || 1))),
-          name: String(item?.name || item?.product?.name || ""),
-          image: String(item?.image || item?.product?.image || ""),
-          description: String(item?.description || ""),
-          price: String(item?.price || item?.product?.price || ""),
-          isDigital: item?.isDigital === true || item?.product?.isDigital === true,
-          webReaderLink: String(item?.webReaderLink || item?.product?.webReaderLink || ""),
-          kindleLink: String(item?.kindleLink || item?.product?.kindleLink || "")
-        }))
+            itemType: item?.itemType || (item?.product ? "existing" : "custom"),
+            productId: String(item?.product?._id || item?.product || ""),
+            quantity: String(Math.max(1, Number(item?.quantity || 1))),
+            name: String(item?.name || item?.product?.name || ""),
+            image: String(item?.image || item?.product?.image || ""),
+            description: String(item?.description || ""),
+            price: String(item?.price || item?.product?.price || ""),
+            isDigital: item?.isDigital === true || item?.product?.isDigital === true,
+            webReaderLink: String(item?.webReaderLink || item?.product?.webReaderLink || ""),
+            kindleLink: String(item?.kindleLink || item?.product?.kindleLink || "")
+          }))
         : [createEmptyBundleItem()]
     );
     setRelatedProductItems(
       Array.isArray(product.relatedProducts) && product.relatedProducts.length > 0
         ? product.relatedProducts.map((item) => ({
-          productId: String(item?._id || item?.productId || item?.id || item || "")
-        }))
+            productId: String(item?._id || item?.productId || item?.id || item || "")
+          }))
         : [createEmptyRelatedProduct()]
     );
     setCategory(product.category || "General");
@@ -1835,466 +1877,550 @@ function AdminAddProducts() {
                     <div className="admin-toast-banner-progress" />
                   </div>
                 )}
-                {editingProduct && (
-                  <div className="edit-mode-banner">
-                    <strong>Edit mode</strong>
-                    <span>You are editing an existing product. Cancel to start a fresh product form.</span>
-                  </div>
-                )}
+          {editingProduct && (
+            <div className="edit-mode-banner">
+              <strong>Edit mode</strong>
+              <span>You are editing an existing product. Cancel to start a fresh product form.</span>
+            </div>
+          )}
 
-                <div className="product-composer-layout">
-                  <div className="product-composer-main">
-                    <section id="section-essentials" className="product-composer-panel">
-                      <div className="product-composer-panel-head">
-                        <div>
-                          <h4>Essentials</h4>
-                          <p>Set the core product information customers will see first.</p>
-                        </div>
+          <div className="product-composer-layout">
+            <div className="product-composer-main">
+              <section id="section-essentials" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Essentials</h4>
+                    <p>Set the core product information customers will see first.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>Product Name</span>
+                    <input
+                      ref={nameInputRef}
+                      placeholder="e.g. Bhagavad Gita Deluxe Edition"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Product Type</span>
+                    <select value={productType} onChange={(e) => setProductType(e.target.value)}>
+                      <option value="single">Single Product</option>
+                      <option value="bundle">Bundle</option>
+                      <option value="bulk">Bulk Product</option>
+                    </select>
+                  </label>
+                  <label className="admin-field">
+                    <span>Price</span>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 999"
+                      value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      readOnly={productType === "bundle"}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Stock</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 25"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Weight (in Grams)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 450"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Length (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 21"
+                      value={length}
+                      onChange={(e) => setLength(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Width (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 14"
+                      value={width}
+                      onChange={(e) => setWidth(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Height (in cm)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 3"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field">
+                    <span>Discount / Offer Type</span>
+                    <select
+                      value={discountType}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDiscountType(val);
+                        setFestiveOffer(val !== "none");
+                      }}
+                    >
+                      <option value="none">Regular Product (No Special Discount)</option>
+                      <option value="new_launch">New Launch Offer</option>
+                      <option value="weekly">Weekly Discount</option>
+                      <option value="monthly">Monthly Discount</option>
+                      <option value="combo">Combo Discount</option>
+                      <option value="festive">Festive Offer</option>
+                    </select>
+                  </label>
+                  {discountType !== "none" ? (
+                    <label className="admin-field">
+                      <span>Discount %</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="95"
+                        step="1"
+                        placeholder="e.g. 20"
+                        value={festiveDiscountPercent}
+                        onChange={(e) => setFestiveDiscountPercent(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  <div className="admin-field admin-field-wide">
+                    <span>Select Product Category</span>
+                    <div className="admin-category-manager">
+                      <div className="admin-category-select-row">
+                        <select value={category} onChange={(e) => setCategory(e.target.value)} className="admin-category-select-dropdown">
+                          {categoryOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="admin-category-inline-edit"
+                          onClick={() => handleStartCategoryEdit(category || "General")}
+                        >
+                          Edit Selected
+                        </button>
                       </div>
-                      <div className="form-grid">
-                        <label className="admin-field">
-                          <span>Product Name</span>
+                      <div className="admin-category-compact-meta">
+                        <small>
+                          {categoryOptions.length} categories available. Selected: <strong>{category || "General"}</strong>
+                        </small>
+                      </div>
+
+                      <div className="admin-category-manager-actions">
+                        <div className="theme-form-row">
                           <input
-                            ref={nameInputRef}
-                            placeholder="e.g. Bhagavad Gita Deluxe Edition"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Product Type</span>
-                          <select value={productType} onChange={(e) => setProductType(e.target.value)}>
-                            <option value="single">Single Product</option>
-                            <option value="bundle">Bundle</option>
-                            <option value="bulk">Bulk Product</option>
-                          </select>
-                        </label>
-                        <label className="admin-field">
-                          <span>Price</span>
-                          <input
-                            type="number"
-                            min="1"
-                            placeholder="e.g. 999"
-                            value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
-                            onChange={(e) => setPrice(e.target.value)}
-                            readOnly={productType === "bundle"}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Stock</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 25"
-                            value={stock}
-                            onChange={(e) => setStock(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Weight (in Grams)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 450"
-                            value={weight}
-                            onChange={(e) => setWeight(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Length (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 21"
-                            value={length}
-                            onChange={(e) => setLength(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Width (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 14"
-                            value={width}
-                            onChange={(e) => setWidth(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Height (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 3"
-                            value={height}
-                            onChange={(e) => setHeight(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Discount / Offer Type</span>
-                          <select
-                            value={discountType}
+                            placeholder="e.g. Mobile App Access"
+                            value={newCategory}
                             onChange={(e) => {
-                              const val = e.target.value;
-                              setDiscountType(val);
-                              setFestiveOffer(val !== "none");
+                              setNewCategory(e.target.value);
+                              setCategoryMessage("");
                             }}
+                          />
+                          <button type="button" onClick={handleAddCategory}>
+                            {editingCategoryName ? "Save" : "Add"}
+                          </button>
+                          {editingCategoryName ? (
+                            <>
+                              <button type="button" onClick={handleCancelCategoryEdit}>
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-category-delete-btn"
+                                onClick={handleDeleteCategory}
+                                title={`Delete "${editingCategoryName}" category`}
+                              >
+                                🗑 Delete
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                        <small className="admin-category-helper">
+                          {editingCategoryName
+                            ? `Editing "${editingCategoryName}". Saving will rename it everywhere it is used.`
+                            : "Need a new category? Add it here and select it immediately."}
+                        </small>
+                        {categoryMessage ? (
+                          <small
+                                  className={`admin-category-feedback${categoryMessage.includes("successfully") ? " success" : " error"
+                            }`}
                           >
-                            <option value="none">Regular Product (No Special Discount)</option>
-                            <option value="new_launch">New Launch Offer</option>
-                            <option value="weekly">Weekly Discount</option>
-                            <option value="monthly">Monthly Discount</option>
-                            <option value="combo">Combo Discount</option>
-                            <option value="festive">Festive Offer</option>
+                            {categoryMessage}
+                          </small>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  <label className="admin-field admin-field-wide">
+                    <span>Description</span>
+                    <textarea
+                      placeholder="Add a short, clear product description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={2}
+                    />
+                  </label>
+                  <label className="admin-field admin-field-wide">
+                    <span>Trailer Video URL</span>
+                    <input
+                      placeholder="YouTube, Vimeo, or direct MP4 link"
+                      value={trailerVideoUrl}
+                      onChange={(e) => setTrailerVideoUrl(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-field admin-field-wide">
+                    <span>About This Product</span>
+                    <textarea
+                      placeholder={"Add one point per line\nExample: Published in Sanskrit\nExample: 848 page edition"}
+                      value={aboutProduct}
+                      onChange={(e) => setAboutProduct(e.target.value)}
+                      rows={3}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section id="section-pricing" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>📖 Digital Content & Kindle Settings</h4>
+                    <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
+                  </div>
+                </div>
+                <div className="product-composer-panel-body">
+                  <label className="admin-digital-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={isDigital}
+                      onChange={(e) => setIsDigital(e.target.checked)}
+                    />
+                    <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
+                  </label>
+
+                  {isLikelyDigital && (
+                    <div
+                      className="admin-digital-hint"
+                      style={{
+                        margin: "-4px 0 14px",
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        backgroundColor: "#fffbeb",
+                        border: "1px solid #fde68a",
+                        color: "#b45309",
+                        fontSize: "12.5px",
+                        lineHeight: "1.4"
+                      }}
+                    >
+                      {"This looks like a digital product but 'Is Digital' is not ticked. Stock and delivery rules will treat it as a physical book."}
+                    </div>
+                  )}
+
+                  {(isDigital || productType === "bundle") && (
+                    <div
+                      className="admin-digital-delivery-group"
+                      style={{
+                        margin: "12px 0 16px",
+                        padding: "14px 16px",
+                        borderRadius: "8px",
+                        backgroundColor: "#f8fafc",
+                        border: "1px solid #e2e8f0"
+                      }}
+                    >
+                      <label style={{ display: "block", fontWeight: 600, fontSize: "13.5px", marginBottom: "8px", color: "#1e293b" }}>
+                        Where do customers access this?
+                      </label>
+                      <div style={{ display: "flex", gap: "20px", alignItems: "center", marginBottom: digitalDelivery === "external" ? "12px" : "0" }}>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500 }}>
+                          <input
+                            type="radio"
+                            name="digitalDelivery"
+                            value="onsite"
+                            checked={digitalDelivery === "onsite"}
+                            onChange={() => {
+                              setDigitalDelivery("onsite");
+                              if (externalLinkError) setExternalLinkError("");
+                            }}
+                          />
+                          <span>On this website</span>
+                        </label>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500 }}>
+                          <input
+                            type="radio"
+                            name="digitalDelivery"
+                            value="external"
+                            checked={digitalDelivery === "external"}
+                            onChange={() => {
+                              setDigitalDelivery("external");
+                            }}
+                          />
+                          <span>On another website</span>
+                        </label>
+                      </div>
+
+                      {digitalDelivery === "external" && (
+                        <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                          <div className="admin-field-grid">
+                            <label className="admin-field admin-field-wide">
+                              <span>Access link (https://...) <strong style={{ color: "#dc2626" }}>*</strong></span>
+                              <input
+                                placeholder="https://..."
+                                value={externalAccessLink}
+                                onChange={(e) => {
+                                  setExternalAccessLink(e.target.value);
+                                  if (externalLinkError) setExternalLinkError("");
+                                }}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Button label (optional, default: View)</span>
+                              <input
+                                placeholder="View"
+                                value={externalAccessLabel}
+                                onChange={(e) => setExternalAccessLabel(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b", lineHeight: "1.4" }}>
+                            Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                          </p>
+                          {externalLinkError && (
+                            <div style={{ color: "#dc2626", fontSize: "12.5px", fontWeight: 500, marginTop: "2px" }}>
+                              {externalLinkError}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {isDigital && (
+                    <div className="admin-digital-fields-box">
+                      <div className="admin-field-grid">
+                        <label className="admin-field">
+                          <span>Digital Format Type</span>
+                          <select value={digitalType} onChange={(e) => setDigitalType(e.target.value)}>
+                            <option value="Web Version">Web Version (Online Reader)</option>
+                            <option value="Flipbook">Flipbook (Interactive Book)</option>
+                            <option value="Kindle">Kindle E-Book</option>
+                            <option value="E-Book">Standard E-Book (EPUB/PDF)</option>
+                            <option value="PDF">PDF Download</option>
+                            <option value="Other">Other Digital Access</option>
                           </select>
                         </label>
-                        {discountType !== "none" ? (
+                        {!(productType !== "bundle" && digitalDelivery === "external") && (
                           <label className="admin-field">
-                            <span>Discount %</span>
+                            <span>Kindle ASIN / Redeem Code</span>
+                            <input
+                              placeholder="e.g. B08XXXXXX or REDEEM-CODE-123"
+                              value={kindleAsin}
+                              onChange={(e) => setKindleAsin(e.target.value)}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {!(productType !== "bundle" && digitalDelivery === "external") && (
+                        <>
+                          <label className="admin-field admin-field-wide">
+                            <span>Web Reader Access URL</span>
+                            <input
+                              placeholder="https://... (Direct link to Web Reader or Flipbook viewer)"
+                              value={webReaderLink}
+                              onChange={(e) => setWebReaderLink(e.target.value)}
+                            />
+                          </label>
+
+                          <label className="admin-field admin-field-wide">
+                            <span>Amazon Kindle Store / Redeem URL</span>
+                            <input
+                              placeholder="https://www.amazon.in/dp/... (Direct link to Amazon Kindle edition)"
+                              value={kindleLink}
+                              onChange={(e) => setKindleLink(e.target.value)}
+                            />
+                          </label>
+                        </>
+                      )}
+
+                      <label className="admin-field admin-field-wide">
+                        <span>Customer Access Instructions</span>
+                        <textarea
+                          placeholder="e.g. Access your Web Reader anytime from My Orders page. To read on Kindle, click 'Open on Kindle' or send the EPUB/PDF to your Amazon Send-to-Kindle email address."
+                          value={digitalInstructions}
+                          onChange={(e) => setDigitalInstructions(e.target.value)}
+                          rows={3}
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="admin-course-link-box">
+                    <label className="admin-field admin-field-wide">
+                      <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
+                      <input
+                        placeholder="https://... (Direct link to course on SFH platform; displays 'View Course' button on product page)"
+                        value={courseLink}
+                        onChange={(e) => setCourseLink(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <section id="section-digital" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Pricing</h4>
+                    <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>International Price</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Used for all countries except India"
+                      value={internationalPrice}
+                      onChange={(e) => setInternationalPrice(e.target.value)}
+                    />
+                  </label>
+                  <div className="admin-field admin-field-wide">
+                    <span>Country Specific International Prices</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Override the international price for selected countries</strong>
+                        <button type="button" onClick={addInternationalCountryPrice}>
+                          Add Country Price
+                        </button>
+                      </div>
+                      <div className="admin-bundle-builder-list">
+                        {internationalCountryPrices.map((item, index) => (
+                          <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
+                            <select
+                              value={item.country}
+                              onChange={(e) => updateInternationalCountryPrice(index, "country", e.target.value)}
+                            >
+                              <option value="">Select country</option>
+                              {COUNTRY_OPTIONS.filter((country) => country !== "India").map((country) => (
+                                <option key={country} value={country}>
+                                  {country}
+                                </option>
+                              ))}
+                            </select>
                             <input
                               type="number"
                               min="0"
-                              max="95"
-                              step="1"
-                              placeholder="e.g. 20"
-                              value={festiveDiscountPercent}
-                              onChange={(e) => setFestiveDiscountPercent(e.target.value)}
+                              placeholder="Price"
+                              value={item.price}
+                              onChange={(e) => updateInternationalCountryPrice(index, "price", e.target.value)}
                             />
-                          </label>
-                        ) : null}
-                        <div className="admin-field admin-field-wide">
-                          <span>Select Product Category</span>
-                          <div className="admin-category-manager">
-                            <div className="admin-category-select-row">
-                              <select value={category} onChange={(e) => setCategory(e.target.value)} className="admin-category-select-dropdown">
-                                {categoryOptions.map((option) => (
-                                  <option key={option} value={option}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                className="admin-category-inline-edit"
-                                onClick={() => handleStartCategoryEdit(category || "General")}
-                              >
-                                Edit Selected
-                              </button>
-                            </div>
-                            <div className="admin-category-compact-meta">
-                              <small>
-                                {categoryOptions.length} categories available. Selected: <strong>{category || "General"}</strong>
-                              </small>
-                            </div>
-
-                            <div className="admin-category-manager-actions">
-                              <div className="theme-form-row">
-                                <input
-                                  placeholder="e.g. Mobile App Access"
-                                  value={newCategory}
-                                  onChange={(e) => {
-                                    setNewCategory(e.target.value);
-                                    setCategoryMessage("");
-                                  }}
-                                />
-                                <button type="button" onClick={handleAddCategory}>
-                                  {editingCategoryName ? "Save" : "Add"}
-                                </button>
-                                {editingCategoryName ? (
-                                  <>
-                                    <button type="button" onClick={handleCancelCategoryEdit}>
-                                      Cancel
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="admin-category-delete-btn"
-                                      onClick={handleDeleteCategory}
-                                      title={`Delete "${editingCategoryName}" category`}
-                                    >
-                                      🗑 Delete
-                                    </button>
-                                  </>
-                                ) : null}
-                              </div>
-                              <small className="admin-category-helper">
-                                {editingCategoryName
-                                  ? `Editing "${editingCategoryName}". Saving will rename it everywhere it is used.`
-                                  : "Need a new category? Add it here and select it immediately."}
-                              </small>
-                              {categoryMessage ? (
-                                <small
-                                  className={`admin-category-feedback${categoryMessage.includes("successfully") ? " success" : " error"
-                                    }`}
-                                >
-                                  {categoryMessage}
-                                </small>
-                              ) : null}
-                            </div>
+                            <button type="button" className="danger" onClick={() => removeInternationalCountryPrice(index)}>
+                              Remove
+                            </button>
                           </div>
-                        </div>
-                        <label className="admin-field admin-field-wide">
-                          <span>Description</span>
-                          <textarea
-                            placeholder="Add a short, clear product description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={2}
-                          />
-                        </label>
-                        <label className="admin-field admin-field-wide">
-                          <span>Trailer Video URL</span>
-                          <input
-                            placeholder="YouTube, Vimeo, or direct MP4 link"
-                            value={trailerVideoUrl}
-                            onChange={(e) => setTrailerVideoUrl(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field admin-field-wide">
-                          <span>About This Product</span>
-                          <textarea
-                            placeholder={"Add one point per line\nExample: Published in Sanskrit\nExample: 848 page edition"}
-                            value={aboutProduct}
-                            onChange={(e) => setAboutProduct(e.target.value)}
-                            rows={3}
-                          />
-                        </label>
+                        ))}
                       </div>
-                    </section>
-
-                    <section id="section-pricing" className="product-composer-panel">
-                      <div className="product-composer-panel-head">
-                        <div>
-                          <h4>📖 Digital Content & Kindle Settings</h4>
-                          <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
-                        </div>
+                      <div className="admin-bundle-preview">
+                        <span>How it works</span>
+                        <p>India uses the base price. Matching countries use their own override. All other countries use the fallback international price.</p>
                       </div>
-                      <div className="product-composer-panel-body">
-                        <label className="admin-digital-toggle-label">
-                          <input
-                            type="checkbox"
-                            checked={isDigital}
-                            onChange={(e) => setIsDigital(e.target.checked)}
-                          />
-                          <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
-                        </label>
-
-                        {isLikelyDigital && (
-                          <div
-                            className="admin-digital-hint"
-                            style={{
-                              margin: "-4px 0 14px",
-                              padding: "8px 12px",
-                              borderRadius: "8px",
-                              backgroundColor: "#fffbeb",
-                              border: "1px solid #fde68a",
-                              color: "#b45309",
-                              fontSize: "12.5px",
-                              lineHeight: "1.4"
-                            }}
-                          >
-                            {"This looks like a digital product but 'Is Digital' is not ticked. Stock and delivery rules will treat it as a physical book."}
-                          </div>
-                        )}
-
-                        {isDigital && (
-                          <div className="admin-digital-fields-box">
-                            <div className="admin-field-grid">
-                              <label className="admin-field">
-                                <span>Digital Format Type</span>
-                                <select value={digitalType} onChange={(e) => setDigitalType(e.target.value)}>
-                                  <option value="Web Version">Web Version (Online Reader)</option>
-                                  <option value="Flipbook">Flipbook (Interactive Book)</option>
-                                  <option value="Kindle">Kindle E-Book</option>
-                                  <option value="E-Book">Standard E-Book (EPUB/PDF)</option>
-                                  <option value="PDF">PDF Download</option>
-                                  <option value="Other">Other Digital Access</option>
-                                </select>
-                              </label>
-                              <label className="admin-field">
-                                <span>Kindle ASIN / Redeem Code</span>
-                                <input
-                                  placeholder="e.g. B08XXXXXX or REDEEM-CODE-123"
-                                  value={kindleAsin}
-                                  onChange={(e) => setKindleAsin(e.target.value)}
-                                />
-                              </label>
-                            </div>
-
-                            <label className="admin-field admin-field-wide">
-                              <span>Web Reader Access URL</span>
-                              <input
-                                placeholder="https://... (Direct link to Web Reader or Flipbook viewer)"
-                                value={webReaderLink}
-                                onChange={(e) => setWebReaderLink(e.target.value)}
-                              />
-                            </label>
-
-                            <label className="admin-field admin-field-wide">
-                              <span>Amazon Kindle Store / Redeem URL</span>
-                              <input
-                                placeholder="https://www.amazon.in/dp/... (Direct link to Amazon Kindle edition)"
-                                value={kindleLink}
-                                onChange={(e) => setKindleLink(e.target.value)}
-                              />
-                            </label>
-
-                            <label className="admin-field admin-field-wide">
-                              <span>Customer Access Instructions</span>
-                              <textarea
-                                placeholder="e.g. Access your Web Reader anytime from My Orders page. To read on Kindle, click 'Open on Kindle' or send the EPUB/PDF to your Amazon Send-to-Kindle email address."
-                                value={digitalInstructions}
-                                onChange={(e) => setDigitalInstructions(e.target.value)}
-                                rows={3}
-                              />
-                            </label>
-                          </div>
-                        )}
-
-                        <div className="admin-course-link-box">
-                          <label className="admin-field admin-field-wide">
-                            <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
+                    </div>
+                  </div>
+                  <div className="admin-field admin-field-wide">
+                    <span>Market Pricing</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Set reusable region pricing like North America, Europe, or GCC</strong>
+                        <button type="button" onClick={addMarketPrice}>
+                          Add Market Price
+                        </button>
+                      </div>
+                      <div className="admin-bundle-builder-list">
+                        {marketPrices.map((item, index) => (
+                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap">
+                            <select
+                              value={item.market}
+                              onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
+                            >
+                              <option value="">Select pricing market</option>
+                              {pricingMarkets.map((market) => (
+                                <option key={market.name} value={market.name}>
+                                  {market.name}
+                                </option>
+                              ))}
+                            </select>
                             <input
-                              placeholder="https://... (Direct link to course on SFH platform; displays 'View Course' button on product page)"
-                              value={courseLink}
-                              onChange={(e) => setCourseLink(e.target.value)}
+                              type="number"
+                              min="0"
+                              placeholder="Regular price"
+                              value={item.regularPrice}
+                              onChange={(e) => updateMarketPrice(index, "regularPrice", e.target.value)}
                             />
-                          </label>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section id="section-digital" className="product-composer-panel">
-                      <div className="product-composer-panel-head">
-                        <div>
-                          <h4>Pricing</h4>
-                          <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
-                        </div>
-                      </div>
-                      <div className="form-grid">
-                        <label className="admin-field">
-                          <span>International Price</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="Used for all countries except India"
-                            value={internationalPrice}
-                            onChange={(e) => setInternationalPrice(e.target.value)}
-                          />
-                        </label>
-                        <div className="admin-field admin-field-wide">
-                          <span>Country Specific International Prices</span>
-                          <div className="admin-bundle-builder">
-                            <div className="admin-bundle-builder-head">
-                              <strong>Override the international price for selected countries</strong>
-                              <button type="button" onClick={addInternationalCountryPrice}>
-                                Add Country Price
-                              </button>
-                            </div>
-                            <div className="admin-bundle-builder-list">
-                              {internationalCountryPrices.map((item, index) => (
-                                <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
-                                  <select
-                                    value={item.country}
-                                    onChange={(e) => updateInternationalCountryPrice(index, "country", e.target.value)}
-                                  >
-                                    <option value="">Select country</option>
-                                    {COUNTRY_OPTIONS.filter((country) => country !== "India").map((country) => (
-                                      <option key={country} value={country}>
-                                        {country}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="Price"
-                                    value={item.price}
-                                    onChange={(e) => updateInternationalCountryPrice(index, "price", e.target.value)}
-                                  />
-                                  <button type="button" className="danger" onClick={() => removeInternationalCountryPrice(index)}>
-                                    Remove
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="admin-bundle-preview">
-                              <span>How it works</span>
-                              <p>India uses the base price. Matching countries use their own override. All other countries use the fallback international price.</p>
-                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Sale price (optional)"
+                              value={item.salePrice}
+                              onChange={(e) => updateMarketPrice(index, "salePrice", e.target.value)}
+                            />
+                            <input
+                              type="date"
+                              value={item.startDate}
+                              onChange={(e) => updateMarketPrice(index, "startDate", e.target.value)}
+                            />
+                            <input
+                              type="date"
+                              value={item.endDate}
+                              onChange={(e) => updateMarketPrice(index, "endDate", e.target.value)}
+                            />
+                            <button type="button" className="danger" onClick={() => removeMarketPrice(index)}>
+                              Remove
+                            </button>
                           </div>
-                        </div>
-                        <div className="admin-field admin-field-wide">
-                          <span>Market Pricing</span>
-                          <div className="admin-bundle-builder">
-                            <div className="admin-bundle-builder-head">
-                              <strong>Set reusable region pricing like North America, Europe, or GCC</strong>
-                              <button type="button" onClick={addMarketPrice}>
-                                Add Market Price
-                              </button>
-                            </div>
-                            <div className="admin-bundle-builder-list">
-                              {marketPrices.map((item, index) => (
-                                <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap">
-                                  <select
-                                    value={item.market}
-                                    onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
-                                  >
-                                    <option value="">Select pricing market</option>
-                                    {pricingMarkets.map((market) => (
-                                      <option key={market.name} value={market.name}>
-                                        {market.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="Regular price"
-                                    value={item.regularPrice}
-                                    onChange={(e) => updateMarketPrice(index, "regularPrice", e.target.value)}
-                                  />
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="Sale price (optional)"
-                                    value={item.salePrice}
-                                    onChange={(e) => updateMarketPrice(index, "salePrice", e.target.value)}
-                                  />
-                                  <input
-                                    type="date"
-                                    value={item.startDate}
-                                    onChange={(e) => updateMarketPrice(index, "startDate", e.target.value)}
-                                  />
-                                  <input
-                                    type="date"
-                                    value={item.endDate}
-                                    onChange={(e) => updateMarketPrice(index, "endDate", e.target.value)}
-                                  />
-                                  <button type="button" className="danger" onClick={() => removeMarketPrice(index)}>
-                                    Remove
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="admin-bundle-preview">
-                              <span>Market priority</span>
-                              <p>India base price wins first, then country override, then matched market price, then fallback international price.</p>
-                            </div>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    </section>
+                      <div className="admin-bundle-preview">
+                        <span>Market priority</span>
+                        <p>India base price wins first, then country override, then matched market price, then fallback international price.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-                    <section id="section-dimensions" className="product-composer-panel">
-                      <div className="product-composer-panel-head">
-                        <div>
-                          <h4>Relationships</h4>
-                          <p>Build bundles and curate cross-links that help product discovery.</p>
-                        </div>
-                      </div>
-                      <div className="form-grid">
-                        {productType === "bundle" ? (
-                          <div className="admin-field admin-field-wide">
+              <section id="section-dimensions" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Relationships</h4>
+                    <p>Build bundles and curate cross-links that help product discovery.</p>
+                  </div>
+                </div>
+                <div className="form-grid">
+                  {productType === "bundle" ? (
+                    <div className="admin-field admin-field-wide">
                             <label className="admin-digital-toggle-label" style={{ marginBottom: "4px" }}>
                               <input
                                 type="checkbox"
@@ -2307,308 +2433,308 @@ function AdminAddProducts() {
                               Use this for combos where customers choose a format, such as USB or books. Normal combos should keep this off.
                             </p>
 
-                            <span>Bundle Products</span>
-                            <div className="admin-bundle-builder">
-                              <div className="admin-bundle-builder-head">
-                                <div>
-                                  <strong>Build your bundle with catalog products or custom items</strong>
-                                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted)" }}>
-                                    Add existing products from store or create custom items directly inside this bundle.
-                                  </p>
+                      <span>Bundle Products</span>
+                      <div className="admin-bundle-builder">
+                        <div className="admin-bundle-builder-head">
+                          <div>
+                            <strong>Build your bundle with catalog products or custom items</strong>
+                            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted)" }}>
+                              Add existing products from store or create custom items directly inside this bundle.
+                            </p>
+                          </div>
+                          <button type="button" onClick={addBundleItem}>
+                            ＋ Add Bundle Item
+                          </button>
+                        </div>
+
+                        <div className="admin-bundle-builder-list">
+                          {bundleItems.map((item, index) => (
+                            <div key={`bundle-item-${index}`} className="bundle-builder-card">
+                              <div className="bundle-builder-type-bar">
+                                <div className="bundle-type-tabs">
+                                  <button
+                                    type="button"
+                                    className={`bundle-type-tab ${item.itemType !== "custom" ? "active" : ""}`}
+                                    onClick={() => updateBundleItem(index, "itemType", "existing")}
+                                  >
+                                    📦 Store Catalog Product
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`bundle-type-tab ${item.itemType === "custom" ? "active" : ""}`}
+                                    onClick={() => updateBundleItem(index, "itemType", "custom")}
+                                  >
+                                    ✍️ Create Custom Item
+                                  </button>
                                 </div>
-                                <button type="button" onClick={addBundleItem}>
-                                  ＋ Add Bundle Item
+                                <button type="button" className="danger bundle-remove-btn" onClick={() => removeBundleItem(index)}>
+                                  ✕ Remove
                                 </button>
                               </div>
 
-                              <div className="admin-bundle-builder-list">
-                                {bundleItems.map((item, index) => (
-                                  <div key={`bundle-item-${index}`} className="bundle-builder-card">
-                                    <div className="bundle-builder-type-bar">
-                                      <div className="bundle-type-tabs">
-                                        <button
-                                          type="button"
-                                          className={`bundle-type-tab ${item.itemType !== "custom" ? "active" : ""}`}
-                                          onClick={() => updateBundleItem(index, "itemType", "existing")}
-                                        >
-                                          📦 Store Catalog Product
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className={`bundle-type-tab ${item.itemType === "custom" ? "active" : ""}`}
-                                          onClick={() => updateBundleItem(index, "itemType", "custom")}
-                                        >
-                                          ✍️ Create Custom Item
-                                        </button>
-                                      </div>
-                                      <button type="button" className="danger bundle-remove-btn" onClick={() => removeBundleItem(index)}>
-                                        ✕ Remove
-                                      </button>
-                                    </div>
+                              {item.itemType === "custom" ? (
+                                <div className="custom-bundle-fields">
+                                  <div className="custom-bundle-grid">
+                                    <label className="custom-field">
+                                      <span>Item Title *</span>
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. Bhagavad Gita Audio Guide"
+                                        value={item.name || ""}
+                                        onChange={(e) => updateBundleItem(index, "name", e.target.value)}
+                                      />
+                                    </label>
+                                    <label className="custom-field">
+                                      <span>Item Value (Rs)</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="e.g. 299"
+                                        value={item.price || ""}
+                                        onChange={(e) => updateBundleItem(index, "price", e.target.value)}
+                                      />
+                                    </label>
+                                    <label className="custom-field custom-field-sm">
+                                      <span>Quantity</span>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={item.quantity || "1"}
+                                        onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
+                                      />
+                                    </label>
+                                  </div>
 
-                                    {item.itemType === "custom" ? (
-                                      <div className="custom-bundle-fields">
-                                        <div className="custom-bundle-grid">
-                                          <label className="custom-field">
-                                            <span>Item Title *</span>
-                                            <input
-                                              type="text"
-                                              placeholder="e.g. Bhagavad Gita Audio Guide"
-                                              value={item.name || ""}
-                                              onChange={(e) => updateBundleItem(index, "name", e.target.value)}
-                                            />
-                                          </label>
-                                          <label className="custom-field">
-                                            <span>Item Value (Rs)</span>
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              placeholder="e.g. 299"
-                                              value={item.price || ""}
-                                              onChange={(e) => updateBundleItem(index, "price", e.target.value)}
-                                            />
-                                          </label>
-                                          <label className="custom-field custom-field-sm">
-                                            <span>Quantity</span>
-                                            <input
-                                              type="number"
-                                              min="1"
-                                              value={item.quantity || "1"}
-                                              onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
-                                            />
-                                          </label>
-                                        </div>
+                                  <div className="custom-bundle-grid">
+                                    <label className="custom-field">
+                                      <span>Thumbnail Image URL (optional)</span>
+                                      <input
+                                        type="text"
+                                        placeholder="https://example.com/item.jpg"
+                                        value={item.image || ""}
+                                        onChange={(e) => updateBundleItem(index, "image", e.target.value)}
+                                      />
+                                    </label>
+                                    <label className="custom-field">
+                                      <span>Short Description</span>
+                                      <input
+                                        type="text"
+                                        placeholder="Brief details about what is included"
+                                        value={item.description || ""}
+                                        onChange={(e) => updateBundleItem(index, "description", e.target.value)}
+                                      />
+                                    </label>
+                                  </div>
 
-                                        <div className="custom-bundle-grid">
-                                          <label className="custom-field">
-                                            <span>Thumbnail Image URL (optional)</span>
-                                            <input
-                                              type="text"
-                                              placeholder="https://example.com/item.jpg"
-                                              value={item.image || ""}
-                                              onChange={(e) => updateBundleItem(index, "image", e.target.value)}
-                                            />
-                                          </label>
-                                          <label className="custom-field">
-                                            <span>Short Description</span>
-                                            <input
-                                              type="text"
-                                              placeholder="Brief details about what is included"
-                                              value={item.description || ""}
-                                              onChange={(e) => updateBundleItem(index, "description", e.target.value)}
-                                            />
-                                          </label>
-                                        </div>
-
-                                        <div className="custom-bundle-digital-row">
-                                          <label className="checkbox-label">
-                                            <input
-                                              type="checkbox"
-                                              checked={item.isDigital === true}
-                                              onChange={(e) => updateBundleItem(index, "isDigital", e.target.checked)}
-                                            />
-                                            <span>Is Digital Item (Web Reader / Downloadable)</span>
-                                          </label>
-                                          {item.isDigital && (
-                                            <input
-                                              type="text"
-                                              placeholder="Web Reader Link URL (unlocked in My Library)"
-                                              value={item.webReaderLink || ""}
-                                              onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
-                                              style={{ marginTop: "6px" }}
-                                            />
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="admin-bundle-builder-row">
-                                        <SearchableProductSelect
-                                          products={availableBundleProducts}
-                                          value={item.productId}
-                                          onChange={(val) => updateBundleItem(index, "productId", val)}
-                                          placeholder="Search & select bundle product..."
-                                        />
-                                        <input
-                                          type="number"
-                                          min="1"
-                                          value={item.quantity}
-                                          onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
-                                          placeholder="Qty"
-                                        />
-                                      </div>
+                                  <div className="custom-bundle-digital-row">
+                                    <label className="checkbox-label">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.isDigital === true}
+                                        onChange={(e) => updateBundleItem(index, "isDigital", e.target.checked)}
+                                      />
+                                      <span>Is Digital Item (Web Reader / Downloadable)</span>
+                                    </label>
+                                    {item.isDigital && (
+                                      <input
+                                        type="text"
+                                        placeholder="Web Reader Link URL (unlocked in My Library)"
+                                        value={item.webReaderLink || ""}
+                                        onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
+                                        style={{ marginTop: "6px" }}
+                                      />
                                     )}
                                   </div>
-                                ))}
-                              </div>
-
-                              <div className="admin-bundle-preview">
-                                <span>Bundle preview</span>
-                                {selectedBundleProducts.length > 0 ? (
-                                  <>
-                                    <ul>
-                                      {selectedBundleProducts.map((product) => (
-                                        <li key={`${product._id}-${product.quantity}`}>
-                                          {product.name} x {product.quantity}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
-                                  </>
-                                ) : (
-                                  <p>No products selected for this bundle yet.</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        <div className="admin-field admin-field-wide">
-                          <span>Related Products</span>
-                          <div className="admin-bundle-builder">
-                            <div className="admin-bundle-builder-head">
-                              <strong>Choose products to show in the Related Products section</strong>
-                              <button type="button" onClick={addRelatedProductItem}>
-                                Add Related Product
-                              </button>
-                            </div>
-
-                            <div className="admin-bundle-builder-list">
-                              {relatedProductItems.map((item, index) => (
-                                <div key={`related-product-${index}`} className="admin-bundle-builder-row related-product-row">
+                                </div>
+                              ) : (
+                                <div className="admin-bundle-builder-row">
                                   <SearchableProductSelect
                                     products={availableBundleProducts}
                                     value={item.productId}
-                                    onChange={(val) => updateRelatedProductItem(index, val)}
-                                    placeholder="Search & select related product..."
+                                    onChange={(val) => updateBundleItem(index, "productId", val)}
+                                    placeholder="Search & select bundle product..."
                                   />
-
-                                  <button type="button" className="danger" onClick={() => removeRelatedProductItem(index)}>
-                                    Remove
-                                  </button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(e) => updateBundleItem(index, "quantity", e.target.value)}
+                                    placeholder="Qty"
+                                  />
                                 </div>
-                              ))}
-                            </div>
-
-                            <div className="admin-bundle-preview">
-                              <span>Related products preview</span>
-                              {selectedRelatedProducts.length > 0 ? (
-                                <ul>
-                                  {selectedRelatedProducts.map((relatedProduct) => (
-                                    <li key={relatedProduct._id}>
-                                      {relatedProduct.name}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p>No related products selected yet.</p>
                               )}
                             </div>
+                          ))}
+                        </div>
+
+                        <div className="admin-bundle-preview">
+                          <span>Bundle preview</span>
+                          {selectedBundleProducts.length > 0 ? (
+                            <>
+                              <ul>
+                                {selectedBundleProducts.map((product) => (
+                                  <li key={`${product._id}-${product.quantity}`}>
+                                    {product.name} x {product.quantity}
+                                  </li>
+                                ))}
+                              </ul>
+                              <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                            </>
+                          ) : (
+                            <p>No products selected for this bundle yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="admin-field admin-field-wide">
+                    <span>Related Products</span>
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-head">
+                        <strong>Choose products to show in the Related Products section</strong>
+                        <button type="button" onClick={addRelatedProductItem}>
+                          Add Related Product
+                        </button>
+                      </div>
+
+                      <div className="admin-bundle-builder-list">
+                        {relatedProductItems.map((item, index) => (
+                          <div key={`related-product-${index}`} className="admin-bundle-builder-row related-product-row">
+                            <SearchableProductSelect
+                              products={availableBundleProducts}
+                              value={item.productId}
+                              onChange={(val) => updateRelatedProductItem(index, val)}
+                              placeholder="Search & select related product..."
+                            />
+
+                            <button type="button" className="danger" onClick={() => removeRelatedProductItem(index)}>
+                              Remove
+                            </button>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    </section>
 
-                    <section id="section-media" className="product-composer-panel">
-                      <div className="product-composer-panel-head">
-                        <div>
-                          <h4>Media</h4>
-                          <p>Add a strong product thumbnail and extra images for the gallery.</p>
-                        </div>
+                      <div className="admin-bundle-preview">
+                        <span>Related products preview</span>
+                        {selectedRelatedProducts.length > 0 ? (
+                          <ul>
+                            {selectedRelatedProducts.map((relatedProduct) => (
+                              <li key={relatedProduct._id}>
+                                {relatedProduct.name}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>No related products selected yet.</p>
+                        )}
                       </div>
-                      <div className="form-grid">
-                        <label className="admin-field">
-                          <span>Primary Image URL</span>
-                          <input placeholder="Paste the main image URL" value={image} onChange={(e) => setImage(e.target.value)} />
-                        </label>
-                        <div className="admin-field">
-                          <span>Upload Primary Image</span>
-                          <label className="hero-banner-admin-upload-btn">
-                            {isUploadingProductImages ? "Optimizing..." : "Choose Image"}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handlePrimaryImageFileUpload}
-                              disabled={isUploadingProductImages}
-                            />
-                          </label>
-                        </div>
-                        <label className="admin-field admin-field-wide">
-                          <span>Additional Image URLs</span>
-                          <textarea
-                            className="admin-images-textarea"
-                            placeholder="Add more image URLs separated by commas or new lines"
-                            value={imagesInput}
-                            onChange={(e) => setImagesInput(e.target.value)}
-                            rows={4}
-                          />
-                        </label>
-                        <div className="admin-field admin-field-wide">
-                          <span>Upload Gallery Images</span>
-                          <label className="hero-banner-admin-upload-btn">
-                            {isUploadingProductImages ? "Optimizing..." : "Choose Multiple Images"}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={handleGalleryImageFileUpload}
-                              disabled={isUploadingProductImages}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    </section>
+                    </div>
                   </div>
-
-                  <aside className="product-composer-side">
-                    <div className="product-composer-side-card">
-                      <span className="product-composer-side-kicker">Live Preview</span>
-                      <h4 style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "14.5px" }}>{name.trim() || "New product preview"}</h4>
-                      <div
-                        className="product-composer-preview-description"
-                        style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "12px", color: "#555", lineHeight: "1.5" }}
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(description.trim() || "Your description, pricing, and image choices will show here as you build the product.")
-                        }}
-                      />
-                      <div className="product-composer-price-line">
-                        <strong>Rs {formSummary.numericPrice || 0}</strong>
-                        <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
-                      </div>
-                      <div className="product-composer-side-list">
-                        <div><span>Type</span><strong>{productType === "bundle" ? "Bundle" : "Single"}</strong></div>
-                        <div><span>Category</span><strong>{category || "General"}</strong></div>
-                        <div><span>Stock</span><strong>{formSummary.numericStock || 0}</strong></div>
-                      </div>
-                    </div>
-
-                    <div className="admin-thumbnail-preview product-composer-preview-card">
-                      <img
-                        src={imagePreview}
-                        alt={name.trim() || "Product thumbnail preview"}
-                        onError={(e) => {
-                          e.currentTarget.src = "https://picsum.photos/120";
-                        }}
-                      />
-                      <div>
-                        <strong>Thumbnail Preview</strong>
-                        <span>{image.trim() ? "Using current image URL" : "Showing fallback preview image"}</span>
-                      </div>
-                    </div>
-                  </aside>
                 </div>
-                {imagePreviews.length > 0 && (
-                  <div className="admin-thumbnail-strip">
-                    {imagePreviews.map((previewImage, index) => (
-                      <img
-                        key={`${previewImage}-${index}`}
-                        src={previewImage}
-                        alt={`Product preview ${index + 1}`}
-                        onError={(e) => {
-                          e.currentTarget.src = "https://picsum.photos/72";
-                        }}
-                      />
-                    ))}
+              </section>
+
+              <section id="section-media" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Media</h4>
+                    <p>Add a strong product thumbnail and extra images for the gallery.</p>
                   </div>
-                )}
+                </div>
+                <div className="form-grid">
+                  <label className="admin-field">
+                    <span>Primary Image URL</span>
+                    <input placeholder="Paste the main image URL" value={image} onChange={(e) => setImage(e.target.value)} />
+                  </label>
+                  <div className="admin-field">
+                    <span>Upload Primary Image</span>
+                    <label className="hero-banner-admin-upload-btn">
+                      {isUploadingProductImages ? "Optimizing..." : "Choose Image"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePrimaryImageFileUpload}
+                        disabled={isUploadingProductImages}
+                      />
+                    </label>
+                  </div>
+                  <label className="admin-field admin-field-wide">
+                    <span>Additional Image URLs</span>
+                    <textarea
+                      className="admin-images-textarea"
+                      placeholder="Add more image URLs separated by commas or new lines"
+                      value={imagesInput}
+                      onChange={(e) => setImagesInput(e.target.value)}
+                      rows={4}
+                    />
+                  </label>
+                  <div className="admin-field admin-field-wide">
+                    <span>Upload Gallery Images</span>
+                    <label className="hero-banner-admin-upload-btn">
+                      {isUploadingProductImages ? "Optimizing..." : "Choose Multiple Images"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleGalleryImageFileUpload}
+                        disabled={isUploadingProductImages}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <aside className="product-composer-side">
+              <div className="product-composer-side-card">
+                <span className="product-composer-side-kicker">Live Preview</span>
+                <h4 style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "14.5px" }}>{name.trim() || "New product preview"}</h4>
+                <div
+                  className="product-composer-preview-description"
+                  style={{ wordBreak: "break-word", overflowWrap: "anywhere", fontSize: "12px", color: "#555", lineHeight: "1.5" }}
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(description.trim() || "Your description, pricing, and image choices will show here as you build the product.")
+                  }}
+                />
+                <div className="product-composer-price-line">
+                  <strong>Rs {formSummary.numericPrice || 0}</strong>
+                  <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
+                </div>
+                <div className="product-composer-side-list">
+                  <div><span>Type</span><strong>{productType === "bundle" ? "Bundle" : "Single"}</strong></div>
+                  <div><span>Category</span><strong>{category || "General"}</strong></div>
+                  <div><span>Stock</span><strong>{formSummary.numericStock || 0}</strong></div>
+                </div>
+              </div>
+
+              <div className="admin-thumbnail-preview product-composer-preview-card">
+                <img
+                  src={imagePreview}
+                  alt={name.trim() || "Product thumbnail preview"}
+                  onError={(e) => {
+                    e.currentTarget.src = "https://picsum.photos/120";
+                  }}
+                />
+                <div>
+                  <strong>Thumbnail Preview</strong>
+                  <span>{image.trim() ? "Using current image URL" : "Showing fallback preview image"}</span>
+                </div>
+              </div>
+            </aside>
+          </div>
+          {imagePreviews.length > 0 && (
+            <div className="admin-thumbnail-strip">
+              {imagePreviews.map((previewImage, index) => (
+                <img
+                  key={`${previewImage}-${index}`}
+                  src={previewImage}
+                  alt={`Product preview ${index + 1}`}
+                  onError={(e) => {
+                    e.currentTarget.src = "https://picsum.photos/72";
+                  }}
+                />
+              ))}
+            </div>
+          )}
               </div>
 
               {/* Sticky Modal Footer */}
@@ -2720,90 +2846,90 @@ function AdminAddProducts() {
           <div className="table">
             {isLoadingProducts
               ? Array.from({ length: 5 }).map((_, idx) => (
-                <div key={`products-skeleton-${idx}`} className="table-row skeleton-row">
-                  <span className="skeleton-block" />
-                  <span className="skeleton-block" />
-                  <span className="skeleton-block" />
-                  <span className="skeleton-block" />
-                </div>
-              ))
+                  <div key={`products-skeleton-${idx}`} className="table-row skeleton-row">
+                    <span className="skeleton-block" />
+                    <span className="skeleton-block" />
+                    <span className="skeleton-block" />
+                    <span className="skeleton-block" />
+                  </div>
+                ))
               : filteredProducts.map((product) => (
-                <div key={product._id} className="table-row">
-                  <div className="admin-product-thumb-cell">
-                    <img
-                      className="admin-product-thumb"
-                      src={product.image || "https://picsum.photos/64"}
-                      alt={product.name}
-                      onError={(e) => {
-                        e.currentTarget.src = "https://picsum.photos/64";
-                      }}
-                    />
-                    <span>
-                      <strong>{product.name}</strong>
-                      <small>{product.category || "General"}</small>
-                      {product.lastUpdatedAt ? (
-                        <small>
-                          Last updated by {product.lastUpdatedByName || product.lastUpdatedByEmail || "Admin"} on{" "}
-                          {formatDate(product.lastUpdatedAt)} {formatTime(product.lastUpdatedAt)}
-                        </small>
-                      ) : null}
-                    </span>
-                  </div>
-                  <span>
-                    Rs {product.price}
-                    {product.internationalPrice !== null && product.internationalPrice !== undefined
-                      ? ` / Intl Rs ${product.internationalPrice}`
-                      : ""}
-                    {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
+                  <div key={product._id} className="table-row">
+                    <div className="admin-product-thumb-cell">
+                      <img
+                        className="admin-product-thumb"
+                        src={product.image || "https://picsum.photos/64"}
+                        alt={product.name}
+                        onError={(e) => {
+                          e.currentTarget.src = "https://picsum.photos/64";
+                        }}
+                      />
+                      <span>
+                        <strong>{product.name}</strong>
+                        <small>{product.category || "General"}</small>
+                        {product.lastUpdatedAt ? (
+                          <small>
+                            Last updated by {product.lastUpdatedByName || product.lastUpdatedByEmail || "Admin"} on{" "}
+                            {formatDate(product.lastUpdatedAt)} {formatTime(product.lastUpdatedAt)}
+                          </small>
+                        ) : null}
+                      </span>
+                    </div>
+                      <span>
+                        Rs {product.price}
+                        {product.internationalPrice !== null && product.internationalPrice !== undefined
+                          ? ` / Intl Rs ${product.internationalPrice}`
+                          : ""}
+                      {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
                       ? ` / ${product.internationalCountryPrices.length} country override${product.internationalCountryPrices.length === 1 ? "" : "s"
-                      }`
-                      : ""}
-                    {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
+                          }`
+                        : ""}
+                      {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
                       ? ` / ${product.marketPrices.length} market price${product.marketPrices.length === 1 ? "" : "s"
-                      }`
-                      : ""}
-                    {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
-                      ? ` (${product.internationalCountryPrices
-                        .map((item) => `${item.country}: Rs ${item.price}`)
-                        .join(", ")})`
-                      : ""}
-                    {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
-                      ? ` ${product.marketPrices
-                        .map((item) => {
-                          const regular = `Rs ${item.regularPrice}`;
-                          const sale = item.salePrice !== null && item.salePrice !== undefined ? ` / Sale Rs ${item.salePrice}` : "";
-                          return `[${item.market}: ${regular}${sale}]`;
-                        })
-                        .join(" ")}`
-                      : ""}
-                  </span>
-                  <span>
-                    <span
-                      className={
-                        Number(product.stock || 0) === 0
-                          ? "stock-pill stock-pill-critical"
-                          : Number(product.stock || 0) <= 5
-                            ? "stock-pill stock-pill-warning"
-                            : "stock-pill stock-pill-ok"
-                      }
-                    >
-                      {Number(product.stock || 0) === 0 ? "Out of stock" : `Stock: ${product.stock ?? 0}`}
+                          }`
+                        : ""}
+                        {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
+                          ? ` (${product.internationalCountryPrices
+                              .map((item) => `${item.country}: Rs ${item.price}`)
+                              .join(", ")})`
+                          : ""}
+                        {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
+                          ? ` ${product.marketPrices
+                              .map((item) => {
+                                const regular = `Rs ${item.regularPrice}`;
+                                const sale = item.salePrice !== null && item.salePrice !== undefined ? ` / Sale Rs ${item.salePrice}` : "";
+                                return `[${item.market}: ${regular}${sale}]`;
+                              })
+                              .join(" ")}`
+                          : ""}
+                      </span>
+                    <span>
+                      <span
+                        className={
+                          Number(product.stock || 0) === 0
+                            ? "stock-pill stock-pill-critical"
+                            : Number(product.stock || 0) <= 5
+                              ? "stock-pill stock-pill-warning"
+                              : "stock-pill stock-pill-ok"
+                        }
+                      >
+                        {Number(product.stock || 0) === 0 ? "Out of stock" : `Stock: ${product.stock ?? 0}`}
+                      </span>
                     </span>
-                  </span>
-                  <div className="actions">
-                    <button onClick={() => startEdit(product)}>Edit</button>
-                    <button
-                      style={{ background: "var(--admin-primary, #d97706)", color: "#fff", border: "none" }}
-                      onClick={() => copyBuyLink(product._id)}
-                    >
-                      {copiedProductId === product._id ? "Copied!" : "🔗 Link"}
-                    </button>
-                    <button className="danger" onClick={() => deleteProduct(product._id)}>
-                      Delete
-                    </button>
+                    <div className="actions">
+                      <button onClick={() => startEdit(product)}>Edit</button>
+                      <button 
+                        style={{ background: "var(--admin-primary, #d97706)", color: "#fff", border: "none" }}
+                        onClick={() => copyBuyLink(product._id)}
+                      >
+                        {copiedProductId === product._id ? "Copied!" : "🔗 Link"}
+                      </button>
+                      <button className="danger" onClick={() => deleteProduct(product._id)}>
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
           </div>
           {!isLoadingProducts && filteredProducts.length === 0 && (
             <p style={{ marginTop: "10px" }}>No matching products found.</p>
