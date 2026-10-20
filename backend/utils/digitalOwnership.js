@@ -72,7 +72,7 @@ function getOwnedDigitalProductIds({ orders = [], redeemedPasses = [] } = {}) {
  * @returns {{ blocked: boolean, giftAllowed: boolean, notice: boolean, ownedItems: string[], message: string }}
  */
 function analyzeDigitalOwnership({ lines = [], ownedIds = new Set(), isGift = false } = {}) {
-  const safeLines = Array.isArray(lines) ? lines : [];
+  const safeLines = (Array.isArray(lines) ? lines : []).filter((l) => l && l.exempt !== true);
   const ownedSet = ownedIds instanceof Set ? ownedIds : new Set(Array.from(ownedIds || []).map(String));
 
   const hasBundle = safeLines.some((l) => Boolean(l && l.isBundle));

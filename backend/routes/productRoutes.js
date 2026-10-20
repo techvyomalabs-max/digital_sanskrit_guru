@@ -339,6 +339,7 @@ const getProductAuditFields = (product = {}) => ({
   images: Array.isArray(product?.images) ? product.images : [],
   trailerVideoUrl: String(product?.trailerVideoUrl || "").trim(),
   isDigital: product?.isDigital === true,
+  skipOwnershipRules: product?.skipOwnershipRules === true,
   digitalType: String(product?.digitalType || "").trim(),
   webReaderLink: String(product?.webReaderLink || "").trim(),
   kindleLink: String(product?.kindleLink || "").trim(),
@@ -365,6 +366,7 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   if (JSON.stringify(before.images || []) !== JSON.stringify(after.images || [])) changes.push("gallery");
   if (String(before.trailerVideoUrl || "") !== String(after.trailerVideoUrl || "")) changes.push("trailer video");
   if (Boolean(before.isDigital) !== Boolean(after.isDigital)) changes.push("digital item status");
+  if (Boolean(before.skipOwnershipRules) !== Boolean(after.skipOwnershipRules)) changes.push("ownership rules exemption");
   if (String(before.kindleLink || "") !== String(after.kindleLink || "")) changes.push("kindle link");
   if (String(before.webReaderLink || "") !== String(after.webReaderLink || "")) changes.push("web reader link");
   if (String(before.courseLink || "") !== String(after.courseLink || "")) changes.push("SFH course link");
@@ -430,6 +432,7 @@ router.post("/", protect, admin, (req, res, next) => {
       bundleItems,
       relatedProducts,
       isDigital: b.isDigital === true,
+      skipOwnershipRules: b.skipOwnershipRules === true,
       ...opt("digitalType"),
       ...opt("webReaderLink"),
       ...opt("kindleLink"),
@@ -527,6 +530,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     if (req.body.isDigital !== undefined) {
       product.isDigital = req.body.isDigital === true;
     }
+    if (req.body.skipOwnershipRules !== undefined) {
+      product.skipOwnershipRules = req.body.skipOwnershipRules === true;
+    }
     if (req.body.digitalType !== undefined) {
       product.digitalType = String(req.body.digitalType || "Web Version").trim();
     }
@@ -613,7 +619,7 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType skipOwnershipRules")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     return res.json(products);

@@ -54,7 +54,7 @@ async function buildLinesFromCartItems(items) {
   if (validIds.length === 0) return [];
 
   const dbProducts = await Product.find({ _id: { $in: validIds }, isDeleted: { $ne: true } })
-    .select("name isDigital productType bundleItems")
+    .select("name isDigital productType bundleItems skipOwnershipRules")
     .populate("bundleItems.product", "name isDigital")
     .lean();
 
@@ -91,6 +91,7 @@ async function buildLinesFromCartItems(items) {
       name: String(prod.name || "Product").trim(),
       isDigital: prod.isDigital === true,
       isBundle,
+      exempt: prod.skipOwnershipRules === true,
       components
     });
   }
