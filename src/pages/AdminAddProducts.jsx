@@ -51,6 +51,18 @@ function hasNumericInput(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
 }
 
+function isValidHttpUrl(string) {
+  if (!string || typeof string !== "string") return false;
+  if (/\s/.test(string)) return false;
+  try {
+    const url = new URL(string);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+
 function hasAnyMarketPriceInput(item) {
   return Boolean(
     String(item?.market || "").trim() ||
@@ -307,6 +319,10 @@ function AdminAddProducts() {
   const [productType, setProductType] = useState("single");
   const [isDigital, setIsDigital] = useState(false);
   const [digitalType, setDigitalType] = useState("Web Version");
+  const [digitalDelivery, setDigitalDelivery] = useState("onsite");
+  const [externalAccessLink, setExternalAccessLink] = useState("");
+  const [externalAccessLabel, setExternalAccessLabel] = useState("");
+  const [externalLinkError, setExternalLinkError] = useState("");
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
   const [kindleAsin, setKindleAsin] = useState("");
@@ -602,6 +618,10 @@ function AdminAddProducts() {
     setProductType("single");
     setIsDigital(false);
     setDigitalType("Web Version");
+    setDigitalDelivery("onsite");
+    setExternalAccessLink("");
+    setExternalAccessLabel("");
+    setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
     setKindleAsin("");
@@ -640,6 +660,9 @@ function AdminAddProducts() {
       productType,
       isDigital,
       digitalType,
+      digitalDelivery,
+      externalAccessLink,
+      externalAccessLabel,
       webReaderLink,
       kindleLink,
       kindleAsin,
@@ -1188,6 +1211,18 @@ function AdminAddProducts() {
       return;
     }
 
+    const isEligibleForExternal = isDigital || productType === "bundle";
+    if (isEligibleForExternal && digitalDelivery === "external") {
+      const trimmedLink = externalAccessLink.trim();
+      if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
+        setExternalLinkError("Please enter a valid access link (http:// or https://) without spaces.");
+        setFormMessage("Please enter a valid access link (http:// or https://) for external delivery.");
+        return;
+      }
+    }
+    setExternalLinkError("");
+
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1259,6 +1294,9 @@ function AdminAddProducts() {
       productType: productType,
       isDigital,
       digitalType,
+      digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
+      externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
+      externalAccessLabel: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLabel.trim() : "",
       webReaderLink: webReaderLink.trim(),
       kindleLink: kindleLink.trim(),
       kindleAsin: kindleAsin.trim(),
@@ -1357,6 +1395,10 @@ function AdminAddProducts() {
     setProductType(product.productType || "single");
     setIsDigital(product.isDigital === true);
     setDigitalType(product.digitalType || "Web Version");
+    setDigitalDelivery(product.digitalDelivery || "onsite");
+    setExternalAccessLink(product.externalAccessLink || "");
+    setExternalAccessLabel(product.externalAccessLabel || "");
+    setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
     setKindleAsin(product.kindleAsin || "");
@@ -2092,6 +2134,84 @@ function AdminAddProducts() {
                     </div>
                   )}
 
+                  {(isDigital || productType === "bundle") && (
+                    <div
+                      className="admin-digital-delivery-group"
+                      style={{
+                        margin: "12px 0 16px",
+                        padding: "14px 16px",
+                        borderRadius: "8px",
+                        backgroundColor: "#f8fafc",
+                        border: "1px solid #e2e8f0"
+                      }}
+                    >
+                      <label style={{ display: "block", fontWeight: 600, fontSize: "13.5px", marginBottom: "8px", color: "#1e293b" }}>
+                        Where do customers access this?
+                      </label>
+                      <div style={{ display: "flex", gap: "20px", alignItems: "center", marginBottom: digitalDelivery === "external" ? "12px" : "0" }}>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500 }}>
+                          <input
+                            type="radio"
+                            name="digitalDelivery"
+                            value="onsite"
+                            checked={digitalDelivery === "onsite"}
+                            onChange={() => {
+                              setDigitalDelivery("onsite");
+                              if (externalLinkError) setExternalLinkError("");
+                            }}
+                          />
+                          <span>On this website</span>
+                        </label>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500 }}>
+                          <input
+                            type="radio"
+                            name="digitalDelivery"
+                            value="external"
+                            checked={digitalDelivery === "external"}
+                            onChange={() => {
+                              setDigitalDelivery("external");
+                            }}
+                          />
+                          <span>On another website</span>
+                        </label>
+                      </div>
+
+                      {digitalDelivery === "external" && (
+                        <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                          <div className="admin-field-grid">
+                            <label className="admin-field admin-field-wide">
+                              <span>Access link (https://...) <strong style={{ color: "#dc2626" }}>*</strong></span>
+                              <input
+                                placeholder="https://..."
+                                value={externalAccessLink}
+                                onChange={(e) => {
+                                  setExternalAccessLink(e.target.value);
+                                  if (externalLinkError) setExternalLinkError("");
+                                }}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Button label (optional, default: View)</span>
+                              <input
+                                placeholder="View"
+                                value={externalAccessLabel}
+                                onChange={(e) => setExternalAccessLabel(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b", lineHeight: "1.4" }}>
+                            Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                          </p>
+                          {externalLinkError && (
+                            <div style={{ color: "#dc2626", fontSize: "12.5px", fontWeight: 500, marginTop: "2px" }}>
+                              {externalLinkError}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {isDigital && (
                     <div className="admin-digital-fields-box">
                       <div className="admin-field-grid">
@@ -2106,33 +2226,39 @@ function AdminAddProducts() {
                             <option value="Other">Other Digital Access</option>
                           </select>
                         </label>
-                        <label className="admin-field">
-                          <span>Kindle ASIN / Redeem Code</span>
-                          <input
-                            placeholder="e.g. B08XXXXXX or REDEEM-CODE-123"
-                            value={kindleAsin}
-                            onChange={(e) => setKindleAsin(e.target.value)}
-                          />
-                        </label>
+                        {!(productType !== "bundle" && digitalDelivery === "external") && (
+                          <label className="admin-field">
+                            <span>Kindle ASIN / Redeem Code</span>
+                            <input
+                              placeholder="e.g. B08XXXXXX or REDEEM-CODE-123"
+                              value={kindleAsin}
+                              onChange={(e) => setKindleAsin(e.target.value)}
+                            />
+                          </label>
+                        )}
                       </div>
 
-                      <label className="admin-field admin-field-wide">
-                        <span>Web Reader Access URL</span>
-                        <input
-                          placeholder="https://... (Direct link to Web Reader or Flipbook viewer)"
-                          value={webReaderLink}
-                          onChange={(e) => setWebReaderLink(e.target.value)}
-                        />
-                      </label>
+                      {!(productType !== "bundle" && digitalDelivery === "external") && (
+                        <>
+                          <label className="admin-field admin-field-wide">
+                            <span>Web Reader Access URL</span>
+                            <input
+                              placeholder="https://... (Direct link to Web Reader or Flipbook viewer)"
+                              value={webReaderLink}
+                              onChange={(e) => setWebReaderLink(e.target.value)}
+                            />
+                          </label>
 
-                      <label className="admin-field admin-field-wide">
-                        <span>Amazon Kindle Store / Redeem URL</span>
-                        <input
-                          placeholder="https://www.amazon.in/dp/... (Direct link to Amazon Kindle edition)"
-                          value={kindleLink}
-                          onChange={(e) => setKindleLink(e.target.value)}
-                        />
-                      </label>
+                          <label className="admin-field admin-field-wide">
+                            <span>Amazon Kindle Store / Redeem URL</span>
+                            <input
+                              placeholder="https://www.amazon.in/dp/... (Direct link to Amazon Kindle edition)"
+                              value={kindleLink}
+                              onChange={(e) => setKindleLink(e.target.value)}
+                            />
+                          </label>
+                        </>
+                      )}
 
                       <label className="admin-field admin-field-wide">
                         <span>Customer Access Instructions</span>
