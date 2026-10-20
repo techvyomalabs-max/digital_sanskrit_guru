@@ -108,7 +108,7 @@ async function computeOrderTotals({
     const p = byId.get(String(it.product));
     const isCombo = Boolean(p && (p.productType === "bundle" || (Array.isArray(p.bundleItems) && p.bundleItems.length > 0)));
 
-    if (isCombo && ownedSet && ownedSet.size > 0) {
+    if (isCombo && p?.skipOwnershipRules !== true && ownedSet && ownedSet.size > 0) {
       const components = buildComponentsFromProduct(p);
       const creditResult = computeUpgradeCreditPerUnit({
         unitPrice: it.price,

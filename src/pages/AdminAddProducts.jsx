@@ -318,6 +318,7 @@ function AdminAddProducts() {
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
   const [productType, setProductType] = useState("single");
   const [isDigital, setIsDigital] = useState(false);
+  const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   const [digitalType, setDigitalType] = useState("Web Version");
   const [digitalDelivery, setDigitalDelivery] = useState("onsite");
   const [externalAccessLink, setExternalAccessLink] = useState("");
@@ -617,6 +618,7 @@ function AdminAddProducts() {
     setFestiveDiscountPercent("0");
     setProductType("single");
     setIsDigital(false);
+    setSkipOwnershipRules(false);
     setDigitalType("Web Version");
     setDigitalDelivery("onsite");
     setExternalAccessLink("");
@@ -659,6 +661,7 @@ function AdminAddProducts() {
       festiveDiscountPercent,
       productType,
       isDigital,
+      skipOwnershipRules,
       digitalType,
       digitalDelivery,
       externalAccessLink,
@@ -1293,6 +1296,7 @@ function AdminAddProducts() {
       festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
       productType: productType,
       isDigital,
+      skipOwnershipRules: productType === "bundle" ? skipOwnershipRules : false,
       digitalType,
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
       externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
@@ -1394,6 +1398,7 @@ function AdminAddProducts() {
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
     setIsDigital(product.isDigital === true);
+    setSkipOwnershipRules(product.skipOwnershipRules === true);
     setDigitalType(product.digitalType || "Web Version");
     setDigitalDelivery(product.digitalDelivery || "onsite");
     setExternalAccessLink(product.externalAccessLink || "");
@@ -2060,8 +2065,7 @@ function AdminAddProducts() {
                         </small>
                         {categoryMessage ? (
                           <small
-                            className={`admin-category-feedback${
-                              categoryMessage.includes("successfully") ? " success" : " error"
+                                  className={`admin-category-feedback${categoryMessage.includes("successfully") ? " success" : " error"
                             }`}
                           >
                             {categoryMessage}
@@ -2417,6 +2421,18 @@ function AdminAddProducts() {
                 <div className="form-grid">
                   {productType === "bundle" ? (
                     <div className="admin-field admin-field-wide">
+                            <label className="admin-digital-toggle-label" style={{ marginBottom: "4px" }}>
+                              <input
+                                type="checkbox"
+                                checked={skipOwnershipRules}
+                                onChange={(e) => setSkipOwnershipRules(e.target.checked)}
+                              />
+                              <span>{"Allow customers to buy this again (skip the 'already owned' checks and price reduction)"}</span>
+                            </label>
+                            <p style={{ margin: "0 0 16px 26px", fontSize: "12px", color: "var(--admin-muted)" }}>
+                              Use this for combos where customers choose a format, such as USB or books. Normal combos should keep this off.
+                            </p>
+
                       <span>Bundle Products</span>
                       <div className="admin-bundle-builder">
                         <div className="admin-bundle-builder-head">
@@ -2865,13 +2881,11 @@ function AdminAddProducts() {
                           ? ` / Intl Rs ${product.internationalPrice}`
                           : ""}
                       {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
-                        ? ` / ${product.internationalCountryPrices.length} country override${
-                            product.internationalCountryPrices.length === 1 ? "" : "s"
+                      ? ` / ${product.internationalCountryPrices.length} country override${product.internationalCountryPrices.length === 1 ? "" : "s"
                           }`
                         : ""}
                       {Array.isArray(product.marketPrices) && product.marketPrices.length > 0
-                        ? ` / ${product.marketPrices.length} market price${
-                            product.marketPrices.length === 1 ? "" : "s"
+                      ? ` / ${product.marketPrices.length} market price${product.marketPrices.length === 1 ? "" : "s"
                           }`
                         : ""}
                         {Array.isArray(product.internationalCountryPrices) && product.internationalCountryPrices.length > 0
