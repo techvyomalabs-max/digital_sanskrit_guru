@@ -58,6 +58,8 @@ const formatCart = (cart) => {
       hsnSac: item.product.hsnSac || "",
       format: item.product.format || "",
       isDigital: Boolean(item.product.isDigital),
+      digitalType: item.product.digitalType || "Web Version",
+      digitalDelivery: item.product.digitalDelivery || "onsite",
       productType: item.product.productType || "single"
     }));
 };

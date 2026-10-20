@@ -1,4 +1,4 @@
-const DIGITAL_ITEM_FIELDS = ["webReaderLink", "kindleLink", "kindleAsin", "digitalInstructions"];
+const DIGITAL_ITEM_FIELDS = ["webReaderLink", "kindleLink", "kindleAsin", "digitalInstructions", "externalAccessLink", "externalAccessLabel"];
 
 const hasDigitalAccess = (o) =>
   !!o &&

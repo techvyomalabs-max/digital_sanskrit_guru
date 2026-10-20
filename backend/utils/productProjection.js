@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 
-const PRIVATE = ["webReaderLink", "digitalInstructions", "lastUpdatedByEmail", "deletedBy"];
-const PRIVATE_BUNDLE = ["webReaderLink"];
+const PRIVATE = ["webReaderLink", "digitalInstructions", "lastUpdatedByEmail", "deletedBy", "externalAccessLink", "externalAccessLabel"];
+const PRIVATE_BUNDLE = ["webReaderLink", "externalAccessLink", "externalAccessLabel"];
+
 
 const PUBLIC_PRODUCT_EXCLUDE = [
   ...PRIVATE,
