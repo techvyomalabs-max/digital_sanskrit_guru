@@ -8,7 +8,8 @@ const User = require("../models/User");
 const Wishlist = require("../models/Wishlist");
 const GiftPass = require("../models/GiftPass");
 const { generateGiftCode } = require("./giftRoutes");
-const { resolveDeliveryCharge, isDigitalItem } = require("../utils/deliveryPricing");
+const { resolveDeliveryCharge, isDigitalItem, getDeliveryPricingDetails } = require("../utils/deliveryPricing");
+const { applyComboWeights } = require("../utils/comboWeight");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
 const { getProductPriceDetails, isInternationalCountry } = require("../utils/productPricing");
 const protect = require("../middleware/authMiddleware");
@@ -44,7 +45,7 @@ const {
 } = require("../utils/webPush");
 
 const { getTrackingDetails } = require("../utils/trackingService");
-const { orderRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
+const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const getRazorpayClient = require("../utils/razorpay");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
@@ -318,8 +319,75 @@ router.post("/calculate-totals", protect, async (req, res) => {
   }
 });
 
+function isValidEstimateProductId(id) {
+  if (!id || typeof id !== "string") return false;
+  return /^[a-fA-F0-9]{24}$/.test(id);
+}
+
+// POST /api/orders/delivery-estimate (PUBLIC)
+router.post("/delivery-estimate", estimateRateLimiter, async (req, res) => {
+  try {
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items.slice(0, 50) : [];
+    const shipping = req.body?.shipping || {};
+
+    const seenMap = new Map();
+    for (const raw of rawItems) {
+      const rawId = raw?.product?._id || raw?.product?.id || raw?.product || raw?.id || raw?._id;
+      const id = String(rawId || "").trim();
+      if (!isValidEstimateProductId(id)) continue;
+      const qty = Math.max(1, Math.floor(Number(raw?.quantity || 1)) || 1);
+      seenMap.set(id, (seenMap.get(id) || 0) + qty);
+    }
+
+    const lines = [];
+    for (const [productId, quantity] of seenMap.entries()) {
+      lines.push({ productId, quantity });
+    }
+
+    if (lines.length === 0) {
+      return res.json({ deliveryCharge: null });
+    }
+
+    const settings = (await StoreSettings.findOne().lean()) || {};
+
+    const products = await Product.find({
+      _id: { $in: lines.map((l) => l.productId) },
+      isDeleted: { $ne: true }
+    })
+      .populate("bundleItems.product")
+      .lean();
+
+    const byId = new Map(products.map((p) => [String(p._id), p]));
+
+    const normalizedItems = lines
+      .map((l) => {
+        const p = byId.get(l.productId);
+        if (!p) return null;
+        return normalizeOrderItem(p, { quantity: l.quantity });
+      })
+      .filter(Boolean);
+
+    if (normalizedItems.length === 0) {
+      return res.json({ deliveryCharge: null });
+    }
+
+    applyComboWeights(normalizedItems, byId);
+
+    const pricingDetails = getDeliveryPricingDetails(settings, shipping, normalizedItems);
+
+    return res.json({
+      deliveryCharge: pricingDetails.deliveryCharge,
+      pricingMode: pricingDetails.pricingMode,
+      distanceKm: pricingDetails.distanceKm,
+      isDigitalOnly: Boolean(pricingDetails.isDigitalOnly)
+    });
+  } catch (err) {
+    return res.json({ deliveryCharge: null });
+  }
+});
+
 // POST /api/orders/digital-ownership
-router.post("/digital-ownership", protect, orderRateLimiter, async (req, res) => {
+router.post("/digital-ownership", protect, estimateRateLimiter, async (req, res) => {
   try {
     const analysis = await checkDigitalOwnership({
       userId: req.user,
