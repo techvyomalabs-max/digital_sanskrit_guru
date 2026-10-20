@@ -12,6 +12,7 @@ import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
+import { isExternalDelivery } from "../utils/digitalDelivery";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
@@ -1270,7 +1271,11 @@ function Product() {
               ) : null}
             </p>
             {/* <p className="delivery">Fast Delivery</p> */}
-            <p className="buy-box-note">Fast delivery available at your selected location.</p>
+            <p className="buy-box-note">
+              {isExternalDelivery(product)
+                ? "Delivered via another website. After purchase, find your link in My Digital Library."
+                : "Fast delivery available at your selected location."}
+            </p>
 
             {isKindleBook ? (
               <div className="product-kindle-btn-wrap">
@@ -1382,7 +1387,7 @@ function Product() {
                 ) : isDigitalItem(product) ? (
                   <div className="product-digital-badge-wrap">
                     <p className="product-digital-badge-pill">
-                      💻 Web Version - 1 License Per User
+                      {isExternalDelivery(product) ? "🌐 External Digital Access" : "💻 Web Version - 1 License Per User"}
                     </p>
                   </div>
                 ) : (

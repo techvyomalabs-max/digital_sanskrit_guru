@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
+import { isExternalDelivery } from "../utils/digitalDelivery";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -221,6 +222,52 @@ function MyLibrary() {
       const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
       order.items.forEach((item) => {
+        const isExternal = isExternalDelivery(item);
+        if (isExternal) {
+          const isGiftItem = Boolean(order.isGift || item.giftCode);
+          if (isGiftItem && !order.isRedeemedGift) {
+            return;
+          }
+
+          const isCancelledOrRefunded =
+            order.status === "Cancelled" ||
+            order.refundStatus === "Refunded" ||
+            item.returnRequest?.status === "Refunded";
+
+          if (isCancelledOrRefunded) {
+            return;
+          }
+
+          const externalLink = item.externalAccessLink || "";
+
+          const key = String((item.product || item._id || item.name) + (isOrderLegacy ? "_legacy" : "")).trim();
+          if (seenMap.has(key)) {
+            const existing = seenMap.get(key);
+            existing.copies += Number(item.quantity || 1);
+            if (!existing.externalAccessLink && externalLink) {
+              existing.externalAccessLink = externalLink;
+            }
+          } else {
+            const entry = {
+              ...item,
+              _id: item.product || item._id,
+              orderId: order._id,
+              orderDate: order.createdAt,
+              orderNumber: order._id,
+              copies: Number(item.quantity || 1),
+              isExternal: true,
+              digitalDelivery: "external",
+              externalAccessLink: externalLink,
+              externalAccessLabel: item.externalAccessLabel || "",
+              legacyAccess: isOrderLegacy,
+              isWpArchive: isOrderLegacy
+            };
+            seenMap.set(key, entry);
+            list.push(entry);
+          }
+          return;
+        }
+
         const isBundle = String(item.productType || "").toLowerCase() === "bundle" || (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
 
         if (isBundle && Array.isArray(item.bundleItems)) {
@@ -411,8 +458,9 @@ function MyLibrary() {
           {nativeBooks.length > 0 && (
             <div className="my-library-grid">
               {nativeBooks.map((book, idx) => {
-                const isKindle = String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink);
-                const isFlipbook = Boolean(
+                const isExternal = Boolean(book.isExternal || isExternalDelivery(book));
+                const isKindle = !isExternal && (String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink));
+                const isFlipbook = !isExternal && Boolean(
                   String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
                   String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
                   String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
@@ -431,7 +479,7 @@ function MyLibrary() {
                         }}
                       />
                       <span className="my-library-format-badge">
-                        {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                        {isExternal ? "🌐 External Access" : isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
                       </span>
                     </div>
 
@@ -448,7 +496,41 @@ function MyLibrary() {
                       )}
 
                       <div className="my-library-card-actions">
-                        {!isKindle ? (
+                        {isExternal ? (
+                          book.externalAccessLink ? (
+                            <a
+                              href={book.externalAccessLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="my-library-btn-primary"
+                              style={{
+                                textDecoration: "none",
+                                textAlign: "center",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center"
+                              }}
+                            >
+                              {book.externalAccessLabel?.trim()
+                                ? (book.externalAccessLabel.includes("↗")
+                                    ? book.externalAccessLabel.trim()
+                                    : `${book.externalAccessLabel.trim()} ↗`)
+                                : "View ↗"}
+                            </a>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: "12.5px",
+                                color: "var(--site-text-soft, #64748b)",
+                                fontStyle: "italic",
+                                padding: "8px 0",
+                                display: "inline-block"
+                              }}
+                            >
+                              Access link not available yet
+                            </span>
+                          )
+                        ) : !isKindle ? (
                           <button
                             type="button"
                             className="my-library-btn-primary"
@@ -467,13 +549,15 @@ function MyLibrary() {
                           </a>
                         )}
 
-                        <button
-                          type="button"
-                          className="my-library-btn-outline"
-                          onClick={() => setActiveGuideItem(book)}
-                        >
-                          💡 Guide
-                        </button>
+                        {!isExternal && (
+                          <button
+                            type="button"
+                            className="my-library-btn-outline"
+                            onClick={() => setActiveGuideItem(book)}
+                          >
+                            💡 Guide
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

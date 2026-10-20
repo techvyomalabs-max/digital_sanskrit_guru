@@ -7,6 +7,7 @@ import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
+import { isExternalDelivery } from "../utils/digitalDelivery";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
   AlertTriangle,
@@ -772,6 +773,7 @@ function MyOrders() {
             items.every((item) =>
               Boolean(
                 item.isDigital ||
+                  isExternalDelivery(item) ||
                   item.legacyAccess ||
                   item.webReaderLink ||
                   item.kindleLink ||
@@ -889,6 +891,7 @@ function MyOrders() {
                       const returnWindow = getReturnWindowInfo(order, item);
                       const isItemDigital = Boolean(
                         item.isDigital ||
+                          isExternalDelivery(item) ||
                           item.legacyAccess ||
                           item.webReaderLink ||
                           item.kindleLink ||
@@ -1159,48 +1162,80 @@ function MyOrders() {
                                   ) : (
                                     <div className="my-order-digital-box">
                                       <div className="my-order-digital-head">
-                                        ⚡ Digital Reader Access Granted
+                                        {isExternalDelivery(item)
+                                          ? "Digital item (external link)"
+                                          : "⚡ Digital Reader Access Granted"}
                                       </div>
                                       <div className="my-order-digital-btns">
-                                        {(item.webReaderLink ||
-                                          String(item.name || "").toLowerCase().includes("web") ||
-                                          String(item.name || "").toLowerCase().includes("flipbook") ||
-                                          item.isDigital) && (
-                                          <button
-                                            type="button"
-                                            className="my-order-digital-btn-read"
-                                            onClick={() => {
-                                              const readerLink = item.webReaderLink || item.product?.webReaderLink;
-                                              navigate("/my-library", {
-                                                state: { autoOpenUrl: readerLink, search: item.name }
-                                              });
-                                            }}
-                                          >
-                                            {String(item.name || "").toLowerCase().includes("flipbook") ||
-                                            String(item.digitalType || item.product?.digitalType || "")
-                                              .toLowerCase()
-                                              .includes("flipbook")
-                                              ? "📖 Read Flipbook"
-                                              : "📖 Read Web Version"}
-                                          </button>
+                                        {isExternalDelivery(item) ? (
+                                          item.externalAccessLink ? (
+                                            <a
+                                              href={item.externalAccessLink}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="my-order-digital-btn-read"
+                                              style={{
+                                                textDecoration: "none",
+                                                textAlign: "center",
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                justifyContent: "center"
+                                              }}
+                                            >
+                                              {item.externalAccessLabel?.trim()
+                                                ? (item.externalAccessLabel.includes("↗")
+                                                    ? item.externalAccessLabel.trim()
+                                                    : `${item.externalAccessLabel.trim()} ↗`)
+                                                : "View ↗"}
+                                            </a>
+                                          ) : (
+                                            <span style={{ fontSize: "12.5px", color: "var(--site-text-soft, #64748b)", fontStyle: "italic" }}>
+                                              Access link not available yet
+                                            </span>
+                                          )
+                                        ) : (
+                                          <>
+                                            {(item.webReaderLink ||
+                                              String(item.name || "").toLowerCase().includes("web") ||
+                                              String(item.name || "").toLowerCase().includes("flipbook") ||
+                                              item.isDigital) && (
+                                              <button
+                                                type="button"
+                                                className="my-order-digital-btn-read"
+                                                onClick={() => {
+                                                  const readerLink = item.webReaderLink || item.product?.webReaderLink;
+                                                  navigate("/my-library", {
+                                                    state: { autoOpenUrl: readerLink, search: item.name }
+                                                  });
+                                                }}
+                                              >
+                                                {String(item.name || "").toLowerCase().includes("flipbook") ||
+                                                String(item.digitalType || item.product?.digitalType || "")
+                                                  .toLowerCase()
+                                                  .includes("flipbook")
+                                                  ? "📖 Read Flipbook"
+                                                  : "📖 Read Web Version"}
+                                              </button>
+                                            )}
+                                            {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
+                                              <a
+                                                href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="my-order-digital-btn-kindle"
+                                              >
+                                                📱 View Kindle Edition ↗
+                                              </a>
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="my-order-digital-btn-guide"
+                                              onClick={() => setActiveKindleGuideItem(item)}
+                                            >
+                                              💡 How to Access
+                                            </button>
+                                          </>
                                         )}
-                                        {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
-                                          <a
-                                            href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="my-order-digital-btn-kindle"
-                                          >
-                                            📱 View Kindle Edition ↗
-                                          </a>
-                                        )}
-                                        <button
-                                          type="button"
-                                          className="my-order-digital-btn-guide"
-                                          onClick={() => setActiveKindleGuideItem(item)}
-                                        >
-                                          💡 How to Access
-                                        </button>
                                       </div>
                                     </div>
                                   )

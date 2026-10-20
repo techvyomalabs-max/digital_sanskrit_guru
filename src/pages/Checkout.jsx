@@ -7,6 +7,7 @@ import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
+import { hasExternalDelivery } from "../utils/digitalDelivery";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
@@ -1586,7 +1587,9 @@ function Checkout() {
                 {isPriceLoading ? (
                   <SkeletonShimmer width={56} height={18} />
                 ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-                  <strong className="delivery-free-badge">FREE (Instant Access)</strong>
+                  <strong className="delivery-free-badge">
+                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
+                  </strong>
                 ) : totals.deliveryCharge === 0 ? (
                   <strong className="delivery-free-badge">FREE</strong>
                 ) : (
@@ -1651,7 +1654,11 @@ function Checkout() {
           {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
             <div className="checkout-digital-note">
               <Zap size={14} />
-              <span>Digital order: Instant access granted upon payment completion.</span>
+              <span>
+                {hasExternalDelivery(cartItems)
+                  ? "Digital order: your access link will appear in My Library after payment."
+                  : "Digital order: Instant access granted upon payment completion."}
+              </span>
             </div>
           ) : null}
 

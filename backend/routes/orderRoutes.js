@@ -2210,11 +2210,13 @@ router.get("/my", protect, async (req, res) => {
             const pId = String(item.product || item._id || item.id || "").trim();
             const pName = String(item.name || "").trim().toLowerCase();
             const prod = productMapById.get(pId) || productMapByName.get(pName);
+            item.digitalDelivery = item.digitalDelivery || "onsite";
             if (prod) {
               if (prod.isDigital !== undefined) item.isDigital = prod.isDigital;
-              if (prod.digitalDelivery) item.digitalDelivery = prod.digitalDelivery;
-              if (prod.externalAccessLink) item.externalAccessLink = prod.externalAccessLink;
-              if (prod.externalAccessLabel) item.externalAccessLabel = prod.externalAccessLabel;
+              if (item.digitalDelivery === "external") {
+                if (prod.externalAccessLink) item.externalAccessLink = prod.externalAccessLink;
+                if (prod.externalAccessLabel) item.externalAccessLabel = prod.externalAccessLabel;
+              }
               if (prod.webReaderLink) item.webReaderLink = prod.webReaderLink;
               if (prod.kindleLink) item.kindleLink = prod.kindleLink;
               if (prod.kindleAsin) item.kindleAsin = prod.kindleAsin;

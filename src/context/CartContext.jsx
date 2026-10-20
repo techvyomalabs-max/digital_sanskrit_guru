@@ -286,6 +286,7 @@ export function CartProvider({ children }) {
             _id: productId,
             name: String(product?.name || "").trim(),
             productType: String(product?.productType || "single").trim(),
+            digitalDelivery: String(product?.digitalDelivery || "onsite"),
             price: Number(product?.price || 0),
             isDigital: Boolean(product?.isDigital || isDigital),
             internationalPrice:
