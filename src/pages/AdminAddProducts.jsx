@@ -1941,6 +1941,11 @@ function AdminAddProducts() {
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
                     />
+                    {productType === "bundle" && (
+                      <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
+                        Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
+                      </small>
+                    )}
                   </label>
                   <label className="admin-field">
                     <span>Length (in cm)</span>

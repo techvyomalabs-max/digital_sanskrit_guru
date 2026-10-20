@@ -7,6 +7,7 @@ const { getItemHsnSac } = require("./tax");
 const { validateCoupon } = require("./coupons");
 const { getSettlementCharge } = require("./paymentVerification");
 const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
+const { applyComboWeights } = require("./comboWeight");
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -100,6 +101,8 @@ async function computeOrderTotals({
   const orderCurrency = ic.currency;
   const rates = normalizeCurrencyRates(settings?.currencyConversionRates || {});
   const toCcy = (inr) => convertCurrencyAmount(inr, { sourceCurrency: "INR", currency: orderCurrency, rates });
+
+  applyComboWeights(normalizedItems, byId);
 
   const gstPercent = isInternational ? 0 : Math.min(50, Math.max(0, Number(settings?.gstPercent || 0)));
   const deliveryCharge = roundMoney(toCcy(resolveDeliveryCharge(settings, shipping, normalizedItems)));

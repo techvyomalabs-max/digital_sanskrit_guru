@@ -615,4 +615,91 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       assert.equal(sumItemShares, item.upgradeCreditPerUnit);
     });
   });
+
+  describe("combo weights in computeOrderTotals", () => {
+    it("a combo with own weight 0 and three physical parts gets the summed weight and a higher delivery charge than the old 250 g fallback", async () => {
+      const comboWithZeroWeight = {
+        _id: "prod_combo_zero_wt",
+        name: "Three Books Combo",
+        productType: "bundle",
+        price: 999,
+        weight: 0,
+        bundleItems: [
+          {
+            quantity: 1,
+            product: { _id: "part_1", name: "Book 1", weight: 450, isDigital: false }
+          },
+          {
+            quantity: 1,
+            product: { _id: "part_2", name: "Book 2", weight: 450, isDigital: false }
+          },
+          {
+            quantity: 1,
+            product: { _id: "part_3", name: "Book 3", weight: 350, isDigital: false }
+          }
+        ]
+      };
+
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboWithZeroWeight]
+        })
+      }));
+
+      // Shipping to Mumbai PIN 400001 (~835 km -> upTo1000 slab)
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_zero_wt", quantity: 1 }],
+        shipping: { country: "India", state: "Maharashtra", pincode: "400001" },
+        settings: defaultSettings
+      });
+
+      // Summed weight is 450 + 450 + 350 = 1250 g
+      assert.equal(result.normalizedItems[0].weight, 1250);
+
+      // Old 250g fallback in upTo1000 zone would be 80.24 INR
+      // With 1250g, delivery charge is 167.56 INR (> 80.24)
+      assert.equal(result.deliveryCharge, 167.56);
+      assert.ok(result.deliveryCharge > 80.24);
+    });
+
+    it("a combo with own weight 800 keeps 800", async () => {
+      const comboWith800Weight = {
+        _id: "prod_combo_800_wt",
+        name: "Three Books Combo Explicit",
+        productType: "bundle",
+        price: 999,
+        weight: 800,
+        bundleItems: [
+          {
+            quantity: 1,
+            product: { _id: "part_1", name: "Book 1", weight: 450, isDigital: false }
+          },
+          {
+            quantity: 1,
+            product: { _id: "part_2", name: "Book 2", weight: 450, isDigital: false }
+          },
+          {
+            quantity: 1,
+            product: { _id: "part_3", name: "Book 3", weight: 350, isDigital: false }
+          }
+        ]
+      };
+
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [comboWith800Weight]
+        })
+      }));
+
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_800_wt", quantity: 1 }],
+        shipping: { country: "India", state: "Maharashtra", pincode: "400001" },
+        settings: defaultSettings
+      });
+
+      // Weight is kept at 800 g as entered by admin
+      assert.equal(result.normalizedItems[0].weight, 800);
+      assert.equal(result.deliveryCharge, 132.16);
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { useCart } from "../hooks/useCart";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
+import { useDeliveryEstimate } from "../hooks/useDeliveryEstimate";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
@@ -346,6 +347,16 @@ function Cart() {
   const [removingId, setRemovingId] = useState(null);
   const { selectedAddress } = useDeliveryLocation();
   const digitalOwnership = useDigitalOwnership(cartItems, false, selectedAddress?.country);
+  const estimateItems = useMemo(
+    () =>
+      cartItems.map((item) => ({
+        product: item.productId || item.product?._id || item._id || item.id,
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        isDigital: isDigitalItem(item)
+      })),
+    [cartItems]
+  );
+  const { deliveryCharge: serverDeliveryCharge } = useDeliveryEstimate(estimateItems, selectedAddress);
   const getItemUnitPrice = (item) => Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
   const displayCurrency =
     cartItems.length > 0
@@ -393,10 +404,20 @@ function Cart() {
     };
   }, []);
 
-  const deliveryDetails = useMemo(
+  const localDeliveryDetails = useMemo(
     () => getDeliveryPricingDetails(charges, selectedAddress, cartItems),
     [charges, selectedAddress, cartItems]
   );
+
+  const deliveryDetails = useMemo(() => {
+    if (typeof serverDeliveryCharge === "number" && localDeliveryDetails.pricingMode === "indiapost") {
+      return {
+        ...localDeliveryDetails,
+        deliveryCharge: serverDeliveryCharge
+      };
+    }
+    return localDeliveryDetails;
+  }, [localDeliveryDetails, serverDeliveryCharge]);
 
   const totals = useMemo(() => {
     const isInternational = isInternationalCountry(selectedAddress?.country);

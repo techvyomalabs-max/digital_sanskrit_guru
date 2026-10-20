@@ -58,6 +58,14 @@ const orderRateLimiter = rateLimit({
   message: { message: "Too many order attempts. Please wait a few minutes before trying again." }
 });
 
+const estimateRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: perWorker(300),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please wait a moment." }
+});
+
 // Payment creation rate limiter (prevents card testing & payment gateway abuse)
 const paymentRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
@@ -142,6 +150,7 @@ module.exports = {
   globalApiLimiter,
   reviewRateLimiter,
   orderRateLimiter,
+  estimateRateLimiter,
   paymentRateLimiter,
   bulkEnquiryLimiter,
   verifyTurnstileToken,
