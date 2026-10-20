@@ -54,7 +54,8 @@ const normalizeGuestCartItems = (items) =>
         festiveDiscountPercent: Number(item?.festiveDiscountPercent || 0),
         discountType: String(item?.discountType || "").trim(),
         hsnSac: String(item?.hsnSac || "").trim(),
-        format: String(item?.format || "").trim()
+        format: String(item?.format || "").trim(),
+        isDigital: Boolean(item?.isDigital)
       };
     })
     .filter(Boolean);

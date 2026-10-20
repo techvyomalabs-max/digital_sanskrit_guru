@@ -580,36 +580,7 @@ export function calculateDistanceKm(from, to) {
 
 export function isDigitalItem(item) {
   if (!item) return false;
-  if (item.isDigital === true || item.product?.isDigital === true) return true;
-
-  const format = String(
-    item.format || item.selectedFormat || item.variant || item.binding || item.product?.format || ""
-  ).trim().toLowerCase();
-
-  const category = String(
-    item.category || item.product?.category || ""
-  ).trim().toLowerCase();
-
-  const name = String(
-    item.name || item.product?.name || item.title || ""
-  ).trim().toLowerCase();
-
-  const digitalKeywords = [
-    "ebook",
-    "e-book",
-    "kindle",
-    "web version",
-    "web-version",
-    "webversion",
-    "digital",
-    "flipbook",
-    "epub",
-    "pdf"
-  ];
-
-  return digitalKeywords.some(
-    (kw) => format.includes(kw) || category.includes(kw) || name.includes(kw)
-  );
+  return item.isDigital === true || item.product?.isDigital === true;
 }
 
 export function calculateIndiaPostCharge(distanceKm, items) {
