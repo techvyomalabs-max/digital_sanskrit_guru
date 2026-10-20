@@ -310,5 +310,80 @@ describe("digitalOwnership utility (pure)", () => {
         "You already own: Web Vol 1. They are included again in this purchase."
       );
     });
+
+    it("an exempt combo line fully owned -> not blocked, no notice", () => {
+      const lines = [
+        {
+          productId: "b_exempt",
+          name: "Exempt All-Digital Combo",
+          isDigital: false,
+          isBundle: true,
+          exempt: true,
+          components: [
+            { productId: "w1", name: "Part 1 Web", isDigital: true },
+            { productId: "w2", name: "Part 2 Web", isDigital: true }
+          ]
+        }
+      ];
+      const ownedIds = new Set(["w1", "w2"]);
+
+      const result = analyzeDigitalOwnership({ lines, ownedIds, isGift: false });
+      assert.equal(result.blocked, false);
+      assert.equal(result.notice, false);
+      assert.deepEqual(result.ownedItems, []);
+      assert.equal(result.message, "");
+    });
+
+    it("an exempt line next to an owned single digital item -> the single is judged as if the exempt line were absent (blocked when it is the only other digital item and nothing physical remains)", () => {
+      const lines = [
+        { productId: "w1", name: "Sanskrit Primer Web", isDigital: true, isBundle: false },
+        {
+          productId: "b_exempt",
+          name: "Exempt Combo",
+          isDigital: false,
+          isBundle: true,
+          exempt: true,
+          components: [
+            { productId: "p1", name: "Physical Book", isDigital: false },
+            { productId: "w2", name: "Web Reader Access", isDigital: true }
+          ]
+        }
+      ];
+      const ownedIds = new Set(["w1"]);
+
+      const result = analyzeDigitalOwnership({ lines, ownedIds, isGift: false });
+      assert.equal(result.blocked, true);
+      assert.equal(result.giftAllowed, true);
+      assert.equal(result.notice, false);
+      assert.deepEqual(result.ownedItems, ["Sanskrit Primer Web"]);
+      assert.equal(
+        result.message,
+        "You already own everything digital in this purchase: Sanskrit Primer Web. You can still buy it as a gift."
+      );
+    });
+
+    it("a non-exempt combo is unchanged", () => {
+      const lines = [
+        {
+          productId: "b_non_exempt",
+          name: "Standard Combo",
+          isDigital: false,
+          isBundle: true,
+          exempt: false,
+          components: [
+            { productId: "w1", name: "Part 1 Web", isDigital: true },
+            { productId: "w2", name: "Part 2 Web", isDigital: true }
+          ]
+        }
+      ];
+      const ownedIds = new Set(["w1", "w2"]);
+
+      const result = analyzeDigitalOwnership({ lines, ownedIds, isGift: false });
+      assert.equal(result.blocked, true);
+      assert.equal(result.giftAllowed, false);
+      assert.equal(result.notice, false);
+      assert.deepEqual(result.ownedItems, ["Part 1 Web", "Part 2 Web"]);
+    });
   });
 });
+

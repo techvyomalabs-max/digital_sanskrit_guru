@@ -486,6 +486,38 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       assert.equal(item.upgradeCredit, 0);
     });
 
+    it("an exempt combo with an owned digital component gets no credit and keeps its full price", async () => {
+      const exemptComboProduct = {
+        ...comboProduct,
+        _id: "prod_combo_exempt",
+        skipOwnershipRules: true
+      };
+
+      mock.method(Product, "find", () => ({
+        populate: () => ({
+          lean: async () => [exemptComboProduct]
+        })
+      }));
+
+      const ownedDigitalIds = new Set(["prod_dig_1"]);
+      const result = await computeOrderTotals({
+        items: [{ product: "prod_combo_exempt", quantity: 1 }],
+        shipping: { country: "India", state: "Karnataka" },
+        userId: "user_logged_in_1",
+        settings: defaultSettings,
+        ownedDigitalIds
+      });
+
+      assert.equal(result.upgradeCredit, 0);
+      assert.deepEqual(result.upgradeCreditItems, []);
+      const item = result.normalizedItems[0];
+      assert.equal(item.price, 1500);
+      assert.equal(item.upgradeCreditPerUnit, 0);
+      assert.equal(item.upgradeCredit, 0);
+      assert.deepEqual(item.upgradeOwnedItems, []);
+      assert.deepEqual(item.upgradeOwnedDetails, []);
+    });
+
     it("several owned parts and quantity 2: shares and line amounts add up exactly to credit, names are present, old fields unchanged", async () => {
       const multiPartCombo = {
         _id: "prod_combo_multi",

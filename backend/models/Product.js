@@ -186,6 +186,11 @@ const productSchema = new mongoose.Schema(
       default: false
     },
 
+    skipOwnershipRules: {
+      type: Boolean,
+      default: false
+    },
+
     digitalType: {
       type: String,
       default: "Web Version"
