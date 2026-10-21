@@ -7,6 +7,12 @@ import "./SearchResults.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 
+function stripHtml(text) {
+  return String(text || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[a-z#0-9]+;/gi, " ");
+}
+
 function getCategoryLabel(product) {
   const raw = String(product?.category || "").trim();
 
@@ -44,6 +50,12 @@ function SearchResults() {
     `Search results for "${query}" on Digital Sanskrit Guru. Discover books, scriptures, grammar tutorials, and study aids.`
   );
 
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setSelectedCategory("All");
+  }
+
   useEffect(() => {
     setIsLoadingProducts(true);
     axios
@@ -53,25 +65,48 @@ function SearchResults() {
       .finally(() => setIsLoadingProducts(false));
   }, []);
 
-  const categories = useMemo(
-    () => ["All", ...new Set(products.map((product) => getCategoryLabel(product)))],
-    [products]
-  );
-
-  const filteredProducts = useMemo(() => {
+  const searchMatchedProducts = useMemo(() => {
     return products.filter((product) => {
       const name = String(product?.name || "").toLowerCase();
-      const description = String(product?.description || "").toLowerCase();
-      const category = getCategoryLabel(product).toLowerCase();
+      const description = stripHtml(product?.description).toLowerCase();
 
-      const matchesSearch =
-        !normalizedQuery || name.includes(normalizedQuery) || description.includes(normalizedQuery);
-      const matchesCategory =
-        selectedCategory === "All" || category === String(selectedCategory || "").trim().toLowerCase();
-
-      return matchesSearch && matchesCategory;
+      return (
+        !normalizedQuery ||
+        name.includes(normalizedQuery) ||
+        description.includes(normalizedQuery)
+      );
     });
-  }, [normalizedQuery, products, selectedCategory]);
+  }, [products, normalizedQuery]);
+
+  const { categories, categoryCounts } = useMemo(() => {
+    const counts = {};
+    const matchedCategories = [];
+
+    searchMatchedProducts.forEach((product) => {
+      const category = getCategoryLabel(product);
+      if (!counts[category]) {
+        counts[category] = 0;
+        matchedCategories.push(category);
+      }
+      counts[category] += 1;
+    });
+
+    return {
+      categories: ["All", ...matchedCategories],
+      categoryCounts: counts,
+    };
+  }, [searchMatchedProducts]);
+
+  const filteredProducts = useMemo(() => {
+    if (selectedCategory === "All") {
+      return searchMatchedProducts;
+    }
+
+    return searchMatchedProducts.filter((product) => {
+      const category = getCategoryLabel(product).toLowerCase();
+      return category === String(selectedCategory || "").trim().toLowerCase();
+    });
+  }, [searchMatchedProducts, selectedCategory]);
 
   const sortedProducts = useMemo(() => {
     const nextProducts = [...filteredProducts];
@@ -127,7 +162,9 @@ function SearchResults() {
                     className={selectedCategory === category ? "active" : ""}
                     onClick={() => setSelectedCategory(category)}
                   >
-                    {category}
+                    {category === "All"
+                      ? "All"
+                      : `${category} (${categoryCounts[category] || 0})`}
                   </button>
                 ))}
               </div>
@@ -154,7 +191,9 @@ function SearchResults() {
 
               <div className="search-results-grid">
               {isLoadingProducts ? (
-                <LoadingSpinner text={`Searching for "${query}"...`} minHeight="240px" />
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <LoadingSpinner text={`Searching for "${query}"...`} minHeight="240px" />
+                </div>
               ) : sortedProducts.length > 0 ? (
                 sortedProducts.map((product) => <ProductCard key={product._id} product={product} variant="search" />)
               ) : (
