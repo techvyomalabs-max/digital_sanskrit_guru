@@ -14,6 +14,7 @@ import { getProductPriceDetails, isInternationalCountry } from "../utils/product
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
+import { htmlToPlainText } from "../utils/plainText";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
 import {
@@ -305,7 +306,7 @@ function Product() {
   const [reviews, setReviews] = useState([]);
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
-  useDocumentMetadata(product?.name, product?.description);
+  useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -565,7 +566,7 @@ function Product() {
         await navigator.share({
           title: product.name,
           text: product.description
-            ? `${product.name} - ${product.description.substring(0, 80).replace(/\n/g, " ")}...`
+            ? `${product.name} - ${htmlToPlainText(product.description, 80)}`
             : `Check out ${product.name} on Digital Sanskrit Guru!`,
           url: shareUrl
         });
@@ -622,7 +623,7 @@ function Product() {
     }
   };
 
-  const renderStars = (value) => {
+  const _renderStars = (value) => {
     const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
     return `${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}`;
   };
@@ -723,7 +724,7 @@ function Product() {
       "@type": "Product",
       "name": product.name,
       "image": product.image ? [product.image] : [],
-      "description": product.description || `Buy ${product.name} on Digital Sanskrit Guru.`,
+      "description": htmlToPlainText(product.description) || `Buy ${product.name} on Digital Sanskrit Guru.`,
       "brand": {
         "@type": "Brand",
         "name": "Digital Sanskrit Guru"
@@ -958,9 +959,9 @@ function Product() {
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
         : fallbackOriginalPrice;
-  const calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
+  const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
-  const calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
+  const _calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
   const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - displayPrice) / listPrice) * 100)) : 0;
   const trailerVideo = getProductTrailerEmbed(product.trailerVideoUrl);
   const mediaItems = buildProductMediaItems(product, galleryImages, trailerVideo);

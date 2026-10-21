@@ -5,7 +5,24 @@ import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
+import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
+
+function getProductFormat(product) {
+  const productType = String(product?.productType || "").toLowerCase();
+  if (productType === "bundle") {
+    return "Combo";
+  }
+  const isDigital = Boolean(product?.isDigital);
+  if (isDigital) {
+    const digitalType = String(product?.digitalType || "").toLowerCase();
+    if (digitalType.includes("kindle")) {
+      return "Kindle";
+    }
+    return "Digital";
+  }
+  return "Physical";
+}
 
 function ProductCard({ product, showDescription = true, variant = "default" }) {
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
@@ -70,7 +87,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
     if (navigator.share) {
       navigator.share({
         title: product.name,
-        text: product.description || `Check out ${product.name} on Digital Sanskrit Guru!`,
+        text: htmlToPlainText(product.description, 140) || `Check out ${product.name} on Digital Sanskrit Guru!`,
         url: shareUrl
       }).catch((err) => console.log("Sharing failed", err));
     } else {
@@ -143,7 +160,10 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       </Link>
 
       <div className="product-info">
-        <p className="product-category">{product.category || "General"}</p>
+        <div className="product-card-pills">
+          <span className="product-category">{product.category || "General"}</span>
+          <span className="product-format-pill">{getProductFormat(product)}</span>
+        </div>
 
         <Link to={`/product/${product._id}`} className="product-title-link" title={product.name}>
           <h3 className="product-title">{product.name}</h3>
@@ -151,7 +171,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
         {showDescription && (
           <p className="product-description">
-            {product.description || "Authentic learning material from Digital Sanskrit Guru."}
+            {htmlToPlainText(product.description) || "Authentic learning material from Digital Sanskrit Guru."}
           </p>
         )}
 
