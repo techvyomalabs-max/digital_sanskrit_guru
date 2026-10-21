@@ -417,6 +417,12 @@
   aspect-ratio: 4/2.6;
 }
 
+@media (max-width: 480px) {
+  .product-card-search .product-image-wrap {
+    aspect-ratio: 4 / 3;
+  }
+}
+
 .product-card-search .wishlist-heart-btn {
   width: 30px;
   height: 30px;
