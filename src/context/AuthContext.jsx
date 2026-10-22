@@ -252,9 +252,10 @@ export function AuthProvider({ children }) {
       localStorage.removeItem("wishlist");
       localStorage.removeItem("guestCartItems");
       localStorage.removeItem("savedForLaterItems");
-    } catch (e) {}
-    window.location.hash = "/login";
-    window.location.reload();
+    } catch {
+      // Ignore storage errors on logout
+    }
+    window.location.href = "/login";
   };
 
   const updateProfileState = (updatedData) => {

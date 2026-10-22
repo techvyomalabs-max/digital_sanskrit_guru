@@ -237,7 +237,7 @@ export default function Breadcrumb() {
         "@type": "ListItem",
         position: idx + 1,
         name: crumb.label,
-        item: `${window.location.origin}/#${crumb.path}`
+        item: `${window.location.origin}${crumb.path}`
       }))
     };
 

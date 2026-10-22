@@ -66,7 +66,7 @@ function Footer() {
               <Link to="/about">About Us</Link>
             </li>
             <li>
-              <a href="#/faq">FAQ</a>
+              <Link to="/faq">FAQ</Link>
             </li>
             <li>
               <Link to="/login">My Account</Link>
@@ -120,16 +120,16 @@ function Footer() {
           </div>
           <ul className="footer-nav-list">
             <li>
-              <a href="#/downloads/presentation" className="footer-ext-link">
+              <Link to="/downloads/presentation" className="footer-ext-link">
                 <FileText size={13} />
                 <span>Company Presentation</span>
-              </a>
+              </Link>
             </li>
             <li>
-              <a href="#/downloads/newsletter" className="footer-ext-link">
+              <Link to="/downloads/newsletter" className="footer-ext-link">
                 <FileText size={13} />
                 <span>Vyoma Newsletter</span>
-              </a>
+              </Link>
             </li>
           </ul>
         </div>

@@ -971,7 +971,7 @@ function AdminThemeSettings() {
                   </button>
                 </div>
                 <a
-                  href="/#/"
+                  href="/"
                   target="_blank"
                   rel="noreferrer"
                   className="studio-preview-storefront-btn"

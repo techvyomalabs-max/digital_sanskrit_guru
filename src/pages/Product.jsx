@@ -554,11 +554,7 @@ function Product() {
 
   const handleShare = async () => {
     if (!product) return;
-    const origin = window.location.origin;
-    const pathname = window.location.pathname.endsWith("/")
-      ? window.location.pathname.slice(0, -1)
-      : window.location.pathname;
-    const shareUrl = `${origin}${pathname}/#/product/${product._id}`;
+    const shareUrl = `${window.location.origin}/product/${product._id}`;
 
     // 1. Web Share API (Mobile & supported desktop browsers)
     if (navigator.share) {
