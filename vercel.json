@@ -1,9 +1,8 @@
 {
-  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://digital-sanskrit-guru.onrender.com/api/:path*"
+      "destination": "https://digital-sanskrit-guru-1-testing.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
