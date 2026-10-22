@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { apiBaseUrl } from "../../lib/api";
 
 // Cloudflare Turnstile official always-pass testing key for development
 const CLOUDFLARE_TEST_SITE_KEY = "1x00000000000000000000AA";
@@ -59,7 +60,7 @@ export default function TurnstileWidget({ onVerify, onExpire, onError, theme = "
     const retryDelays = [2000, 4000, 8000];
 
     const fetchSettings = () => {
-      fetch("/api/settings/public")
+      fetch(`${apiBaseUrl || ""}/api/settings/public`)
         .then(async (res) => {
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);
