@@ -10,10 +10,12 @@ import {
   Download,
   Info
 } from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
 import "./Footer.css";
 
 function Footer() {
   const location = useLocation();
+  const { user } = useAuth();
 
   if (location.pathname.startsWith("/admin")) {
     return null;
@@ -69,7 +71,7 @@ function Footer() {
               <Link to="/faq">FAQ</Link>
             </li>
             <li>
-              <Link to="/login">My Account</Link>
+              <Link to={user ? "/account" : "/login"}>My Account</Link>
             </li>
             <li>
               <Link to="/terms-and-conditions">Terms and Conditions</Link>
