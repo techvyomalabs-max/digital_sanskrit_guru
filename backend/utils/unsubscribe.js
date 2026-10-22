@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const mongoose = require("mongoose");
+const { getSiteUrl } = require("./siteLinks");
 
 function getUnsubscribeSecret() {
   if (process.env.UNSUBSCRIBE_SECRET) {
@@ -32,11 +33,7 @@ function verifyUnsubscribe(userId, sig) {
 }
 
 function buildUnsubscribeUrl(userId) {
-  const base = String(
-    process.env.SITE_URL || process.env.VITE_SITE_URL || "http://localhost:5173"
-  )
-    .trim()
-    .replace(/\/+$/, "");
+  const base = getSiteUrl();
   const sig = signUnsubscribe(userId);
   return `${base}/api/unsubscribe?u=${encodeURIComponent(String(userId))}&s=${encodeURIComponent(sig)}`;
 }

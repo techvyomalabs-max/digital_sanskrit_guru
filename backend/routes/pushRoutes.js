@@ -87,7 +87,7 @@ router.post("/test", protect, async (req, res) => {
     const results = await sendPushToUser(req.user, {
       title: "Digital Sanskrit Guru — Test Notification",
       body: "🔔 Push notifications are working perfectly on your device!",
-      url: "/#/my-account",
+      url: "/account",
       icon: "/favicon.ico",
       badge: "/favicon.ico"
     });
