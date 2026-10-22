@@ -1,0 +1,9 @@
+[
+  { "from": "/shop", "to": "/collection" },
+  { "from": "/product-catalog", "to": "/collection" },
+  { "from": "/terms", "to": "/terms-and-conditions" },
+  { "from": "/terms-conditions", "to": "/terms-and-conditions" },
+  { "from": "/privacy", "to": "/privacy-policy" },
+  { "from": "/my-account", "to": "/account" },
+  { "from": "/testimonials", "to": "/about" }
+]

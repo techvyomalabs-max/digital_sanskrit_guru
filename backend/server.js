@@ -76,6 +76,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
   const { globalApiLimiter } = require("./utils/spamFilter");
+  const { buildRedirectMap, createRedirectMiddleware } = require("./utils/legacyRedirects");
+  const legacyRedirectsConfig = require("./config/legacyRedirects.json");
+  const legacyRedirectMap = buildRedirectMap(legacyRedirectsConfig);
 
   const app = express();
   app.use(helmet({
@@ -207,6 +210,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
+
+  // ── Legacy URL & trailing-slash redirects ─────────────────────────────────
+  app.use(createRedirectMiddleware(legacyRedirectMap));
 
   // ── Static files (served after API routes) ─────────────────────────────────
   if (clientBuildExists) {
