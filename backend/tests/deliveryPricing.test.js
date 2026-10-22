@@ -8,22 +8,18 @@ const {
 
 describe("deliveryPricing utility (pure)", () => {
   describe("isDigitalItem", () => {
-    it("identifies items with isDigital: true directly or on product object", () => {
+    it("identifies items with isDigital: true directly or on product object as digital", () => {
       assert.equal(isDigitalItem({ isDigital: true }), true);
       assert.equal(isDigitalItem({ product: { isDigital: true } }), true);
     });
 
-    it("identifies items with digital formats (web version, pdf, kindle, flipbook, epub)", () => {
-      assert.equal(isDigitalItem({ format: "Web Version" }), true);
-      assert.equal(isDigitalItem({ format: "PDF" }), true);
-      assert.equal(isDigitalItem({ selectedFormat: "Kindle" }), true);
-      assert.equal(isDigitalItem({ variant: "Flipbook" }), true);
-      assert.equal(isDigitalItem({ binding: "EPUB" }), true);
-    });
-
-    it("identifies digital keywords in product name or category", () => {
-      assert.equal(isDigitalItem({ name: "Sanskrit Grammar E-Book (Digital)" }), true);
-      assert.equal(isDigitalItem({ category: "eBook" }), true);
+    it("treats items without isDigital: true as physical regardless of keywords in name, category, or format", () => {
+      assert.equal(isDigitalItem({ name: "Digital Sanskrit Guru Notebook" }), false);
+      assert.equal(isDigitalItem({ name: "Sanskrit Grammar PDF Study Guide" }), false);
+      assert.equal(isDigitalItem({ name: "Digital Sanskrit Guru Notebook", isDigital: false }), false);
+      assert.equal(isDigitalItem({ name: "Sanskrit Grammar PDF Study Guide", isDigital: false }), false);
+      assert.equal(isDigitalItem({ format: "Web Version" }), false);
+      assert.equal(isDigitalItem({ category: "eBook" }), false);
     });
 
     it("identifies physical products as non-digital", () => {
@@ -63,7 +59,7 @@ describe("deliveryPricing utility (pure)", () => {
     it("returns 0 delivery charge for an all-digital cart", () => {
       const digitalItems = [
         { name: "Sanskrit Video Course", isDigital: true },
-        { name: "Grammar Web Edition", format: "Web Version" }
+        { name: "Grammar Web Edition", isDigital: true }
       ];
 
       const charge = resolveDeliveryCharge(defaultSettings, { country: "India", pincode: "560001" }, digitalItems);
