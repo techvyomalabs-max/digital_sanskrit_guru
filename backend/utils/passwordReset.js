@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { sendEmail } = require("./email");
+const { getSiteUrl } = require("./siteLinks");
 
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -13,8 +14,8 @@ const esc = (s) =>
   }[c]));
 
 function buildResetUrl(rawToken) {
-  const base = String(process.env.SITE_URL || process.env.VITE_SITE_URL || "http://localhost:5173").trim().replace(/\/+$/, "");
-  return `${base}/#/reset-password?token=${encodeURIComponent(rawToken)}`;
+  const base = getSiteUrl();
+  return `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
 }
 
 async function sendPasswordResetEmail(user) {

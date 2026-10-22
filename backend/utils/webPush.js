@@ -92,7 +92,7 @@ function orderPayload(order, event) {
   return {
     title: msg.title,
     body: msg.body,
-    url: "/#/my-orders",
+    url: "/my-orders",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -102,7 +102,7 @@ function lowStockPayload(productName, stockLeft) {
   return {
     title: `${SITE_NAME} — Low Stock Alert`,
     body: `⚠️ "${productName}" has only ${stockLeft} unit(s) left.`,
-    url: "/#/admin/products",
+    url: "/admin/products",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -116,7 +116,7 @@ function wishlistLowStockPayload(productNames, stockLeft) {
   return {
     title: `${SITE_NAME} — Your Wishlist`,
     body,
-    url: "/#/wishlist",
+    url: "/wishlist",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -133,7 +133,7 @@ function refundRequestPayload({ orderId, kind, customerName, amountText }) {
   return {
     title,
     body,
-    url: "/#/admin/orders",
+    url: "/admin/orders",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };

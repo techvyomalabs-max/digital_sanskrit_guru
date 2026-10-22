@@ -10,6 +10,7 @@ const User = require("../models/User");
 const EmailLog = require("../models/EmailLog");
 const { generateInvoicePdfBuffer } = require("./invoicePdfGenerator");
 const { buildUnsubscribeUrl } = require("./unsubscribe");
+const { siteLink } = require("./siteLinks");
 
 const EMAIL_ENABLED = String(process.env.EMAIL_ENABLED || "false").toLowerCase() === "true";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
@@ -306,8 +307,6 @@ async function sendOrderConfirmation(order, user) {
     )
   );
 
-  const siteUrl = process.env.SITE_URL || "http://localhost:5173";
-
   let defaultBody = "";
   if (hasDigitalItems && hasPhysicalItems) {
     defaultBody = `
@@ -318,7 +317,7 @@ async function sendOrderConfirmation(order, user) {
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
         <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Unlocked!" : "⚡ Instant Digital Access Unlocked!"}</h3>
         <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now."}</p>
-        <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
       </div>
 
       <p style="margin-top: 16px; font-size: 14px; color: #334155; line-height: 1.5;">
@@ -342,7 +341,7 @@ async function sendOrderConfirmation(order, user) {
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
         <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Granted!" : "⚡ Instant Digital Access Granted!"}</h3>
         <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately."}</p>
-        <a href="${siteUrl}/#/my-library" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
       </div>
 
       <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
@@ -385,8 +384,8 @@ async function sendOrderConfirmation(order, user) {
     substitutedBody = substitutedBody.replaceAll(tag, val);
   });
 
-  if (!substitutedBody.includes("/#/my-orders")) {
-    substitutedBody += `\n<a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>`;
+  if (!substitutedBody.includes("/my-orders") && !substitutedBody.includes("/#/my-orders")) {
+    substitutedBody += `\n<a class="cta" href="${siteLink("/my-orders")}">View My Orders</a>`;
   }
 
   const html = htmlWrapper("Order Confirmed", substitutedBody, headerBgColor, accentColor, headerText, headerSubtext, logoUrl);
@@ -607,7 +606,7 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
       <span class="badge ${badgeClass}">${safeStatus}</span>
     </p>
     ${newStatus !== "Shipped" ? buildOrderItemsTable(order.items || []) : ""}
-    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
+    <a class="cta" href="${siteLink("/my-orders")}">View My Orders</a>
   `);
 
   return sendEmail({
@@ -678,7 +677,7 @@ async function sendRefundStatusUpdate(order, user, refundStatus, options = {}) {
     </p>
     ${breakdownHtml}
     ${buildOrderItemsTable(order.items || [])}
-    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
+    <a class="cta" href="${siteLink("/my-orders")}">View My Orders</a>
   `);
 
   return sendEmail({
@@ -737,7 +736,7 @@ async function sendReturnStatusEmail({ order, user, item, kind, adminReason, ret
             Once shipped, please visit <strong>My Orders</strong> on our website and add your courier name and tracking number so we can track its arrival.
           </p>
         </div>
-        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">Go to My Orders</a>
+        <a class="cta" href="${siteLink("/my-orders")}">Go to My Orders</a>
       `;
     } else if (kind === "rejected") {
       emoji = "⚠️";
@@ -754,7 +753,7 @@ async function sendReturnStatusEmail({ order, user, item, kind, adminReason, ret
           <p style="margin: 6px 0 0; color: #7f1d1d; font-size: 13.5px;">${safeReason}</p>
         </div>
         <p style="font-size: 13px; color: #64748b;">If you believe this is an error or have questions, please feel free to contact our support team.</p>
-        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View Order</a>
+        <a class="cta" href="${siteLink("/my-orders")}">View Order</a>
       `;
     } else if (kind === "received") {
       emoji = "📥";
@@ -779,7 +778,7 @@ async function sendReturnStatusEmail({ order, user, item, kind, adminReason, ret
             ${escapeHtml(followUpMsg)}
           </p>
         </div>
-        <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/my-orders">View My Orders</a>
+        <a class="cta" href="${siteLink("/my-orders")}">View My Orders</a>
       `;
     } else {
       return;
@@ -819,7 +818,7 @@ async function sendLowStockAdminAlert(products) {
       <tbody>${rows}</tbody>
     </table>
     <p>Please restock these items to avoid lost sales.</p>
-    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/admin/products">Go to Warehouse</a>
+    <a class="cta" href="${siteLink("/admin/products")}">Go to Warehouse</a>
   `);
 
   return sendEmail({
@@ -850,7 +849,7 @@ async function sendOrphanPaymentAlert({ razorpayPaymentId, razorpayOrderId, amou
       <tr><td style="padding: 6px; font-weight: bold;">Customer Email:</td><td style="padding: 6px;">${escapeHtml(userEmail || "Unknown / Guest")}</td></tr>
     </table>
     <p>Please review and refund or resolve this payment in the admin dashboard.</p>
-    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/admin/unmatched-payments">Review Unmatched Payments</a>
+    <a class="cta" href="${siteLink("/admin/unmatched-payments")}">Review Unmatched Payments</a>
   `;
 
   const html = htmlWrapper("Orphan Payment Alert", bodyHtml);
@@ -890,7 +889,7 @@ async function sendWishlistLowStockAlert(user, products) {
       <thead><tr><th>Product</th><th>Stock</th><th>Category</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <a class="cta" href="${process.env.SITE_URL || "http://localhost:5173"}/#/wishlist">View My Wishlist</a>
+    <a class="cta" href="${siteLink("/wishlist")}">View My Wishlist</a>
   `);
 
   const { footerHtml, headers } = marketingExtras(user);
@@ -1023,7 +1022,6 @@ async function sendWelcomeCredentialsEmail(user, plainPassword) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
 
-  const siteUrl = process.env.SITE_URL || "http://localhost:5173";
   const safeName = escapeHtml(user?.name || "Student");
   const safeEmail = escapeHtml(to);
   const safePassword = escapeHtml(plainPassword);
@@ -1036,7 +1034,7 @@ async function sendWelcomeCredentialsEmail(user, plainPassword) {
       
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
         <h3 style="margin-top: 0; color: #1e293b;">Your Student Login Credentials:</h3>
-        <p style="margin: 8px 0;"><strong>Login URL:</strong> <a href="${siteUrl}/#/login">${siteUrl}/#/login</a></p>
+        <p style="margin: 8px 0;"><strong>Login URL:</strong> <a href="${siteLink("/login")}">${siteLink("/login")}</a></p>
         <p style="margin: 8px 0;"><strong>Username / Email:</strong> ${safeEmail}</p>
         <p style="margin: 8px 0;"><strong>Temporary Password:</strong> <code style="font-family: monospace; font-size: 14px; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${safePassword}</code></p>
       </div>
@@ -1064,14 +1062,13 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to || !Array.isArray(wishlistItems) || wishlistItems.length === 0) return;
 
-  const siteUrl = process.env.SITE_URL || "https://digitalsanskritguru.com";
   const userName = escapeHtml(user.name || "Sanskrit Enthusiast");
 
   const productRowsHtml = wishlistItems.slice(0, 5).map((item) => {
     const pName = escapeHtml(item.name || "Product");
     const pPrice = item.price ? `₹${Number(item.price)}` : "Available now";
     const pImg = escapeHtml(item.image || "https://digitalsanskritguru.com/placeholder.png");
-    const pLink = `${siteUrl}/#/product/${encodeURIComponent(String(item._id || ""))}`;
+    const pLink = siteLink(`/product/${encodeURIComponent(String(item._id || ""))}`);
 
     return `
       <tr>
@@ -1098,7 +1095,7 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
     </table>
 
     <div style="text-align: center; margin: 28px 0 16px 0;">
-      <a href="${siteUrl}/#/wishlist" style="display: inline-block; padding: 12px 24px; background-color: #d97706; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: bold; border-radius: 6px; box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);">
+      <a href="${siteLink("/wishlist")}" style="display: inline-block; padding: 12px 24px; background-color: #d97706; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: bold; border-radius: 6px; box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);">
         🎁 View Complete Wishlist
       </a>
     </div>
