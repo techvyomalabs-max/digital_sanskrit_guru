@@ -24,6 +24,14 @@ import { ToastProvider } from "./context/ToastContext";
 import { DialogProvider } from "./context/DialogContext";
 import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
 import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
+import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
+
+const target =
+  legacyHashToPath(window.location.hash, window.location.search) ||
+  (window.location.pathname === "/" ? legacyQueryToPath(window.location.search) : null);
+if (target) {
+  window.history.replaceState(null, "", target);
+}
 
 const storedThemeSettings = readStoredSiteTheme();
 if (storedThemeSettings) {

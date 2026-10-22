@@ -83,7 +83,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const handleShare = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const shareUrl = `${window.location.origin}/#/product/${product._id}`;
+    const shareUrl = `${window.location.origin}/product/${product._id}`;
     if (navigator.share) {
       navigator.share({
         title: product.name,

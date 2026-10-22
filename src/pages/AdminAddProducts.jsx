@@ -296,7 +296,7 @@ function AdminAddProducts() {
   const [copiedProductId, setCopiedProductId] = useState("");
 
   const copyBuyLink = (productId) => {
-    const buyLink = `${window.location.origin}${window.location.pathname}#/buy/${productId}`;
+    const buyLink = `${window.location.origin}/buy/${productId}`;
     navigator.clipboard.writeText(buyLink).then(() => {
       setCopiedProductId(productId);
       setTimeout(() => setCopiedProductId(""), 2000);

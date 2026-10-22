@@ -19,8 +19,7 @@ function Collection() {
   const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(() => {
     try {
-      const search = window.location.search || (window.location.hash.includes("?") ? window.location.hash.split("?")[1] : "");
-      const params = new URLSearchParams(search);
+      const params = new URLSearchParams(location.search);
       return String(params.get("category") || "All").trim() || "All";
     } catch {
       return "All";
@@ -104,8 +103,7 @@ function Collection() {
   }, [isMobileFilterOpen]);
 
   useEffect(() => {
-    const search = location.search || (window.location.hash.includes("?") ? window.location.hash.split("?")[1] : "");
-    const params = new URLSearchParams(search);
+    const params = new URLSearchParams(location.search);
     const categoryFromQuery = String(params.get("category") || "All").trim() || "All";
     setSelectedCategory(categoryFromQuery);
   }, [location.search]);

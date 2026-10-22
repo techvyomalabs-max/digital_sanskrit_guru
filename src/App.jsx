@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { HashRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
 import { apiBaseUrl } from "./lib/api";
 import Navbar from "./components/layout/Navbar";
@@ -80,7 +80,7 @@ function AnalyticsTracker() {
     if (window.dataLayer) {
       window.dataLayer.push({
         event: "pageview",
-        page_path: location.pathname + location.search + location.hash,
+        page_path: location.pathname + location.search,
         page_title: document.title
       });
     }
@@ -105,7 +105,7 @@ function ScrollToTop() {
     }
 
     // If navigating with a specific section hash (e.g. #manage-address), don't force top scroll
-    if (hash && hash !== "#/") {
+    if (hash) {
       return;
     }
 
@@ -134,25 +134,6 @@ function App() {
   const [lastBannerText, setLastBannerText] = useState("");
 
   useEffect(() => {
-    // Redirect shared product links without HashRouter fragment (e.g. /product/123 -> /#/product/123)
-    const pathname = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-
-    if (pathname.includes("/product/") && !window.location.hash) {
-      const parts = pathname.split("/product/");
-      const productId = parts[1];
-      if (productId) {
-        window.location.replace(`${window.location.origin}${parts[0]}/#/product/${productId}`);
-      }
-    } else if (searchParams.has("product") && !window.location.hash) {
-      const productId = searchParams.get("product");
-      if (productId) {
-        window.location.replace(`${window.location.origin}/#/product/${productId}`);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
     if (festiveBanner.text && festiveBanner.text !== lastBannerText) {
       if (lastBannerText !== "") {
         try {
@@ -177,13 +158,15 @@ function App() {
       if (urlParams.has("v")) {
         urlParams.delete("v");
         const newSearch = urlParams.toString();
+        const hash = window.location.hash;
+        const anchor = hash && !hash.startsWith("#/") ? hash : "";
         const newPath =
           window.location.pathname +
           (newSearch ? `?${newSearch}` : "") +
-          window.location.hash;
+          anchor;
         window.history.replaceState({}, document.title, newPath);
       }
-    } catch (e) {
+    } catch {
       // Fail-silent
     }
   }, []);
@@ -311,7 +294,7 @@ function App() {
   }, []);
 
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AnalyticsTracker />
       <ScrollToTop />
       {isBannerActive && (
@@ -538,7 +521,7 @@ function App() {
       <WhatsAppButton />
       <CookieConsent />
       <CartPopup />
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 

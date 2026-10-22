@@ -1083,7 +1083,7 @@ function AdminMarketing() {
               <div className="mkt-field">
                 <label>Link URL (optional)</label>
                 <input
-                  placeholder="/#/collection"
+                  placeholder="/collection"
                   value={pushUrl}
                   onChange={(e) => setPushUrl(e.target.value)}
                 />
