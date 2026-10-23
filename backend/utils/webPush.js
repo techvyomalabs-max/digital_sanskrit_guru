@@ -139,6 +139,30 @@ function refundRequestPayload({ orderId, kind, customerName, amountText }) {
   };
 }
 
+function accessGrantedPayload(order) {
+  return {
+    title: "Your access is ready",
+    body: "Open My Library to start",
+    url: "/my-library",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
+}
+
+function accessPendingPayload({ orderId, customerName, productNames }) {
+  const shortId = String(orderId || "").slice(-6).toUpperCase();
+  const names = Array.isArray(productNames) ? productNames.join(", ") : String(productNames || "");
+  const title = "Manual Access Required";
+  const body = `${customerName || "Customer"} · Order #${shortId}${names ? ` · ${names}` : ""}`;
+  return {
+    title,
+    body,
+    url: "/admin/orders",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
+}
+
 module.exports = {
   initVapid,
   sendPushToSubscription,
@@ -149,5 +173,7 @@ module.exports = {
   wishlistLowStockPayload,
   broadcastPayload,
   refundRequestPayload,
+  accessGrantedPayload,
+  accessPendingPayload,
   getVapidPublicKey: () => process.env.VAPID_PUBLIC_KEY || ""
 };

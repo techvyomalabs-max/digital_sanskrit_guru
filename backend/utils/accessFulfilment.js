@@ -66,10 +66,117 @@ function allDigitalAccessGranted(items) {
   );
 }
 
+/**
+ * Sanitizes an access note from admin input.
+ * Strips control characters (keeping \n), trims, collapses 3+ newlines to 2,
+ * cuts to 500 characters. Returns "" for non-strings.
+ */
+function sanitizeAccessNote(note) {
+  if (typeof note !== "string") return "";
+  let s = note.replace(/\r\n|\r/g, "\n");
+  s = s.replace(/[\x00-\x09\x0B-\x1F\x7F]/g, "");
+  s = s.trim();
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s.slice(0, 500);
+}
+
+/**
+ * Applies access grant to items array.
+ * Pure function: does not mutate the input array.
+ * Returns { items: newItemsArray, grantedIndexes: [], error: "" }
+ */
+function applyAccessGrant(items, { itemIndexes, adminId, note, now } = {}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { items: Array.isArray(items) ? [...items] : [], grantedIndexes: [], error: "No items to grant." };
+  }
+
+  const currentDate = now ? new Date(now) : new Date();
+  const sanitizedNote = sanitizeAccessNote(note);
+
+  let targetIndexes;
+  if (itemIndexes === undefined || itemIndexes === null) {
+    targetIndexes = [];
+    items.forEach((it, idx) => {
+      if (isAccessPending(it)) {
+        targetIndexes.push(idx);
+      }
+    });
+
+    if (targetIndexes.length === 0) {
+      return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "Access was already granted." };
+    }
+  } else {
+    if (!Array.isArray(itemIndexes) || itemIndexes.length === 0) {
+      return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "No items specified." };
+    }
+
+    targetIndexes = [];
+    for (const rawIdx of itemIndexes) {
+      const idx = Number(rawIdx);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= items.length) {
+        return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: `Item index ${rawIdx} is out of range.` };
+      }
+      const item = items[idx];
+      if (!requiresAdminAccess(item)) {
+        return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: `Item at index ${idx} does not require manual access.` };
+      }
+      if (item.accessGrantedAt) {
+        return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "Access was already granted." };
+      }
+      if (!targetIndexes.includes(idx)) {
+        targetIndexes.push(idx);
+      }
+    }
+  }
+
+  const targetSet = new Set(targetIndexes);
+  const newItemsArray = items.map((it, idx) => {
+    if (targetSet.has(idx)) {
+      return {
+        ...it,
+        accessGrantedAt: currentDate,
+        accessGrantedBy: adminId || null,
+        accessNote: sanitizedNote
+      };
+    }
+    return { ...it };
+  });
+
+  return {
+    items: newItemsArray,
+    grantedIndexes: targetIndexes,
+    error: ""
+  };
+}
+
+/**
+ * Returns true if an order should be set to Completed after a grant:
+ * non-empty, every item isDigitalLikeItem, and allDigitalAccessGranted(items).
+ */
+function shouldCompleteAfterGrant(items) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  return items.every(isDigitalLikeItem) && allDigitalAccessGranted(items);
+}
+
+/**
+ * Returns true for a paid order with at least one pending manual item.
+ */
+function hasPendingManualAccess(order) {
+  if (!order) return false;
+  const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
+  if (!isPaid) return false;
+  const items = Array.isArray(order.items) ? order.items : [];
+  return items.some(isAccessPending);
+}
+
 module.exports = {
   isDigitalLikeItem,
   requiresAdminAccess,
   isAccessPending,
   canAutoComplete,
-  allDigitalAccessGranted
+  allDigitalAccessGranted,
+  sanitizeAccessNote,
+  applyAccessGrant,
+  shouldCompleteAfterGrant,
+  hasPendingManualAccess
 };

@@ -26,7 +26,9 @@ const {
   sendWishlistLowStockAlert,
   sendWelcomeCredentialsEmail,
   sendGiftPassEmail,
-  sendReturnStatusEmail
+  sendReturnStatusEmail,
+  sendAccessGrantedEmail,
+  sendAccessPendingAdminAlert
 } = require("../utils/email");
 const {
   isPhysicalItem,
@@ -41,7 +43,9 @@ const {
   orderPayload,
   lowStockPayload,
   wishlistLowStockPayload,
-  refundRequestPayload
+  refundRequestPayload,
+  accessGrantedPayload,
+  accessPendingPayload
 } = require("../utils/webPush");
 
 const { getTrackingDetails } = require("../utils/trackingService");
@@ -49,7 +53,15 @@ const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require(".
 const getRazorpayClient = require("../utils/razorpay");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
-const { canAutoComplete, isDigitalLikeItem } = require("../utils/accessFulfilment");
+const {
+  canAutoComplete,
+  isDigitalLikeItem,
+  isAccessPending,
+  sanitizeAccessNote,
+  applyAccessGrant,
+  shouldCompleteAfterGrant,
+  hasPendingManualAccess
+} = require("../utils/accessFulfilment");
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
@@ -204,6 +216,51 @@ function notifyAdminsOfRefundRequest(order, kind) {
     for (const adminUser of admins) {
       await sendPushToUser(adminUser._id, payload);
     }
+  });
+}
+
+// ── Manual access pending admin notification ─────────────────────────────────
+// Sends push notification to all admins + admin email alert when manual digital access is pending
+function notifyAdminsOfPendingAccess(order) {
+  fireNotifications(async () => {
+    const admins = await User.find({ isAdmin: true }).select("_id").lean();
+
+    let customerName = "Customer";
+    let customerEmail = "";
+    if (order.user && typeof order.user === "object" && order.user.name) {
+      customerName = order.user.name;
+      customerEmail = order.user.email || "";
+    } else if (order.user) {
+      const u = await User.findById(order.user).select("name email").lean();
+      if (u?.name) customerName = u.name;
+      if (u?.email) customerEmail = u.email;
+    }
+    if (!customerEmail && order.billing?.email) {
+      customerEmail = order.billing.email;
+    }
+    if (customerName === "Customer" && order.billing?.name) {
+      customerName = order.billing.name;
+    }
+    if (customerName === "Customer" && order.shipping?.name) {
+      customerName = order.shipping.name;
+    }
+
+    const pendingItems = (order.items || []).filter(isAccessPending);
+    const productNames = pendingItems.map((it) => it.name || "Item");
+
+    const payload = accessPendingPayload({
+      orderId: order._id,
+      customerName,
+      productNames
+    });
+
+    if (admins && admins.length > 0) {
+      for (const adminUser of admins) {
+        await sendPushToUser(adminUser._id, payload);
+      }
+    }
+
+    await sendAccessPendingAdminAlert(order, pendingItems, { name: customerName, email: customerEmail });
   });
 }
 
@@ -692,6 +749,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       if (rawPaymentStatus === "Paid") {
         await sendPushToUser(req.user, orderPayload(order, "placed"));
         await sendOrderConfirmation(order, user);
+        if (hasPendingManualAccess(order)) {
+          notifyAdminsOfPendingAccess(order);
+        }
         await fireLowStockAlerts(totals.normalizedItems);
       }
     });
@@ -1249,6 +1309,76 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
   }
 });
 
+// GET /api/orders/admin/access-pending (Admin only)
+router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    const query = {
+      paymentStatus: "Paid",
+      status: { $ne: "Cancelled" },
+      refundStatus: { $ne: "Refunded" },
+      items: {
+        $elemMatch: {
+          accessManual: true,
+          accessGrantedAt: null
+        }
+      }
+    };
+
+    const orders = await Order.find(query)
+      .sort({ createdAt: 1 })
+      .limit(100)
+      .select("_id invoiceNumber createdAt user billing shipping items")
+      .populate("user", "name email")
+      .lean();
+
+    const result = orders.map((order) => {
+      let customerName = "Customer";
+      let customerEmail = "";
+      if (order.user && typeof order.user === "object") {
+        if (order.user.name) customerName = order.user.name;
+        if (order.user.email) customerEmail = order.user.email;
+      }
+      if (!customerEmail && order.billing?.email) {
+        customerEmail = order.billing.email;
+      }
+      if (customerName === "Customer" && order.billing?.name) {
+        customerName = order.billing.name;
+      }
+      if (customerName === "Customer" && order.shipping?.name) {
+        customerName = order.shipping.name;
+      }
+
+      const pendingItems = [];
+      (order.items || []).forEach((item, index) => {
+        if (item && item.accessManual === true && !item.accessGrantedAt) {
+          pendingItems.push({
+            index,
+            name: item.name || "Item",
+            quantity: Number(item.quantity) || 1
+          });
+        }
+      });
+
+      return {
+        _id: order._id,
+        invoiceNumber: order.invoiceNumber || null,
+        createdAt: order.createdAt,
+        customerName,
+        customerEmail,
+        items: pendingItems
+      };
+    });
+
+    res.json({
+      count: result.length,
+      orders: result
+    });
+  } catch (err) {
+    console.error("Error fetching access-pending orders:", err);
+    res.status(500).json({ message: "Failed to fetch pending access orders" });
+  }
+});
+
 // UPDATE order status (ADMIN)
 router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
@@ -1354,6 +1484,109 @@ router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req
       await sendPushToUser(populatedOrder.user._id, orderPayload(updated, normalizedStatus.toLowerCase()));
       await sendOrderStatusUpdate(updated, populatedOrder.user, normalizedStatus);
     });
+  }
+});
+
+// GRANT access to pending manual items (ADMIN)
+router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (String(order.paymentStatus || "").trim() !== "Paid") {
+      return res.status(400).json({ message: "Only paid orders can be granted access." });
+    }
+
+    if (String(order.status || "").trim() === "Cancelled") {
+      return res.status(400).json({ message: "Cannot grant access to a cancelled order." });
+    }
+
+    if (String(order.refundStatus || "").trim() === "Refunded") {
+      return res.status(400).json({ message: "Cannot grant access to a refunded order." });
+    }
+
+    const isGiftOrder = Boolean(order.isGift) ||
+      (Array.isArray(order.items) && order.items.some((item) => item?.isGift || item?.giftCode));
+    if (isGiftOrder) {
+      return res.status(400).json({ message: "Cannot grant access to a gift order." });
+    }
+
+    const { itemIndexes, note } = req.body || {};
+    const actor = await getAdminActorSnapshot(req.user);
+
+    const grantResult = applyAccessGrant(order.items, {
+      itemIndexes,
+      adminId: actor.id || actor._id || req.user,
+      note,
+      now: new Date()
+    });
+
+    if (grantResult.error) {
+      if (grantResult.error.toLowerCase().includes("already granted")) {
+        return res.status(409).json({ message: grantResult.error });
+      }
+      return res.status(400).json({ message: grantResult.error });
+    }
+
+    order.items = grantResult.items;
+    order.markModified("items");
+
+    if (shouldCompleteAfterGrant(order.items)) {
+      order.status = "Completed";
+      order.orderStatus = "Completed";
+    }
+
+    order.lastUpdatedByName = actor.name;
+    order.lastUpdatedByEmail = actor.email;
+    order.lastUpdatedAt = new Date();
+
+    const updated = await order.save();
+
+    const grantedItems = grantResult.grantedIndexes.map((idx) => order.items[idx]);
+    const itemNames = grantedItems.map((it) => it?.name || "Item");
+    const entityLabel = String(order.invoiceNumber || order._id || "");
+
+    await logAdminAction({
+      req,
+      action: "order-access-granted",
+      entityType: "order",
+      entityId: String(order._id || ""),
+      entityLabel,
+      summary: `Granted access to ${grantResult.grantedIndexes.length} item(s)`,
+      details: {
+        itemNames,
+        hasNote: Boolean(sanitizeAccessNote(note))
+      }
+    });
+
+    res.json(updated);
+
+    fireNotifications(async () => {
+      const userId = order.user?._id || order.user;
+      let buyerUser = null;
+      if (userId) {
+        buyerUser = await User.findById(userId).select("name email").lean();
+        await sendPushToUser(userId, accessGrantedPayload(order));
+      }
+      if (!buyerUser && (order.billing?.email || order.shipping?.email)) {
+        buyerUser = {
+          name: order.billing?.name || order.shipping?.name || "Customer",
+          email: order.billing?.email || order.shipping?.email
+        };
+      }
+      if (buyerUser) {
+        await sendAccessGrantedEmail(order, buyerUser, grantedItems, sanitizeAccessNote(note));
+      }
+    });
+  } catch (err) {
+    console.error("Error granting access:", err);
+    res.status(500).json({ message: "Failed to grant access" });
   }
 });
 
@@ -1568,6 +1801,9 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       if (!user) return;
       await sendPushToUser(order.user, orderPayload(updated, "placed"));
       await sendOrderConfirmation(updated, user);
+      if (hasPendingManualAccess(updated)) {
+        notifyAdminsOfPendingAccess(updated);
+      }
       await fireLowStockAlerts(order.items || []);
     });
   }
@@ -2571,6 +2807,9 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
     fireNotifications(async () => {
       if (rawPaymentStatus === "Paid") {
         await sendOrderConfirmation(order, targetUser);
+        if (hasPendingManualAccess(order)) {
+          notifyAdminsOfPendingAccess(order);
+        }
       }
 
       if (isNewUserCreated && tempPassword) {
