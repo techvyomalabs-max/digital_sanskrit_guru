@@ -80,6 +80,11 @@ function sanitizeAccessNote(note) {
   return s.slice(0, 500);
 }
 
+/** True when the item has been refunded through returnRequest. */
+function isItemRefunded(item) {
+  return String(item?.returnRequest?.status || "").trim().toLowerCase() === "refunded";
+}
+
 /**
  * Applies access grant to items array.
  * Pure function: does not mutate the input array.
@@ -97,12 +102,16 @@ function applyAccessGrant(items, { itemIndexes, adminId, note, now } = {}) {
   if (itemIndexes === undefined || itemIndexes === null) {
     targetIndexes = [];
     items.forEach((it, idx) => {
-      if (isAccessPending(it)) {
+      if (isAccessPending(it) && !isItemRefunded(it)) {
         targetIndexes.push(idx);
       }
     });
 
     if (targetIndexes.length === 0) {
+      const hasRefundedPending = items.some((it) => isAccessPending(it) && isItemRefunded(it));
+      if (hasRefundedPending) {
+        return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "This item has been refunded." };
+      }
       return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "Access was already granted." };
     }
   } else {
@@ -119,6 +128,9 @@ function applyAccessGrant(items, { itemIndexes, adminId, note, now } = {}) {
       const item = items[idx];
       if (!requiresAdminAccess(item)) {
         return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: `Item at index ${idx} does not require manual access.` };
+      }
+      if (isItemRefunded(item)) {
+        return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "This item has been refunded." };
       }
       if (item.accessGrantedAt) {
         return { items: items.map((it) => ({ ...it })), grantedIndexes: [], error: "Access was already granted." };
@@ -166,13 +178,14 @@ function hasPendingManualAccess(order) {
   const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
   if (!isPaid) return false;
   const items = Array.isArray(order.items) ? order.items : [];
-  return items.some(isAccessPending);
+  return items.some((it) => isAccessPending(it) && !isItemRefunded(it));
 }
 
 module.exports = {
   isDigitalLikeItem,
   requiresAdminAccess,
   isAccessPending,
+  isItemRefunded,
   canAutoComplete,
   allDigitalAccessGranted,
   sanitizeAccessNote,

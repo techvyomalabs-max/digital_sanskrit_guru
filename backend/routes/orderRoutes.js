@@ -1319,10 +1319,13 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
       items: {
         $elemMatch: {
           accessManual: true,
-          accessGrantedAt: null
+          accessGrantedAt: null,
+          "returnRequest.status": { $ne: "Refunded" }
         }
       }
     };
+
+    const count = await Order.countDocuments(query);
 
     const orders = await Order.find(query)
       .sort({ createdAt: 1 })
@@ -1350,7 +1353,12 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
 
       const pendingItems = [];
       (order.items || []).forEach((item, index) => {
-        if (item && item.accessManual === true && !item.accessGrantedAt) {
+        if (
+          item &&
+          item.accessManual === true &&
+          !item.accessGrantedAt &&
+          String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+        ) {
           pendingItems.push({
             index,
             name: item.name || "Item",
@@ -1370,7 +1378,7 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
     });
 
     res.json({
-      count: result.length,
+      count,
       orders: result
     });
   } catch (err) {
@@ -1534,29 +1542,47 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       return res.status(400).json({ message: grantResult.error });
     }
 
-    order.items = grantResult.items;
-    order.markModified("items");
+    const updateFilter = { _id: order._id };
+    const updateSet = {
+      lastUpdatedByName: actor.name,
+      lastUpdatedByEmail: actor.email,
+      lastUpdatedAt: new Date()
+    };
 
-    if (shouldCompleteAfterGrant(order.items)) {
-      order.status = "Completed";
-      order.orderStatus = "Completed";
+    grantResult.grantedIndexes.forEach((idx) => {
+      updateFilter[`items.${idx}.accessGrantedAt`] = null;
+      updateFilter[`items.${idx}.returnRequest.status`] = { $ne: "Refunded" };
+
+      const grantedItem = grantResult.items[idx];
+      updateSet[`items.${idx}.accessGrantedAt`] = grantedItem.accessGrantedAt;
+      updateSet[`items.${idx}.accessGrantedBy`] = grantedItem.accessGrantedBy;
+      updateSet[`items.${idx}.accessNote`] = grantedItem.accessNote;
+    });
+
+    if (shouldCompleteAfterGrant(grantResult.items)) {
+      updateSet.status = "Completed";
+      updateSet.orderStatus = "Completed";
     }
 
-    order.lastUpdatedByName = actor.name;
-    order.lastUpdatedByEmail = actor.email;
-    order.lastUpdatedAt = new Date();
+    const updated = await Order.findOneAndUpdate(
+      updateFilter,
+      { $set: updateSet },
+      { returnDocument: "after" }
+    );
 
-    const updated = await order.save();
+    if (!updated) {
+      return res.status(409).json({ message: "Access was already granted." });
+    }
 
-    const grantedItems = grantResult.grantedIndexes.map((idx) => order.items[idx]);
+    const grantedItems = grantResult.grantedIndexes.map((idx) => updated.items[idx]);
     const itemNames = grantedItems.map((it) => it?.name || "Item");
-    const entityLabel = String(order.invoiceNumber || order._id || "");
+    const entityLabel = String(updated.invoiceNumber || updated._id || "");
 
     await logAdminAction({
       req,
       action: "order-access-granted",
       entityType: "order",
-      entityId: String(order._id || ""),
+      entityId: String(updated._id || ""),
       entityLabel,
       summary: `Granted access to ${grantResult.grantedIndexes.length} item(s)`,
       details: {
@@ -1568,20 +1594,20 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
     res.json(updated);
 
     fireNotifications(async () => {
-      const userId = order.user?._id || order.user;
+      const userId = updated.user?._id || updated.user;
       let buyerUser = null;
       if (userId) {
         buyerUser = await User.findById(userId).select("name email").lean();
-        await sendPushToUser(userId, accessGrantedPayload(order));
+        await sendPushToUser(userId, accessGrantedPayload(updated));
       }
-      if (!buyerUser && (order.billing?.email || order.shipping?.email)) {
+      if (!buyerUser && (updated.billing?.email || updated.shipping?.email)) {
         buyerUser = {
-          name: order.billing?.name || order.shipping?.name || "Customer",
-          email: order.billing?.email || order.shipping?.email
+          name: updated.billing?.name || updated.shipping?.name || "Customer",
+          email: updated.billing?.email || updated.shipping?.email
         };
       }
       if (buyerUser) {
-        await sendAccessGrantedEmail(order, buyerUser, grantedItems, sanitizeAccessNote(note));
+        await sendAccessGrantedEmail(updated, buyerUser, grantedItems, sanitizeAccessNote(note));
       }
     });
   } catch (err) {

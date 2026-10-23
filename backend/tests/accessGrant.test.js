@@ -21,6 +21,8 @@ const {
 
 const {
   buildPendingAccessNotice,
+  buildPendingAccessNoticeBox,
+  applyDigitalAccessNoticeToBody,
   buildAccessGrantedEmail,
   buildAccessPendingAdminAlert
 } = require("../utils/email");
@@ -166,6 +168,55 @@ describe("Access Grant & Fulfilment", () => {
       ];
       const result = applyAccessGrant(items);
       assert.equal(result.error, "Access was already granted.");
+    });
+
+    it("refuses to grant access to an item whose returnRequest.status is Refunded", () => {
+      const items = [
+        {
+          name: "Refunded Course",
+          isDigital: true,
+          digitalDelivery: "external",
+          accessManual: true,
+          accessGrantedAt: null,
+          returnRequest: { status: "Refunded" }
+        }
+      ];
+
+      // Explicit itemIndexes
+      const resExplicit = applyAccessGrant(items, { itemIndexes: [0] });
+      assert.equal(resExplicit.error, "This item has been refunded.");
+      assert.equal(resExplicit.grantedIndexes.length, 0);
+
+      // Omitted itemIndexes
+      const resOmitted = applyAccessGrant(items);
+      assert.equal(resOmitted.error, "This item has been refunded.");
+      assert.equal(resOmitted.grantedIndexes.length, 0);
+    });
+
+    it("skips refunded items when itemIndexes is omitted and grants remaining pending items", () => {
+      const items = [
+        {
+          name: "Refunded Course",
+          isDigital: true,
+          digitalDelivery: "external",
+          accessManual: true,
+          accessGrantedAt: null,
+          returnRequest: { status: "Refunded" }
+        },
+        {
+          name: "Active Pending Course",
+          isDigital: true,
+          digitalDelivery: "external",
+          accessManual: true,
+          accessGrantedAt: null
+        }
+      ];
+
+      const res = applyAccessGrant(items);
+      assert.equal(res.error, "");
+      assert.deepEqual(res.grantedIndexes, [1]);
+      assert.ok(res.items[1].accessGrantedAt);
+      assert.equal(res.items[0].accessGrantedAt, null);
     });
   });
 
@@ -390,9 +441,36 @@ describe("Access Grant & Fulfilment", () => {
       return order;
     }
 
-    it("success on a digital-only order: status becomes Completed, markModified called", async () => {
+    it("success on a digital-only order: status becomes Completed via conditional findOneAndUpdate", async () => {
       const order = createMockOrder();
       mock.method(Order, "findById", async () => order);
+      mock.method(Order, "findOneAndUpdate", async (filter, update, options) => {
+        assert.equal(update.$set.items, undefined, "$set must not contain the whole items array");
+        assert.ok("items.0.accessGrantedAt" in update.$set, "$set must contain items.0.accessGrantedAt");
+        assert.ok("items.0.accessGrantedBy" in update.$set, "$set must contain items.0.accessGrantedBy");
+        assert.ok("items.0.accessNote" in update.$set, "$set must contain items.0.accessNote");
+        assert.deepEqual(options, { returnDocument: "after" });
+        assert.equal(filter["items.0.accessGrantedAt"], null);
+        assert.deepEqual(filter["items.0.returnRequest.status"], { $ne: "Refunded" });
+
+        const updatedItems = order.items.map((it, idx) => {
+          if (`items.${idx}.accessGrantedAt` in update.$set) {
+            return {
+              ...it,
+              accessGrantedAt: update.$set[`items.${idx}.accessGrantedAt`],
+              accessGrantedBy: update.$set[`items.${idx}.accessGrantedBy`],
+              accessNote: update.$set[`items.${idx}.accessNote`]
+            };
+          }
+          return { ...it };
+        });
+
+        return {
+          ...order,
+          ...update.$set,
+          items: updatedItems
+        };
+      });
       mock.method(User, "findById", () => ({
         select: () => ({
           lean: async () => ({ name: "Super Admin", email: "admin@example.com" })
@@ -410,12 +488,11 @@ describe("Access Grant & Fulfilment", () => {
       await grantHandler(req, res);
 
       assert.equal(res.statusCode, 200);
-      assert.equal(order.status, "Completed");
-      assert.equal(order.orderStatus, "Completed");
-      assert.ok(order.hasModified("items"), "order.markModified('items') must be called");
-      assert.ok(order.items[0].accessGrantedAt);
-      assert.equal(order.items[0].accessNote, "Welcome to class!");
-      assert.equal(order.lastUpdatedByName, "Super Admin");
+      assert.equal(res.jsonBody.status, "Completed");
+      assert.equal(res.jsonBody.orderStatus, "Completed");
+      assert.ok(res.jsonBody.items[0].accessGrantedAt);
+      assert.equal(res.jsonBody.items[0].accessNote, "Welcome to class!");
+      assert.equal(res.jsonBody.lastUpdatedByName, "Super Admin");
     });
 
     it("success on a mixed order: status remains unchanged (e.g. Pending)", async () => {
@@ -438,6 +515,33 @@ describe("Access Grant & Fulfilment", () => {
       });
 
       mock.method(Order, "findById", async () => order);
+      mock.method(Order, "findOneAndUpdate", async (filter, update, options) => {
+        assert.equal(update.$set.items, undefined, "$set must not contain the whole items array");
+        assert.ok("items.0.accessGrantedAt" in update.$set, "$set must contain items.0.accessGrantedAt");
+        assert.ok("items.0.accessGrantedBy" in update.$set, "$set must contain items.0.accessGrantedBy");
+        assert.ok("items.0.accessNote" in update.$set, "$set must contain items.0.accessNote");
+        assert.deepEqual(options, { returnDocument: "after" });
+        assert.equal(filter["items.0.accessGrantedAt"], null);
+        assert.deepEqual(filter["items.0.returnRequest.status"], { $ne: "Refunded" });
+
+        const updatedItems = order.items.map((it, idx) => {
+          if (`items.${idx}.accessGrantedAt` in update.$set) {
+            return {
+              ...it,
+              accessGrantedAt: update.$set[`items.${idx}.accessGrantedAt`],
+              accessGrantedBy: update.$set[`items.${idx}.accessGrantedBy`],
+              accessNote: update.$set[`items.${idx}.accessNote`]
+            };
+          }
+          return { ...it };
+        });
+
+        return {
+          ...order,
+          ...update.$set,
+          items: updatedItems
+        };
+      });
       mock.method(User, "findById", () => ({
         select: () => ({
           lean: async () => ({ name: "Super Admin", email: "admin@example.com" })
@@ -455,8 +559,95 @@ describe("Access Grant & Fulfilment", () => {
       await grantHandler(req, res);
 
       assert.equal(res.statusCode, 200);
-      assert.equal(order.status, "Pending", "Mixed order status must not change to Completed");
-      assert.ok(order.items[0].accessGrantedAt);
+      assert.equal(res.jsonBody.status, "Pending", "Mixed order status must not change to Completed");
+      assert.ok(res.jsonBody.items[0].accessGrantedAt);
+    });
+
+    it("grant on a refunded item is refused with 400", async () => {
+      const order = createMockOrder({
+        items: [
+          {
+            name: "Refunded Course",
+            isDigital: true,
+            digitalDelivery: "external",
+            accessManual: true,
+            accessGrantedAt: null,
+            returnRequest: { status: "Refunded" }
+          }
+        ]
+      });
+
+      mock.method(Order, "findById", async () => order);
+      mock.method(User, "findById", () => ({
+        select: () => ({
+          lean: async () => ({ name: "Super Admin", email: "admin@example.com" })
+        })
+      }));
+
+      const req = {
+        params: { id: order._id.toString() },
+        user: new mongoose.Types.ObjectId().toString(),
+        body: { itemIndexes: [0] }
+      };
+      const res = createMockRes();
+
+      await grantHandler(req, res);
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.jsonBody.message, "This item has been refunded.");
+    });
+
+    it("the conditional update matching nothing returns 409 and sends no notifications", async () => {
+      const order = createMockOrder({
+        items: [
+          {
+            name: "Digital Course",
+            isDigital: true,
+            digitalDelivery: "external",
+            accessManual: true,
+            accessGrantedAt: null
+          }
+        ]
+      });
+
+      mock.method(Order, "findById", async () => order);
+
+      let userFindByIdCalls = 0;
+      let buyerLookupCalled = false;
+      mock.method(User, "findById", (id) => {
+        userFindByIdCalls++;
+        if (userFindByIdCalls > 1) {
+          buyerLookupCalled = true;
+        }
+        return {
+          select: () => ({
+            lean: async () => ({ name: "Super Admin", email: "admin@example.com" })
+          })
+        };
+      });
+
+      // Simulate race condition: findOneAndUpdate filter matching items.0.accessGrantedAt: null fails
+      mock.method(Order, "findOneAndUpdate", async () => null);
+
+      let auditCalled = false;
+      mock.method(AdminAuditLog, "create", async () => {
+        auditCalled = true;
+        return {};
+      });
+
+      const req = {
+        params: { id: order._id.toString() },
+        user: new mongoose.Types.ObjectId().toString(),
+        body: {}
+      };
+      const res = createMockRes();
+
+      await grantHandler(req, res);
+
+      assert.equal(res.statusCode, 409);
+      assert.equal(res.jsonBody.message, "Access was already granted.");
+      assert.equal(auditCalled, false, "AdminAuditLog.create must not be called when update matches nothing");
+      assert.equal(buyerLookupCalled, false, "User.findById for buyer must not be called");
+      assert.equal(userFindByIdCalls, 1, "User.findById should only be called once for the admin actor snapshot");
     });
 
     it("second call on already granted order responds 409", async () => {
@@ -608,6 +799,7 @@ describe("Access Grant & Fulfilment", () => {
         }
       ];
 
+      mock.method(Order, "countDocuments", async () => sampleOrders.length);
       mock.method(Order, "find", () => ({
         sort: () => ({
           limit: () => ({
@@ -648,6 +840,129 @@ describe("Access Grant & Fulfilment", () => {
         name: "Pending Item 1",
         quantity: 2
       });
+    });
+
+    it("count reflects the total beyond 100 and query excludes refunded items", async () => {
+      let countQueryCaptured = null;
+      let findQueryCaptured = null;
+
+      mock.method(Order, "countDocuments", async (query) => {
+        countQueryCaptured = query;
+        return 142; // Real total beyond 100
+      });
+
+      const hundredOrders = Array.from({ length: 100 }, (_, i) => ({
+        _id: new mongoose.Types.ObjectId(),
+        invoiceNumber: `INV-${2000 + i}`,
+        createdAt: new Date(),
+        user: { name: `User ${i}`, email: `user${i}@example.com` },
+        items: [
+          { name: "Course", isDigital: true, accessManual: true, accessGrantedAt: null, quantity: 1 }
+        ]
+      }));
+
+      mock.method(Order, "find", (query) => {
+        findQueryCaptured = query;
+        return {
+          sort: () => ({
+            limit: (lim) => {
+              assert.equal(lim, 100);
+              return {
+                select: () => ({
+                  populate: () => ({
+                    lean: async () => hundredOrders
+                  })
+                })
+              };
+            }
+          })
+        };
+      });
+
+      let statusCode = 200;
+      let jsonBody = null;
+      const res = {
+        status(c) {
+          statusCode = c;
+          return this;
+        },
+        json(b) {
+          jsonBody = b;
+          return this;
+        }
+      };
+
+      await pendingHandler({}, res);
+
+      assert.equal(statusCode, 200);
+      assert.equal(jsonBody.count, 142);
+      assert.equal(jsonBody.orders.length, 100);
+      assert.deepEqual(countQueryCaptured.items.$elemMatch["returnRequest.status"], { $ne: "Refunded" });
+      assert.deepEqual(findQueryCaptured.items.$elemMatch["returnRequest.status"], { $ne: "Refunded" });
+    });
+
+    it("filters out items whose returnRequest.status is Refunded in GET /admin/access-pending", async () => {
+      mock.method(Order, "countDocuments", async () => 1);
+
+      const mixedOrder = [
+        {
+          _id: new mongoose.Types.ObjectId(),
+          invoiceNumber: "INV-5555",
+          createdAt: new Date(),
+          user: { name: "Buyer", email: "buyer@example.com" },
+          items: [
+            {
+              name: "Refunded Course",
+              isDigital: true,
+              accessManual: true,
+              accessGrantedAt: null,
+              returnRequest: { status: "Refunded" },
+              quantity: 1
+            },
+            {
+              name: "Active Course",
+              isDigital: true,
+              accessManual: true,
+              accessGrantedAt: null,
+              quantity: 1
+            }
+          ]
+        }
+      ];
+
+      mock.method(Order, "find", () => ({
+        sort: () => ({
+          limit: () => ({
+            select: () => ({
+              populate: () => ({
+                lean: async () => mixedOrder
+              })
+            })
+          })
+        })
+      }));
+
+      let statusCode = 200;
+      let jsonBody = null;
+      const res = {
+        status(c) {
+          statusCode = c;
+          return this;
+        },
+        json(b) {
+          jsonBody = b;
+          return this;
+        }
+      };
+
+      await pendingHandler({}, res);
+
+      assert.equal(statusCode, 200);
+      assert.equal(jsonBody.count, 1);
+      assert.equal(jsonBody.orders.length, 1);
+      assert.equal(jsonBody.orders[0].items.length, 1);
+      assert.equal(jsonBody.orders[0].items[0].name, "Active Course");
+      assert.equal(jsonBody.orders[0].items[0].index, 1);
     });
   });
 
@@ -765,6 +1080,105 @@ describe("Access Grant & Fulfilment", () => {
         emailModule.resolveDigitalAccessHeading(instantItems, { isMixed: true, hasExternalDelivery: true }),
         "Digital Access Unlocked!"
       );
+    });
+
+    it("custom template without the tag still gets the pending box", () => {
+      const pendingItems = [{ name: "Sanskrit Course 101" }];
+
+      // Template with {{ITEMS_TABLE}}
+      const templateWithTable = "<p>Hello {{USER_NAME}}</p>{{ITEMS_TABLE}}";
+      const resultWithTable = emailModule.applyDigitalAccessNoticeToBody(templateWithTable, pendingItems);
+      assert.ok(resultWithTable.includes("We are setting up your access for Sanskrit Course 101"));
+      assert.ok(
+        resultWithTable.indexOf("We are setting up your access") < resultWithTable.indexOf("{{ITEMS_TABLE}}"),
+        "Box must be inserted before {{ITEMS_TABLE}}"
+      );
+
+      // Template without {{ITEMS_TABLE}}
+      const templateWithoutTable = "<p>Hello {{USER_NAME}}</p>";
+      const resultWithoutTable = emailModule.applyDigitalAccessNoticeToBody(templateWithoutTable, pendingItems);
+      assert.ok(resultWithoutTable.includes("We are setting up your access for Sanskrit Course 101"));
+      assert.ok(
+        resultWithoutTable.endsWith(emailModule.buildPendingAccessNoticeBox(pendingItems)),
+        "Box must be appended to the end of the body when {{ITEMS_TABLE}} is missing"
+      );
+    });
+
+    it("custom template with the tag gets it exactly once", () => {
+      const pendingItems = [{ name: "Sanskrit Course 101" }];
+      const template = "<h2>Welcome</h2>{{DIGITAL_ACCESS_NOTICE}}<div>Details</div>{{ITEMS_TABLE}}";
+      const result = emailModule.applyDigitalAccessNoticeToBody(template, pendingItems);
+
+      assert.ok(!result.includes("{{DIGITAL_ACCESS_NOTICE}}"));
+      assert.equal(
+        (result.match(/We are setting up your access for Sanskrit Course 101/g) || []).length,
+        1,
+        "Notice must appear exactly once"
+      );
+    });
+
+    it("custom template with nothing pending -> no box", () => {
+      const templateWithTag = "<h2>Welcome</h2>{{DIGITAL_ACCESS_NOTICE}}<div>Details</div>{{ITEMS_TABLE}}";
+      const resultWithTag = emailModule.applyDigitalAccessNoticeToBody(templateWithTag, []);
+      assert.equal(resultWithTag, "<h2>Welcome</h2><div>Details</div>{{ITEMS_TABLE}}");
+      assert.ok(!resultWithTag.includes("We are setting up your access"));
+
+      const templateWithoutTag = "<h2>Welcome</h2><div>Details</div>{{ITEMS_TABLE}}";
+      const resultWithoutTag = emailModule.applyDigitalAccessNoticeToBody(templateWithoutTag, []);
+      assert.equal(resultWithoutTag, templateWithoutTag);
+      assert.ok(!resultWithoutTag.includes("We are setting up your access"));
+    });
+
+    it("digital-only confirmation for a pending manual item does not contain 'access has been granted'; a normal external order still does", async () => {
+      const StoreSettings = require("../models/StoreSettings");
+      const EmailLog = require("../models/EmailLog");
+
+      mock.method(StoreSettings, "findOne", () => ({
+        lean: async () => null // uses defaultBody
+      }));
+      mock.method(EmailLog, "create", async () => ({}));
+
+      const user = { name: "Learner", email: "learner@example.com" };
+
+      // 1. Digital order with pending manual item
+      const pendingOrder = {
+        _id: new mongoose.Types.ObjectId(),
+        paymentStatus: "Paid",
+        items: [
+          {
+            name: "Sanskrit Portal Access",
+            isDigital: true,
+            digitalDelivery: "external",
+            accessManual: true,
+            accessGrantedAt: null,
+            price: 500
+          }
+        ]
+      };
+
+      const resPending = await emailModule.sendOrderConfirmation(pendingOrder, user);
+      assert.ok(resPending.html, "HTML must be returned");
+      assert.ok(!resPending.html.includes("access has been granted"));
+      assert.ok(resPending.html.includes("our team is setting up your access."));
+
+      // 2. Normal external delivery order (instant access)
+      const instantOrder = {
+        _id: new mongoose.Types.ObjectId(),
+        paymentStatus: "Paid",
+        items: [
+          {
+            name: "Instant Audio",
+            isDigital: true,
+            digitalDelivery: "external",
+            accessManual: false,
+            price: 500
+          }
+        ]
+      };
+
+      const resInstant = await emailModule.sendOrderConfirmation(instantOrder, user);
+      assert.ok(resInstant.html, "HTML must be returned");
+      assert.ok(resInstant.html.includes("access has been granted!"));
     });
   });
 });

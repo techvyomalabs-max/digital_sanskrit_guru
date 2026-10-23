@@ -307,10 +307,16 @@ async function sendOrderConfirmation(order, user) {
     )
   );
 
+  const pendingManualItems = Array.isArray(order.items)
+    ? order.items.filter((item) =>
+        item &&
+        item.accessManual === true &&
+        !item.accessGrantedAt &&
+        String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+      )
+    : [];
   const externalAccessNotice = resolveExternalAccessNotice(order.items);
-  const hasPendingManual = Array.isArray(order.items) && order.items.some(
-    (item) => item && item.accessManual === true && !item.accessGrantedAt
-  );
+  const hasPendingManual = pendingManualItems.length > 0;
   const digitalAccessButtonText = hasPendingManual ? "Open My Library" : "📚 Go to My Digital Library";
 
   let defaultBody = "";
@@ -350,7 +356,7 @@ async function sendOrderConfirmation(order, user) {
     defaultBody = `
       <h2>Thank you for your order! 🎉</h2>
       <p>Hi <strong>{{USER_NAME}}</strong>,</p>
-      <p>Your order has been placed successfully. Since this order contains only digital items, ${hasExternalDelivery ? "access has been granted!" : "access has been granted instantly!"}</p>
+      <p>Your order has been placed successfully. Since this order contains only digital items, ${hasPendingManual ? "our team is setting up your access." : hasExternalDelivery ? "access has been granted!" : "access has been granted instantly!"}</p>
       
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
         <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${heading}</h3>
@@ -380,7 +386,7 @@ async function sendOrderConfirmation(order, user) {
   }
 
   let substitutedSubject = subject;
-  let substitutedBody = body || defaultBody;
+  let substitutedBody = body ? applyDigitalAccessNoticeToBody(body, pendingManualItems) : defaultBody;
 
   const tags = {
     "{{USER_NAME}}": userName,
@@ -390,7 +396,8 @@ async function sendOrderConfirmation(order, user) {
     "{{ORDER_TOTAL}}": orderTotal,
     "{{ITEMS_TABLE}}": itemsTableHtml,
     "{{SUMMARY_TABLE}}": summaryTableHtml,
-    "{{SHIPPING_INFO}}": shippingInfoHtml
+    "{{SHIPPING_INFO}}": shippingInfoHtml,
+    "{{DIGITAL_ACCESS_NOTICE}}": buildPendingAccessNoticeBox(pendingManualItems)
   };
 
   Object.entries(tags).forEach(([tag, val]) => {
@@ -416,13 +423,15 @@ async function sendOrderConfirmation(order, user) {
     console.error("[WhatsApp] Utility load error:", err?.message || err);
   }
 
-  return sendEmail({
+  const sendResult = await sendEmail({
     to,
     subject: substitutedSubject,
     html,
     type: "order-confirm",
     orderId: String(order._id || "")
   });
+
+  return { ...(sendResult || {}), html, subject: substitutedSubject };
 }
 
 function getCourierTrackingUrl(courierName, trackingId) {
@@ -1141,7 +1150,11 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
 
 function resolveDigitalAccessHeading(items, fallback) {
   const hasPending = Array.isArray(items) && items.some(
-    (item) => item && item.accessManual === true && !item.accessGrantedAt
+    (item) =>
+      item &&
+      item.accessManual === true &&
+      !item.accessGrantedAt &&
+      String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
   );
   if (hasPending) {
     return "We are setting up your access";
@@ -1160,7 +1173,12 @@ function resolveDigitalAccessHeading(items, fallback) {
 
 function resolveExternalAccessNotice(items) {
   const pendingManualItems = Array.isArray(items)
-    ? items.filter((item) => item && item.accessManual === true && !item.accessGrantedAt)
+    ? items.filter((item) =>
+        item &&
+        item.accessManual === true &&
+        !item.accessGrantedAt &&
+        String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+      )
     : [];
 
   return pendingManualItems.length > 0
@@ -1172,6 +1190,31 @@ function buildPendingAccessNotice(pendingItems) {
   const list = Array.isArray(pendingItems) ? pendingItems : [];
   const names = list.map((it) => escapeHtml(it.name || "Item")).join(", ");
   return `We are setting up your access for ${names}. You will get another email as soon as it is ready.`;
+}
+
+function buildPendingAccessNoticeBox(pendingItems) {
+  const items = Array.isArray(pendingItems) ? pendingItems : [];
+  if (items.length === 0) return "";
+  const noticeText = buildPendingAccessNotice(items);
+  return `<div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-family: sans-serif;"><p style="margin: 0; font-size: 13.5px; color: #166534; line-height: 1.4;">${noticeText}</p></div>`;
+}
+
+function applyDigitalAccessNoticeToBody(bodyTemplate, pendingItems = []) {
+  if (typeof bodyTemplate !== "string" || !bodyTemplate) return bodyTemplate;
+  const items = Array.isArray(pendingItems) ? pendingItems : [];
+  const hasPending = items.length > 0;
+  const boxHtml = hasPending ? buildPendingAccessNoticeBox(items) : "";
+
+  if (bodyTemplate.includes("{{DIGITAL_ACCESS_NOTICE}}")) {
+    return bodyTemplate.replaceAll("{{DIGITAL_ACCESS_NOTICE}}", boxHtml);
+  }
+  if (hasPending) {
+    if (bodyTemplate.includes("{{ITEMS_TABLE}}")) {
+      return bodyTemplate.replace("{{ITEMS_TABLE}}", `${boxHtml}\n{{ITEMS_TABLE}}`);
+    }
+    return `${bodyTemplate}\n${boxHtml}`;
+  }
+  return bodyTemplate;
 }
 
 function buildAccessGrantedEmail(order, user, grantedItems, note) {
@@ -1278,6 +1321,8 @@ module.exports = {
   sendWishlistReminderEmail,
   sendReturnStatusEmail,
   buildPendingAccessNotice,
+  buildPendingAccessNoticeBox,
+  applyDigitalAccessNoticeToBody,
   resolveExternalAccessNotice,
   resolveDigitalAccessHeading,
   buildAccessGrantedEmail,
