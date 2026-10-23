@@ -237,6 +237,11 @@ const productSchema = new mongoose.Schema(
       default: ""
     },
 
+    externalAccessManual: {
+      type: Boolean,
+      default: false
+    },
+
 
     bundleItems: {
       type: [bundleItemSchema],

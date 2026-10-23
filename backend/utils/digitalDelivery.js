@@ -38,10 +38,12 @@ function validateExternalDelivery(input = {}) {
       digitalDelivery: "onsite",
       externalAccessLink: "",
       externalAccessLabel: "",
+      externalAccessManual: false,
       value: {
         digitalDelivery: "onsite",
         externalAccessLink: "",
-        externalAccessLabel: ""
+        externalAccessLabel: "",
+        externalAccessManual: false
       }
     };
   }
@@ -88,16 +90,20 @@ function validateExternalDelivery(input = {}) {
     return { isValid: false, ok: false, error, message: error };
   }
 
+  const externalAccessManual = input?.externalAccessManual === true;
+
   return {
     isValid: true,
     ok: true,
     digitalDelivery: "external",
     externalAccessLink: rawLink.trim(),
     externalAccessLabel: rawLabel,
+    externalAccessManual,
     value: {
       digitalDelivery: "external",
       externalAccessLink: rawLink.trim(),
-      externalAccessLabel: rawLabel
+      externalAccessLabel: rawLabel,
+      externalAccessManual
     }
   };
 }

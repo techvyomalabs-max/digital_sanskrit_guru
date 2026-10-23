@@ -276,7 +276,7 @@ const HOME_PRODUCT_SELECT =
   "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
-  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery";
+  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
 
 const sortByNewest = (a, b) =>
   new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
@@ -349,7 +349,8 @@ const getProductAuditFields = (product = {}) => ({
   courseLink: String(product?.courseLink || "").trim(),
   digitalDelivery: String(product?.digitalDelivery || "onsite").trim(),
   externalAccessLink: String(product?.externalAccessLink || "").trim(),
-  externalAccessLabel: String(product?.externalAccessLabel || "").trim()
+  externalAccessLabel: String(product?.externalAccessLabel || "").trim(),
+  externalAccessManual: product?.externalAccessManual === true
 });
 
 const summarizeProductChanges = (before = {}, after = {}) => {
@@ -380,6 +381,9 @@ const summarizeProductChanges = (before = {}, after = {}) => {
     String(before.externalAccessLabel || "") !== String(after.externalAccessLabel || "")
   ) {
     changes.push("digital delivery");
+  }
+  if (Boolean(before.externalAccessManual) !== Boolean(after.externalAccessManual)) {
+    changes.push("admin grants access");
   }
   return changes;
 };
@@ -426,6 +430,7 @@ router.post("/", protect, admin, (req, res, next) => {
       digitalDelivery: b.digitalDelivery,
       externalAccessLink: b.externalAccessLink,
       externalAccessLabel: b.externalAccessLabel,
+      externalAccessManual: b.externalAccessManual,
       isDigital,
       productType
     });
@@ -459,6 +464,7 @@ router.post("/", protect, admin, (req, res, next) => {
       digitalDelivery: deliveryValidation.digitalDelivery,
       externalAccessLink: deliveryValidation.externalAccessLink,
       externalAccessLabel: deliveryValidation.externalAccessLabel,
+      externalAccessManual: deliveryValidation.externalAccessManual,
       ...opt("digitalType"),
       ...opt("webReaderLink"),
       ...opt("kindleLink"),
@@ -581,6 +587,7 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
       digitalDelivery: req.body.digitalDelivery !== undefined ? req.body.digitalDelivery : product.digitalDelivery,
       externalAccessLink: req.body.externalAccessLink !== undefined ? req.body.externalAccessLink : product.externalAccessLink,
       externalAccessLabel: req.body.externalAccessLabel !== undefined ? req.body.externalAccessLabel : product.externalAccessLabel,
+      externalAccessManual: req.body.externalAccessManual !== undefined ? req.body.externalAccessManual : product.externalAccessManual,
       isDigital: product.isDigital,
       productType: product.productType
     };
@@ -591,6 +598,7 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     product.digitalDelivery = deliveryValidation.digitalDelivery;
     product.externalAccessLink = deliveryValidation.externalAccessLink;
     product.externalAccessLabel = deliveryValidation.externalAccessLabel;
+    product.externalAccessManual = deliveryValidation.externalAccessManual;
     if (product.productType === "bundle" && product.bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
@@ -659,7 +667,7 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery skipOwnershipRules")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     return res.json(products);
@@ -682,7 +690,7 @@ router.get("/", async (req, res) => {
       // Full product list for public — sanitized
       const products = await Product.find({ isDeleted: { $ne: true } })
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery")
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
       return res.json(products.map(toPublicProduct));
@@ -700,7 +708,7 @@ router.get("/", async (req, res) => {
 
     const products = await Product.find({ isDeleted: { $ne: true } })
       .select(PUBLIC_PRODUCT_EXCLUDE)
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery")
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     const baseProducts = products.map(toPublicProduct);
@@ -1009,7 +1017,7 @@ router.get("/:id", async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(targetId)) {
       product = await Product.findById(targetId)
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery")
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
     }
@@ -1019,7 +1027,7 @@ router.get("/:id", async (req, res) => {
       if (!isNaN(numId)) {
         product = await Product.findOne({ wpProductId: numId, isDeleted: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
-          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery")
+          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
           .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
           .lean();
       }

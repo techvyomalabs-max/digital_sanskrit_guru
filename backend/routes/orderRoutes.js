@@ -49,6 +49,7 @@ const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require(".
 const getRazorpayClient = require("../utils/razorpay");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
+const { canAutoComplete, isDigitalLikeItem } = require("../utils/accessFulfilment");
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
@@ -596,9 +597,13 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       }
     }
 
+    const isGift = req.body?.isGift === true;
+    if (isGift && totals.normalizedItems.some((it) => it.accessManual)) {
+      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    }
+
     const requestedBilling = req.body.billing || req.body.shipping || {};
-    const isDigitalOnly = totals.normalizedItems.every((item) => item.isDigital === true);
-    const initialStatus = rawPaymentStatus === "Paid" && isDigitalOnly ? "Completed" : "Pending";
+    const initialStatus = rawPaymentStatus === "Paid" && canAutoComplete(totals.normalizedItems) ? "Completed" : "Pending";
 
     const order = await Order.create({
       user: req.user,
@@ -709,21 +714,8 @@ const autoCompletePaidDigitalOrders = async (orders) => {
   orders.forEach((order) => {
     const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
     const items = Array.isArray(order.items) ? order.items : [];
-    const isDigitalOnly = items.length > 0 && items.every((item) =>
-      Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.externalAccessLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      )
-    );
 
-    if (isPaid && isDigitalOnly && order.orderStatus !== "Completed" && order.status !== "Completed" && order.orderStatus !== "Cancelled" && order.status !== "Cancelled") {
+    if (isPaid && canAutoComplete(items) && order.orderStatus !== "Completed" && order.status !== "Completed" && order.orderStatus !== "Cancelled" && order.status !== "Cancelled") {
       order.orderStatus = "Completed";
       order.status = "Completed";
       if (order._id) orderIdsToComplete.push(order._id);
@@ -1352,19 +1344,7 @@ router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req
       const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
       if (!populatedOrder?.user) return;
 
-      const isDigitalOnly = Array.isArray(populatedOrder.items) && populatedOrder.items.length > 0 && populatedOrder.items.every((item) =>
-        Boolean(
-          item.isDigital ||
-          item.webReaderLink ||
-          item.externalAccessLink ||
-          item.kindleLink ||
-          String(item.name || "").toLowerCase().includes("web") ||
-          String(item.name || "").toLowerCase().includes("kindle") ||
-          String(item.name || "").toLowerCase().includes("flipbook") ||
-          String(item.format || "").toLowerCase().includes("web") ||
-          String(item.format || "").toLowerCase().includes("flipbook")
-        )
-      );
+      const isDigitalOnly = Array.isArray(populatedOrder.items) && populatedOrder.items.length > 0 && populatedOrder.items.every(isDigitalLikeItem);
 
       // Digital-only orders get instant online access upon payment; skip physical shipping/delivery notification emails
       if (isDigitalOnly && ["Shipped", "Delivered"].includes(normalizedStatus)) {
@@ -1526,21 +1506,7 @@ router.put("/:id/payment-status", protect, async (req, res) => {
       };
     }
 
-    const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
-      Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.externalAccessLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      )
-    );
-
-    if (isDigitalOnly) {
+    if (canAutoComplete(order.items)) {
       order.status = "Completed";
     }
 
@@ -2281,7 +2247,7 @@ router.get("/my", protect, async (req, res) => {
             item.digitalDelivery = item.digitalDelivery || "onsite";
             if (prod) {
               if (prod.isDigital !== undefined) item.isDigital = prod.isDigital;
-              if (item.digitalDelivery === "external") {
+              if (item.digitalDelivery === "external" && !(item.accessManual === true && !item.accessGrantedAt)) {
                 if (prod.externalAccessLink) item.externalAccessLink = prod.externalAccessLink;
                 if (prod.externalAccessLabel) item.externalAccessLabel = prod.externalAccessLabel;
               }
@@ -2517,21 +2483,12 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 
     const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
 
-    const isDigitalOnlyOrder = normalizedItems.length > 0 && normalizedItems.every((item) =>
-      Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.externalAccessLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      )
-    );
+    const isGift = req.body?.isGift === true;
+    if (isGift && normalizedItems.some((it) => it.accessManual)) {
+      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    }
 
-    const initialOrderStatus = rawPaymentStatus === "Paid" && isDigitalOnlyOrder
+    const initialOrderStatus = rawPaymentStatus === "Paid" && canAutoComplete(normalizedItems)
       ? "Completed"
       : "Pending";
 

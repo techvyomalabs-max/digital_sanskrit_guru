@@ -60,6 +60,7 @@ const formatCart = (cart) => {
       isDigital: Boolean(item.product.isDigital),
       digitalType: item.product.digitalType || "Web Version",
       digitalDelivery: item.product.digitalDelivery || "onsite",
+      externalAccessManual: Boolean(item.product.externalAccessManual),
       productType: item.product.productType || "single"
     }));
 };
