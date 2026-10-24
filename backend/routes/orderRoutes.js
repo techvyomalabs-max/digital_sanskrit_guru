@@ -900,6 +900,17 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
       finalQuery.status = "Cancelled";
     } else if (statusFilter === "Return Requests") {
       finalQuery["items.returnRequest.status"] = { $ne: "Not Requested" };
+    } else if (statusFilter === "Access Pending") {
+      finalQuery.paymentStatus = "Paid";
+      finalQuery.status = { $ne: "Cancelled" };
+      finalQuery.refundStatus = { $ne: "Refunded" };
+      finalQuery.items = {
+        $elemMatch: {
+          accessManual: true,
+          accessGrantedAt: null,
+          "returnRequest.status": { $ne: "Refunded" }
+        }
+      };
     }
 
     // 3. Query paginated orders
@@ -926,6 +937,7 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
       deliveredCount,
       cancelledCount,
       returnCount,
+      accessPendingCount,
       statsResult
     ] = await Promise.all([
       Order.countDocuments(baseQuery),
@@ -935,6 +947,19 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
       Order.countDocuments({ ...baseQuery, status: "Delivered", paymentStatus: "Paid" }),
       Order.countDocuments({ ...baseQuery, status: "Cancelled" }),
       Order.countDocuments({ ...baseQuery, "items.returnRequest.status": { $ne: "Not Requested" } }),
+      Order.countDocuments({
+        ...baseQuery,
+        paymentStatus: "Paid",
+        status: { $ne: "Cancelled" },
+        refundStatus: { $ne: "Refunded" },
+        items: {
+          $elemMatch: {
+            accessManual: true,
+            accessGrantedAt: null,
+            "returnRequest.status": { $ne: "Refunded" }
+          }
+        }
+      }),
       Order.aggregate([
         { $match: finalQuery },
         {
@@ -1005,7 +1030,8 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         Shipped: shippedCount,
         Delivered: deliveredCount,
         Cancelled: cancelledCount,
-        "Return Requests": returnCount
+        "Return Requests": returnCount,
+        "Access Pending": accessPendingCount
       },
       overviewStats: {
         totalOrders: totalMatchingOrders,

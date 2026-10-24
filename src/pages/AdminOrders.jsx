@@ -16,6 +16,7 @@ import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
 import { buildOrdersCsv } from "../utils/ordersCsv";
 import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
+import { isDigitalLikeItem, orderHasPendingAccess } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 
@@ -69,7 +70,7 @@ function AdminOrders() {
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [statusCounts, setStatusCounts] = useState({
-    "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Completed: 0, Cancelled: 0, [RETURN_FILTER_KEY]: 0, All: 0
+    "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Completed: 0, Cancelled: 0, [RETURN_FILTER_KEY]: 0, "Access Pending": 0, All: 0
   });
   const [overviewStats, setOverviewStats] = useState({
     totalOrders: 0,
@@ -87,6 +88,9 @@ function AdminOrders() {
     if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
       return RETURN_FILTER_KEY;
     }
+    if (params.get("tab") === "access-pending") {
+      return "Access Pending";
+    }
     if (params.get("tab") === "cancelled") {
       return "Cancelled";
     }
@@ -100,6 +104,8 @@ function AdminOrders() {
     const params = new URLSearchParams(location.search);
     if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
       setSelectedStatus(RETURN_FILTER_KEY);
+    } else if (params.get("tab") === "access-pending") {
+      setSelectedStatus("Access Pending");
     } else if (params.get("tab") === "cancelled") {
       setSelectedStatus("Cancelled");
     }
@@ -173,18 +179,9 @@ function AdminOrders() {
     if (rawStatus === "Cancelled") return "Cancelled";
     if (getPaymentStatus(order) !== "Paid") return "On Hold";
 
-    const isDigitalOnly = Array.isArray(order?.items) && order.items.length > 0 && order.items.every((item) =>
-      Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      )
-    );
+    if (orderHasPendingAccess(order)) return "Access Pending";
+
+    const isDigitalOnly = Array.isArray(order?.items) && order.items.length > 0 && order.items.every(isDigitalLikeItem);
 
     if (isDigitalOnly || rawStatus === "Completed") return "Completed";
     if (BACKEND_STATUSES.includes(rawStatus)) return rawStatus;
@@ -934,6 +931,12 @@ function AdminOrders() {
           >
             Return Requests ({statusCounts[RETURN_FILTER_KEY] || 0})
           </button>
+          <button
+            className={selectedStatus === "Access Pending" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedStatus("Access Pending")}
+          >
+            Access Pending ({statusCounts["Access Pending"] || 0})
+          </button>
           {DISPLAY_STATUSES.map((status) => (
             <button
               key={status}
@@ -1160,9 +1163,19 @@ function AdminOrders() {
                     <tr key={order._id}>
                       <td className="col-order">
                         <div className="order-code-inner">
-                          <Link to={`/admin/orders/${order._id}`} className="order-code-link">
-                            #{order._id.slice(-6).toUpperCase()}
-                          </Link>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <Link to={`/admin/orders/${order._id}`} className="order-code-link">
+                              #{order._id.slice(-6).toUpperCase()}
+                            </Link>
+                            {orderHasPendingAccess(order) && (
+                              <Link
+                                to={`/admin/orders/${order._id}`}
+                                className="order-access-pending-tag"
+                              >
+                                Access pending
+                              </Link>
+                            )}
+                          </div>
                           {order.invoiceNumber ? (
                             <small style={{ color: "var(--orders-muted, #64748b)", fontSize: "11px", fontWeight: 500 }}>
                               {order.invoiceNumber}

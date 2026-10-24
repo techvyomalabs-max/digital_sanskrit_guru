@@ -323,6 +323,7 @@ function AdminAddProducts() {
   const [digitalDelivery, setDigitalDelivery] = useState("onsite");
   const [externalAccessLink, setExternalAccessLink] = useState("");
   const [externalAccessLabel, setExternalAccessLabel] = useState("");
+  const [externalAccessManual, setExternalAccessManual] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
@@ -623,6 +624,7 @@ function AdminAddProducts() {
     setDigitalDelivery("onsite");
     setExternalAccessLink("");
     setExternalAccessLabel("");
+    setExternalAccessManual(false);
     setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
@@ -666,6 +668,7 @@ function AdminAddProducts() {
       digitalDelivery,
       externalAccessLink,
       externalAccessLabel,
+      externalAccessManual,
       webReaderLink,
       kindleLink,
       kindleAsin,
@@ -1301,6 +1304,7 @@ function AdminAddProducts() {
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
       externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
       externalAccessLabel: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLabel.trim() : "",
+      externalAccessManual: isEligibleForExternal && digitalDelivery === "external" ? externalAccessManual : false,
       webReaderLink: webReaderLink.trim(),
       kindleLink: kindleLink.trim(),
       kindleAsin: kindleAsin.trim(),
@@ -1403,6 +1407,7 @@ function AdminAddProducts() {
     setDigitalDelivery(product.digitalDelivery || "onsite");
     setExternalAccessLink(product.externalAccessLink || "");
     setExternalAccessLabel(product.externalAccessLabel || "");
+    setExternalAccessManual(product.externalAccessManual === true);
     setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
@@ -2208,8 +2213,28 @@ function AdminAddProducts() {
                               />
                             </label>
                           </div>
-                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b", lineHeight: "1.4" }}>
-                            Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                          <label style={{ display: "inline-flex", alignItems: "flex-start", gap: "8px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500, marginTop: "4px" }}>
+                            <input
+                              type="checkbox"
+                              checked={externalAccessManual}
+                              onChange={(e) => setExternalAccessManual(e.target.checked)}
+                              style={{ marginTop: "2px" }}
+                            />
+                            <div>
+                              <span>Our team gives access manually</span>
+                              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)", fontWeight: "normal", lineHeight: "1.4" }}>
+                                Customers will not see the link straight away. The order stays Pending until an admin clicks Grant access on the order. Gift purchases are not allowed for this product.
+                              </p>
+                            </div>
+                          </label>
+                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "var(--admin-muted, #64748b)", lineHeight: "1.4" }}>
+                            {externalAccessManual ? (
+                              "Customers see this link only after an admin grants access, in My Digital Library."
+                            ) : (
+                              <>
+                                Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                              </>
+                            )}
                           </p>
                           {externalLinkError && (
                             <div style={{ color: "#dc2626", fontSize: "12.5px", fontWeight: 500, marginTop: "2px" }}>
