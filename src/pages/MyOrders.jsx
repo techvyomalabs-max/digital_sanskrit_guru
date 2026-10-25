@@ -929,6 +929,25 @@ function MyOrders() {
                           String(item.format || "").toLowerCase().includes("web") ||
                           String(item.format || "").toLowerCase().includes("flipbook")
                       );
+                      const comboHasDigital = Boolean(
+                        Array.isArray(item.bundleItems) &&
+                          item.bundleItems.some(
+                            (bi) =>
+                              bi.isDigital ||
+                              isExternalDelivery(bi) ||
+                              bi.webReaderLink ||
+                              bi.kindleLink ||
+                              String(bi.name || "").toLowerCase().includes("web") ||
+                              String(bi.name || "").toLowerCase().includes("flipbook") ||
+                              String(bi.name || "").toLowerCase().includes("kindle")
+                          )
+                      );
+                      const showDigitalBox = isItemDigital || comboHasDigital;
+                      const isComboItem = Boolean(
+                        item.productType === "bundle" ||
+                          (Array.isArray(item.bundleItems) && item.bundleItems.length > 0)
+                      );
+                      const isExternalOrCombo = isExternalDelivery(item) || isComboItem;
 
                       const canRequestReturn =
                         !isWpOrder &&
@@ -1169,7 +1188,7 @@ function MyOrders() {
 
                               {/* Digital Reader Access Box */}
                               {isPaid &&
-                                isItemDigital &&
+                                showDigitalBox &&
                                 (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
                                   isWpOrder ? (
                                     <div
@@ -1190,14 +1209,14 @@ function MyOrders() {
                                   ) : (
                                     <div className="my-order-digital-box">
                                       <div className="my-order-digital-head">
-                                        {isExternalDelivery(item)
+                                        {isExternalOrCombo
                                           ? (isAccessPending(item)
                                               ? "⏳ Access being set up"
-                                              : "Digital item (external link)")
+                                              : "Digital item, available in My Digital Library")
                                           : "⚡ Digital Reader Access Granted"}
                                       </div>
                                       <div className="my-order-digital-btns">
-                                        {isExternalDelivery(item) ? (
+                                        {isExternalOrCombo ? (
                                           isAccessPending(item) ? (
                                             <p
                                               className="my-order-access-pending-note"
@@ -1212,31 +1231,15 @@ function MyOrders() {
                                             </p>
                                           ) : (
                                             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-                                              {item.externalAccessLink ? (
-                                                <a
-                                                  href={item.externalAccessLink}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="my-order-digital-btn-read"
-                                                  style={{
-                                                    textDecoration: "none",
-                                                    textAlign: "center",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center"
-                                                  }}
-                                                >
-                                                  {item.externalAccessLabel?.trim()
-                                                    ? (item.externalAccessLabel.includes("↗")
-                                                        ? item.externalAccessLabel.trim()
-                                                        : `${item.externalAccessLabel.trim()} ↗`)
-                                                    : "View ↗"}
-                                                </a>
-                                              ) : (
-                                                <span style={{ fontSize: "12.5px", color: "var(--site-text-soft, #64748b)", fontStyle: "italic" }}>
-                                                  Access link not available yet
-                                                </span>
-                                              )}
+                                              <button
+                                                type="button"
+                                                className="my-order-digital-btn-read"
+                                                onClick={() => {
+                                                  navigate("/my-library", { state: { search: item.name } });
+                                                }}
+                                              >
+                                                Open in My Digital Library
+                                              </button>
                                               {item.accessNote && (
                                                 <div
                                                   className="my-order-access-note-box"

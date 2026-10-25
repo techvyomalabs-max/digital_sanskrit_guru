@@ -26,7 +26,15 @@ function MyLibrary() {
   const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(
+    () => location.state?.search || ""
+  );
+
+  useEffect(() => {
+    if (location.state?.search) {
+      setSearchQuery(location.state.search);
+    }
+  }, [location.state?.search]);
   
   // Secure Reader State
   const [activeReaderItem, setActiveReaderItem] = useState(null);
@@ -326,6 +334,7 @@ function MyLibrary() {
                   orderId: order._id,
                   orderDate: order.createdAt,
                   orderNumber: order._id,
+                  bundleName: item.name,
                   copies: subQty,
                   webReaderLink: isSubLegacy ? "" : (subItem.webReaderLink || ""),
                   kindleLink: isSubLegacy ? "" : (subItem.kindleLink || ""),
@@ -395,7 +404,8 @@ function MyLibrary() {
     const query = searchQuery.toLowerCase().trim();
     return digitalBooks.filter((book) =>
       String(book.name || "").toLowerCase().includes(query) ||
-      String(book.format || "").toLowerCase().includes(query)
+      String(book.format || "").toLowerCase().includes(query) ||
+      String(book.bundleName || "").toLowerCase().includes(query)
     );
   }, [digitalBooks, searchQuery]);
 
