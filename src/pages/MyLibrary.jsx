@@ -35,7 +35,7 @@ function MyLibrary() {
       setSearchQuery(location.state.search);
     }
   }, [location.state?.search]);
-  
+
   // Secure Reader State
   const [activeReaderItem, setActiveReaderItem] = useState(null);
   const [activeBlobUrl, setActiveBlobUrl] = useState("");
@@ -535,7 +535,7 @@ function MyLibrary() {
 
                       {isExternal && !book.accessPending && Boolean(book.accessNote) && (
                         <div className="my-library-access-note-box">
-                          <strong className="my-library-access-note-title">Note from our team</strong>
+                          <strong className="my-library-access-note-title">Note</strong>
                           <div className="my-library-access-note-content">{book.accessNote}</div>
                         </div>
                       )}
@@ -572,8 +572,8 @@ function MyLibrary() {
                             >
                               {book.externalAccessLabel?.trim()
                                 ? (book.externalAccessLabel.includes("↗")
-                                    ? book.externalAccessLabel.trim()
-                                    : `${book.externalAccessLabel.trim()} ↗`)
+                                  ? book.externalAccessLabel.trim()
+                                  : `${book.externalAccessLabel.trim()} ↗`)
                                 : "View ↗"}
                             </a>
                           ) : (

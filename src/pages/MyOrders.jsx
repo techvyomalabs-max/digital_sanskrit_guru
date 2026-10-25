@@ -1261,7 +1261,7 @@ function MyOrders() {
                                                       color: "var(--site-text-soft, #475569)"
                                                     }}
                                                   >
-                                                    Note from our team
+                                                    Note
                                                   </strong>
                                                   <div style={{ whiteSpace: "pre-wrap" }}>{item.accessNote}</div>
                                                 </div>
