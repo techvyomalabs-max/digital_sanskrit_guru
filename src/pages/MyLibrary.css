@@ -204,6 +204,45 @@
   letter-spacing: 0.3px;
 }
 
+.my-library-format-badge.pending {
+  background-color: rgba(180, 83, 9, 0.9);
+}
+
+.my-library-access-note-box {
+  margin: 0 0 14px;
+  background-color: var(--site-surface-2, var(--site-bg-soft, #f9fafb));
+  border: 1px solid var(--site-border, #e5e7eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.my-library-access-note-title {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--site-text-soft, #6b7280);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.my-library-access-note-content {
+  color: var(--site-text, #111827);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.my-library-pending-note {
+  font-size: 12.5px;
+  color: var(--site-text-soft, #64748b);
+  font-style: italic;
+  padding: 8px 0;
+  display: inline-block;
+  line-height: 1.4;
+}
+
 .my-library-card-body {
   padding: 16px 18px;
   display: flex;

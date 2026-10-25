@@ -4,6 +4,7 @@ import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isAccessPending } from "../utils/accessStatus";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -238,14 +239,36 @@ function MyLibrary() {
             return;
           }
 
+          const isItemPending = isAccessPending(item);
           const externalLink = item.externalAccessLink || "";
+          const externalLabel = item.externalAccessLabel || "";
+          const accessNote = item.accessNote || "";
+          const accessGrantedAt = item.accessGrantedAt || null;
 
           const key = String((item.product || item._id || item.name) + (isOrderLegacy ? "_legacy" : "")).trim();
           if (seenMap.has(key)) {
             const existing = seenMap.get(key);
             existing.copies += Number(item.quantity || 1);
-            if (!existing.externalAccessLink && externalLink) {
+
+            if (existing.accessPending && !isItemPending) {
+              existing.accessPending = false;
               existing.externalAccessLink = externalLink;
+              existing.externalAccessLabel = externalLabel;
+              existing.accessNote = accessNote;
+              existing.accessGrantedAt = accessGrantedAt;
+            } else if (!existing.accessPending && !isItemPending) {
+              if (!existing.externalAccessLink && externalLink) {
+                existing.externalAccessLink = externalLink;
+              }
+              if (!existing.externalAccessLabel && externalLabel) {
+                existing.externalAccessLabel = externalLabel;
+              }
+              if (!existing.accessNote && accessNote) {
+                existing.accessNote = accessNote;
+              }
+              if (!existing.accessGrantedAt && accessGrantedAt) {
+                existing.accessGrantedAt = accessGrantedAt;
+              }
             }
           } else {
             const entry = {
@@ -258,7 +281,10 @@ function MyLibrary() {
               isExternal: true,
               digitalDelivery: "external",
               externalAccessLink: externalLink,
-              externalAccessLabel: item.externalAccessLabel || "",
+              externalAccessLabel: externalLabel,
+              accessPending: isItemPending,
+              accessNote: accessNote,
+              accessGrantedAt: accessGrantedAt,
               legacyAccess: isOrderLegacy,
               isWpArchive: isOrderLegacy
             };
@@ -478,8 +504,10 @@ function MyLibrary() {
                           e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
                         }}
                       />
-                      <span className="my-library-format-badge">
-                        {isExternal ? "🌐 External Access" : isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                      <span className={`my-library-format-badge ${isExternal && book.accessPending ? "pending" : ""}`}>
+                        {isExternal
+                          ? (book.accessPending ? "⏳ Access being set up" : "🌐 External Access")
+                          : isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
                       </span>
                     </div>
 
@@ -495,9 +523,30 @@ function MyLibrary() {
                         <p className="my-library-instructions-snippet">{book.digitalInstructions}</p>
                       )}
 
+                      {isExternal && !book.accessPending && Boolean(book.accessNote) && (
+                        <div className="my-library-access-note-box">
+                          <strong className="my-library-access-note-title">Note from our team</strong>
+                          <div className="my-library-access-note-content">{book.accessNote}</div>
+                        </div>
+                      )}
+
                       <div className="my-library-card-actions">
                         {isExternal ? (
-                          book.externalAccessLink ? (
+                          book.accessPending ? (
+                            <span
+                              className="my-library-pending-note"
+                              style={{
+                                fontSize: "12.5px",
+                                color: "var(--site-text-soft, #64748b)",
+                                fontStyle: "italic",
+                                padding: "8px 0",
+                                display: "inline-block",
+                                lineHeight: 1.4
+                              }}
+                            >
+                              Our team is setting up your access. We'll email you when it's ready.
+                            </span>
+                          ) : book.externalAccessLink ? (
                             <a
                               href={book.externalAccessLink}
                               target="_blank"

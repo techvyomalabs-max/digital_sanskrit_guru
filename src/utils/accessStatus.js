@@ -38,9 +38,12 @@ export function isDigitalLikeItem(item) {
  * Excludes items that have been refunded.
  */
 export function isAccessPending(item) {
-  if (!item || item.accessManual !== true || Boolean(item.accessGrantedAt)) return false;
+  if (!item) return false;
+  if (item.accessGrantedAt) return false;
   if (String(item.returnRequest?.status || "").trim().toLowerCase() === "refunded") return false;
-  return true;
+  if (item.accessPending === true) return true;
+  if (item.accessManual === true) return true;
+  return false;
 }
 
 /**

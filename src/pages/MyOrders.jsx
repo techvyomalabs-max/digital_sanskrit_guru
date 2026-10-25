@@ -8,6 +8,7 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
   AlertTriangle,
@@ -662,6 +663,7 @@ function MyOrders() {
     const buckets = {
       All: [],
       ActionRequired: [],
+      AccessPending: [],
       Completed: []
     };
 
@@ -670,6 +672,8 @@ function MyOrders() {
       buckets.All.push(order);
       if (paymentStatus !== "Paid") {
         buckets.ActionRequired.push(order);
+      } else if (orderHasPendingAccess(order)) {
+        buckets.AccessPending.push(order);
       } else {
         buckets.Completed.push(order);
       }
@@ -682,6 +686,7 @@ function MyOrders() {
     () => ({
       All: orderBuckets.All.length,
       ActionRequired: orderBuckets.ActionRequired.length,
+      AccessPending: orderBuckets.AccessPending.length,
       Completed: orderBuckets.Completed.length
     }),
     [orderBuckets]
@@ -723,6 +728,15 @@ function MyOrders() {
           >
             Action Required ({isLoading ? "..." : viewCounts.ActionRequired})
           </button>
+          {viewCounts.AccessPending > 0 && (
+            <button
+              type="button"
+              className={selectedView === "AccessPending" ? "my-orders-filter active" : "my-orders-filter"}
+              onClick={() => selectView("AccessPending")}
+            >
+              Access pending ({isLoading ? "..." : viewCounts.AccessPending})
+            </button>
+          )}
           <button
             type="button"
             className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
@@ -754,7 +768,13 @@ function MyOrders() {
           wishlist={wishlist}
           cartCount={cartItems.reduce((acc, i) => acc + Math.max(1, Number(i.quantity || 1)), 0)}
           isFiltered={true}
-          selectedView={selectedView === "ActionRequired" ? "Action Required" : selectedView}
+          selectedView={
+            selectedView === "ActionRequired"
+              ? "Action Required"
+              : selectedView === "AccessPending"
+              ? "Access pending"
+              : selectedView
+          }
           onResetFilter={() => selectView("All")}
         />
       ) : (
@@ -763,7 +783,14 @@ function MyOrders() {
           const paymentStatus = getEffectivePaymentStatus(order);
           const isPaid = paymentStatus === "Paid";
           const isWpOrder = Boolean(order?.isWpArchive || order?.legacyAccess || String(order?._id || "").startsWith("wp_"));
-          const orderStatusLabel = status === "Cancelled" ? "Cancelled" : isPaid ? status : "On Hold";
+          const orderStatusLabel =
+            status === "Cancelled"
+              ? "Cancelled"
+              : !isPaid
+              ? "On Hold"
+              : orderHasPendingAccess(order)
+              ? "Access pending"
+              : status;
           const refundStatus = String(order?.refundStatus || "Not Applicable");
           const paymentStatusLabel = paymentStatus;
           const items = Array.isArray(order.items) ? order.items : [];
@@ -1163,35 +1190,79 @@ function MyOrders() {
                                     <div className="my-order-digital-box">
                                       <div className="my-order-digital-head">
                                         {isExternalDelivery(item)
-                                          ? "Digital item (external link)"
+                                          ? (isAccessPending(item)
+                                              ? "⏳ Access being set up"
+                                              : "Digital item (external link)")
                                           : "⚡ Digital Reader Access Granted"}
                                       </div>
                                       <div className="my-order-digital-btns">
                                         {isExternalDelivery(item) ? (
-                                          item.externalAccessLink ? (
-                                            <a
-                                              href={item.externalAccessLink}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="my-order-digital-btn-read"
+                                          isAccessPending(item) ? (
+                                            <p
+                                              className="my-order-access-pending-note"
                                               style={{
-                                                textDecoration: "none",
-                                                textAlign: "center",
-                                                display: "inline-flex",
-                                                alignItems: "center",
-                                                justifyContent: "center"
+                                                fontSize: "12.5px",
+                                                color: "var(--site-text-soft, #64748b)",
+                                                margin: 0,
+                                                lineHeight: 1.4
                                               }}
                                             >
-                                              {item.externalAccessLabel?.trim()
-                                                ? (item.externalAccessLabel.includes("↗")
-                                                    ? item.externalAccessLabel.trim()
-                                                    : `${item.externalAccessLabel.trim()} ↗`)
-                                                : "View ↗"}
-                                            </a>
+                                              Our team is setting up your access. We'll email you as soon as it's ready.
+                                            </p>
                                           ) : (
-                                            <span style={{ fontSize: "12.5px", color: "var(--site-text-soft, #64748b)", fontStyle: "italic" }}>
-                                              Access link not available yet
-                                            </span>
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                                              {item.externalAccessLink ? (
+                                                <a
+                                                  href={item.externalAccessLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="my-order-digital-btn-read"
+                                                  style={{
+                                                    textDecoration: "none",
+                                                    textAlign: "center",
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center"
+                                                  }}
+                                                >
+                                                  {item.externalAccessLabel?.trim()
+                                                    ? (item.externalAccessLabel.includes("↗")
+                                                        ? item.externalAccessLabel.trim()
+                                                        : `${item.externalAccessLabel.trim()} ↗`)
+                                                    : "View ↗"}
+                                                </a>
+                                              ) : (
+                                                <span style={{ fontSize: "12.5px", color: "var(--site-text-soft, #64748b)", fontStyle: "italic" }}>
+                                                  Access link not available yet
+                                                </span>
+                                              )}
+                                              {item.accessNote && (
+                                                <div
+                                                  className="my-order-access-note-box"
+                                                  style={{
+                                                    padding: "8px 10px",
+                                                    backgroundColor: "var(--site-surface-2, #f8fafc)",
+                                                    border: "1px solid var(--site-border, #e2e8f0)",
+                                                    borderRadius: "6px",
+                                                    fontSize: "12px",
+                                                    color: "var(--site-text, #334155)",
+                                                    lineHeight: 1.4
+                                                  }}
+                                                >
+                                                  <strong
+                                                    style={{
+                                                      display: "block",
+                                                      marginBottom: "4px",
+                                                      fontSize: "11.5px",
+                                                      color: "var(--site-text-soft, #475569)"
+                                                    }}
+                                                  >
+                                                    Note from our team
+                                                  </strong>
+                                                  <div style={{ whiteSpace: "pre-wrap" }}>{item.accessNote}</div>
+                                                </div>
+                                              )}
+                                            </div>
                                           )
                                         ) : (
                                           <>
@@ -1597,6 +1668,22 @@ function MyOrders() {
             </div>
 
             <form onSubmit={handleConfirmCancelOrder} className="order-cancel-form">
+              {orderHasPendingAccess(orderToCancel) && (
+                <div
+                  className="order-cancel-pending-notice"
+                  style={{
+                    padding: "10px 12px",
+                    backgroundColor: "var(--site-surface-2, #fffbf0)",
+                    border: "1px solid var(--site-border, #fde68a)",
+                    borderRadius: "8px",
+                    fontSize: "12.5px",
+                    color: "var(--site-button-bg, #b45309)",
+                    lineHeight: 1.4
+                  }}
+                >
+                  Access has not been set up yet, so you will not lose anything you are using.
+                </div>
+              )}
               <div className="order-cancel-field-group">
                 <label className="order-cancel-field-label">Reason for cancellation</label>
                 <select
