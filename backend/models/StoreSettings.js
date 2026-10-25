@@ -11,6 +11,7 @@ const DEFAULT_PRODUCT_CATEGORIES = [
   "Sanskrit",
   "Books"
 ];
+const { DEFAULT_DIGITAL_FORMAT_TYPES } = require("../utils/digitalFormatTypes");
 
 const customThemeSchema = new mongoose.Schema(
   {
@@ -468,6 +469,10 @@ const storeSettingsSchema = new mongoose.Schema(
       type: [String],
       default: DEFAULT_PRODUCT_CATEGORIES
     },
+    digitalFormatTypes: {
+      type: [String],
+      default: () => [...DEFAULT_DIGITAL_FORMAT_TYPES]
+    },
     heroBannerImage: {
       type: String,
       default: "",
@@ -664,5 +669,6 @@ const storeSettingsSchema = new mongoose.Schema(
 
 storeSettingsSchema.statics.SITE_THEMES = SITE_THEMES;
 storeSettingsSchema.statics.DEFAULT_PRODUCT_CATEGORIES = DEFAULT_PRODUCT_CATEGORIES;
+storeSettingsSchema.statics.DEFAULT_DIGITAL_FORMAT_TYPES = DEFAULT_DIGITAL_FORMAT_TYPES;
 
 module.exports = mongoose.model("StoreSettings", storeSettingsSchema);
