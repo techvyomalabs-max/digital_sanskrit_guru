@@ -181,14 +181,22 @@ function Checkout() {
   const selectedBillingAddress = addresses[selectedBillingIndex];
   const navigate = useNavigate();
 
+  const hasManualAccessItem = useMemo(() => {
+    return cartItems.some((item) => item?.externalAccessManual === true);
+  }, [cartItems]);
+
   const noGift = useDigitalOwnership(cartItems, false);
   const current = useDigitalOwnership(cartItems, isGift);
 
   useEffect(() => {
+    if (hasManualAccessItem) {
+      setIsGift(false);
+      return;
+    }
     if (noGift.blocked && noGift.giftAllowed) {
       setIsGift(true);
     }
-  }, [noGift.blocked, noGift.giftAllowed]);
+  }, [hasManualAccessItem, noGift.blocked, noGift.giftAllowed]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const [charges, setCharges] = useState({
@@ -646,8 +654,8 @@ function Checkout() {
         billing,
         couponCode: couponCode || "",
         discount,
-        isGift,
-        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+        isGift: hasManualAccessItem ? false : isGift,
+        giftRecipientEmail: !hasManualAccessItem && isGift ? String(giftRecipientEmail || "").trim() : "",
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
@@ -690,12 +698,12 @@ function Checkout() {
       return null;
     }
 
-    if (isGift && !giftRecipientEmail.trim()) {
+    if (!hasManualAccessItem && isGift && !giftRecipientEmail.trim()) {
       setCheckoutMessage("Please enter the recipient's email address to purchase as a gift.");
       return null;
     }
 
-    if (isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    if (!hasManualAccessItem && isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
       return null;
     }
@@ -746,7 +754,7 @@ function Checkout() {
           shipping: selected,
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
-          isGift: Boolean(isGift)
+          isGift: hasManualAccessItem ? false : Boolean(isGift)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -1336,7 +1344,24 @@ function Checkout() {
 
           {/* Digital Gift Option */}
           {hasDigitalItemsInCart && (
-            <div className="checkout-gift-card">
+            hasManualAccessItem ? (
+              <p
+                className="checkout-gift-manual-notice"
+                style={{
+                  fontSize: "13px",
+                  color: "var(--site-text-soft, #64748b)",
+                  margin: "8px 0 16px",
+                  padding: "10px 14px",
+                  background: "var(--site-surface-2, #f8fafc)",
+                  border: "1px solid var(--site-border, #e2e8f0)",
+                  borderRadius: "8px",
+                  lineHeight: 1.4
+                }}
+              >
+                Gifting isn't available for items where our team sets up access.
+              </p>
+            ) : (
+              <div className="checkout-gift-card">
               <label className="checkout-gift-toggle-label">
                 <input
                   type="checkbox"
@@ -1383,7 +1408,7 @@ function Checkout() {
                 </div>
               )}
             </div>
-          )}
+          ))}
 
           {/* Available Coupons & Offers in Left Column */}
           {availableCoupons.length > 0 && (

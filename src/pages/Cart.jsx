@@ -10,6 +10,7 @@ import { useDeliveryEstimate } from "../hooks/useDeliveryEstimate";
 import { convertCurrencyAmount, formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
+import { isKindleProduct } from "../utils/kindle";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import {
@@ -131,7 +132,7 @@ function CartQtyInput({ item, currentQty, updateQty }) {
           aria-label="Bulk quantity selection"
         >
           {[10, 20, 30, 40, 50, 100].map((num) => (
-            <option key={num} value={num} disabled={item.stock > 0 && num > item.stock}>
+            <option key={num} value={num} disabled={item.isDigital !== true && item.stock > 0 && num > item.stock}>
               {num} copies
             </option>
           ))}
@@ -146,7 +147,7 @@ function CartQtyInput({ item, currentQty, updateQty }) {
     if (val !== "") {
       const num = parseInt(val, 10);
       if (!isNaN(num) && num >= 1) {
-        updateQty(item._id || item.id, Math.min(item.stock || 100, num));
+        updateQty(item._id || item.id, Math.min(item.isDigital === true ? 5 : (item.stock || 100), num));
       }
     }
   };
@@ -179,7 +180,7 @@ function CartQtyInput({ item, currentQty, updateQty }) {
         className="cart-qty-input-field"
         value={localVal}
         min="1"
-        max={item.stock || 100}
+        max={item.isDigital === true ? 5 : (item.stock || 100)}
         onChange={handleChange}
         onBlur={handleBlur}
         aria-label="Item quantity"
@@ -187,9 +188,9 @@ function CartQtyInput({ item, currentQty, updateQty }) {
       <button
         type="button"
         className="cart-qty-btn plus"
-        disabled={item.stock ? Number(localVal) >= item.stock : false}
+        disabled={item.isDigital === true ? Number(localVal) >= 5 : (item.stock ? Number(localVal) >= item.stock : false)}
         onClick={() => {
-          const maxStock = item.stock || 100;
+          const maxStock = item.isDigital === true ? 5 : (item.stock || 100);
           const nextQty = Math.min(maxStock, Number(localVal || 1) + 1);
           setLocalVal(nextQty);
           updateQty(item._id || item.id, nextQty);
@@ -542,13 +543,19 @@ function Cart() {
                               {isDigital ? <Zap size={11} /> : <BookOpen size={11} />}
                               {categoryName}
                             </span>
-                            <span className={`cart-stock-status ${isDigital ? "digital" : "in-stock"}`}>
+                            <span className={`cart-stock-status ${isDigital ? "digital" : (Number(item?.stock || 0) > 0 ? "in-stock" : "out-of-stock")}`}>
                               <CheckCircle2 size={12} />
                               {isDigital
-                                ? isExternalDelivery(item)
+                                ? item.externalAccessManual === true
+                                  ? "Access within 24–48 hours"
+                                  : isKindleProduct(item)
+                                  ? "Sold on Amazon Kindle"
+                                  : isExternalDelivery(item)
                                   ? "Digital item, link in My Library"
                                   : "Instant Digital Access"
-                                : "In Stock"}
+                                : Number(item?.stock || 0) > 0
+                                ? "In Stock"
+                                : "Out of Stock"}
                             </span>
                           </div>
 

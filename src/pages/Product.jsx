@@ -13,6 +13,7 @@ import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isKindleProduct } from "../utils/kindle";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -184,9 +185,17 @@ function buildAboutProductPoints(product, extraProductDetails) {
       .filter(Boolean);
   }
 
+  const stockHighlight = product.isDigital === true
+    ? (product.externalAccessManual === true
+        ? "Access will be given by our team within 24–48 hours of purchase."
+        : isKindleProduct(product)
+        ? "Kindle edition, sold on Amazon."
+        : "Instant digital access.")
+    : (product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.");
+
   const points = [
     `${product.category || "General"} title for readers looking for ${String(product.category || "traditional learning").toLowerCase()} material.`,
-    product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.",
+    stockHighlight,
     `${Number(product.rating || 0).toFixed(1)} / 5 rating from ${Array.isArray(product.reviews) ? product.reviews.length : 0} customer reviews.`
   ];
 
@@ -289,6 +298,17 @@ function ProductNotFound() {
       </div>
     </div>
   );
+}
+
+function isDigitalOnlyBundle(product) {
+  const items = Array.isArray(product?.bundleItems) ? product.bundleItems : [];
+  if (items.length === 0) return false;
+  return items.every((comp) => {
+    if (comp?.product && typeof comp.product === "object" && typeof comp.product.isDigital === "boolean") {
+      return comp.product.isDigital === true;
+    }
+    return comp?.isDigital === true;
+  });
 }
 
 function Product() {
@@ -731,7 +751,7 @@ function Product() {
         "priceCurrency": displayCurrency,
         "price": displayPrice.toString(),
         "itemCondition": "https://schema.org/NewCondition",
-        "availability": product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+        "availability": (product.isDigital === true || product.stock > 0) ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
       }
     };
 
@@ -907,7 +927,7 @@ function Product() {
   };
 
   const handleBuyNow = async () => {
-    if (product.stock === 0) return;
+    if (product.isDigital !== true && product.stock === 0) return;
     await addToCart(product, qty);
     navigate("/checkout");
   };
@@ -962,11 +982,7 @@ function Product() {
   const trailerVideo = getProductTrailerEmbed(product.trailerVideoUrl);
   const mediaItems = buildProductMediaItems(product, galleryImages, trailerVideo);
   const activeMedia = selectedMedia || mediaItems[0] || null;
-  const isKindleBook = Boolean(
-    product.kindleLink ||
-    String(product.digitalType || "").toLowerCase().includes("kindle") ||
-    String(product.name || "").toLowerCase().includes("kindle")
-  );
+  const isKindleBook = isKindleProduct(product);
 
 
 
@@ -1248,7 +1264,15 @@ function Product() {
             <p className="tax-note">Inclusive of all taxes</p>
           </div>
           <p className="stock">
-            {product.stock > 0 ? (
+            {product.isDigital === true ? (
+              <span className="in-stock">
+                {product.externalAccessManual === true
+                  ? "Access within 24–48 hours"
+                  : isKindleProduct(product)
+                  ? "Sold on Amazon Kindle"
+                  : "Instant digital access"}
+              </span>
+            ) : product.stock > 0 ? (
               <span className="in-stock">In Stock</span>
             ) : (
               <span className="out-stock">Out of Stock</span>
@@ -1270,8 +1294,14 @@ function Product() {
             {/* <p className="delivery">Fast Delivery</p> */}
             <p className="buy-box-note">
               {isExternalDelivery(product)
-                ? "Delivered via another website. After purchase, find your link in My Digital Library."
-                : "Fast delivery available at your selected location."}
+                ? (product.externalAccessManual === true
+                  ? "Delivered via another website. After you pay, our team will set up your access and email you when it's ready. You'll then find your link in My Digital Library."
+                  : "Delivered via another website. After purchase, find your link in My Digital Library.")
+                : isKindleBook
+                  ? "Kindle edition: sold and delivered by Amazon Kindle."
+                  : (product.isDigital === true || isDigitalOnlyBundle(product))
+                    ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
+                    : "Fast delivery available at your selected location."}
             </p>
 
             {isKindleBook ? (
@@ -1295,12 +1325,12 @@ function Product() {
                     <p className="product-purchased-alert-title">
                       <span>⚠️</span> {digitalOwnership.message || "You have already purchased this web version."}
                     </p>
-                    {digitalOwnership.giftAllowed && (
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
                       <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
                         Tick &quot;Purchase as a gift for someone else&quot; below to proceed.
                       </p>
                     )}
-                    {digitalOwnership.giftAllowed && (
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
                       <label className="product-purchased-gift-label">
                         <input
                           type="checkbox"
@@ -1352,7 +1382,7 @@ function Product() {
                         </div>
                       );
                     })()}
-                    {digitalOwnership.giftAllowed && (
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
                       <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
                         <input
                           type="checkbox"
@@ -1384,7 +1414,11 @@ function Product() {
                 ) : isDigitalItem(product) ? (
                   <div className="product-digital-badge-wrap">
                     <p className="product-digital-badge-pill">
-                      {isExternalDelivery(product) ? "🌐 External Digital Access" : "💻 Web Version - 1 License Per User"}
+                      {isExternalDelivery(product)
+                        ? (product.externalAccessManual === true
+                            ? "🌐 Access will be provided within 24–48 hours of purchase"
+                            : "🌐 External Digital Access")
+                        : "💻 Web Version – Available for one-time purchase only."}
                     </p>
                   </div>
                 ) : (
@@ -1396,7 +1430,7 @@ function Product() {
                         className="qty-input product-retail-qty-input"
                         value={qty}
                         min="1"
-                        max={Math.min(5, product.stock || 5)}
+                        max={product.isDigital === true ? 5 : Math.min(5, product.stock || 5)}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === "") {
@@ -1404,7 +1438,7 @@ function Product() {
                           } else {
                             const num = parseInt(val, 10);
                             if (!isNaN(num)) {
-                              setQty(Math.max(1, Math.min(Math.min(5, product.stock || 5), num)));
+                              setQty(Math.max(1, Math.min(product.isDigital === true ? 5 : Math.min(5, product.stock || 5), num)));
                             }
                           }
                         }}
@@ -1418,7 +1452,7 @@ function Product() {
                       <button
                         type="button"
                         className="qty-btn"
-                        onClick={() => setQty(Number(qty || 1) < Math.min(5, product.stock || 5) ? Number(qty || 1) + 1 : Number(qty || 1))}
+                        onClick={() => setQty(Number(qty || 1) < (product.isDigital === true ? 5 : Math.min(5, product.stock || 5)) ? Number(qty || 1) + 1 : Number(qty || 1))}
                       >+</button>
                     </div>
                     <p className="product-retail-qty-note">
@@ -1435,22 +1469,22 @@ function Product() {
 
                 <button
                   className="add-cart-btn"
-                  disabled={product.stock === 0 || digitalOwnership.blocked || isIntlPhysicalRestricted}
+                  disabled={(product.isDigital !== true && product.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={() => addToCart(product, qty)}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
-                  {product.stock === 0 ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
+                  {(product.isDigital !== true && product.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
                 </button>
                 <button
                   className="buy-now-btn"
-                  disabled={product.stock === 0 || digitalOwnership.blocked || isIntlPhysicalRestricted}
+                  disabled={(product.isDigital !== true && product.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={handleBuyNow}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
-                  {product.stock === 0 ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Buy Now"}
+                  {(product.isDigital !== true && product.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Buy Now"}
                 </button>
 
-                {product.stock > 0 && product.productType !== "bulk" && (
+                {(product.isDigital === true || product.stock > 0) && product.productType !== "bulk" && (
                   <div className="product-bulk-quote-section">
                     <p className="product-bulk-quote-hint">
                       Planning to purchase in bulk for a school, class, or institution?
@@ -1504,10 +1538,12 @@ function Product() {
             <span>Product Name</span>
             <strong>{product.name}</strong>
           </div>
-          <div className="product-detail-card">
-            <span>Availability</span>
-            <strong>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</strong>
-          </div>
+          {product.isDigital !== true && (
+            <div className="product-detail-card">
+              <span>Availability</span>
+              <strong>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</strong>
+            </div>
+          )}
           <div className="product-detail-card">
             <span>Rating</span>
             <strong>{Number(product.rating || 0).toFixed(1)} / 5</strong>
