@@ -1202,3 +1202,38 @@
     justify-content: center;
   }
 }
+
+.cart-item-kindle-notice {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.cart-item-kindle-link {
+  color: #b45309;
+  font-weight: 700;
+  text-decoration: underline;
+  transition: opacity 0.15s ease;
+}
+
+.cart-item-kindle-link:hover {
+  opacity: 0.8;
+}
+
+.cart-checkout-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b91c1c;
+  text-align: center;
+}
+

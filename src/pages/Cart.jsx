@@ -477,6 +477,11 @@ function Cart() {
     return isInternational && !intlDeliveryEnabled && hasPhysicalItems;
   }, [selectedAddress?.country, charges?.internationalDelivery?.enabled, hasPhysicalItems]);
 
+  const hasKindleItems = useMemo(
+    () => cartItems.some((item) => isKindleProduct(item)),
+    [cartItems]
+  );
+
   if (isLoadingCart) {
     return (
       <div className="cart-page">
@@ -562,6 +567,20 @@ function Cart() {
                           <Link to={`/product/${productId}`} className="cart-item-title-link">
                             <h3 className="cart-item-title">{item.name}</h3>
                           </Link>
+
+                          {isKindleProduct(item) && (
+                            <div className="cart-item-kindle-notice">
+                              <span>Kindle editions are sold on Amazon.</span>
+                              <a
+                                href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="cart-item-kindle-link"
+                              >
+                                Buy on Amazon ↗
+                              </a>
+                            </div>
+                          )}
 
                           <div className="cart-item-price-mobile">
                             <strong className="cart-item-total-price">
@@ -871,7 +890,22 @@ function Cart() {
           )}
 
           {cartItems.length > 0 ? (
-            isIntlPhysicalRestricted ? (
+            hasKindleItems ? (
+              <div className="checkout-btn-wrap">
+                <button
+                  className="checkout-btn disabled"
+                  disabled
+                  title="Remove Kindle editions to continue."
+                >
+                  <Lock size={16} />
+                  <span>Proceed to Checkout</span>
+                  <ArrowRight size={16} />
+                </button>
+                <p className="cart-checkout-hint">
+                  Remove Kindle editions to continue.
+                </p>
+              </div>
+            ) : isIntlPhysicalRestricted ? (
               <button
                 className="checkout-btn disabled"
                 disabled

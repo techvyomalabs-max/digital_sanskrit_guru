@@ -141,15 +141,27 @@ function Wishlist() {
                     {/* Column 4: Action Buttons */}
                     <div className="wishlist-item-cell col-actions" data-label="">
                       <div className="wishlist-action-buttons">
-                        <button
-                          type="button"
-                          className="wishlist-add-to-cart-btn"
-                          disabled={isOutOfStock}
-                          onClick={() => handleAddToCart(product)}
-                          aria-label="Add to cart"
-                        >
-                          <ShoppingCart size={16} /> Add to Cart
-                        </button>
+                        {isKindleProduct(product) ? (
+                          <a
+                            href={product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="wishlist-add-to-cart-btn wishlist-kindle-btn"
+                            aria-label="Buy on Amazon"
+                          >
+                            Buy on Amazon ↗
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            className="wishlist-add-to-cart-btn"
+                            disabled={isOutOfStock}
+                            onClick={() => handleAddToCart(product)}
+                            aria-label="Add to cart"
+                          >
+                            <ShoppingCart size={16} /> Add to Cart
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="wishlist-remove-btn"

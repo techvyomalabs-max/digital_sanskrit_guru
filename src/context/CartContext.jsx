@@ -4,6 +4,7 @@ import { useToast } from "../hooks/useToast";
 import { useAuth } from "../hooks/useAuth";
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { resolveInitialWishlist } from "../utils/wishlistOwnership";
+import { isKindleProduct } from "../utils/kindle";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
@@ -55,7 +56,11 @@ const normalizeGuestCartItems = (items) =>
         discountType: String(item?.discountType || "").trim(),
         hsnSac: String(item?.hsnSac || "").trim(),
         format: String(item?.format || "").trim(),
-        isDigital: Boolean(item?.isDigital)
+        isDigital: Boolean(item?.isDigital),
+        digitalType: String(item?.digitalType || "").trim(),
+        kindleLink: String(item?.kindleLink || "").trim(),
+        digitalDelivery: String(item?.digitalDelivery || "onsite"),
+        externalAccessManual: Boolean(item?.externalAccessManual)
       };
     })
     .filter(Boolean);
@@ -260,11 +265,16 @@ export function CartProvider({ children }) {
   }, [token, loadCart, showToast]);
 
   const addToCart = async (product, qty = 1) => {
+    if (isKindleProduct(product)) {
+      showToast("Kindle editions are sold on Amazon.", "error");
+      return false;
+    }
+
     const productId = String(product?.id || product?._id || "");
     const isBulk = String(product?.productType || "single").toLowerCase() === "bulk";
     const isDigital = isDigitalItem(product);
     const nextQty = isDigital ? 1 : Math.max(1, Number(qty) || 1);
-    if (!productId) return;
+    if (!productId) return false;
 
     if (!token) {
       setCartItems((current) => {
@@ -288,6 +298,7 @@ export function CartProvider({ children }) {
             name: String(product?.name || "").trim(),
             productType: String(product?.productType || "single").trim(),
             digitalDelivery: String(product?.digitalDelivery || "onsite"),
+            externalAccessManual: Boolean(product?.externalAccessManual),
             price: Number(product?.price || 0),
             isDigital: Boolean(product?.isDigital || isDigital),
             internationalPrice:
@@ -336,7 +347,9 @@ export function CartProvider({ children }) {
         name: String(product?.name || "").trim(),
         price: Number(product?.price || 0),
         image: String(product?.image || "").trim(),
-        quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty)
+        quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+        digitalDelivery: String(product?.digitalDelivery || "onsite"),
+        externalAccessManual: Boolean(product?.externalAccessManual)
       });
       setIsPopupOpen(true);
       showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");

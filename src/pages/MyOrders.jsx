@@ -9,6 +9,7 @@ import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
   AlertTriangle,
@@ -1355,14 +1356,25 @@ function MyOrders() {
                             <span className="my-order-item-qty">Qty: {item.quantity || 1}</span>
 
                             <div className="my-order-item-btn-stack">
-                              <button
-                                type="button"
-                                className="my-order-reorder-btn"
-                                disabled={buyingAgainItemId === itemId}
-                                onClick={() => handleBuyAgain(item)}
-                              >
-                                {buyingAgainItemId === itemId ? "Adding..." : "Buy Again"}
-                              </button>
+                              {isKindleProduct(item) ? (
+                                <a
+                                  href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="my-order-reorder-btn my-order-reorder-kindle-btn"
+                                >
+                                  Buy on Amazon ↗
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="my-order-reorder-btn"
+                                  disabled={buyingAgainItemId === itemId}
+                                  onClick={() => handleBuyAgain(item)}
+                                >
+                                  {buyingAgainItemId === itemId ? "Adding..." : "Buy Again"}
+                                </button>
+                              )}
 
                               {isPaid && status !== "Cancelled" && (
                                 itemId ? (
