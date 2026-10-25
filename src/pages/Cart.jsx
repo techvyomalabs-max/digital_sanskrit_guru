@@ -41,9 +41,9 @@ const getItemHsnSac = (item) => {
   if (item?.hsnSac) return String(item.hsnSac).trim();
   const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
   const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-  
+
   // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital = 
+  const isDigital =
     category.includes("ebook") ||
     category.includes("e-book") ||
     category.includes("kindle") ||
@@ -58,13 +58,13 @@ const getItemHsnSac = (item) => {
     name.includes("flipbook") ||
     name.includes("epub") ||
     name.includes("pdf");
-    
+
   if (isDigital) {
     return "9973"; // Digital products/services (18% GST)
   }
 
   // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook = 
+  const isPrintedBook =
     category.includes("book") ||
     category.includes("sanskrit") ||
     category.includes("gita") ||
@@ -77,7 +77,7 @@ const getItemHsnSac = (item) => {
     name.includes("vol.") ||
     name.includes("hardcover") ||
     name.includes("paperback");
-    
+
   return isPrintedBook ? "4901" : "8523";
 };
 
@@ -200,6 +200,20 @@ function CartQtyInput({ item, currentQty, updateQty }) {
         <Plus size={13} />
       </button>
     </div>
+  );
+}
+
+function SkeletonShimmer({ width = "70px", height = "18px", borderRadius = "6px", className = "" }) {
+  return (
+    <span
+      className={`checkout-skeleton-shimmer ${className}`}
+      style={{
+        width: typeof width === "number" ? `${width}px` : width,
+        height: typeof height === "number" ? `${height}px` : height,
+        borderRadius
+      }}
+      aria-hidden="true"
+    />
   );
 }
 
@@ -333,7 +347,7 @@ function EmptyCartView({ user, wishlist = [] }) {
 }
 
 function Cart() {
-  const { user } = useAuth();
+  const { token, user } = useAuth();
   const { wishlist } = useWishlist();
   const {
     cartItems,
@@ -369,6 +383,20 @@ function Cart() {
     warehouseLocation: {},
     distancePricing: {}
   });
+
+  const [serverTotals, setServerTotals] = useState({
+    subtotal: 0,
+    gstPercent: 0,
+    gstAmount: 0,
+    deliveryCharge: 0,
+    discount: 0,
+    total: 0,
+    currency: "INR",
+    upgradeCredit: 0,
+    upgradeCreditItems: []
+  });
+  const [isCalculatingTotals, setIsCalculatingTotals] = useState(false);
+  const [totalsError, setTotalsError] = useState("");
 
   const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -420,15 +448,84 @@ function Cart() {
     return localDeliveryDetails;
   }, [localDeliveryDetails, serverDeliveryCharge]);
 
+  useEffect(() => {
+    if (!token || cartItems.length === 0) {
+      return;
+    }
+
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        setIsCalculatingTotals(true);
+        setTotalsError("");
+      }
+    });
+
+    const headers = { headers: { Authorization: `Bearer ${token}` } };
+    axios
+      .post(
+        "/api/orders/calculate-totals",
+        {
+          items: cartItems,
+          shipping: selectedAddress || {},
+          couponCode: "",
+          currencyDisplay: { currency: displayCurrency }
+        },
+        headers
+      )
+      .then((res) => {
+        if (!active) return;
+        setServerTotals(res.data);
+        setTotalsError("");
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to calculate totals:", err);
+        setTotalsError(err?.response?.data?.message || "Couldn't calculate totals. Please refresh.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsCalculatingTotals(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [cartItems, selectedAddress, displayCurrency, token]);
+
   const totals = useMemo(() => {
     const isInternational = isInternationalCountry(selectedAddress?.country);
+
+    if (token && !totalsError && cartItems.length > 0) {
+      const total = Number(serverTotals.total || 0);
+      const deliveryCharge = Number(serverTotals.deliveryCharge || 0);
+      const upgradeCredit = Number(serverTotals.upgradeCredit || 0);
+      const discount = Number(serverTotals.discount || 0);
+      const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
+
+      return {
+        subtotal: serverTotals.subtotal,
+        gstAmount: Number(serverTotals.gstAmount || 0),
+        deliveryCharge,
+        upgradeCredit,
+        upgradeCreditItems: serverTotals.upgradeCreditItems || [],
+        discount,
+        couponCode: serverTotals.couponCode || "",
+        total,
+        grandTotal: total,
+        isInternational,
+        itemsInclGst
+      };
+    }
+
+    // Guest estimate (no token or totalsError set)
     const defaultGstPercent = isInternational ? 0 : Number(charges.gstPercent || 0);
     let totalItemBase = 0;
     let totalItemGst = 0;
 
     cartItems.forEach((item) => {
       const qty = Math.max(1, Number(item.quantity || 1));
-      const price = getItemUnitPrice(item);
+      const price = Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
       const lineTotal = qty * price;
 
       if (isInternational) {
@@ -451,20 +548,57 @@ function Cart() {
       cartItems.length === 0
         ? 0
         : roundMoney(
-            convertCurrencyAmount(Number(deliveryDetails.deliveryCharge || 0), {
-              sourceCurrency: "INR",
-              currency: displayCurrency
-            })
-          );
+          convertCurrencyAmount(Number(deliveryDetails.deliveryCharge || 0), {
+            sourceCurrency: "INR",
+            currency: displayCurrency
+          })
+        );
+    const total = cartItems.length === 0 ? 0 : roundMoney(cartSubtotal + gstAmount + deliveryCharge);
+    const upgradeCredit = 0;
+    const discount = 0;
+    const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
 
     return {
       subtotal: cartSubtotal,
       gstAmount,
       deliveryCharge,
-      grandTotal: cartItems.length === 0 ? 0 : roundMoney(cartSubtotal + gstAmount + deliveryCharge),
-      isInternational
+      upgradeCredit,
+      upgradeCreditItems: [],
+      discount,
+      couponCode: "",
+      total,
+      grandTotal: total,
+      isInternational,
+      itemsInclGst
     };
-  }, [cartItems, charges.gstPercent, deliveryDetails.deliveryCharge, displayCurrency, selectedAddress?.country]);
+  }, [
+    token,
+    totalsError,
+    serverTotals,
+    cartItems,
+    charges.gstPercent,
+    deliveryDetails.deliveryCharge,
+    displayCurrency,
+    selectedAddress?.country
+  ]);
+
+  const isPriceLoading =
+    Boolean(token) &&
+    !totalsError &&
+    cartItems.length > 0 &&
+    (isCalculatingTotals ||
+      (Number(serverTotals.total || 0) === 0 &&
+        Number(serverTotals.subtotal || 0) === 0));
+
+  const cartItemsGrossTotal = useMemo(() => {
+    return roundMoney(
+      cartItems.reduce((sum, item) => {
+        const qty = Math.max(1, Number(item.quantity || 1));
+        const price = Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
+        return sum + roundMoney(price * qty);
+      }, 0)
+    );
+  }, [cartItems, selectedAddress?.country]);
 
   const hasPhysicalItems = useMemo(
     () => cartItems.some((item) => !isDigitalItem(item)),
@@ -511,7 +645,7 @@ function Cart() {
           </span>
         </div>
         <div className="cart-heading-right">
-          <Link to="/shop" className="cart-continue-link">
+          <Link to="/collection" className="cart-continue-link">
             <ArrowLeft size={15} />
             <span>Continue Shopping</span>
           </Link>
@@ -554,13 +688,13 @@ function Cart() {
                                 ? item.externalAccessManual === true
                                   ? "Access within 24–48 hours"
                                   : isKindleProduct(item)
-                                  ? "Sold on Amazon Kindle"
-                                  : isExternalDelivery(item)
-                                  ? "Digital item, link in My Library"
-                                  : "Instant Digital Access"
+                                    ? "Sold on Amazon Kindle"
+                                    : isExternalDelivery(item)
+                                      ? "Digital item, link in My Library"
+                                      : "Instant Digital Access"
                                 : Number(item?.stock || 0) > 0
-                                ? "In Stock"
-                                : "Out of Stock"}
+                                  ? "In Stock"
+                                  : "Out of Stock"}
                             </span>
                           </div>
 
@@ -653,9 +787,11 @@ function Cart() {
               </div>
 
               <div className="cart-subtotal-inline-bar">
-                <span className="cart-subtotal-label">Subtotal ({itemCount} items):</span>
+                <span className="cart-subtotal-label">
+                  Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"}, incl. GST):
+                </span>
                 <strong className="cart-subtotal-value">
-                  {formatCurrencyExact(totals.subtotal, displayCurrency)}
+                  {formatCurrencyExact(cartItemsGrossTotal, displayCurrency)}
                 </strong>
               </div>
             </>
@@ -724,29 +860,92 @@ function Cart() {
             <h3>Order Summary</h3>
           </div>
 
+          {totalsError && (
+            <div
+              className="cart-summary-error-notice"
+              style={{
+                margin: "0 0 16px",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                border: "1px solid var(--site-border, #fecaca)",
+                backgroundColor: "var(--site-surface-muted, #fef2f2)",
+                color: "#b91c1c",
+                fontSize: "13px",
+                lineHeight: "1.4",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px"
+              }}
+            >
+              <span style={{ fontSize: "14px", flexShrink: 0 }}>⚠️</span>
+              <span>{totalsError}</span>
+            </div>
+          )}
+
           <div className="cart-summary-breakdown">
             <div className="cart-summary-row">
-              <span className="summary-row-label">Subtotal ({itemCount} items)</span>
-              <span className="summary-row-val">{formatCurrencyExact(totals.subtotal, displayCurrency)}</span>
+              <span className="summary-row-label">Items (incl. GST)</span>
+              {isPriceLoading ? (
+                <SkeletonShimmer width={72} height={18} />
+              ) : (
+                <span className="summary-row-val">
+                  {formatCurrencyExact(totals.itemsInclGst, displayCurrency)}
+                </span>
+              )}
             </div>
 
-            <div className="cart-summary-row">
-              <span className="summary-row-label">
-                {totals.isInternational
-                  ? "GST (Export 0%)"
-                  : `GST (${charges.gstPercent}% Included)`}
-              </span>
-              <span className="summary-row-val">
-                {totals.isInternational
-                  ? formatCurrencyExact(0, displayCurrency)
-                  : formatCurrencyExact(totals.gstAmount, displayCurrency)}
-              </span>
-            </div>
+            {totals.upgradeCredit > 0 && (
+              <div className="cart-summary-row discount-row" style={{ color: "#16a34a" }}>
+                <div style={{ flex: 1, paddingRight: "12px" }}>
+                  <span className="summary-row-label" style={{ color: "#16a34a" }}>
+                    Taken off for items you already own
+                  </span>
+                  {(() => {
+                    const mergedDetails = getMergedUpgradeOwnedDetails(totals.upgradeCreditItems);
+                    if (!mergedDetails.length) return null;
+                    return (
+                      <div style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", marginTop: "4px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                        {mergedDetails.map((od) => (
+                          <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>{od.name}</span>
+                            <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, displayCurrency)}` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={60} height={18} />
+                ) : (
+                  <span className="summary-row-val" style={{ color: "#16a34a", fontWeight: "600" }}>
+                    -{formatCurrencyExact(totals.upgradeCredit, displayCurrency)}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {totals.discount > 0 && (
+              <div className="cart-summary-row discount-row" style={{ color: "#16a34a" }}>
+                <span className="summary-row-label" style={{ color: "#16a34a" }}>
+                  Coupon discount {totals.couponCode ? `(${totals.couponCode})` : ""}
+                </span>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={60} height={18} />
+                ) : (
+                  <span className="summary-row-val" style={{ color: "#16a34a", fontWeight: "600" }}>
+                    -{formatCurrencyExact(totals.discount, displayCurrency)}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="cart-summary-row">
               <span className="summary-row-label">Delivery</span>
               <span className="summary-row-val">
-                {cartItems.length === 0 ? (
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={56} height={18} />
+                ) : cartItems.length === 0 ? (
                   <span style={{ color: "var(--site-text-soft, #64748b)" }}>—</span>
                 ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
                   <span className="delivery-free-badge">
@@ -771,36 +970,30 @@ function Cart() {
                 International delivery applied for {deliveryDetails.matchedCountry}.
               </div>
             )}
-
-            {digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency && (
-              <div className="cart-summary-row" style={{ color: "#16a34a" }}>
-                <span className="summary-row-label" style={{ color: "#16a34a" }}>
-                  Taken off for items you already own
-                </span>
-                <span className="summary-row-val" style={{ color: "#16a34a", fontWeight: "600" }}>
-                  -{formatCurrencyExact(digitalOwnership.upgradeCredit, displayCurrency)}
-                </span>
-              </div>
-            )}
           </div>
 
           <div className="cart-summary-grand-total">
             <div className="grand-total-left">
-              <span className="grand-total-label">
-                {digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency
-                  ? "Order Total (after deduction)"
-                  : "Order Total"}
+              <span className="grand-total-label">Order total (inclusive of all taxes)</span>
+              <span className="grand-total-tax-note">
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={110} height={13} />
+                ) : totals.isInternational ? (
+                  "No GST (export)"
+                ) : totals.gstAmount === 0 ? (
+                  "No GST on these items"
+                ) : (
+                  `Includes GST of ${formatCurrencyExact(totals.gstAmount, displayCurrency)}`
+                )}
               </span>
-              <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
             </div>
-            <span className="grand-total-val">
-              {formatCurrencyExact(
-                digitalOwnership.upgradeCredit > 0 && digitalOwnership.currency === displayCurrency
-                  ? Math.max(0, roundMoney(totals.grandTotal - digitalOwnership.upgradeCredit))
-                  : totals.grandTotal,
-                displayCurrency
-              )}
-            </span>
+            {isPriceLoading ? (
+              <SkeletonShimmer width={95} height={26} borderRadius={8} />
+            ) : (
+              <span className="grand-total-val">
+                {formatCurrencyExact(totals.total, displayCurrency)}
+              </span>
+            )}
           </div>
 
           {digitalOwnership.notice && (
@@ -820,28 +1013,11 @@ function Cart() {
               <div>
                 <span>ℹ️</span> {digitalOwnership.message}
               </div>
-              {digitalOwnership.upgradeCredit > 0 && (() => {
-                const mergedDetails = getMergedUpgradeOwnedDetails(digitalOwnership.upgradeCreditItems);
-                return (
-                  <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px" }}>
-                    <div style={{ marginBottom: "6px", fontWeight: "500" }}>
-                      You already own these, so {formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)} is taken off the price automatically at checkout.
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                      {mergedDetails.map((od) => (
-                        <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span>{od.name}</span>
-                          <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, digitalOwnership.currency)}` : ""}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700", marginTop: "4px", borderTop: "1px dashed #bfdbfe", paddingTop: "4px" }}>
-                        <span>Total taken off</span>
-                        <span>-{formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              {digitalOwnership.upgradeCredit > 0 && (
+                <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px", fontWeight: "500" }}>
+                  You already own these, so {formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)} has been taken off the price.
+                </div>
+              )}
             </div>
           )}
 

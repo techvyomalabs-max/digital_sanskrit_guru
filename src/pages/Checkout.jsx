@@ -557,12 +557,18 @@ function Checkout() {
   }, [cartItems, selectedAddress, couponCode, displayCurrency, token]);
 
   const totals = useMemo(() => {
+    const total = Number(serverTotals.total || 0);
+    const deliveryCharge = Number(serverTotals.deliveryCharge || 0);
+    const upgradeCredit = Number(serverTotals.upgradeCredit || 0);
+    const discount = Number(serverTotals.discount || 0);
+    const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
     return {
       subtotal: serverTotals.subtotal,
       gstAmount: serverTotals.gstAmount,
       deliveryCharge: serverTotals.deliveryCharge,
       grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge),
-      isInternational: isInternationalCountry(selectedAddress?.country)
+      isInternational: isInternationalCountry(selectedAddress?.country),
+      itemsInclGst
     };
   }, [serverTotals, selectedAddress?.country]);
 
@@ -1568,53 +1574,18 @@ function Checkout() {
           {/* Breakdown Rows */}
           <div className="checkout-summary-breakdown">
             <div className="summary-item">
-              <span>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
+              <span>Items (incl. GST)</span>
               {isPriceLoading ? (
                 <SkeletonShimmer width={72} height={18} />
               ) : (
-                <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
+                <strong>{formatCurrencyExact(totals.itemsInclGst, displayCurrency)}</strong>
               )}
-            </div>
-            <div className="summary-item">
-              <span>
-                {totals.isInternational
-                  ? "GST (Export 0%)"
-                  : `GST (${charges.gstPercent}% Included)`}
-              </span>
-              {isPriceLoading ? (
-                <SkeletonShimmer width={64} height={18} />
-              ) : (
-                <strong>
-                  {totals.isInternational
-                    ? formatCurrencyExact(0, displayCurrency)
-                    : formatCurrencyExact(totals.gstAmount, displayCurrency)}
-                </strong>
-              )}
-            </div>
-            <div className="summary-item">
-              <span>Delivery</span>
-              <span>
-                {isPriceLoading ? (
-                  <SkeletonShimmer width={56} height={18} />
-                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-                  <strong className="delivery-free-badge">
-                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
-                  </strong>
-                ) : totals.deliveryCharge === 0 ? (
-                  <strong className="delivery-free-badge">FREE</strong>
-                ) : (
-                  <strong>{formatCurrencyExact(totals.deliveryCharge, displayCurrency)}</strong>
-                )}
-              </span>
             </div>
 
             {serverTotals.upgradeCredit > 0 && (
               <div className="summary-item discount-row">
                 <div style={{ flex: 1, paddingRight: "12px" }}>
                   <span>Taken off for items you already own</span>
-                  <div style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", marginTop: "2px" }}>
-                    (already included in the prices above)
-                  </div>
                   {(() => {
                     const mergedDetails = getMergedUpgradeOwnedDetails(serverTotals.upgradeCreditItems);
                     if (!mergedDetails.length) return null;
@@ -1641,7 +1612,7 @@ function Checkout() {
             {discount > 0 && (
               <div className="summary-item discount-row">
                 <div className="summary-discount-label">
-                  <span>Coupon Discount ({couponCode})</span>
+                  <span>Coupon discount ({couponCode})</span>
                   <button
                     type="button"
                     className="summary-discount-remove-link"
@@ -1659,6 +1630,23 @@ function Checkout() {
                 )}
               </div>
             )}
+
+            <div className="summary-item">
+              <span>Delivery</span>
+              <span>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={56} height={18} />
+                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                  <strong className="delivery-free-badge">
+                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
+                  </strong>
+                ) : totals.deliveryCharge === 0 ? (
+                  <strong className="delivery-free-badge">FREE</strong>
+                ) : (
+                  <strong>{formatCurrencyExact(totals.deliveryCharge, displayCurrency)}</strong>
+                )}
+              </span>
+            </div>
           </div>
 
           {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
@@ -1687,8 +1675,16 @@ function Checkout() {
           {/* Grand Total Box */}
           <div className="checkout-summary-grand-total">
             <div className="grand-total-left">
-              <span className="grand-total-label">Final Order Total</span>
-              <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
+              <span className="grand-total-label">Order total (inclusive of all taxes)</span>
+              <span className="grand-total-tax-note">
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={110} height={13} />
+                ) : totals.isInternational ? (
+                  "No GST (export)"
+                ) : (
+                  `Includes GST of ${formatCurrencyExact(serverTotals.gstAmount, displayCurrency)}`
+                )}
+              </span>
             </div>
             {isPriceLoading ? (
               <SkeletonShimmer width={95} height={26} borderRadius={8} />
