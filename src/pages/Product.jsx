@@ -187,8 +187,8 @@ function buildAboutProductPoints(product, extraProductDetails) {
 
   const stockHighlight = product.isDigital === true
     ? (product.externalAccessManual === true
-        ? "Access will be given by our team within 24–48 hours of purchase."
-        : isKindleProduct(product)
+      ? "Access will be given by our team within 24–48 hours of purchase."
+      : isKindleProduct(product)
         ? "Kindle edition, sold on Amazon."
         : "Instant digital access.")
     : (product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.");
@@ -1269,8 +1269,8 @@ function Product() {
                 {product.externalAccessManual === true
                   ? "Access within 24–48 hours"
                   : isKindleProduct(product)
-                  ? "Sold on Amazon Kindle"
-                  : "Instant digital access"}
+                    ? "Sold on Amazon Kindle"
+                    : "Instant digital access"}
               </span>
             ) : product.stock > 0 ? (
               <span className="in-stock">In Stock</span>
@@ -1301,7 +1301,7 @@ function Product() {
                   ? "Kindle edition: sold and delivered by Amazon Kindle."
                   : (product.isDigital === true || isDigitalOnlyBundle(product))
                     ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
-                    : "Fast delivery available at your selected location."}
+                    : "Delivery available at your selected location."}
             </p>
 
             {isKindleBook ? (
@@ -1416,8 +1416,8 @@ function Product() {
                     <p className="product-digital-badge-pill">
                       {isExternalDelivery(product)
                         ? (product.externalAccessManual === true
-                            ? "🌐 Access will be provided within 24–48 hours of purchase"
-                            : "🌐 External Digital Access")
+                          ? "🌐 Access will be provided within 24–48 hours of purchase"
+                          : "🌐 External Digital Access")
                         : "💻 Web Version – Available for one-time purchase only."}
                     </p>
                   </div>
