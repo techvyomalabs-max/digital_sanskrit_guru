@@ -8,6 +8,7 @@ const { validateCoupon } = require("./coupons");
 const { getSettlementCharge } = require("./paymentVerification");
 const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
 const { applyComboWeights } = require("./comboWeight");
+const { isKindleProduct } = require("./kindle");
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -69,6 +70,13 @@ async function computeOrderTotals({
     .lean();
 
   const byId = new Map(products.map((p) => [String(p._id), p]));
+
+  for (const line of lines) {
+    const p = byId.get(line.productId);
+    if (p && isKindleProduct(p)) {
+      throw new OrderTotalsError(400, "Kindle editions are sold on Amazon.");
+    }
+  }
   const cfg = {
     pricingMarkets: settings?.pricingMarkets || [],
     internationalPricingDefaults: settings?.internationalPricingDefaults || {},

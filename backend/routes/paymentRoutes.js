@@ -8,7 +8,7 @@ const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
 const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
 const { SETTLEMENT_CURRENCY, getSettlementCharge, verifyRazorpaySignature } = require("../utils/paymentVerification");
-const { computeOrderTotals } = require("../utils/orderTotals");
+const { computeOrderTotals, OrderTotalsError } = require("../utils/orderTotals");
 const { expandItemsForStock } = require("../utils/stock");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
@@ -186,7 +186,8 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       "Failed to create Razorpay order";
 
     console.error("[Payment] create-order failed:", message);
-    return res.status(500).json({ message });
+    const status = error instanceof OrderTotalsError || error?.status ? error.status : 500;
+    return res.status(status).json({ message });
   }
 });
 
