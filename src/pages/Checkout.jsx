@@ -47,9 +47,9 @@ const getItemHsnSac = (item) => {
   if (item?.hsnSac) return String(item.hsnSac).trim();
   const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
   const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-  
+
   // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital = 
+  const isDigital =
     category.includes("ebook") ||
     category.includes("e-book") ||
     category.includes("kindle") ||
@@ -64,13 +64,13 @@ const getItemHsnSac = (item) => {
     name.includes("flipbook") ||
     name.includes("epub") ||
     name.includes("pdf");
-    
+
   if (isDigital) {
     return "9973"; // Digital products/services (18% GST)
   }
 
   // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook = 
+  const isPrintedBook =
     category.includes("book") ||
     category.includes("sanskrit") ||
     category.includes("gita") ||
@@ -83,7 +83,7 @@ const getItemHsnSac = (item) => {
     name.includes("vol.") ||
     name.includes("hardcover") ||
     name.includes("paperback");
-    
+
   return isPrintedBook ? "4901" : "8523";
 };
 
@@ -373,7 +373,7 @@ function Checkout() {
 
       addAddress(payload);
       setShowNewAddressForm(false);
-      
+
       if (addressFormTriggerSource === "billing") {
         setSelectedBillingIndex(addresses.length);
         setIsEditingBillingAddress(false);
@@ -508,48 +508,48 @@ function Checkout() {
     setIsCalculatingTotals(true);
 
     const headers = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-    
+
     axios.post("/api/orders/calculate-totals", {
       items: cartItems,
       shipping: selectedAddress || {},
       couponCode: couponCode || "",
       currencyDisplay: { currency: displayCurrency }
     }, headers)
-    .then((res) => {
-      if (!active) return;
-      setServerTotals(res.data);
-      if (res.data.discount !== undefined) {
-        setDiscount(res.data.discount);
-      }
-    })
-    .catch((err) => {
-      if (!active) return;
-      console.error("Failed to calculate totals:", err);
-      if (couponCode) {
-        axios.post("/api/orders/calculate-totals", {
-          items: cartItems,
-          shipping: selectedAddress || {},
-          currencyDisplay: { currency: displayCurrency }
-        }, headers)
-        .then((resWithoutCoupon) => {
-          if (!active) return;
-          setServerTotals(resWithoutCoupon.data);
-          setDiscount(0);
-          setCouponCode("");
-          setCouponMessage(err?.response?.data?.message || "Invalid coupon removed.");
-        })
-        .catch((fallbackErr) => {
-          if (!active) return;
-          console.error("Fallback calculation failed:", fallbackErr);
-        });
-      } else {
-        setCheckoutMessage(err?.response?.data?.message || "Failed to calculate totals from server.");
-      }
-    })
-    .finally(() => {
-      if (!active) return;
-      setIsCalculatingTotals(false);
-    });
+      .then((res) => {
+        if (!active) return;
+        setServerTotals(res.data);
+        if (res.data.discount !== undefined) {
+          setDiscount(res.data.discount);
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to calculate totals:", err);
+        if (couponCode) {
+          axios.post("/api/orders/calculate-totals", {
+            items: cartItems,
+            shipping: selectedAddress || {},
+            currencyDisplay: { currency: displayCurrency }
+          }, headers)
+            .then((resWithoutCoupon) => {
+              if (!active) return;
+              setServerTotals(resWithoutCoupon.data);
+              setDiscount(0);
+              setCouponCode("");
+              setCouponMessage(err?.response?.data?.message || "Invalid coupon removed.");
+            })
+            .catch((fallbackErr) => {
+              if (!active) return;
+              console.error("Fallback calculation failed:", fallbackErr);
+            });
+        } else {
+          setCheckoutMessage(err?.response?.data?.message || "Failed to calculate totals from server.");
+        }
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsCalculatingTotals(false);
+      });
 
     return () => {
       active = false;
@@ -561,9 +561,10 @@ function Checkout() {
       subtotal: serverTotals.subtotal,
       gstAmount: serverTotals.gstAmount,
       deliveryCharge: serverTotals.deliveryCharge,
-      grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge)
+      grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge),
+      isInternational: isInternationalCountry(selectedAddress?.country)
     };
-  }, [serverTotals]);
+  }, [serverTotals, selectedAddress?.country]);
 
   const finalTotal = serverTotals.total;
 
@@ -1344,71 +1345,55 @@ function Checkout() {
 
           {/* Digital Gift Option */}
           {hasDigitalItemsInCart && (
-            hasManualAccessItem ? (
-              <p
-                className="checkout-gift-manual-notice"
-                style={{
-                  fontSize: "13px",
-                  color: "var(--site-text-soft, #64748b)",
-                  margin: "8px 0 16px",
-                  padding: "10px 14px",
-                  background: "var(--site-surface-2, #f8fafc)",
-                  border: "1px solid var(--site-border, #e2e8f0)",
-                  borderRadius: "8px",
-                  lineHeight: 1.4
-                }}
-              >
-                Gifting isn't available for items where our team sets up access.
-              </p>
-            ) : (
+            hasManualAccessItem ? null : (
               <div className="checkout-gift-card">
-              <label className="checkout-gift-toggle-label">
-                <input
-                  type="checkbox"
-                  checked={isGift}
-                  onChange={(e) => {
-                    if (!(noGift.blocked && noGift.giftAllowed)) {
-                      setIsGift(e.target.checked);
-                    }
-                  }}
-                  disabled={noGift.blocked && noGift.giftAllowed}
-                />
-                <Gift size={18} className="checkout-gift-icon" />
-                <span>Purchase digital items in this order as Gift Passes</span>
-              </label>
+                <label className="checkout-gift-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={isGift}
+                    onChange={(e) => {
+                      if (!(noGift.blocked && noGift.giftAllowed)) {
+                        setIsGift(e.target.checked);
+                      }
+                    }}
+                    disabled={noGift.blocked && noGift.giftAllowed}
+                  />
+                  <Gift size={18} className="checkout-gift-icon" />
+                  <span>Purchase digital items in this order as Gift Passes</span>
+                </label>
 
-              {noGift.blocked && noGift.giftAllowed && (
-                <p className="checkout-gift-warning">
-                  <AlertCircle size={14} />
-                  <span>
-                    You already own {noGift.ownedItems?.length > 0 ? noGift.ownedItems.join(", ") : "digital items in this order"}.
-                    This order will automatically generate Gift Passes so you can share them.
-                  </span>
-                </p>
-              )}
+                {noGift.blocked && noGift.giftAllowed && (
+                  <p className="checkout-gift-warning">
+                    <AlertCircle size={14} />
+                    <span>
+                      You already own {noGift.ownedItems?.length > 0 ? noGift.ownedItems.join(", ") : "digital items in this order"}.
+                      This order will automatically generate Gift Passes so you can share them.
+                    </span>
+                  </p>
+                )}
 
-              {isGift && (
-                <div className="checkout-gift-form">
-                  <p className="checkout-gift-note">
-                    Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
-                  </p>
-                  <label className="checkout-form-label">
-                    <span>Recipient's Email Address (Optional):</span>
-                    <input
-                      type="email"
-                      placeholder="recipient@example.com"
-                      value={giftRecipientEmail}
-                      onChange={(e) => setGiftRecipientEmail(e.target.value)}
-                      className="checkout-form-input"
-                    />
-                  </label>
-                  <p className="checkout-gift-subnote">
-                    We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
-                  </p>
-                </div>
-              )}
-            </div>
-          ))}
+                {isGift && (
+                  <div className="checkout-gift-form">
+                    <p className="checkout-gift-note">
+                      Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
+                    </p>
+                    <label className="checkout-form-label">
+                      <span>Recipient's Email Address (Optional):</span>
+                      <input
+                        type="email"
+                        placeholder="recipient@example.com"
+                        value={giftRecipientEmail}
+                        onChange={(e) => setGiftRecipientEmail(e.target.value)}
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <p className="checkout-gift-subnote">
+                      We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
 
           {/* Available Coupons & Offers in Left Column */}
           {availableCoupons.length > 0 && (
@@ -1680,9 +1665,11 @@ function Checkout() {
             <div className="checkout-digital-note">
               <Zap size={14} />
               <span>
-                {hasExternalDelivery(cartItems)
-                  ? "Digital order: your access link will appear in My Library after payment."
-                  : "Digital order: Instant access granted upon payment completion."}
+                {hasManualAccessItem
+                  ? "Digital order: our team will set up your access within 24–48 hours and email you when it's ready."
+                  : hasExternalDelivery(cartItems)
+                    ? "Digital order: your access link will appear in My Library after payment."
+                    : "Digital order: Instant access granted upon payment completion."}
               </span>
             </div>
           ) : null}
@@ -1753,12 +1740,12 @@ function Checkout() {
               {isPaying
                 ? "Processing..."
                 : isPriceLoading
-                ? "Calculating Total..."
-                : isIntlPhysicalRestricted
-                ? "Physical Products Restricted"
-                : (noGift.blocked && !noGift.giftAllowed) || current.blocked
-                ? "Purchase Blocked - Already Owned"
-                : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
+                  ? "Calculating Total..."
+                  : isIntlPhysicalRestricted
+                    ? "Physical Products Restricted"
+                    : (noGift.blocked && !noGift.giftAllowed) || current.blocked
+                      ? "Purchase Blocked - Already Owned"
+                      : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
             </span>
             <ArrowRight size={16} />
           </button>
