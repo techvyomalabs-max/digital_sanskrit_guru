@@ -11,6 +11,7 @@ const DEFAULT_PRODUCT_CATEGORIES = [
   "Sanskrit",
   "Books"
 ];
+const { DEFAULT_DIGITAL_FORMAT_TYPES } = require("../utils/digitalFormatTypes");
 
 const customThemeSchema = new mongoose.Schema(
   {
@@ -205,6 +206,56 @@ const heroBannerSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true
+    },
+    title: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    subtitle: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    badgeText: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    buttonText: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    secondaryButtonText: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    secondaryButtonLink: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    textPosition: {
+      type: String,
+      default: "middle-left",
+      trim: true
+    },
+    textAlign: {
+      type: String,
+      default: "left",
+      trim: true
+    },
+    textStyle: {
+      type: String,
+      default: "modern",
+      trim: true
+    },
+    overlayType: {
+      type: String,
+      default: "feathered",
+      trim: true
     }
   },
   { _id: false }
@@ -303,6 +354,46 @@ const whatsappSettingsSchema = new mongoose.Schema(
     autoSendOrderConfirmation: {
       type: Boolean,
       default: true
+    },
+    enableOtpVerification: {
+      type: Boolean,
+      default: true
+    }
+  },
+  { _id: false }
+);
+
+const businessDetailsSchema = new mongoose.Schema(
+  {
+    legalName: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    gstin: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    address: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    state: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    stateCode: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    email: {
+      type: String,
+      default: "",
+      trim: true
     }
   },
   { _id: false }
@@ -310,6 +401,10 @@ const whatsappSettingsSchema = new mongoose.Schema(
 
 const storeSettingsSchema = new mongoose.Schema(
   {
+    businessDetails: {
+      type: businessDetailsSchema,
+      default: () => ({})
+    },
     whatsappSettings: {
       type: whatsappSettingsSchema,
       default: () => ({
@@ -319,7 +414,8 @@ const storeSettingsSchema = new mongoose.Schema(
         metaPhoneNumberId: "",
         metaAccessToken: "",
         metaWabaId: "",
-        autoSendOrderConfirmation: true
+        autoSendOrderConfirmation: true,
+        enableOtpVerification: true
       })
     },
     enableCurrentLocation: {
@@ -372,6 +468,10 @@ const storeSettingsSchema = new mongoose.Schema(
     productCategories: {
       type: [String],
       default: DEFAULT_PRODUCT_CATEGORIES
+    },
+    digitalFormatTypes: {
+      type: [String],
+      default: () => [...DEFAULT_DIGITAL_FORMAT_TYPES]
     },
     heroBannerImage: {
       type: String,
@@ -569,5 +669,6 @@ const storeSettingsSchema = new mongoose.Schema(
 
 storeSettingsSchema.statics.SITE_THEMES = SITE_THEMES;
 storeSettingsSchema.statics.DEFAULT_PRODUCT_CATEGORIES = DEFAULT_PRODUCT_CATEGORIES;
+storeSettingsSchema.statics.DEFAULT_DIGITAL_FORMAT_TYPES = DEFAULT_DIGITAL_FORMAT_TYPES;
 
 module.exports = mongoose.model("StoreSettings", storeSettingsSchema);

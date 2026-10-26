@@ -3,6 +3,8 @@ import axios from "axios";
 import { useToast } from "../hooks/useToast";
 import { useAuth } from "../hooks/useAuth";
 import { isDigitalItem } from "../utils/deliveryPricing";
+import { resolveInitialWishlist } from "../utils/wishlistOwnership";
+import { isKindleProduct } from "../utils/kindle";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
@@ -48,7 +50,17 @@ const normalizeGuestCartItems = (items) =>
         description: String(item?.description || "").trim(),
         category: String(item?.category || "General").trim() || "General",
         stock: Number(item?.stock || 0),
-        quantity: Math.max(1, Number(item?.quantity || 1))
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+        festiveOffer: Boolean(item?.festiveOffer),
+        festiveDiscountPercent: Number(item?.festiveDiscountPercent || 0),
+        discountType: String(item?.discountType || "").trim(),
+        hsnSac: String(item?.hsnSac || "").trim(),
+        format: String(item?.format || "").trim(),
+        isDigital: Boolean(item?.isDigital),
+        digitalType: String(item?.digitalType || "").trim(),
+        kindleLink: String(item?.kindleLink || "").trim(),
+        digitalDelivery: String(item?.digitalDelivery || "onsite"),
+        externalAccessManual: Boolean(item?.externalAccessManual)
       };
     })
     .filter(Boolean);
@@ -100,9 +112,38 @@ const upsertSavedItem = (items, nextItem) => {
 
 export function CartProvider({ children }) {
   const { showToast } = useToast();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [cartItems, setCartItems] = useState(() => readGuestCart());
-  const [savedForLaterItems, setSavedForLaterItems] = useState(() => readSavedForLater());
+  const [savedForLaterItems, setSavedForLaterItems] = useState(() => {
+    const storedList = readSavedForLater();
+    let owner = null;
+    try {
+      owner = typeof window !== "undefined" ? window.localStorage.getItem("savedForLaterOwner") : null;
+    } catch {
+      owner = null;
+    }
+
+    const { list, shouldClearStorage } = resolveInitialWishlist({
+      hasToken: Boolean(token),
+      currentUserId: user && user._id,
+      owner,
+      storedList
+    });
+
+    if (shouldClearStorage) {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("savedForLaterItems", "[]");
+          window.localStorage.setItem("savedForLaterOwner", "guest");
+        }
+      } catch {
+        /* ignore storage error */
+      }
+    }
+
+    return list;
+  });
+  const [isLoadingCart, setIsLoadingCart] = useState(() => Boolean(token));
   const [addedItem, setAddedItem] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const pendingDeletions = useRef(new Set());
@@ -116,9 +157,11 @@ export function CartProvider({ children }) {
   const loadCart = useCallback(async () => {
     if (!token) {
       setCartItems(readGuestCart());
+      setIsLoadingCart(false);
       return;
     }
 
+    setIsLoadingCart(true);
     try {
       const res = await axios.get("/api/cart", getCartHeaders());
       setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
@@ -128,6 +171,8 @@ export function CartProvider({ children }) {
         showToast("Session expired. Please login again.", "error");
       }
       setCartItems([]);
+    } finally {
+      setIsLoadingCart(false);
     }
   }, [token, showToast]);
 
@@ -143,9 +188,32 @@ export function CartProvider({ children }) {
       setSavedForLaterItems([]);
       writeGuestCart([]);
       writeSavedForLater([]);
+      try {
+        window.localStorage.setItem("savedForLaterOwner", "guest");
+      } catch {
+        /* ignore storage error */
+      }
     }
     prevTokenRef.current = token;
   }, [token]);
+
+  useEffect(() => {
+    if (token && user && user._id) {
+      try {
+        window.localStorage.setItem("savedForLaterOwner", String(user._id));
+      } catch {
+        /* ignore storage error */
+      }
+    } else if (!token) {
+      try {
+        if (window.localStorage.getItem("savedForLaterOwner") === null) {
+          window.localStorage.setItem("savedForLaterOwner", "guest");
+        }
+      } catch {
+        /* ignore storage error */
+      }
+    }
+  }, [token, user]);
 
   useEffect(() => {
     if (token) return;
@@ -197,11 +265,16 @@ export function CartProvider({ children }) {
   }, [token, loadCart, showToast]);
 
   const addToCart = async (product, qty = 1) => {
+    if (isKindleProduct(product)) {
+      showToast("Kindle editions are sold on Amazon.", "error");
+      return false;
+    }
+
     const productId = String(product?.id || product?._id || "");
     const isBulk = String(product?.productType || "single").toLowerCase() === "bulk";
     const isDigital = isDigitalItem(product);
     const nextQty = isDigital ? 1 : Math.max(1, Number(qty) || 1);
-    if (!productId) return;
+    if (!productId) return false;
 
     if (!token) {
       setCartItems((current) => {
@@ -224,6 +297,8 @@ export function CartProvider({ children }) {
             _id: productId,
             name: String(product?.name || "").trim(),
             productType: String(product?.productType || "single").trim(),
+            digitalDelivery: String(product?.digitalDelivery || "onsite"),
+            externalAccessManual: Boolean(product?.externalAccessManual),
             price: Number(product?.price || 0),
             isDigital: Boolean(product?.isDigital || isDigital),
             internationalPrice:
@@ -256,7 +331,12 @@ export function CartProvider({ children }) {
             description: String(product?.description || "").trim(),
             category: String(product?.category || "General").trim() || "General",
             stock: Number(product?.stock || 0),
-            quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty)
+            quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+            festiveOffer: Boolean(product?.festiveOffer),
+            festiveDiscountPercent: Number(product?.festiveDiscountPercent || 0),
+            discountType: String(product?.discountType || "").trim(),
+            hsnSac: String(product?.hsnSac || "").trim(),
+            format: String(product?.format || "").trim()
           }
         ];
       });
@@ -267,7 +347,9 @@ export function CartProvider({ children }) {
         name: String(product?.name || "").trim(),
         price: Number(product?.price || 0),
         image: String(product?.image || "").trim(),
-        quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty)
+        quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+        digitalDelivery: String(product?.digitalDelivery || "onsite"),
+        externalAccessManual: Boolean(product?.externalAccessManual)
       });
       setIsPopupOpen(true);
       showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
@@ -446,6 +528,7 @@ export function CartProvider({ children }) {
       value={{
         cartItems,
         savedForLaterItems,
+        isLoadingCart,
         addToCart,
         removeFromCart,
         updateQty,

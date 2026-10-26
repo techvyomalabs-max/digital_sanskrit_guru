@@ -21,8 +21,17 @@ import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import { WishlistProvider } from "./context/WishlistContext";
 import { ToastProvider } from "./context/ToastContext";
+import { DialogProvider } from "./context/DialogContext";
 import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
 import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
+import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
+
+const target =
+  legacyHashToPath(window.location.hash, window.location.search) ||
+  (window.location.pathname === "/" ? legacyQueryToPath(window.location.search) : null);
+if (target) {
+  window.history.replaceState(null, "", target);
+}
 
 const storedThemeSettings = readStoredSiteTheme();
 if (storedThemeSettings) {
@@ -35,13 +44,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AuthProvider>
       <ToastProvider>
-        <CartProvider>
-          <DeliveryLocationProvider>
-            <WishlistProvider>
-              <App />
-            </WishlistProvider>
-          </DeliveryLocationProvider>
-        </CartProvider>
+        <DialogProvider>
+          <CartProvider>
+            <DeliveryLocationProvider>
+              <WishlistProvider>
+                <App />
+              </WishlistProvider>
+            </DeliveryLocationProvider>
+          </CartProvider>
+        </DialogProvider>
       </ToastProvider>
     </AuthProvider>
   </React.StrictMode>

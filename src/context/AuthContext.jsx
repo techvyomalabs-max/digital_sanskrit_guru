@@ -128,27 +128,49 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!token) return;
     let active = true;
+    let retryTimer = null;
+    let hasRetried = false;
 
-    axios
-      .get("/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then((res) => {
-        if (!active) return;
-        const profile = normalizeUser(res.data || null);
-        setUser(profile);
-        persistAuth({ token, user: profile, rememberMe });
-      })
-      .catch(() => {
-        if (!active) return;
-        setUser(null);
-        setToken(null);
-        setRememberMe(false);
-        clearStoredAuth();
-      });
+    const checkAuth = () => {
+      axios
+        .get("/api/auth/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        .then((res) => {
+          if (!active) return;
+          const profile = normalizeUser(res.data || null);
+          setUser(profile);
+          persistAuth({ token, user: profile, rememberMe });
+        })
+        .catch((err) => {
+          if (!active) return;
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) {
+            setUser(null);
+            setToken(null);
+            setRememberMe(false);
+            clearStoredAuth();
+            return;
+          }
+
+          if (!hasRetried) {
+            hasRetried = true;
+            retryTimer = setTimeout(() => {
+              if (active) {
+                checkAuth();
+              }
+            }, 5000);
+          }
+        });
+    };
+
+    checkAuth();
 
     return () => {
       active = false;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
     };
   }, [rememberMe, token]);
 
@@ -252,9 +274,10 @@ export function AuthProvider({ children }) {
       localStorage.removeItem("wishlist");
       localStorage.removeItem("guestCartItems");
       localStorage.removeItem("savedForLaterItems");
-    } catch (e) {}
-    window.location.hash = "/login";
-    window.location.reload();
+    } catch {
+      // Ignore storage errors on logout
+    }
+    window.location.href = "/login";
   };
 
   const updateProfileState = (updatedData) => {

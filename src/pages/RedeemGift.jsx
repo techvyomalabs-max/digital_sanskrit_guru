@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -13,6 +13,26 @@ function RedeemGift() {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [redeemedProduct, setRedeemedProduct] = useState(null);
+
+  // Prevent background page scrolling when modal is open
+  useEffect(() => {
+    if (!redeemedProduct) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setRedeemedProduct(null);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [redeemedProduct]);
 
   const handleRedeem = async (e) => {
     e.preventDefault();

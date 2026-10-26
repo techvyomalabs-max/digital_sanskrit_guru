@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
@@ -8,6 +9,7 @@ import "./AdminDashboard.css";
 
 function AdminTrash() {
   const { token } = useAuth();
+  const { confirm } = useDialog();
   const [trashItems, setTrashItems] = useState([]);
   const [summary, setSummary] = useState({ total: 0, products: 0, coupons: 0, users: 0 });
   const [loading, setLoading] = useState(true);
@@ -61,9 +63,12 @@ function AdminTrash() {
   };
 
   const handlePurgeItem = async (item) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete "${item.name}"?\n\nThis action CANNOT be undone.`
-    );
+    const confirmed = await confirm({
+      title: "Permanently Delete?",
+      message: `Are you sure you want to permanently delete "${item.name}"?\n\nThis action CANNOT be undone.`,
+      tone: "danger",
+      confirmText: "Permanently Delete"
+    });
     if (!confirmed) return;
 
     setProcessingId(item._id);
@@ -90,7 +95,11 @@ function AdminTrash() {
 
   const handleRestoreAll = async () => {
     if (trashItems.length === 0) return;
-    const confirmed = window.confirm("Restore all items from the Recycle Bin back to active inventory?");
+    const confirmed = await confirm({
+      title: "Restore All Items?",
+      message: "Restore all items from the Recycle Bin back to active inventory?",
+      confirmText: "Restore All"
+    });
     if (!confirmed) return;
 
     setLoading(true);
@@ -108,9 +117,12 @@ function AdminTrash() {
 
   const handleEmptyTrash = async () => {
     if (trashItems.length === 0) return;
-    const confirmed = window.confirm(
-      "EMPTY RECYCLE BIN?\n\nThis will PERMANENTLY ERASE all soft-deleted items from MongoDB.\nThis action CANNOT be undone!"
-    );
+    const confirmed = await confirm({
+      title: "Empty Recycle Bin?",
+      message: "EMPTY RECYCLE BIN?\n\nThis will PERMANENTLY ERASE all soft-deleted items from MongoDB.\nThis action CANNOT be undone!",
+      tone: "danger",
+      confirmText: "Empty Bin"
+    });
     if (!confirmed) return;
 
     setLoading(true);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { SlidersHorizontal, ArrowUpDown, X } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -13,10 +13,18 @@ function Collection() {
   useDocumentMetadata("Collection", "Browse our complete catalog of premium Sanskrit literature, grammar tutorials, scriptures, and ritual kit items.");
 
   const location = useLocation();
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      return String(params.get("category") || "All").trim() || "All";
+    } catch {
+      return "All";
+    }
+  });
   const [sortOption, setSortOption] = useState("featured");
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,13 +103,8 @@ function Collection() {
   }, [isMobileFilterOpen]);
 
   useEffect(() => {
-    if (selectedCategory !== "All" && !categories.includes(selectedCategory)) {
-      setSelectedCategory("All");
-    }
-  }, [categories, selectedCategory]);
-
-  useEffect(() => {
-    const categoryFromQuery = String(new URLSearchParams(location.search).get("category") || "All").trim() || "All";
+    const params = new URLSearchParams(location.search);
+    const categoryFromQuery = String(params.get("category") || "All").trim() || "All";
     setSelectedCategory(categoryFromQuery);
   }, [location.search]);
 
@@ -119,8 +122,18 @@ function Collection() {
     return count;
   }, [selectedCategory]);
 
+  const handleCategorySelect = (category) => {
+    setSelectedCategory(category);
+    navigate(
+      category === "All"
+        ? "/collection"
+        : `/collection?category=${encodeURIComponent(category)}`,
+      { replace: true }
+    );
+  };
+
   const resetFilters = () => {
-    setSelectedCategory("All");
+    handleCategorySelect("All");
     setSortOption("featured");
   };
 
@@ -197,7 +210,7 @@ function Collection() {
                     key={category}
                     type="button"
                     className={selectedCategory === category ? "active" : ""}
-                    onClick={() => setSelectedCategory(category)}
+                    onClick={() => handleCategorySelect(category)}
                   >
                     {category} ({categoryCounts[category] || 0})
                   </button>

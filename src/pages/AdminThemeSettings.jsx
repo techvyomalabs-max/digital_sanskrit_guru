@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { AlignLeft, AlignCenter, AlignRight, Sliders, Type, Layout, Sparkles } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
@@ -50,7 +52,17 @@ function createEmptyHeroBanner() {
   return {
     image: "",
     mobileImage: "",
-    productId: ""
+    productId: "",
+    title: "",
+    subtitle: "",
+    badgeText: "",
+    buttonText: "",
+    secondaryButtonText: "",
+    secondaryButtonLink: "",
+    textPosition: "middle-left",
+    textAlign: "left",
+    textStyle: "modern",
+    overlayType: "feathered"
   };
 }
 
@@ -61,13 +73,51 @@ function normalizeHeroBanners(input) {
       if (!item) return null;
       if (typeof item === "string") {
         const image = item.trim();
-        return image ? { image, mobileImage: "", productId: "" } : null;
+        return image ? {
+          image,
+          mobileImage: "",
+          productId: "",
+          title: "",
+          subtitle: "",
+          badgeText: "",
+          buttonText: "",
+          secondaryButtonText: "",
+          secondaryButtonLink: "",
+          textPosition: "middle-left",
+          textAlign: "left",
+          textStyle: "modern",
+          overlayType: "feathered"
+        } : null;
       }
       const image = String(item.image || "").trim();
       const mobileImage = String(item.mobileImage || "").trim();
       const productId = String(item.productId || "").trim();
-      if (!image && !mobileImage && !productId) return null;
-      return { image, mobileImage, productId };
+      const title = String(item.title || "").trim();
+      const subtitle = String(item.subtitle || "").trim();
+      const badgeText = String(item.badgeText || "").trim();
+      const buttonText = String(item.buttonText || "").trim();
+      const secondaryButtonText = String(item.secondaryButtonText || "").trim();
+      const secondaryButtonLink = String(item.secondaryButtonLink || "").trim();
+      const textPosition = String(item.textPosition || "middle-left").trim();
+      const textAlign = String(item.textAlign || "left").trim();
+      const textStyle = String(item.textStyle || "modern").trim();
+      const overlayType = String(item.overlayType || "feathered").trim();
+      if (!image && !mobileImage && !productId && !title) return null;
+      return {
+        image,
+        mobileImage,
+        productId,
+        title,
+        subtitle,
+        badgeText,
+        buttonText,
+        secondaryButtonText,
+        secondaryButtonLink,
+        textPosition,
+        textAlign,
+        textStyle,
+        overlayType
+      };
     })
     .filter(Boolean);
 
@@ -135,6 +185,7 @@ async function optimizeHeroBannerFile(file) {
 
 function AdminThemeSettings() {
   const { token } = useAuth();
+  const { confirm, prompt } = useDialog();
   const [siteTheme, setSiteTheme] = useState(DEFAULT_SITE_THEME);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
@@ -330,6 +381,17 @@ function AdminThemeSettings() {
   const removeHeroBanner = (index) => {
     setHeroBanners((current) => current.filter((_, itemIndex) => itemIndex !== index));
     setActiveHeroBannerIndex((current) => Math.max(0, current > index ? current - 1 : (current === index ? current - 1 : current)));
+  };
+
+  const moveHeroBanner = (fromIndex, toIndex) => {
+    if (toIndex < 0 || toIndex >= heroBanners.length) return;
+    setHeroBanners((current) => {
+      const copy = [...current];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      return copy;
+    });
+    setActiveHeroBannerIndex(toIndex);
   };
 
   const saveHeroBanner = async () => {
@@ -688,7 +750,13 @@ function AdminThemeSettings() {
   };
 
   const deleteCustomTheme = async (themeId) => {
-    if (!window.confirm("Are you sure you want to delete this custom theme?")) {
+    const confirmed = await confirm({
+      title: "Delete Custom Theme?",
+      message: "Are you sure you want to delete this custom theme?",
+      tone: "danger",
+      confirmText: "Delete Theme"
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -745,151 +813,296 @@ function AdminThemeSettings() {
         </div>
 
         {/* Homepage Hero Banner Section */}
-        <section className="card hero-banner-admin-card" style={{ marginBottom: "24px" }}>
-          <div className="admin-card-head" style={{ marginBottom: "16px" }}>
+        <section className="card hero-banner-admin-card" style={{ marginBottom: "28px" }}>
+          <div className="admin-card-head" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>Homepage Hero Banners</h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h3 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "var(--admin-text)" }}>
+                  Homepage Hero Banners & Spotlight Studio
+                </h3>
+                <span style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "3px 10px",
+                  borderRadius: "20px",
+                  background: activeHeroBanner.title?.trim() ? "rgba(245, 158, 11, 0.18)" : "rgba(100, 116, 139, 0.12)",
+                  color: activeHeroBanner.title?.trim() ? "#d97706" : "var(--admin-muted)",
+                  border: `1px solid ${activeHeroBanner.title?.trim() ? "rgba(245, 158, 11, 0.4)" : "var(--admin-border)"}`
+                }}>
+                  {activeHeroBanner.title?.trim() ? "✨ Spotlight Mode" : "🖼️ Classic Graphic Mode"}
+                </span>
+              </div>
               <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
-                Manage multiple featured banners and choose which product or page each banner should open.
+                Design cinematic spotlight banners with custom headlines, badges, and CTA buttons, or display full-bleed graphic banners.
               </p>
             </div>
-            <div className="add-product-status-badges" style={{ display: "flex", gap: "8px" }}>
+            <div className="add-product-status-badges" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <span className={heroBanners.length > 1 ? "status-badge valid" : "status-badge"}>
-                🖼️ {heroBanners.length} Banner{heroBanners.length === 1 ? "" : "s"}
+                🎞️ {heroBanners.length} Slide{heroBanners.length === 1 ? "" : "s"}
               </span>
               <span className={heroBanners.some((item) => item.image.trim()) ? "status-badge valid" : "status-badge"}>
                 📸 {heroBanners.filter((item) => item.image.trim()).length} Configured
               </span>
               <span className={heroBanners.some((item) => item.productId) ? "status-badge valid" : "status-badge"}>
-                🔗 Linked Products
+                🔗 Linked
               </span>
             </div>
           </div>
 
-          {/* Banner Tabs Bar */}
-          <div className="hero-banner-admin-list">
-            {heroBanners.map((banner, index) => {
-              const isConfigured = Boolean(banner.image.trim());
-              const isActive = activeHeroBannerIndex === index;
+          {/* Slide Carousel Filmstrip / Tabs */}
+          <div className="hero-banner-studio-filmstrip" style={{ marginBottom: "20px" }}>
+            <div className="hero-banner-filmstrip-scroll">
+              {heroBanners.map((banner, index) => {
+                const isConfigured = Boolean(banner.image.trim());
+                const isActive = activeHeroBannerIndex === index;
+                const isSpotlight = Boolean(banner.title?.trim());
 
-              return (
-                <div
-                  key={`hero-banner-tab-${index}`}
-                  className={`hero-banner-admin-tab-item${isActive ? " active" : ""}`}
-                  onClick={() => setActiveHeroBannerIndex(index)}
-                >
-                  <span className={`status-dot ${isConfigured ? "configured" : "empty"}`} />
-                  <span className="tab-label">Banner {index + 1}</span>
-                  {heroBanners.length > 1 && (
-                    <button
-                      type="button"
-                      className="tab-remove-btn"
-                      title="Remove banner"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeHeroBanner(index);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                return (
+                  <div
+                    key={`hero-banner-slide-${index}`}
+                    className={`hero-banner-slide-card${isActive ? " active" : ""}`}
+                    onClick={() => setActiveHeroBannerIndex(index)}
+                  >
+                    <div className="slide-card-thumb">
+                      {banner.image ? (
+                        <img
+                          src={banner.image}
+                          alt={`Slide ${index + 1}`}
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      ) : (
+                        <span className="slide-card-empty-thumb">🖼️</span>
+                      )}
+                      <span className="slide-card-index">#{index + 1}</span>
+                    </div>
 
-            <button type="button" className="hero-banner-admin-add-btn" onClick={addHeroBanner}>
-              ＋ Add Banner
-            </button>
-            <label className="hero-banner-admin-upload-btn">
-              {isUploadingHeroBanners ? "Uploading..." : "📤 Upload Multiple"}
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleHeroBannerFileUpload}
-                disabled={isUploadingHeroBanners}
-              />
-            </label>
+                    <div className="slide-card-info">
+                      <strong className="slide-card-title">
+                        {banner.title?.trim() ? banner.title : `Slide ${index + 1}`}
+                      </strong>
+                      <span className="slide-card-mode-tag">
+                        {isSpotlight ? "✨ Spotlight" : isConfigured ? "🖼️ Graphic" : "⚪ Empty"}
+                      </span>
+                    </div>
+
+                    <div className="slide-card-actions" onClick={(e) => e.stopPropagation()}>
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          className="slide-reorder-btn"
+                          title="Move slide left"
+                          onClick={() => moveHeroBanner(index, index - 1)}
+                        >
+                          ←
+                        </button>
+                      )}
+                      {index < heroBanners.length - 1 && (
+                        <button
+                          type="button"
+                          className="slide-reorder-btn"
+                          title="Move slide right"
+                          onClick={() => moveHeroBanner(index, index + 1)}
+                        >
+                          →
+                        </button>
+                      )}
+                      {heroBanners.length > 1 && (
+                        <button
+                          type="button"
+                          className="slide-delete-btn"
+                          title="Delete slide"
+                          onClick={() => removeHeroBanner(index)}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="hero-banner-filmstrip-actions">
+                <button type="button" className="hero-banner-admin-add-btn" onClick={addHeroBanner}>
+                  ＋ Add Slide
+                </button>
+                <label className="hero-banner-admin-upload-btn">
+                  {isUploadingHeroBanners ? "Uploading..." : "📤 Batch Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleHeroBannerFileUpload}
+                    disabled={isUploadingHeroBanners}
+                  />
+                </label>
+              </div>
+            </div>
           </div>
 
           {heroBannerMessage && (
-            <p className={`pricing-message ${heroBannerMessage.includes("Could not") || heroBannerMessage.includes("Failed") ? "error" : "success"}`} style={{ marginBottom: "16px" }}>
+            <p className={`pricing-message ${heroBannerMessage.includes("Could not") || heroBannerMessage.includes("Failed") ? "error" : "success"}`} style={{ marginBottom: "18px" }}>
               {heroBannerMessage}
             </p>
           )}
 
-          {/* Main Layout Grid */}
-          <div className="hero-banner-admin-layout">
-            {/* Live Interactive Preview Card */}
-            <div className="hero-banner-preview-box">
-              <div className="preview-segmented-header">
-                <span className="preview-box-title">Live Preview</span>
+          {/* Full-Width Interactive Studio Preview */}
+          <div className="hero-banner-studio-preview-card" style={{ marginBottom: "24px" }}>
+            <div className="studio-preview-topbar">
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span className="studio-preview-title">👁️ Live Interactive Preview</span>
+                <span className="studio-preview-badge">Slide #{activeHeroBannerIndex + 1}</span>
+                <span style={{ fontSize: "11px", color: "var(--admin-muted)" }}>• 100% Uncropped Scale</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div className="preview-switcher">
                   <button
                     type="button"
                     className={`preview-switch-btn ${heroBannerPreviewMode === "desktop" ? "active" : ""}`}
                     onClick={() => setHeroBannerPreviewMode("desktop")}
                   >
-                    🖥️ Desktop
+                    🖥️ Desktop View
                   </button>
                   <button
                     type="button"
                     className={`preview-switch-btn ${heroBannerPreviewMode === "mobile" ? "active" : ""}`}
                     onClick={() => setHeroBannerPreviewMode("mobile")}
                   >
-                    📱 Mobile
+                    📱 Mobile View
                   </button>
                 </div>
-              </div>
-
-              <div className="preview-stage">
-                {heroBannerPreviewMode === "desktop" ? (
-                  activeHeroBanner.image.trim() ? (
-                    <div className="desktop-preview-frame">
-                      <img
-                        src={activeHeroBanner.image.trim()}
-                        alt="Hero banner desktop preview"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://picsum.photos/1200/420";
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="hero-banner-admin-empty">
-                      <strong>No Desktop Image Uploaded</strong>
-                      <span>Upload or paste a desktop banner URL on the right</span>
-                    </div>
-                  )
-                ) : (
-                  (activeHeroBanner.mobileImage || activeHeroBanner.image).trim() ? (
-                    <div className="mobile-preview-frame">
-                      <img
-                        src={(activeHeroBanner.mobileImage || activeHeroBanner.image).trim()}
-                        alt="Hero banner mobile preview"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://picsum.photos/400/500";
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="hero-banner-admin-empty">
-                      <strong>No Mobile Image Uploaded</strong>
-                      <span>Will fallback to desktop banner image on mobile devices</span>
-                    </div>
-                  )
-                )}
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="studio-preview-storefront-btn"
+                  title="Open live storefront homepage in new tab"
+                >
+                  View on Storefront ↗
+                </a>
               </div>
             </div>
 
-            {/* Banner Controls & Inputs */}
-            <div className="hero-banner-admin-controls">
+            <div className="studio-preview-canvas">
+              {heroBannerPreviewMode === "desktop" ? (
+                activeHeroBanner.image.trim() ? (
+                  <div className="studio-desktop-frame">
+                    <img
+                      src={activeHeroBanner.image.trim()}
+                      alt="Hero banner desktop preview"
+                      className="studio-preview-img"
+                      onError={(e) => {
+                        e.currentTarget.src = "https://picsum.photos/1600/520";
+                      }}
+                    />
+                    {activeHeroBanner.title?.trim() && (
+                      <>
+                        <div className={`studio-preview-gradient-overlay pos-${activeHeroBanner.textPosition || "middle-left"} overlay-${activeHeroBanner.overlayType || "feathered"}`} />
+                        <div className={`studio-preview-content-overlay pos-${activeHeroBanner.textPosition || "middle-left"} align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")}`}>
+                          <div className={`studio-preview-content-box align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"} overlay-${activeHeroBanner.overlayType || "feathered"}`}>
+                            {activeHeroBanner.badgeText?.trim() && (
+                              <span className="studio-preview-badge-pill">
+                                <span className="studio-preview-badge-dot" />
+                                {activeHeroBanner.badgeText}
+                              </span>
+                            )}
+                            <h4 className={`studio-preview-headline style-${activeHeroBanner.textStyle || "modern"}`}>
+                              {activeHeroBanner.title}
+                            </h4>
+                            {activeHeroBanner.subtitle?.trim() && (
+                              <p className="studio-preview-subline">
+                                {activeHeroBanner.subtitle}
+                              </p>
+                            )}
+                            <div className="studio-preview-cta-row">
+                              <span className="studio-preview-btn-primary">
+                                {activeHeroBanner.buttonText || "Shop now"} →
+                              </span>
+                              {activeHeroBanner.secondaryButtonText?.trim() && (
+                                <span className="studio-preview-btn-secondary">
+                                  {activeHeroBanner.secondaryButtonText}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="hero-banner-admin-empty">
+                    <span style={{ fontSize: "28px", marginBottom: "8px" }}>🖼️</span>
+                    <strong>No Desktop Banner Uploaded for Slide #{activeHeroBannerIndex + 1}</strong>
+                    <span>Upload an image or paste a URL below to see the live studio preview</span>
+                  </div>
+                )
+              ) : (
+                /* Mobile Device Simulator Frame */
+                <div className="studio-mobile-simulator">
+                  <div className="studio-mobile-device-bezel">
+                    {(activeHeroBanner.mobileImage || activeHeroBanner.image).trim() ? (
+                      <div className="studio-mobile-screen">
+                        <img
+                          src={(activeHeroBanner.mobileImage || activeHeroBanner.image).trim()}
+                          alt="Hero banner mobile preview"
+                          className="studio-mobile-img"
+                          onError={(e) => {
+                            e.currentTarget.src = "https://picsum.photos/400/500";
+                          }}
+                        />
+                        {activeHeroBanner.title?.trim() && (
+                          <div className={`studio-mobile-content-box align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"}`}>
+                            {activeHeroBanner.badgeText?.trim() && (
+                              <span className="studio-mobile-badge-pill">
+                                {activeHeroBanner.badgeText}
+                              </span>
+                            )}
+                            <h4 className={`studio-mobile-headline style-${activeHeroBanner.textStyle || "modern"}`}>
+                              {activeHeroBanner.title}
+                            </h4>
+                            {activeHeroBanner.subtitle?.trim() && (
+                              <p className="studio-mobile-subline">
+                                {activeHeroBanner.subtitle}
+                              </p>
+                            )}
+                            <div style={{ marginTop: "6px" }}>
+                              <span className="studio-mobile-btn">
+                                {activeHeroBanner.buttonText || "Shop now"} →
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="hero-banner-admin-empty" style={{ padding: "30px 16px" }}>
+                        <span style={{ fontSize: "24px" }}>📱</span>
+                        <strong>No Image Uploaded</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Structured Configuration Cards (2-Column Studio Deck) */}
+          <div className="hero-banner-studio-config-grid">
+            {/* Card 1: Artwork & Media Files */}
+            <div className="hero-banner-config-card">
+              <div className="config-card-header">
+                <span className="config-card-icon">🎨</span>
+                <div>
+                  <h4 className="config-card-title">Banner Artwork & Media</h4>
+                  <p className="config-card-desc">Upload or link high-resolution graphics for desktop & mobile.</p>
+                </div>
+              </div>
+
               {/* Desktop Image Input */}
               <div className="hero-banner-field-group">
                 <div className="hero-banner-field-label-row">
-                  <label className="field-title">Desktop Banner Image</label>
+                  <label className="field-title">Desktop Banner Image <span className="required-tag">*</span></label>
                   <div className="field-action-btns">
                     <label className="hero-banner-btn-upload">
-                      {isUploadingDesktopHeroBanners ? "Uploading..." : "Upload Desktop Image"}
+                      {isUploadingDesktopHeroBanners ? "Uploading..." : "📁 Upload Image"}
                       <input
                         type="file"
                         accept="image/*"
@@ -911,16 +1124,23 @@ function AdminThemeSettings() {
 
                 {activeHeroBanner.image.startsWith("data:image/") ? (
                   <div className="hero-banner-base64-badge-row">
-                    <span className="hero-banner-base64-badge">🖼️ Local Image File Uploaded</span>
+                    <span className="hero-banner-base64-badge">🖼️ Image File Uploaded</span>
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
-                      onClick={() => {
-                        const raw = prompt("Raw Image Data URL:", activeHeroBanner.image);
+                      onClick={async () => {
+                        const raw = await prompt({
+                          title: "Raw Image Data URL",
+                          message: "Edit raw image data URL:",
+                          defaultValue: activeHeroBanner.image || "",
+                          multiline: true,
+                          confirmText: "Update",
+                          cancelText: "Cancel"
+                        });
                         if (raw !== null) updateHeroBanner(activeHeroBannerIndex, "image", raw);
                       }}
                     >
-                      View/Edit URL
+                      Edit URL
                     </button>
                   </div>
                 ) : (
@@ -932,15 +1152,16 @@ function AdminThemeSettings() {
                     onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "image", e.target.value)}
                   />
                 )}
+                <span className="field-hint">Recommended ratio: 16:9 or 21:9 landscape (e.g. 1920×600 or 1600×520).</span>
               </div>
 
               {/* Mobile Image Input */}
-              <div className="hero-banner-field-group">
+              <div className="hero-banner-field-group" style={{ marginTop: "14px" }}>
                 <div className="hero-banner-field-label-row">
                   <label className="field-title">Mobile Banner Image <span className="optional-tag">(Optional)</span></label>
                   <div className="field-action-btns">
                     <label className="hero-banner-btn-upload">
-                      {isUploadingMobileHeroBanners ? "Uploading..." : "Upload Mobile Image"}
+                      {isUploadingMobileHeroBanners ? "Uploading..." : "📱 Upload Mobile Image"}
                       <input
                         type="file"
                         accept="image/*"
@@ -962,38 +1183,288 @@ function AdminThemeSettings() {
 
                 {activeHeroBanner.mobileImage?.startsWith("data:image/") ? (
                   <div className="hero-banner-base64-badge-row">
-                    <span className="hero-banner-base64-badge">📱 Mobile Image File Uploaded</span>
+                    <span className="hero-banner-base64-badge">📱 Mobile Image Uploaded</span>
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
-                      onClick={() => {
-                        const raw = prompt("Raw Mobile Image Data URL:", activeHeroBanner.mobileImage);
+                      onClick={async () => {
+                        const raw = await prompt({
+                          title: "Raw Mobile Image Data URL",
+                          message: "Edit raw mobile image data URL:",
+                          defaultValue: activeHeroBanner.mobileImage || "",
+                          multiline: true,
+                          confirmText: "Update",
+                          cancelText: "Cancel"
+                        });
                         if (raw !== null) updateHeroBanner(activeHeroBannerIndex, "mobileImage", raw);
                       }}
                     >
-                      View/Edit URL
+                      Edit URL
                     </button>
                   </div>
                 ) : (
                   <input
                     type="text"
                     className="hero-banner-url-input"
-                    placeholder="Paste mobile banner URL (or leave blank to use desktop image)..."
+                    placeholder="Leave blank to use desktop banner on mobile..."
                     value={activeHeroBanner.mobileImage || ""}
                     onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "mobileImage", e.target.value)}
                   />
                 )}
+                <span className="field-hint">If left empty, mobile view will automatically use the desktop artwork.</span>
+              </div>
+            </div>
+
+            {/* Card 2: Spotlight Typography, Layout & Call-To-Actions */}
+            <div className="hero-banner-config-card">
+              <div className="config-card-header">
+                <span className="config-card-icon">✨</span>
+                <div>
+                  <h4 className="config-card-title">Spotlight Overlay & Styling</h4>
+                  <p className="config-card-desc">Customize typography, positioning, alignment, and backdrop style.</p>
+                </div>
               </div>
 
-              {/* Linked Product Select */}
-              <div className="hero-banner-field-group">
-                <label className="field-title">Banner Target Product</label>
+              {/* Mode Helper Callout */}
+              <div className="spotlight-mode-callout">
+                <span className="callout-icon">💡</span>
+                <span className="callout-text">
+                  <strong>Spotlight Mode:</strong> Entering a <em>Banner Headline</em> displays the live text overlay with buttons. Leave headline empty for full-bleed graphic mode.
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "12px" }}>
+                <div>
+                  <label className="field-title" style={{ fontSize: "12px" }}>Badge Tag (e.g. SPECIAL OFFER)</label>
+                  <input
+                    type="text"
+                    className="hero-banner-url-input"
+                    placeholder="e.g. FEATURED COLLECTION"
+                    value={activeHeroBanner.badgeText || ""}
+                    onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "badgeText", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="field-title" style={{ fontSize: "12px" }}>Primary Button Text</label>
+                  <input
+                    type="text"
+                    className="hero-banner-url-input"
+                    placeholder="Shop now"
+                    value={activeHeroBanner.buttonText || ""}
+                    onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "buttonText", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: "12px" }}>
+                <label className="field-title" style={{ fontSize: "12px" }}>Banner Headline / Title</label>
+                <input
+                  type="text"
+                  className="hero-banner-url-input"
+                  placeholder="e.g. Digital Sanskrit Guru"
+                  value={activeHeroBanner.title || ""}
+                  onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "title", e.target.value)}
+                />
+              </div>
+
+              <div style={{ marginTop: "12px" }}>
+                <label className="field-title" style={{ fontSize: "12px" }}>Subtitle / Description</label>
+                <textarea
+                  rows={2}
+                  className="hero-banner-url-input"
+                  style={{ width: "100%", resize: "vertical", fontFamily: "inherit" }}
+                  placeholder="e.g. Welcome to the world's only destination for technology-based Sanskrit learning tools..."
+                  value={activeHeroBanner.subtitle || ""}
+                  onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "subtitle", e.target.value)}
+                />
+              </div>
+
+              {/* Spotlight Visual Staging Controls: Position, Alignment, Typography, Overlay */}
+              <div className="spotlight-staging-panel">
+                <div className="spotlight-staging-header">
+                  <div className="spotlight-staging-title">
+                    <Sliders size={14} className="staging-header-icon" />
+                    <span>Visual Layout & Staging Studio</span>
+                  </div>
+                  <span className="spotlight-staging-badge">
+                    <Sparkles size={11} /> Live Controls
+                  </span>
+                </div>
+
+                <div className="spotlight-staging-body">
+                  {/* Row 1: 9-Grid Viewport Frame + Alignment & Typography */}
+                  <div className="spotlight-staging-row-main">
+                    {/* Left: Interactive Mini Viewport Canvas */}
+                    <div className="spotlight-viewport-card">
+                      <div className="spotlight-viewport-label-row">
+                        <label className="staging-field-label">
+                          <Layout size={12} />
+                          <span>Screen Position</span>
+                        </label>
+                        <span className="spotlight-active-pos-pill">
+                          {(activeHeroBanner.textPosition || "middle-left").replace("-", " ")}
+                        </span>
+                      </div>
+
+                      <div className="spotlight-mini-canvas">
+                        <div className="mini-canvas-screen" role="radiogroup" aria-label="Banner Text Position">
+                          {[
+                            { pos: "top-left", title: "Top Left" },
+                            { pos: "top-center", title: "Top Center" },
+                            { pos: "top-right", title: "Top Right" },
+                            { pos: "middle-left", title: "Middle Left" },
+                            { pos: "middle-center", title: "Center" },
+                            { pos: "middle-right", title: "Middle Right" },
+                            { pos: "bottom-left", title: "Bottom Left" },
+                            { pos: "bottom-center", title: "Bottom Center" },
+                            { pos: "bottom-right", title: "Bottom Right" }
+                          ].map((item) => {
+                            const isSelected = (activeHeroBanner.textPosition || "middle-left") === item.pos;
+                            return (
+                              <button
+                                key={item.pos}
+                                type="button"
+                                className={`mini-canvas-node ${isSelected ? "active" : ""}`}
+                                onClick={() => updateHeroBanner(activeHeroBannerIndex, "textPosition", item.pos)}
+                                title={item.title}
+                              >
+                                <span className="canvas-node-dot" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Alignment & Typography Controls */}
+                    <div className="spotlight-controls-stack">
+                      {/* Text Alignment */}
+                      <div className="staging-control-group">
+                        <label className="staging-field-label">
+                          <AlignLeft size={12} />
+                          <span>Text Alignment</span>
+                        </label>
+                        <div className="spotlight-segmented-control">
+                          {[
+                            { align: "left", label: "Left", icon: <AlignLeft size={13} /> },
+                            { align: "center", label: "Center", icon: <AlignCenter size={13} /> },
+                            { align: "right", label: "Right", icon: <AlignRight size={13} /> }
+                          ].map((item) => {
+                            const currentAlign = activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left");
+                            const isSelected = currentAlign === item.align;
+                            return (
+                              <button
+                                key={item.align}
+                                type="button"
+                                className={`segmented-option-btn ${isSelected ? "active" : ""}`}
+                                onClick={() => updateHeroBanner(activeHeroBannerIndex, "textAlign", item.align)}
+                              >
+                                {item.icon}
+                                <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Typography Style */}
+                      <div className="staging-control-group" style={{ marginTop: "10px" }}>
+                        <label className="staging-field-label">
+                          <Type size={12} />
+                          <span>Typography Font Style</span>
+                        </label>
+                        <div className="spotlight-segmented-control">
+                          {[
+                            { style: "modern", label: "Modern Sans", sample: "Aa" },
+                            { style: "classical", label: "Classical Serif", sample: "𝔄𝔞" },
+                            { style: "cinematic", label: "Cinematic Bold", sample: "AA" }
+                          ].map((item) => {
+                            const isSelected = (activeHeroBanner.textStyle || "modern") === item.style;
+                            return (
+                              <button
+                                key={item.style}
+                                type="button"
+                                className={`segmented-option-btn typography-sample-${item.style} ${isSelected ? "active" : ""}`}
+                                onClick={() => updateHeroBanner(activeHeroBannerIndex, "textStyle", item.style)}
+                              >
+                                <span className="typography-sample-pill">{item.sample}</span>
+                                <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Backdrop / Overlay Style Cards */}
+                  <div className="staging-overlay-section" style={{ marginTop: "14px" }}>
+                    <label className="staging-field-label" style={{ marginBottom: "8px" }}>
+                      <Sparkles size={12} />
+                      <span>Backdrop & Overlay Style</span>
+                    </label>
+                    <div className="spotlight-overlay-deck">
+                      {[
+                        {
+                          type: "feathered",
+                          icon: "🌫️",
+                          label: "Feathered Fade",
+                          desc: "Directional smooth dark gradient",
+                          previewClass: "overlay-swatch-feathered"
+                        },
+                        {
+                          type: "glass",
+                          icon: "🪟",
+                          label: "Glassmorphic Card",
+                          desc: "Translucent frosted blur box",
+                          previewClass: "overlay-swatch-glass"
+                        },
+                        {
+                          type: "minimal",
+                          icon: "✨",
+                          label: "Minimal Shadow",
+                          desc: "Unobstructed with text drop-glow",
+                          previewClass: "overlay-swatch-minimal"
+                        }
+                      ].map((item) => {
+                        const isSelected = (activeHeroBanner.overlayType || "feathered") === item.type;
+                        return (
+                          <button
+                            key={item.type}
+                            type="button"
+                            className={`overlay-deck-card ${isSelected ? "active" : ""}`}
+                            onClick={() => updateHeroBanner(activeHeroBannerIndex, "overlayType", item.type)}
+                          >
+                            <div className="overlay-deck-card-top">
+                              <div className={`overlay-swatch-bar ${item.previewClass}`} />
+                              <span className="overlay-radio-circle">
+                                {isSelected && <span className="overlay-radio-inner" />}
+                              </span>
+                            </div>
+                            <div className="overlay-deck-card-content">
+                              <strong className="overlay-card-headline">
+                                <span>{item.icon}</span>
+                                <span>{item.label}</span>
+                              </strong>
+                              <small className="overlay-card-subline">{item.desc}</small>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Destination Product Dropdown */}
+              <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px dashed var(--admin-border)" }}>
+                <label className="field-title" style={{ fontSize: "12px" }}>Primary Button Target Product</label>
                 <select
                   className="hero-banner-select"
                   value={products.some(p => p._id === activeHeroBanner.productId) ? activeHeroBanner.productId : ""}
                   onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "productId", e.target.value)}
                 >
-                  <option value="">No linked product (or custom link below)</option>
+                  <option value="">No linked product (or custom URL below)</option>
                   {products.map((product) => (
                     <option key={product._id} value={product._id}>
                       {product.name}
@@ -1003,8 +1474,8 @@ function AdminThemeSettings() {
               </div>
 
               {/* Custom Target Link */}
-              <div className="hero-banner-field-group">
-                <label className="field-title">Or Custom Target Link</label>
+              <div style={{ marginTop: "10px" }}>
+                <label className="field-title" style={{ fontSize: "12px" }}>Or Custom Target Link</label>
                 <input
                   type="text"
                   placeholder="e.g. /collection or /about"
@@ -1014,37 +1485,55 @@ function AdminThemeSettings() {
                 />
               </div>
 
-              {/* Banner Details Meta */}
-              <div className="hero-banner-admin-meta">
+              {/* Secondary Button */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "12px" }}>
                 <div>
-                  <span>Target Destination</span>
-                  <strong>{selectedHeroProduct?.name || activeHeroBanner.productId || "No product linked"}</strong>
+                  <label className="field-title" style={{ fontSize: "12px" }}>Secondary Button Text (Optional)</label>
+                  <input
+                    type="text"
+                    className="hero-banner-url-input"
+                    placeholder="e.g. Learn More"
+                    value={activeHeroBanner.secondaryButtonText || ""}
+                    onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "secondaryButtonText", e.target.value)}
+                  />
                 </div>
                 <div>
-                  <span>Recommended Ratio</span>
-                  <strong>16:9 or 21:9 Wide Landscape</strong>
+                  <label className="field-title" style={{ fontSize: "12px" }}>Secondary Button Link (Optional)</label>
+                  <input
+                    type="text"
+                    className="hero-banner-url-input"
+                    placeholder="e.g. /about or /courses"
+                    value={activeHeroBanner.secondaryButtonLink || ""}
+                    onChange={(e) => updateHeroBanner(activeHeroBannerIndex, "secondaryButtonLink", e.target.value)}
+                  />
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Save & Optimize Action Row */}
-              <div className="hero-banner-actions-footer">
-                <button
-                  type="button"
-                  className="pricing-save-btn"
-                  onClick={saveHeroBanner}
-                  disabled={isSavingHeroBanner}
-                >
-                  {isSavingHeroBanner ? "Saving..." : "💾 Save Hero Banners"}
-                </button>
-                <button
-                  type="button"
-                  className="hero-banner-admin-link-btn"
-                  onClick={handleOptimizeStoredImages}
-                  disabled={isOptimizingStoredImages}
-                >
-                  {isOptimizingStoredImages ? "Optimizing..." : "⚡ Optimize Stored Images"}
-                </button>
-              </div>
+          {/* Sticky Save & Optimize Action Footer */}
+          <div className="hero-banner-studio-footer" style={{ marginTop: "24px" }}>
+            <div className="studio-footer-meta">
+              <span>Current Target Destination: <strong>{selectedHeroProduct?.name || activeHeroBanner.productId || "Storefront Default"}</strong></span>
+            </div>
+            <div className="studio-footer-actions">
+              <button
+                type="button"
+                className="hero-banner-admin-link-btn"
+                onClick={handleOptimizeStoredImages}
+                disabled={isOptimizingStoredImages}
+              >
+                {isOptimizingStoredImages ? "⚡ Optimizing..." : "⚡ Optimize Stored Images"}
+              </button>
+              <button
+                type="button"
+                className="pricing-save-btn"
+                onClick={saveHeroBanner}
+                disabled={isSavingHeroBanner}
+                style={{ padding: "10px 24px", fontSize: "14px" }}
+              >
+                {isSavingHeroBanner ? "Saving Banners..." : "💾 Save Hero Banners"}
+              </button>
             </div>
           </div>
         </section>

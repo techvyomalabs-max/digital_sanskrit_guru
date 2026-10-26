@@ -9,10 +9,10 @@ const adminMiddleware = async (req, res, next) => {
     }
 
     req.adminUser = user;
-    req.adminLevel = Number(user.adminLevel) === 2 ? 2 : 1;
-    req.adminRole = req.adminLevel === 1 ? "Super Admin" : (user.adminRole || "Custom Sub-Admin");
+    req.adminLevel = Number(user.adminLevel) === 1 ? 1 : 2;
+    req.adminRole = req.adminLevel === 1 ? "Super Admin" : (user.adminRole || "Staff");
     req.allowedPages = req.adminLevel === 1
-      ? ["dashboard", "orders", "products", "add-products", "coupons", "marketing", "users", "theme"]
+      ? ["dashboard", "orders", "products", "add-products", "coupons", "marketing", "users", "theme", "settings"]
       : (Array.isArray(user.allowedPages) ? user.allowedPages : []);
 
     next();
@@ -26,10 +26,9 @@ const requireSuperAdmin = (req, res, next) => {
     return res.status(403).json({ message: "Admin access denied." });
   }
 
-  const level = Number(req.adminLevel || 1);
-  const role = req.adminRole || "";
+  const level = Number(req.adminLevel || 2);
 
-  if (level === 1 || role === "Super Admin") {
+  if (level === 1) {
     return next();
   }
 

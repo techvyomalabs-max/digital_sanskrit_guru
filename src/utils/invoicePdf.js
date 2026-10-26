@@ -1,5 +1,27 @@
 import { jsPDF } from "jspdf";
+import axios from "axios";
 import { isInternationalCountry } from "./productPricing";
+import { determineIsIntrastate } from "./gstin";
+
+let cachedPublicSeller = null;
+let publicSellerPromise = null;
+
+async function getPublicSellerDetails() {
+  if (cachedPublicSeller) return cachedPublicSeller;
+  if (!publicSellerPromise) {
+    publicSellerPromise = axios
+      .get("/api/settings/public")
+      .then((res) => {
+        cachedPublicSeller = res?.data?.sellerDetails || null;
+        return cachedPublicSeller;
+      })
+      .catch((err) => {
+        console.warn("[Invoice] Could not load public seller details:", err?.message);
+        return null;
+      });
+  }
+  return publicSellerPromise;
+}
 
 function sanitizeIastString(str) {
   if (!str) return "";
@@ -99,7 +121,7 @@ function formatFullAddress(addrObj) {
   ].filter(Boolean).join(", ");
 }
 
-export function generateInvoicePdf(order, options = {}) {
+export async function generateInvoicePdf(order, options = {}) {
   const {
     customerName = order?.user?.name || order?.shipping?.name || "Customer",
     customerEmail = order?.user?.email || "N/A",
@@ -135,10 +157,14 @@ export function generateInvoicePdf(order, options = {}) {
     .trim()
     .toUpperCase();
 
+  const seller = (order?.sellerDetails && String(order.sellerDetails.gstin || "").trim())
+    ? order.sellerDetails
+    : (options.sellerDetails || options.seller || await getPublicSellerDetails() || {});
+
   // --- GST Compliance Calculations ---
   
-  // 1. Identify Intrastate Transaction (Karnataka)
-  const isIntrastate = customerState.toLowerCase() === "karnataka" || customerState.toLowerCase() === "ka";
+  // 1. Identify Intrastate Transaction
+  const isIntrastate = determineIsIntrastate(order, customerState, seller?.state);
 
   // 2. Default GST percentage for taxable items (usually 18%)
   const defaultGstPercent = order?.gstPercent !== undefined && order?.gstPercent !== null ? toSafeNumber(order.gstPercent) : 18;
@@ -289,7 +315,7 @@ export function generateInvoicePdf(order, options = {}) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Invoice No: #${orderCode}`, marginX + 12, y + 18);
+  doc.text(`Invoice No: ${order.invoiceNumber || "#" + orderCode}`, marginX + 12, y + 18);
   doc.text(`Issued Date: ${createdAt}`, marginX + 12, y + 34);
   
   doc.text(`Place of Supply: ${customerState || "N/A"}`, 280, y + 18);
@@ -358,15 +384,46 @@ export function generateInvoicePdf(order, options = {}) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(51, 65, 85);
-  doc.text("Digital Sanskrit Guru Store", 390, y + 18);
-  doc.text("GSTIN: 29DSGXX1234F1Z0", 390, y + 30);
-  doc.text("Bangalore, Karnataka, India", 390, y + 42);
-  doc.text("Email: support@digitalsanskritguru.com", 390, y + 54);
+
+  const sellerName = sanitizeIastString(seller.legalName || "Digital Sanskrit Guru Store");
+  const sellerGstin = String(seller.gstin || "").trim();
+  const sellerAddress = sanitizeIastString(
+    seller.address || (seller.state ? `${seller.state}, India` : "Bangalore, Karnataka, India")
+  );
+  const sellerEmail = seller.email || "support@digitalsanskritguru.com";
+
+  const wrappedSellerName = doc.splitTextToSize(sellerName, colWidth);
+  const wrappedSellerAddress = doc.splitTextToSize(sellerAddress, colWidth);
+  const wrappedSellerEmail = doc.splitTextToSize(`Email: ${sellerEmail}`, colWidth);
+
+  let sellerY = y + 18;
+  doc.text(wrappedSellerName, 390, sellerY);
+  sellerY += wrappedSellerName.length * 12;
+
+  let gstinLines = 0;
+  if (sellerGstin) {
+    doc.text(`GSTIN: ${sellerGstin}`, 390, sellerY);
+    sellerY += 12;
+    gstinLines = 1;
+  }
+
+  doc.text(wrappedSellerAddress, 390, sellerY);
+  sellerY += wrappedSellerAddress.length * 12;
+
+  doc.text(wrappedSellerEmail, 390, sellerY);
+  sellerY += wrappedSellerEmail.length * 12;
+
+  const sellerLines =
+    wrappedSellerName.length +
+    gstinLines +
+    wrappedSellerAddress.length +
+    wrappedSellerEmail.length;
 
   // Clear vertical layout after addresses
   const addressHeight = Math.max(
     wrappedBillingAddress.length * 12 + 54,
     wrappedShippingAddress.length * 12 + 42,
+    sellerLines * 12 + 18 + 6,
     70
   );
   y += addressHeight + 20;

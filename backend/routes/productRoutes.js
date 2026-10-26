@@ -7,10 +7,13 @@ const User = require("../models/User");
 const Review = require("../models/Review");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
-const { appCache, TTL, invalidateProductCache, cacheAside } = require("../utils/cache");
-const { honeypotMiddleware, reviewRateLimiter } = require("../utils/spamFilter");
+const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = require("../utils/cache");
+const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
+const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
+const { validateExternalDelivery } = require("../utils/digitalDelivery");
 
 const router = express.Router();
 
@@ -118,6 +121,7 @@ const normalizeBundleItems = (rawBundleItems = []) => {
       name: customName,
       image: String(item?.image || "").trim(),
       price: Math.max(0, Number(item?.price || 0)),
+      isDigital: item?.isDigital === true,
       quantity: Math.max(1, Number(item?.quantity || 1))
     });
     return acc;
@@ -154,6 +158,18 @@ const normalizeProductPrice = (value, fallback = 0) => {
 
 const hasNumericInput = (value) =>
   value !== null && value !== undefined && String(value).trim() !== "";
+
+const normalizeNonNegativeNumber = (v, fb = 0) =>
+  !hasNumericInput(v) ? fb : (Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : fb);
+
+const normalizeRelatedProductIds = async (raw, currentId = "") => {
+  const ids = normalizeRelatedProducts(raw, currentId).filter((id) => mongoose.Types.ObjectId.isValid(id));
+  if (!ids.length) return [];
+  const found = new Set(
+    (await Product.find({ _id: { $in: ids }, isDeleted: { $ne: true } }).select("_id").lean()).map((p) => String(p._id))
+  );
+  return ids.filter((id) => found.has(id));
+};
 
 const normalizeInternationalPrice = (value, fallback = null) => {
   if (value === null || value === undefined || String(value).trim() === "") {
@@ -260,7 +276,7 @@ const HOME_PRODUCT_SELECT =
   "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
-  "name image price internationalPrice internationalCountryPrices marketPrices category stock";
+  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
 
 const sortByNewest = (a, b) =>
   new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
@@ -324,12 +340,17 @@ const getProductAuditFields = (product = {}) => ({
   images: Array.isArray(product?.images) ? product.images : [],
   trailerVideoUrl: String(product?.trailerVideoUrl || "").trim(),
   isDigital: product?.isDigital === true,
+  skipOwnershipRules: product?.skipOwnershipRules === true,
   digitalType: String(product?.digitalType || "").trim(),
   webReaderLink: String(product?.webReaderLink || "").trim(),
   kindleLink: String(product?.kindleLink || "").trim(),
   kindleAsin: String(product?.kindleAsin || "").trim(),
   digitalInstructions: String(product?.digitalInstructions || "").trim(),
-  courseLink: String(product?.courseLink || "").trim()
+  courseLink: String(product?.courseLink || "").trim(),
+  digitalDelivery: String(product?.digitalDelivery || "onsite").trim(),
+  externalAccessLink: String(product?.externalAccessLink || "").trim(),
+  externalAccessLabel: String(product?.externalAccessLabel || "").trim(),
+  externalAccessManual: product?.externalAccessManual === true
 });
 
 const summarizeProductChanges = (before = {}, after = {}) => {
@@ -350,47 +371,108 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   if (JSON.stringify(before.images || []) !== JSON.stringify(after.images || [])) changes.push("gallery");
   if (String(before.trailerVideoUrl || "") !== String(after.trailerVideoUrl || "")) changes.push("trailer video");
   if (Boolean(before.isDigital) !== Boolean(after.isDigital)) changes.push("digital item status");
+  if (Boolean(before.skipOwnershipRules) !== Boolean(after.skipOwnershipRules)) changes.push("ownership rules exemption");
   if (String(before.kindleLink || "") !== String(after.kindleLink || "")) changes.push("kindle link");
   if (String(before.webReaderLink || "") !== String(after.webReaderLink || "")) changes.push("web reader link");
   if (String(before.courseLink || "") !== String(after.courseLink || "")) changes.push("SFH course link");
+  if (
+    String(before.digitalDelivery || "onsite") !== String(after.digitalDelivery || "onsite") ||
+    String(before.externalAccessLink || "") !== String(after.externalAccessLink || "") ||
+    String(before.externalAccessLabel || "") !== String(after.externalAccessLabel || "")
+  ) {
+    changes.push("digital delivery");
+  }
+  if (Boolean(before.externalAccessManual) !== Boolean(after.externalAccessManual)) {
+    changes.push("admin grants access");
+  }
   return changes;
 };
 
 // Create product (ADMIN) — 25mb for image URLs
-router.post("/", protect, admin, largeJson, async (req, res) => {
+router.post("/", protect, admin, (req, res, next) => {
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  if (req.adminLevel === 1 || pages.includes("add-products") || pages.includes("products")) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied. Product creation permission required." });
+}, largeJson, async (req, res) => {
   try {
+    const b = req.body || {};
+    const name = String(b.name || "").trim();
+    if (!name) return res.status(400).json({ message: "Product name is required." });
+    if (!hasNumericInput(b.price) || !Number.isFinite(Number(b.price)) || Number(b.price) < 0) {
+      return res.status(400).json({ message: "A valid, non-negative price is required." });
+    }
+
     const actor = await getAdminActorSnapshot(req.user);
-    const images = normalizeImages(req.body.images, req.body.image);
-    const rawBundleItems = normalizeBundleItems(req.body.bundleItems);
-    const typeCandidate = String(req.body?.productType || "single").trim().toLowerCase();
+    const images = normalizeImages(b.images, b.image);
+    const rawBundleItems = normalizeBundleItems(b.bundleItems);
+    const typeCandidate = String(b.productType || "single").trim().toLowerCase();
     const productType = typeCandidate === "bundle" ? "bundle" : (["single", "bulk"].includes(typeCandidate) ? typeCandidate : "single");
     const bundleItems = productType === "bundle" ? rawBundleItems : [];
-    const rawDiscountType = normalizeDiscountType(req.body?.discountType, req.body?.festiveOffer);
-    const festiveOffer = rawDiscountType !== "none" || req.body?.festiveOffer === true;
-    const discountType = festiveOffer ? rawDiscountType : "none";
-    const price = normalizeProductPrice(req.body?.price);
-    const internationalPrice = normalizeInternationalPrice(req.body?.internationalPrice, null);
-    const internationalCountryPrices = normalizeInternationalCountryPrices(req.body?.internationalCountryPrices);
-    const marketPrices = normalizeMarketPrices(req.body?.marketPrices);
     if (productType === "bundle" && bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
+
+    const rawDiscountType = normalizeDiscountType(b.discountType, b.festiveOffer);
+    const festiveOffer = rawDiscountType !== "none" || b.festiveOffer === true;
+    const discountType = festiveOffer ? rawDiscountType : "none";
+    const price = normalizeProductPrice(b.price);
+    const internationalPrice = normalizeInternationalPrice(b.internationalPrice, null);
+    const internationalCountryPrices = normalizeInternationalCountryPrices(b.internationalCountryPrices);
+    const marketPrices = normalizeMarketPrices(b.marketPrices);
+    const relatedProducts = await normalizeRelatedProductIds(b.relatedProducts);
+
+    const opt = (k) => (b[k] !== undefined ? { [k]: String(b[k] || "").trim() } : {});
+
+    const isDigital = b.isDigital === true;
+    const deliveryValidation = validateExternalDelivery({
+      digitalDelivery: b.digitalDelivery,
+      externalAccessLink: b.externalAccessLink,
+      externalAccessLabel: b.externalAccessLabel,
+      externalAccessManual: b.externalAccessManual,
+      isDigital,
+      productType
+    });
+    if (!deliveryValidation.isValid) {
+      return res.status(400).json({ message: deliveryValidation.error });
+    }
+
     const product = await Product.create({
-      ...req.body,
+      name,
       price,
       internationalPrice,
       internationalCountryPrices,
       marketPrices,
-      aboutProduct: normalizeAboutProduct(req.body.aboutProduct),
-      image: images[0] || String(req.body.image || "").trim(),
-      images,
-      trailerVideoUrl: normalizeTrailerVideoUrl(req.body?.trailerVideoUrl),
+      description: String(b.description || "").trim(),
+      aboutProduct: normalizeAboutProduct(b.aboutProduct),
+      trailerVideoUrl: normalizeTrailerVideoUrl(b.trailerVideoUrl),
+      stock: normalizeNonNegativeNumber(b.stock, 1),
+      category: String(b.category || "General").trim() || "General",
+      weight: normalizeNonNegativeNumber(b.weight, 0),
+      height: normalizeNonNegativeNumber(b.height, 0),
+      width: normalizeNonNegativeNumber(b.width, 0),
+      length: normalizeNonNegativeNumber(b.length, 0),
       discountType,
       festiveOffer,
-      festiveDiscountPercent: festiveOffer ? normalizeFestiveDiscountPercent(req.body?.festiveDiscountPercent) : 0,
+      festiveDiscountPercent: festiveOffer ? normalizeFestiveDiscountPercent(b.festiveDiscountPercent) : 0,
       productType,
       bundleItems,
       relatedProducts,
+      isDigital,
+      skipOwnershipRules: b.skipOwnershipRules === true,
+      digitalDelivery: deliveryValidation.digitalDelivery,
+      externalAccessLink: deliveryValidation.externalAccessLink,
+      externalAccessLabel: deliveryValidation.externalAccessLabel,
+      externalAccessManual: deliveryValidation.externalAccessManual,
+      ...opt("digitalType"),
+      ...opt("webReaderLink"),
+      ...opt("kindleLink"),
+      ...opt("kindleAsin"),
+      ...opt("digitalInstructions"),
+      ...opt("courseLink"),
+      image: images[0] || String(b.image || "").trim(),
+      images,
       lastUpdatedByName: actor.name,
       lastUpdatedByEmail: actor.email,
       lastUpdatedAt: new Date()
@@ -414,12 +496,13 @@ router.post("/", protect, admin, largeJson, async (req, res) => {
     // Invalidate cache so next request gets fresh product list
     invalidateProductCache();
   } catch (error) {
-    res.status(500).json({ message: "Failed to create product", error: error.message });
+    const client = ["ValidationError", "CastError"].includes(error?.name);
+    res.status(client ? 400 : 500).json({ message: "Failed to create product", ...(client ? { error: error.message } : {}) });
   }
 });
 
 // UPDATE product (ADMIN) — 25mb for image URLs
-router.put("/:id", protect, admin, largeJson, async (req, res) => {
+router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const product = await Product.findById(req.params.id);
@@ -479,6 +562,9 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
     if (req.body.isDigital !== undefined) {
       product.isDigital = req.body.isDigital === true;
     }
+    if (req.body.skipOwnershipRules !== undefined) {
+      product.skipOwnershipRules = req.body.skipOwnershipRules === true;
+    }
     if (req.body.digitalType !== undefined) {
       product.digitalType = String(req.body.digitalType || "Web Version").trim();
     }
@@ -497,6 +583,22 @@ router.put("/:id", protect, admin, largeJson, async (req, res) => {
     if (req.body.courseLink !== undefined) {
       product.courseLink = String(req.body.courseLink || "").trim();
     }
+    const deliveryCandidate = {
+      digitalDelivery: req.body.digitalDelivery !== undefined ? req.body.digitalDelivery : product.digitalDelivery,
+      externalAccessLink: req.body.externalAccessLink !== undefined ? req.body.externalAccessLink : product.externalAccessLink,
+      externalAccessLabel: req.body.externalAccessLabel !== undefined ? req.body.externalAccessLabel : product.externalAccessLabel,
+      externalAccessManual: req.body.externalAccessManual !== undefined ? req.body.externalAccessManual : product.externalAccessManual,
+      isDigital: product.isDigital,
+      productType: product.productType
+    };
+    const deliveryValidation = validateExternalDelivery(deliveryCandidate);
+    if (!deliveryValidation.isValid) {
+      return res.status(400).json({ message: deliveryValidation.error });
+    }
+    product.digitalDelivery = deliveryValidation.digitalDelivery;
+    product.externalAccessLink = deliveryValidation.externalAccessLink;
+    product.externalAccessLabel = deliveryValidation.externalAccessLabel;
+    product.externalAccessManual = deliveryValidation.externalAccessManual;
     if (product.productType === "bundle" && product.bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
@@ -545,17 +647,32 @@ router.get("/home", async (req, res) => {
     const data = await cacheAside("home:payload", TTL.PRODUCTS_HOME, async () => {
       const [products, settings] = await Promise.all([
         Product.find({ isDeleted: { $ne: true } })
-          .select(HOME_PRODUCT_SELECT)
+          .select(PUBLIC_PRODUCT_EXCLUDE)
           .populate("bundleItems.product", HOME_BUNDLE_PRODUCT_SELECT)
           .lean(),
         StoreSettings.findOne().lean()
       ]);
-      return buildHomePayload(Array.isArray(products) ? products : [], settings || {});
+      const publicProducts = (Array.isArray(products) ? products : []).map(toPublicProduct);
+      return buildHomePayload(publicProducts, settings || {});
     });
 
     return res.json(data);
   } catch (error) {
     res.status(500).json({ message: "Failed to load home products", error: error.message });
+  }
+});
+
+// Full product list for Admin panel (ADMIN only)
+router.get("/admin/all", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const products = await Product.find({ isDeleted: { $ne: true } })
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
+      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .lean();
+    return res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load admin products", error: error.message });
   }
 });
 
@@ -570,12 +687,13 @@ router.get("/", async (req, res) => {
       req.query.category !== undefined;
 
     if (!hasPaginationQuery) {
-      // Full product list (admin panel, etc.) — always fetch fresh from DB
+      // Full product list for public — sanitized
       const products = await Product.find({ isDeleted: { $ne: true } })
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .select(PUBLIC_PRODUCT_EXCLUDE)
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
-      return res.json(products);
+      return res.json(products.map(toPublicProduct));
     }
 
     // Build a deterministic cache key from all query params
@@ -589,10 +707,11 @@ router.get("/", async (req, res) => {
     const selectedCategory = String(req.query.category || "All").trim();
 
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category")
+      .select(PUBLIC_PRODUCT_EXCLUDE)
+      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
-    const baseProducts = products;
+    const baseProducts = products.map(toPublicProduct);
     const settings = await StoreSettings.findOne().lean();
     const pricingConfig = {
       pricingMarkets: settings?.pricingMarkets || [],
@@ -686,7 +805,7 @@ router.get("/", async (req, res) => {
 });
 
 // Quick DB diagnostic for products (Admin only)
-router.get("/debug/summary", protect, admin, async (req, res) => {
+router.get("/debug/summary", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
     const count = await Product.countDocuments();
     const sample = await Product.findOne().select("_id name category").lean();
@@ -696,7 +815,7 @@ router.get("/debug/summary", protect, admin, async (req, res) => {
   }
 });
 // GET /api/products/cleanup-imported-data (Admin only)
-router.get("/cleanup-imported-data", protect, admin, async (req, res) => {
+router.get("/cleanup-imported-data", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
     const products = await Product.find({});
     let updatedCount = 0;
@@ -835,7 +954,7 @@ router.get("/recommend/:productId", async (req, res) => {
     }
 
     const ranked = products.map((product) => ({
-      ...(product.toObject ? product.toObject() : product),
+      ...toPublicProduct(product),
       boughtTogetherCount: counts[String(product._id)] || 0
     }));
 
@@ -863,6 +982,7 @@ router.get("/:id/reviews", async (req, res) => {
     if (reviews.length > 0) {
       const formattedReviews = reviews.map((r) => ({
         ...r,
+        userId: r.user ? String(r.user) : null,
         user: r.userName
       }));
       return res.json(formattedReviews);
@@ -896,7 +1016,8 @@ router.get("/:id", async (req, res) => {
 
     if (mongoose.Types.ObjectId.isValid(targetId)) {
       product = await Product.findById(targetId)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .select(PUBLIC_PRODUCT_EXCLUDE)
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
     }
@@ -905,7 +1026,8 @@ router.get("/:id", async (req, res) => {
       const numId = Number(targetId);
       if (!isNaN(numId)) {
         product = await Product.findOne({ wpProductId: numId, isDeleted: { $ne: true } })
-          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .select(PUBLIC_PRODUCT_EXCLUDE)
+          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
           .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
           .lean();
       }
@@ -925,6 +1047,7 @@ router.get("/:id", async (req, res) => {
     if (latestReviews.length > 0) {
       product.reviews = latestReviews.map((r) => ({
         ...r,
+        userId: r.user ? String(r.user) : null,
         user: r.userName
       }));
       product.reviewsCount = reviewsCount;
@@ -935,8 +1058,9 @@ router.get("/:id", async (req, res) => {
       product.reviewsCount = product.reviewsCount !== undefined ? product.reviewsCount : embeddedReviews.length;
     }
 
-    appCache.set(cacheKey, product, TTL.PRODUCT_SINGLE);
-    res.json(product);
+    const publicProduct = toPublicProduct(product);
+    appCache.set(cacheKey, publicProduct, TTL.PRODUCT_SINGLE);
+    res.json(publicProduct);
   } catch {
     res.status(404).json({ message: "Product not found" });
   }
@@ -950,11 +1074,34 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
+    // Restrict user to 1 review per product
+    const existingReview = await Review.findOne({
+      product: req.params.id,
+      user: req.user
+    });
+
+    if (existingReview) {
+      return res.status(400).json({
+        message: "You have already submitted a review for this product."
+      });
+    }
+
     const rating = Number(req.body.rating);
     const comment = (req.body.comment || "").trim();
 
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ message: "Rating must be between 1 and 5" });
+    }
+
+    if (!comment) {
+      return res.status(400).json({ message: "Please write a review comment" });
+    }
+
+    const wordCount = comment.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 800) {
+      return res.status(400).json({
+        message: `Review comment exceeds the limit of 800 words (currently ${wordCount} words).`
+      });
     }
 
     const user = await User.findById(req.user).select("name");
@@ -1009,7 +1156,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
       .limit(5)
       .lean();
 
-    const returnedProduct = product.toObject();
+    const returnedProduct = toPublicProduct(product.toObject());
     returnedProduct.reviews = latestReviews.map((r) => ({
       ...r,
       user: r.userName
@@ -1017,7 +1164,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
     returnedProduct.reviewsCount = reviewsCount;
 
     // Invalidate single product cache after review
-    appCache.del(`product:${req.params.id}`);
+    invalidateKeys([`product:${req.params.id}`]);
     res.status(201).json(returnedProduct);
   } catch (error) {
     res.status(500).json({ message: "Failed to submit review", error: error.message });
@@ -1025,7 +1172,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
 });
 
 // DELETE product (ADMIN) — Soft delete
-router.delete("/:id", protect, admin, async (req, res) => {
+router.delete("/:id", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
     const actor = await getAdminActorSnapshot(req.user);
     const product = await Product.findById(req.params.id);
@@ -1060,7 +1207,7 @@ router.delete("/:id", protect, admin, async (req, res) => {
 });
 
 // RESTORE product (ADMIN)
-router.post("/:id/restore", protect, admin, async (req, res) => {
+router.post("/:id/restore", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
 
@@ -1091,7 +1238,7 @@ router.post("/:id/restore", protect, admin, async (req, res) => {
 });
 
 // PURGE product (ADMIN) — Permanent deletion
-router.delete("/:id/purge", protect, admin, async (req, res) => {
+router.delete("/:id/purge", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
 
@@ -1123,23 +1270,78 @@ router.delete("/:id/purge", protect, admin, async (req, res) => {
 
 const { sendBulkEnquiryEmail } = require("../utils/email");
 
+const validateBulkPhoneNumber = (rawPhone) => {
+  const trimmed = String(rawPhone || "").trim();
+  if (!trimmed) return { isValid: true, cleanPhone: "" };
+
+  const cleaned = trimmed.replace(/[\s\-()]/g, "");
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  if (cleaned.startsWith("+")) {
+    if (cleaned.startsWith("+91")) {
+      const indianDigits = cleaned.slice(3).replace(/\D/g, "");
+      if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+        return {
+          isValid: false,
+          message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9."
+        };
+      }
+      return { isValid: true, cleanPhone: `+91 ${indianDigits}` };
+    }
+
+    if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid international phone number with country code (e.g. +1 2025550143)."
+      };
+    }
+    return { isValid: true, cleanPhone: cleaned };
+  }
+
+  if (digitsOnly.length === 10) {
+    if (!/^[6-9]\d{9}$/.test(digitsOnly)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9."
+      };
+    }
+    return { isValid: true, cleanPhone: `+91 ${digitsOnly}` };
+  }
+
+  if (digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return { isValid: true, cleanPhone: digitsOnly };
+  }
+
+  return {
+    isValid: false,
+    message: "Please enter a valid phone number (10 digits for India or include country code for international)."
+  };
+};
+
 // POST /api/products/:id/bulk-enquiry (PUBLIC)
-router.post("/:id/bulk-enquiry", honeypotMiddleware, async (req, res) => {
+router.post("/:id/bulk-enquiry", bulkEnquiryLimiter, honeypotMiddleware, async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    const { name, email, phone, quantity, institution, message } = req.body;
-    if (!name || !email || !quantity) {
-      return res.status(400).json({ message: "Name, email, and quantity are required." });
+    const { name, email, phone, isPhoneVerified, quantity, institution, message } = req.body;
+    if (!name || !email || !quantity || !phone) {
+      return res.status(400).json({ message: "Name, email, mobile phone number, and quantity are required." });
     }
+
+    const phoneValidation = validateBulkPhoneNumber(phone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ message: phoneValidation.message });
+    }
+
+    const formattedPhone = isPhoneVerified ? `${phone} (Verified via WhatsApp)` : phone;
 
     await sendBulkEnquiryEmail({
       name,
       email,
-      phone,
+      phone: formattedPhone,
       quantity: Number(quantity),
       productName: product.name,
       institution,
@@ -1151,8 +1353,6 @@ router.post("/:id/bulk-enquiry", honeypotMiddleware, async (req, res) => {
     res.status(500).json({ message: "Failed to submit enquiry", error: error.message });
   }
 });
-
-module.exports = router;
 
 // POST /api/products/:id/view (PUBLIC - Anonymous Aggregate View Counter)
 router.post("/:id/view", async (req, res) => {

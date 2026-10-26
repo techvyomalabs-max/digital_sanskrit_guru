@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
-import { formatDate, formatTime } from "../utils/date";
+import { useDialog } from "../hooks/useDialog";
+import { formatTime } from "../utils/date";
 import "./AdminCoupons.css";
 
 function AdminCoupons() {
   const { token } = useAuth();
+  const { confirm } = useDialog();
   const [coupons, setCoupons] = useState([]);
   const [code, setCode] = useState("");
   const [type, setType] = useState("percentage");
@@ -100,7 +102,12 @@ function AdminCoupons() {
   };
 
   const deleteCoupon = async (id) => {
-    const shouldDelete = window.confirm("Delete this coupon?");
+    const shouldDelete = await confirm({
+      title: "Delete Coupon?",
+      message: "Delete this coupon?",
+      tone: "danger",
+      confirmText: "Delete Coupon"
+    });
     if (!shouldDelete) return;
 
     setMessage("");

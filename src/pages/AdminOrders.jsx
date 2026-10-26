@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import {
+  Search,
+  Calendar,
+  CalendarDays,
+  RotateCcw,
+  ArrowUpDown,
+  X
+} from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
+import { buildOrdersCsv } from "../utils/ordersCsv";
+import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
+import { isDigitalLikeItem, orderHasPendingAccess } from "../utils/accessStatus";
+import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 
 const Icon = ({ name }) => {
@@ -26,11 +39,30 @@ const Icon = ({ name }) => {
 const BACKEND_STATUSES = ["Pending", "Shipped", "Delivered", "Completed", "Cancelled"];
 const DISPLAY_STATUSES = ["On Hold", ...BACKEND_STATUSES];
 const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
-const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Rejected", "Refunded"];
+const RETURN_STATUSES = ["Not Requested", "Requested", "Approved", "Received", "Rejected", "Refunded"];
 const RETURN_FILTER_KEY = "Return Requests";
+
+function getCourierTrackingUrl(courierName, trackingId) {
+  if (!trackingId) return "";
+  const name = String(courierName || "").trim().toLowerCase();
+  const trId = String(trackingId).trim();
+  if (name.includes("delhivery")) {
+    return `https://www.delhivery.com/track/package/${encodeURIComponent(trId)}`;
+  } else if (name.includes("india post") || name.includes("speed post") || name.includes("post")) {
+    return "https://www.indiapost.gov.in/";
+  } else if (name.includes("dtdc")) {
+    return `https://www.dtdc.in/tracking/tracking_results.asp?pinno=${encodeURIComponent(trId)}`;
+  } else if (name.includes("professional") || name.includes("tpc")) {
+    return "https://www.tpcindia.com/";
+  } else if (name.includes("shiprocket")) {
+    return `https://www.shiprocket.in/shipment-tracking/${encodeURIComponent(trId)}`;
+  }
+  return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
+}
 
 function AdminOrders() {
   const { token, user } = useAuth();
+  const { confirm, alert, prompt } = useDialog();
   const canUpdateOrders = Boolean(user?.isAdmin);
   const canViewRevenue = Boolean(user?.isAdmin);
   const [orders, setOrders] = useState([]);
@@ -38,7 +70,7 @@ function AdminOrders() {
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [statusCounts, setStatusCounts] = useState({
-    "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Completed: 0, Cancelled: 0, [RETURN_FILTER_KEY]: 0, All: 0
+    "On Hold": 0, Pending: 0, Shipped: 0, Delivered: 0, Completed: 0, Cancelled: 0, [RETURN_FILTER_KEY]: 0, "Access Pending": 0, All: 0
   });
   const [overviewStats, setOverviewStats] = useState({
     totalOrders: 0,
@@ -47,13 +79,44 @@ function AdminOrders() {
     fulfilledOrders: 0
   });
 
+  const location = useLocation();
   const [fromDateTime, setFromDateTime] = useState("");
   const [toDateTime, setToDateTime] = useState("");
   const [activeQuickFilter, setActiveQuickFilter] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
+      return RETURN_FILTER_KEY;
+    }
+    if (params.get("tab") === "access-pending") {
+      return "Access Pending";
+    }
+    if (params.get("tab") === "cancelled") {
+      return "Cancelled";
+    }
+    return "All";
+  });
   const [searchText, setSearchText] = useState("");
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [sortOrder, setSortOrder] = useState("newest");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (location.state?.filter === RETURN_FILTER_KEY || params.get("tab") === "returns") {
+      setSelectedStatus(RETURN_FILTER_KEY);
+    } else if (params.get("tab") === "access-pending") {
+      setSelectedStatus("Access Pending");
+    } else if (params.get("tab") === "cancelled") {
+      setSelectedStatus("Cancelled");
+    }
+  }, [location.state, location.search]);
+
+  const hasActiveFilters = useMemo(() => {
+    return Boolean(
+      searchText || fromDateTime || toDateTime || activeQuickFilter || sortOrder !== "newest"
+    );
+  }, [searchText, fromDateTime, toDateTime, activeQuickFilter, sortOrder]);
+
   const [updatingOrderId, setUpdatingOrderId] = useState("");
   const [generatingInvoiceOrderId, setGeneratingInvoiceOrderId] = useState("");
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
@@ -69,8 +132,24 @@ function AdminOrders() {
     customPartner: "",
     trackingId: "",
     reason: "",
+    condition: "Good",
+    note: "",
     error: ""
   });
+  const [refundModalState, setRefundModalState] = useState({
+    isOpen: false,
+    order: null,
+    itemId: null
+  });
+
+  const isManualRefund = (ord) => {
+    if (ord?.paymentMeta?.refundMethod === "manual") return true;
+    const refunds = ord?.paymentMeta?.refunds;
+    if (Array.isArray(refunds) && refunds.length > 0) {
+      return refunds[refunds.length - 1]?.method === "manual";
+    }
+    return false;
+  };
   const statusStep = {
     "On Hold": 0,
     Pending: 1,
@@ -92,7 +171,7 @@ function AdminOrders() {
     return RETURN_STATUSES.includes(raw) ? raw : "Not Requested";
   };
 
-  const hasReturnRequests = (order) =>
+  const _hasReturnRequests = (order) =>
     Array.isArray(order?.items) && order.items.some((item) => getReturnStatus(item) !== "Not Requested");
 
   const getDisplayStatus = (order) => {
@@ -100,18 +179,9 @@ function AdminOrders() {
     if (rawStatus === "Cancelled") return "Cancelled";
     if (getPaymentStatus(order) !== "Paid") return "On Hold";
 
-    const isDigitalOnly = Array.isArray(order?.items) && order.items.length > 0 && order.items.every((item) =>
-      Boolean(
-        item.isDigital ||
-        item.webReaderLink ||
-        item.kindleLink ||
-        String(item.name || "").toLowerCase().includes("web") ||
-        String(item.name || "").toLowerCase().includes("kindle") ||
-        String(item.name || "").toLowerCase().includes("flipbook") ||
-        String(item.format || "").toLowerCase().includes("web") ||
-        String(item.format || "").toLowerCase().includes("flipbook")
-      )
-    );
+    if (orderHasPendingAccess(order)) return "Access Pending";
+
+    const isDigitalOnly = Array.isArray(order?.items) && order.items.length > 0 && order.items.every(isDigitalLikeItem);
 
     if (isDigitalOnly || rawStatus === "Completed") return "Completed";
     if (BACKEND_STATUSES.includes(rawStatus)) return rawStatus;
@@ -182,6 +252,26 @@ function AdminOrders() {
     if (!token) return;
     void loadOrders();
   }, [token, currentPage, debouncedSearchText, selectedStatus, sortOrder, fromDateTime, toDateTime]);
+
+  // Prevent background page scrolling when modal is open
+  useEffect(() => {
+    if (!actionModal?.isOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setActionModal((prev) => ({ ...prev, isOpen: false }));
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [actionModal?.isOpen]);
 
   const updateStatus = async (orderId, status) => {
     const safeStatus = DISPLAY_STATUSES.includes(status) ? status : "On Hold";
@@ -258,6 +348,46 @@ function AdminOrders() {
     }
   };
 
+  const handleManualMarkPaid = async (orderId) => {
+    const reason = await prompt({
+      title: "Mark Order as Paid",
+      message: "Enter mandatory reason for marking this order as Paid (min 10 characters):",
+      required: true,
+      minLength: 10,
+      placeholder: "Reason (min 10 characters)...",
+      confirmText: "Continue"
+    });
+    if (reason === null) return;
+
+    const paymentReference =
+      (await prompt({
+        title: "Payment Reference",
+        message: "Optional payment reference (UPI transaction ID, cheque #, bank ref):",
+        required: false,
+        placeholder: "e.g. UPI / cheque / bank ref...",
+        confirmText: "Submit"
+      })) ?? "";
+
+    setUpdatingOrderId(orderId);
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/payment-status`,
+        {
+          paymentStatus: "Paid",
+          reason: reason.trim(),
+          paymentReference: paymentReference.trim()
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await loadOrders();
+      setPageMessage("Order marked as Paid successfully.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Failed to update payment status.");
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
   const updateReturnStatus = async (orderId, itemId, returnStatus) => {
     if (returnStatus === "Rejected") {
       setActionModal({
@@ -290,6 +420,45 @@ function AdminOrders() {
       setPageMessage("Return request updated successfully.");
     } catch (err) {
       setPageMessage(err?.response?.data?.message || "Unable to update the return request.");
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
+  const updateRefundStatus = async (orderId, refundStatus, forceManual = false) => {
+    setUpdatingOrderId(orderId);
+    try {
+      const res = await axios.put(
+        `/api/orders/${orderId}/refund-status`,
+        { refundStatus, forceManual },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      await loadOrders();
+      const refundId = res.data?.paymentMeta?.razorpayRefundId;
+      setPageMessage(
+        refundId
+          ? `Razorpay refund initiated! (Refund ID: ${refundId})`
+          : `Refund status updated to "${refundStatus}".`
+      );
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Unable to update refund status.";
+      const canForce = Boolean(err?.response?.data?.canForceManual);
+      let shouldForce = false;
+      if (canForce) {
+        shouldForce = await confirm({
+          title: "Mark as Refunded?",
+          message: `${errMsg}\n\nDo you want to mark this order as "Refunded" manually in the store?`,
+          tone: "danger",
+          confirmText: "Mark Refunded"
+        });
+      }
+      if (shouldForce) {
+        return updateRefundStatus(orderId, refundStatus, true);
+      }
+      setPageMessage(errMsg);
     } finally {
       setUpdatingOrderId("");
     }
@@ -385,6 +554,36 @@ function AdminOrders() {
       }
       return;
     }
+
+    if (actionModal.type === "markReceived") {
+      const condition = actionModal.condition || "Good";
+      const note = String(actionModal.note || "").trim();
+      if (condition !== "Good" && note.length < 5) {
+        setActionModal((prev) => ({
+          ...prev,
+          error: "Please enter a note of at least 5 characters describing the condition."
+        }));
+        return;
+      }
+
+      const { orderId, itemId } = actionModal;
+      setActionModal((prev) => ({ ...prev, isOpen: false }));
+      setUpdatingOrderId(orderId);
+      try {
+        await axios.put(
+          `/api/orders/${orderId}/items/${itemId}/return-received`,
+          { condition, note },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        await loadOrders();
+        setPageMessage("Return item marked as received successfully.");
+      } catch (err) {
+        setPageMessage(err?.response?.data?.message || "Unable to mark item as received.");
+      } finally {
+        setUpdatingOrderId("");
+      }
+      return;
+    }
   };
 
   const exportOrdersCsv = async () => {
@@ -404,45 +603,18 @@ function AdminOrders() {
       });
       const allMatchingOrders = res.data?.orders || [];
       if (allMatchingOrders.length === 0) {
-        window.alert("No orders to export.");
+        await alert({
+          title: "Export Orders",
+          message: "No orders to export."
+        });
         setPageMessage("");
         return;
       }
 
-      const headers = [
-        "Order ID",
-        "Customer",
-        "Email",
-        "Payment Country",
-        "Items",
-        "Total INR",
-        "Customer Display Total",
-        "Order Status",
-        "Payment Status",
-        "Refund Status",
-        "Created At"
-      ];
-
-      const rows = allMatchingOrders.map((order) => {
-        const itemCount = (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
-        return [
-          order._id,
-          order.user?.name || "Unknown",
-          order.user?.email || "",
-          getPaymentCountry(order),
-          itemCount,
-          Math.round(getOrderBaseTotal(order)),
-          formatCustomerPaid(order),
-          getDisplayStatus(order),
-          getPaymentStatus(order),
-          order?.refundStatus || "Not Applicable",
-          new Date(order.createdAt).toISOString()
-        ];
+      const csv = buildOrdersCsv(allMatchingOrders, {
+        getStatus: getDisplayStatus,
+        getPaymentStatus
       });
-
-      const csv = [headers, ...rows]
-        .map((line) => line.map((cell) => `"${String(cell).replaceAll("\"", "\"\"")}"`).join(","))
-        .join("\n");
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -582,6 +754,94 @@ function AdminOrders() {
     return `Captured ${inferredCurrencyMap[normalizedCountry] || "INR"}`;
   };
 
+  const getReceivedInfo = (order) => {
+    const rawPayment = String(order?.paymentStatus || "").trim();
+    const paymentStatus = PAYMENT_STATUSES.includes(rawPayment) ? rawPayment : "Paid";
+    const isPaid = paymentStatus === "Paid";
+
+    const refundStatus = String(order?.refundStatus || "").trim();
+    const refundedInr = Number(order?.refundedAmountInInr || 0);
+
+    const formatDisplayAmount = (val) =>
+      formatOrderDisplayCurrency(order, null, val, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+        fallbackToUserCurrency: true
+      });
+
+    // Any order whose payment status is not Paid but whose refundStatus is "Refunded" (old data from the previous item-return button)
+    if (!isPaid && refundStatus === "Refunded") {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: `Order value ${formatCustomerPaid(order)} (no payment recorded)`,
+        tone: "muted"
+      };
+    }
+
+    // NOT PAID (Failed / Pending / anything else, and not refunded)
+    if (!isPaid) {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: `Order value ${formatCustomerPaid(order)}`,
+        tone: "muted"
+      };
+    }
+
+    // PAID with no refund (refundStatus not "Refunded"/"Partially Refunded" and refundedAmountInInr is 0 or missing)
+    const isRefundedOrPartial =
+      refundStatus === "Refunded" || refundStatus === "Partially Refunded";
+    const hasRefund = isRefundedOrPartial || refundedInr > 0;
+
+    if (!hasRefund) {
+      const currencyCode =
+        getCapturedCurrencyLabel(order).replace(/^Captured\s*/i, "").trim() || "INR";
+      return {
+        amountText: formatCustomerPaid(order),
+        subText: `Received ${currencyCode}`,
+        tone: "normal"
+      };
+    }
+
+    // PAID with refunds
+    const totalInr = Number(order?.totalInInr ?? order?.total ?? 0);
+
+    if (refundedInr > 0 && totalInr > 0) {
+      const ratio = Math.min(1, refundedInr / totalInr);
+      const rawStoredDisplayAmount = order?.currencyDisplay?.amount;
+      const hasStoredDisplayAmount =
+        rawStoredDisplayAmount !== null &&
+        rawStoredDisplayAmount !== undefined &&
+        rawStoredDisplayAmount !== "";
+      const displayTotal =
+        hasStoredDisplayAmount && Number.isFinite(Number(rawStoredDisplayAmount))
+          ? Number(rawStoredDisplayAmount)
+          : Number(order?.total || 0);
+
+      const netDisplay = Math.round(displayTotal * (1 - ratio) * 100) / 100;
+      return {
+        amountText: formatDisplayAmount(netDisplay),
+        subText: `Refunded ₹${refundedInr.toFixed(2)}`,
+        tone: "refunded"
+      };
+    }
+
+    if (refundStatus === "Refunded" && (!refundedInr || refundedInr === 0)) {
+      return {
+        amountText: formatDisplayAmount(0),
+        subText: "Refunded",
+        tone: "refunded"
+      };
+    }
+
+    const currencyCode =
+      getCapturedCurrencyLabel(order).replace(/^Captured\s*/i, "").trim() || "INR";
+    return {
+      amountText: formatCustomerPaid(order),
+      subText: `Received ${currencyCode}`,
+      tone: "normal"
+    };
+  };
+
   const getCustomerName = (order) => order?.user?.name || order?.shipping?.name || "Unknown customer";
 
   const getCustomerInitials = (order) => {
@@ -671,6 +931,12 @@ function AdminOrders() {
           >
             Return Requests ({statusCounts[RETURN_FILTER_KEY] || 0})
           </button>
+          <button
+            className={selectedStatus === "Access Pending" ? "status-filter-chip active" : "status-filter-chip"}
+            onClick={() => setSelectedStatus("Access Pending")}
+          >
+            Access Pending ({statusCounts["Access Pending"] || 0})
+          </button>
           {DISPLAY_STATUSES.map((status) => (
             <button
               key={status}
@@ -682,86 +948,145 @@ function AdminOrders() {
           ))}
         </section>
 
-        <section className="orders-filter-bar" aria-label="Order filters">
-          <label className="orders-search-field">
-            <span>Search orders</span>
-            <span className="orders-search-input-wrap">
-              <Icon name="search" />
-              <input
-                type="search"
-                placeholder="Order ID, customer, email, item..."
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-              />
-            </span>
-          </label>
+        <section className="orders-filter-bar" aria-label="Order search and filters">
+          {/* Top Row: Search Input & Quick Range Pills */}
+          <div className="orders-filter-primary-row">
+            <div className="orders-search-field-wrap">
+              <label htmlFor="orders-search-input" className="orders-filter-label">
+                <Search size={14} className="orders-filter-label-icon" />
+                <span>Search Orders</span>
+              </label>
+              <div className="orders-search-input-wrap">
+                <Search size={15} className="orders-search-icon" />
+                <input
+                  id="orders-search-input"
+                  type="text"
+                  placeholder="Search by Order ID, customer name, email, product..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  aria-label="Search orders"
+                />
+                {searchText && (
+                  <button
+                    type="button"
+                    className="orders-search-clear-btn"
+                    onClick={() => setSearchText("")}
+                    title="Clear search text"
+                    aria-label="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
 
-          <div className="quick-filter-buttons" aria-label="Quick date filters">
-            <button
-              className={activeQuickFilter === "24h" ? "quick-filter-btn active" : "quick-filter-btn"}
-              onClick={() => applyQuickFilter("24h")}
-            >
-              Last 24h
-            </button>
-            <button
-              className={activeQuickFilter === "7d" ? "quick-filter-btn active" : "quick-filter-btn"}
-              onClick={() => applyQuickFilter("7d")}
-            >
-              Last 7 Days
-            </button>
-            <button
-              className={activeQuickFilter === "month" ? "quick-filter-btn active" : "quick-filter-btn"}
-              onClick={() => applyQuickFilter("month")}
-            >
-              This Month
-            </button>
+            <div className="orders-quick-filters-wrap">
+              <span className="orders-filter-label">
+                <CalendarDays size={14} className="orders-filter-label-icon" />
+                <span>Quick Date</span>
+              </span>
+              <div className="quick-filter-buttons" aria-label="Quick date filters">
+                <button
+                  type="button"
+                  className={activeQuickFilter === "24h" ? "quick-filter-btn active" : "quick-filter-btn"}
+                  onClick={() => applyQuickFilter("24h")}
+                >
+                  Last 24h
+                </button>
+                <button
+                  type="button"
+                  className={activeQuickFilter === "7d" ? "quick-filter-btn active" : "quick-filter-btn"}
+                  onClick={() => applyQuickFilter("7d")}
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  type="button"
+                  className={activeQuickFilter === "month" ? "quick-filter-btn active" : "quick-filter-btn"}
+                  onClick={() => applyQuickFilter("month")}
+                >
+                  This Month
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="orders-date-grid">
-            <label>
-              <span>From</span>
-              <input
-                type="datetime-local"
-                value={fromDateTime}
-                onChange={(e) => {
-                  setFromDateTime(e.target.value);
+          {/* Bottom Row: Date Range (From/To), Sort Dropdown & Reset Action */}
+          <div className="orders-filter-secondary-row">
+            <div className="orders-date-filter-group">
+              <div className="orders-date-field">
+                <label htmlFor="orders-from-date" className="orders-filter-sublabel">
+                  From Date
+                </label>
+                <div className="orders-date-input-wrap">
+                  <Calendar size={14} className="orders-date-icon" />
+                  <input
+                    id="orders-from-date"
+                    type="datetime-local"
+                    value={fromDateTime}
+                    onChange={(e) => {
+                      setFromDateTime(e.target.value);
+                      setActiveQuickFilter("");
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="orders-date-field">
+                <label htmlFor="orders-to-date" className="orders-filter-sublabel">
+                  To Date
+                </label>
+                <div className="orders-date-input-wrap">
+                  <Calendar size={14} className="orders-date-icon" />
+                  <input
+                    id="orders-to-date"
+                    type="datetime-local"
+                    value={toDateTime}
+                    onChange={(e) => {
+                      setToDateTime(e.target.value);
+                      setActiveQuickFilter("");
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="orders-sort-field-wrap">
+              <label htmlFor="orders-sort-select" className="orders-filter-sublabel">
+                Sort By
+              </label>
+              <div className="orders-sort-select-wrap">
+                <ArrowUpDown size={14} className="orders-sort-icon" />
+                <select
+                  id="orders-sort-select"
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value)}
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="orders-reset-action-wrap">
+              <button
+                type="button"
+                className={`clear-filter-btn ${hasActiveFilters ? "has-active" : ""}`}
+                onClick={() => {
+                  setFromDateTime("");
+                  setToDateTime("");
                   setActiveQuickFilter("");
+                  setSearchText("");
+                  setSortOrder("newest");
                 }}
-              />
-            </label>
-            <label>
-              <span>To</span>
-              <input
-                type="datetime-local"
-                value={toDateTime}
-                onChange={(e) => {
-                  setToDateTime(e.target.value);
-                  setActiveQuickFilter("");
-                }}
-              />
-            </label>
+                title="Reset all search queries and date filters"
+              >
+                <RotateCcw size={13} className="orders-reset-icon" />
+                <span>Reset Filters</span>
+                {hasActiveFilters && <span className="orders-active-filter-indicator" title="Active filters applied" />}
+              </button>
+            </div>
           </div>
-
-          <label className="orders-sort-field">
-            <span>Sort</span>
-            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </label>
-
-          <button
-            className="clear-filter-btn"
-            onClick={() => {
-              setFromDateTime("");
-              setToDateTime("");
-              setActiveQuickFilter("");
-              setSearchText("");
-            }}
-          >
-            <Icon name="reset" />
-            Reset
-          </button>
         </section>
 
         {!isLoadingOrders && orders.length === 0 && (
@@ -776,29 +1101,29 @@ function AdminOrders() {
             <table className="admin-orders-table">
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Country</th>
-                  <th>Items</th>
-                  <th>Customer Paid</th>
-                  <th>Store Total</th>
-                  <th>Payment</th>
-                  <th>Fulfillment</th>
-                  <th>Actions</th>
+                  <th className="col-order">Order</th>
+                  <th className="col-customer">Customer</th>
+                  <th className="col-country">Country</th>
+                  <th className="col-items">Items</th>
+                  <th className="col-customer-paid">Received</th>
+                  <th className="col-store-total">Store Total</th>
+                  <th className="col-payment">Payment</th>
+                  <th className="col-fulfillment">Fulfillment</th>
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {Array.from({ length: 5 }).map((_, idx) => (
                   <tr key={`orders-skeleton-${idx}`}>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
-                    <td><span className="skeleton-block" /></td>
+                    <td className="col-order"><span className="skeleton-block" /></td>
+                    <td className="col-customer"><span className="skeleton-block" /></td>
+                    <td className="col-country"><span className="skeleton-block" /></td>
+                    <td className="col-items"><span className="skeleton-block" /></td>
+                    <td className="col-customer-paid"><span className="skeleton-block" /></td>
+                    <td className="col-store-total"><span className="skeleton-block" /></td>
+                    <td className="col-payment"><span className="skeleton-block" /></td>
+                    <td className="col-fulfillment"><span className="skeleton-block" /></td>
+                    <td className="col-actions"><span className="skeleton-block" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -811,15 +1136,15 @@ function AdminOrders() {
             <table className="admin-orders-table">
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Country</th>
-                  <th>Items</th>
-                  <th>Customer Paid</th>
-                  <th>Store Total</th>
-                  <th>Payment</th>
-                  <th>Fulfillment</th>
-                  <th>Actions</th>
+                  <th className="col-order">Order</th>
+                  <th className="col-customer">Customer</th>
+                  <th className="col-country">Country</th>
+                  <th className="col-items">Items</th>
+                  <th className="col-customer-paid">Received</th>
+                  <th className="col-store-total">Store Total</th>
+                  <th className="col-payment">Payment</th>
+                  <th className="col-fulfillment">Fulfillment</th>
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -833,21 +1158,39 @@ function AdminOrders() {
                   const returnItems = Array.isArray(order?.items)
                     ? order.items.filter((item) => getReturnStatus(item) !== "Not Requested")
                     : [];
+                  const receivedInfo = getReceivedInfo(order);
                   return (
                     <tr key={order._id}>
-                      <td className="order-code">
-                        <Link to={`/admin/orders/${order._id}`} className="order-code-link">
-                          #{order._id.slice(-6).toUpperCase()}
-                        </Link>
-                        <span>{formatOrderDate(order.createdAt)}</span>
-                        {order.lastUpdatedAt ? (
-                          <small style={{ display: "block", marginTop: "6px", color: "var(--admin-muted)" }}>
-                            Last updated by {order.lastUpdatedByName || order.lastUpdatedByEmail || "Admin"} on{" "}
-                            {formatDate(order.lastUpdatedAt)} {formatTime(order.lastUpdatedAt)}
-                          </small>
-                        ) : null}
+                      <td className="col-order">
+                        <div className="order-code-inner">
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <Link to={`/admin/orders/${order._id}`} className="order-code-link">
+                              #{order._id.slice(-6).toUpperCase()}
+                            </Link>
+                            {orderHasPendingAccess(order) && (
+                              <Link
+                                to={`/admin/orders/${order._id}`}
+                                className="order-access-pending-tag"
+                              >
+                                Access pending
+                              </Link>
+                            )}
+                          </div>
+                          {order.invoiceNumber ? (
+                            <small style={{ color: "var(--orders-muted, #64748b)", fontSize: "11px", fontWeight: 500 }}>
+                              {order.invoiceNumber}
+                            </small>
+                          ) : null}
+                          <span>{formatOrderDate(order.createdAt)}</span>
+                          {order.lastUpdatedAt ? (
+                            <small style={{ display: "block", marginTop: "6px", color: "var(--admin-muted)" }}>
+                              Last updated by {order.lastUpdatedByName || order.lastUpdatedByEmail || "Admin"} on{" "}
+                              {formatDate(order.lastUpdatedAt)} {formatTime(order.lastUpdatedAt)}
+                            </small>
+                          ) : null}
+                        </div>
                       </td>
-                      <td>
+                      <td className="col-customer">
                         <div className="admin-order-customer">
                           <span className="admin-order-avatar">{getCustomerInitials(order)}</span>
                           <span className="admin-order-customer-text">
@@ -856,23 +1199,39 @@ function AdminOrders() {
                           </span>
                         </div>
                       </td>
-                      <td className="admin-order-country-cell">
-                        <strong>{getPaymentCountry(order)}</strong>
-                        <small>{order?.currencyDisplay?.detectedCountry ? "Detected" : "Shipping"}</small>
+                      <td className="col-country">
+                        <div className="admin-order-country-inner">
+                          <strong>{getPaymentCountry(order)}</strong>
+                          <small>{order?.currencyDisplay?.detectedCountry ? "Detected" : "Shipping"}</small>
+                        </div>
                       </td>
-                      <td>
+                      <td className="col-items" style={{ textAlign: "center" }}>
                         <span className="admin-order-items-count">{productCount}</span>
                       </td>
-                      <td className="admin-order-amount-cell">
-                        <strong>{formatCustomerPaid(order)}</strong>
-                        <small>{getCapturedCurrencyLabel(order)}</small>
+                      <td className="col-customer-paid">
+                        <div className="admin-order-amount-inner">
+                          <strong
+                            style={
+                              receivedInfo.tone === "muted"
+                                ? { color: "#94a3b8" }
+                                : receivedInfo.tone === "refunded"
+                                  ? { color: "#b45309" }
+                                  : undefined
+                            }
+                          >
+                            {receivedInfo.amountText}
+                          </strong>
+                          <small>{receivedInfo.subText}</small>
+                        </div>
                       </td>
-                      <td className="admin-order-amount-cell">
-                        <strong>{formatMoney(getOrderBaseTotal(order))}</strong>
-                        <small>INR base</small>
+                      <td className="col-store-total">
+                        <div className="admin-order-amount-inner">
+                          <strong>{formatMoney(getOrderBaseTotal(order))}</strong>
+                          <small>INR base</small>
+                        </div>
                       </td>
-                      <td>
-                        <div className="admin-order-payment-cell">
+                      <td className="col-payment">
+                        <div className="admin-order-payment-inner">
                           <span className={`admin-order-status status-payment-${paymentStatus.toLowerCase()}`}>
                             {paymentStatus === "Refunded"
                               ? "Refunded"
@@ -882,189 +1241,445 @@ function AdminOrders() {
                                   ? "Failed"
                                   : "Not Paid"}
                           </span>
+                          {order.stockIssue && (
+                            <span
+                              className="admin-order-stock-issue"
+                              title={(order.stockIssueDetails || []).join("\n") || "Paid but stock could not be reserved"}
+                            >
+                              ⚠ Stock issue
+                            </span>
+                          )}
                         </div>
                       </td>
-                      <td>
-                        <div className="admin-status-update">
-                          <div className="order-status-tracker">
-                            {DISPLAY_STATUSES.filter((status) => {
-                              if (status === "Cancelled") return isCancelled;
-                              return true;
-                            }).map((status, index) => {
-                              const active = statusStep[displayStatus] >= index;
-                              const isCurrent = displayStatus === status;
-                              return (
-                                <div key={`${order._id}-${status}`} className="order-status-step">
-                                  <span className={active ? "tracker-dot active" : "tracker-dot"} />
-                                  <span className={isCurrent ? "tracker-label current" : "tracker-label"}>
-                                    {status}
-                                  </span>
+                      <td className="col-fulfillment">
+                        {(() => {
+                          const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
+                            Boolean(
+                              item.isDigital ||
+                              isExternalDelivery(item) ||
+                              item.webReaderLink ||
+                              item.kindleLink ||
+                              String(item.name || "").toLowerCase().includes("web") ||
+                              String(item.name || "").toLowerCase().includes("kindle") ||
+                              String(item.name || "").toLowerCase().includes("flipbook") ||
+                              String(item.format || "").toLowerCase().includes("web") ||
+                              String(item.format || "").toLowerCase().includes("flipbook")
+                            )
+                          );
+
+                          const currentStepIndex = statusStep[displayStatus] ?? 0;
+                          const trackingUrl = getCourierTrackingUrl(order?.courierPartner, order?.trackingId);
+
+                          return (
+                            <div className="fulfillment-card-box">
+                              {/* Header: Type Badge & Current Status */}
+                              <div className="fulfillment-card-header">
+                                <span className={`fulfillment-type-badge ${isDigitalOnly ? "digital" : "physical"}`}>
+                                  {isDigitalOnly ? "⚡ Digital Order" : "📦 Physical Parcel"}
+                                </span>
+                                <span className={`admin-order-status status-${statusKey}`}>
+                                  {displayStatus}
+                                </span>
+                              </div>
+
+                              {/* Pipeline Stepper */}
+                              {!isCancelled ? (
+                                isDigitalOnly ? (
+                                  <div className="fulfillment-digital-status">
+                                    <span className="digital-status-dot">✓</span>
+                                    <span>
+                                      {hasExternalDelivery(order.items)
+                                        ? "Digital item (external link)"
+                                        : "Instant Digital Access Granted"}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="fulfillment-pipeline-stepper">
+                                    {["Pending", "Shipped", "Delivered"].map((stepName, sIdx) => {
+                                      const stepValue = sIdx + 1; // 1 for Pending, 2 for Shipped, 3 for Delivered
+                                      const isPassed = currentStepIndex > stepValue;
+                                      const isCurrent = currentStepIndex === stepValue;
+                                      const isUpcoming = currentStepIndex < stepValue;
+
+                                      return (
+                                        <div
+                                          key={stepName}
+                                          className={`pipeline-step ${isPassed ? "completed" : ""} ${isCurrent ? "current" : ""} ${isUpcoming ? "upcoming" : ""}`}
+                                        >
+                                          <div className="pipeline-dot">
+                                            {isPassed || (isCurrent && stepName === "Delivered") ? "✓" : sIdx + 1}
+                                          </div>
+                                          <span className="pipeline-label">{stepName}</span>
+                                          {sIdx < 2 && <div className="pipeline-connector" />}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )
+                              ) : (
+                                <div className="fulfillment-cancelled-banner">
+                                  <span>✕ Order Cancelled</span>
                                 </div>
-                              );
-                            })}
-                          </div>
-                          <div className="status-controls">
-                            <span className={`admin-order-status status-${statusKey}`}>
-                              {displayStatus}
-                            </span>
-                            {displayStatus === "Delivered" && order.deliveredAt && (
-                              <small style={{ display: "block", marginTop: "4px", color: "#16a34a", fontWeight: "600" }}>
-                                Delivered: {formatDate(order.deliveredAt)}
-                              </small>
-                            )}
-                            {canUpdateOrders && displayStatus === "On Hold" && (
-                              <button
-                                className="status-action-btn"
-                                disabled
-                title="Waiting for successful payment"
-                              >
-                                Move to Pending
-                              </button>
-                            )}
-                            {(() => {
-                               const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
-                                 Boolean(
-                                   item.isDigital ||
-                                   item.webReaderLink ||
-                                   item.kindleLink ||
-                                   String(item.name || "").toLowerCase().includes("web") ||
-                                   String(item.name || "").toLowerCase().includes("kindle") ||
-                                   String(item.name || "").toLowerCase().includes("flipbook") ||
-                                   String(item.format || "").toLowerCase().includes("web") ||
-                                   String(item.format || "").toLowerCase().includes("flipbook")
-                                 )
-                               );
+                              )}
 
-                               if (isDigitalOnly) {
-                                 return (
-                                   <div style={{ margin: "4px 0", padding: "6px 10px", borderRadius: "6px", backgroundColor: "rgba(37, 99, 235, 0.1)", color: "#2563eb", fontSize: "12px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                     ⚡ Instant Digital Access Granted
-                                   </div>
-                                 );
-                               }
+                              {/* Shipped / Delivered Timestamps & Tracking Link */}
+                              {order?.trackingId ? (
+                                <div className="fulfillment-tracking-chip-wrapper">
+                                  <a
+                                    href={trackingUrl || "#"}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="fulfillment-tracking-link"
+                                    title="Open Courier Live Tracking"
+                                  >
+                                    <span className="tracking-courier-name">
+                                      🚚 {order.courierPartner || "Courier"}:
+                                    </span>
+                                    <span className="tracking-number-code">#{order.trackingId}</span>
+                                    <span className="tracking-external-icon">↗</span>
+                                  </a>
+                                </div>
+                              ) : null}
 
-                               return (
-                                 <>
-                                   {canUpdateOrders && displayStatus === "Pending" && canProgressStatus && (
-                                     <button
-                                       className="status-action-btn"
-                                       disabled={updatingOrderId === order._id}
-                                       onClick={() => updateStatus(order._id, "Shipped")}
-                                     >
-                                       {updatingOrderId === order._id ? "Updating..." : "Mark Shipped"}
-                                     </button>
-                                   )}
-                                   {canUpdateOrders && displayStatus === "Shipped" && canProgressStatus && (
-                                     <button
-                                       className="status-action-btn"
-                                       disabled={updatingOrderId === order._id}
-                                       onClick={() => updateStatus(order._id, "Delivered")}
-                                     >
-                                       {updatingOrderId === order._id ? "Updating..." : "Mark Delivered"}
-                                     </button>
-                                   )}
-                                 </>
-                               );
-                             })()}
-                            {canUpdateOrders && ["On Hold", "Pending"].includes(displayStatus) && (
-                              <button
-                                className="status-action-btn cancel"
-                                disabled={updatingOrderId === order._id}
-                                onClick={() => updateStatus(order._id, "Cancelled")}
-                              >
-                                {updatingOrderId === order._id ? "Updating..." : "Cancel"}
-                              </button>
-                            )}
-                            {!canProgressStatus ? (
-                              <p className="admin-status-note">
-                                {isCancelled
-                                  ? `Refund: ${order?.refundStatus || "Not Applicable"}`
-                                  : paymentStatus === "Failed"
-                                    ? "Payment failed"
-                                    : "Waiting for successful payment"}
-                              </p>
-                            ) : null}
-                            {returnItems.length > 0 ? (
-                              <div className="admin-return-panel">
-                                {returnItems.map((item) => {
-                                  const itemId = String(item?._id || item?.id || item?.product || "").trim();
-                                  const returnStatus = getReturnStatus(item);
-                                  return (
-                                    <div key={`${order._id}-${itemId}`} className="admin-return-item">
-                                      <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
-                                        {item?.name || "Item"}: {returnStatus}
-                                      </span>
-                                      {item?.returnRequest?.reason ? (
-                                        <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
-                                      ) : null}
-                                      {item?.returnRequest?.adminReason ? (
-                                        <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
-                                      ) : null}
-                                      {canUpdateOrders && returnStatus === "Requested" ? (
-                                        <div className="admin-return-actions">
+                              {displayStatus === "Shipped" && order.shippedAt && !order.trackingId && (
+                                <small className="fulfillment-timestamp shipped">
+                                  Shipped: {formatDate(order.shippedAt)}
+                                </small>
+                              )}
+
+                              {displayStatus === "Delivered" && order.deliveredAt && (
+                                <small className="fulfillment-timestamp delivered">
+                                  Delivered: {formatDate(order.deliveredAt)}
+                                </small>
+                              )}
+
+                              {/* Action Buttons */}
+                              {canUpdateOrders && !isDigitalOnly && (
+                                <div className="fulfillment-actions-wrapper">
+                                  {displayStatus === "Pending" && canProgressStatus && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action ship"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Shipped")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "🚚 Mark Shipped"}
+                                    </button>
+                                  )}
+                                  {displayStatus === "Shipped" && canProgressStatus && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action deliver"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Delivered")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "📦 Mark Delivered"}
+                                    </button>
+                                  )}
+                                  {["On Hold", "Pending"].includes(displayStatus) && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action cancel"
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => updateStatus(order._id, "Cancelled")}
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "✕ Cancel"}
+                                    </button>
+                                  )}
+                                  {Number(user?.adminLevel) === 1 &&
+                                    paymentStatus !== "Paid" &&
+                                    paymentStatus !== "Refunded" &&
+                                    order.status !== "Cancelled" && (
+                                    <button
+                                      type="button"
+                                      className="fulfillment-btn-action"
+                                      style={{ backgroundColor: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+                                      disabled={updatingOrderId === order._id}
+                                      onClick={() => handleManualMarkPaid(order._id)}
+                                      title="Mark Paid with mandatory reason"
+                                    >
+                                      {updatingOrderId === order._id ? "Updating..." : "✓ Mark Paid"}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Refund Panel if applicable */}
+                              {isCancelled && (paymentStatus === "Paid" || (order?.refundStatus && order?.refundStatus !== "Not Applicable")) && (
+                                <div className="admin-refund-panel">
+                                  <div className="admin-refund-header">
+                                    <span className="admin-refund-title">Refund:</span>
+                                    <span className={`admin-order-status status-refund-${String(order?.refundStatus || "Pending").toLowerCase()}`}>
+                                      {order?.refundStatus || "Pending"}
+                                    </span>
+                                  </div>
+                                  {isManualRefund(order) ? (
+                                    <small style={{ display: "block", fontSize: "10px", color: "#b45309", fontWeight: 700, margin: "2px 0 4px" }}>
+                                      Manual refund (no money sent via Razorpay)
+                                    </small>
+                                  ) : order?.paymentMeta?.razorpayRefundId ? (
+                                    <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
+                                      ⚡ RZP: {order.paymentMeta.razorpayRefundId}
+                                    </small>
+                                  ) : null}
+                                  {canUpdateOrders ? (
+                                    order?.refundStatus === "Refunded" ? (
+                                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#166534", marginTop: "4px" }}>
+                                        ✓ Refund Completed
+                                      </div>
+                                    ) : (
+                                      <div className="admin-refund-actions">
+                                        {order?.refundStatus === "Pending" && (
                                           <button
+                                            type="button"
                                             className="status-action-btn"
                                             disabled={updatingOrderId === order._id}
-                                            onClick={() => updateReturnStatus(order._id, itemId, "Approved")}
+                                            onClick={() => updateRefundStatus(order._id, "Processing")}
+                                            title="Move to Processing"
                                           >
-                                            {updatingOrderId === order._id ? "Updating..." : "Approve Return"}
+                                            {updatingOrderId === order._id ? "Updating..." : "Set status: Processing"}
                                           </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          className="status-action-btn refund-success-btn"
+                                          disabled={updatingOrderId === order._id}
+                                          onClick={() => setRefundModalState({ isOpen: true, order, itemId: null })}
+                                          title="Open Refund Modal"
+                                        >
+                                          Refund…
+                                        </button>
+                                        {order?.refundStatus !== "Rejected" && (
                                           <button
+                                            type="button"
                                             className="status-action-btn cancel"
                                             disabled={updatingOrderId === order._id}
-                                            onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                            onClick={() => updateRefundStatus(order._id, "Rejected")}
+                                            title="Reject Refund"
                                           >
                                             {updatingOrderId === order._id ? "Updating..." : "Reject"}
                                           </button>
-                                        </div>
-                                      ) : null}
-                                      {canUpdateOrders && returnStatus === "Approved" ? (
-                                        <button
-                                          className="status-action-btn"
+                                        )}
+                                        <select
+                                          id={`refund-select-${order._id}`}
+                                          className="admin-refund-select"
+                                          value={order?.refundStatus || "Pending"}
                                           disabled={updatingOrderId === order._id}
-                                          onClick={() => updateReturnStatus(order._id, itemId, "Refunded")}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === "Refunded") {
+                                              setRefundModalState({ isOpen: true, order, itemId: null });
+                                            } else {
+                                              updateRefundStatus(order._id, val);
+                                            }
+                                          }}
+                                          aria-label="Change refund status"
                                         >
-                                          {updatingOrderId === order._id ? "Updating..." : "Mark Refunded"}
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                            <select
-                              id={`status-${order._id}`}
-                              value={displayStatus}
-                              disabled={!canUpdateOrders || updatingOrderId === order._id || !canProgressStatus}
-                              onChange={(e) => updateStatus(order._id, e.target.value)}
-                            >
-                              {displayStatus === "On Hold" ? <option value="On Hold">On Hold</option> : null}
-                              <option value="Pending">Pending</option>
-                              <option value="Shipped">Shipped</option>
-                              <option value="Delivered">Delivered</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
-                          </div>
-                        </div>
+                                          <option value="Pending">Pending</option>
+                                          <option value="Processing">Processing</option>
+                                          <option value="Refunded">Refunded</option>
+                                          <option value="Rejected">Rejected</option>
+                                        </select>
+                                      </div>
+                                    )
+                                  ) : null}
+                                </div>
+                              )}
+
+                              {!canProgressStatus && !isCancelled && (
+                                <p className="admin-status-note">
+                                  {paymentStatus === "Failed"
+                                    ? "Payment failed"
+                                    : "Waiting for successful payment"}
+                                </p>
+                              )}
+
+                              {/* Return Items Panel if applicable */}
+                              {returnItems.length > 0 ? (
+                                <div className="admin-return-panel">
+                                  {returnItems.map((item) => {
+                                    const itemId = String(item?._id || item?.id || item?.product || "").trim();
+                                    const returnStatus = getReturnStatus(item);
+                                    const isApproved = returnStatus === "Approved";
+                                    const isApprovedOverdue =
+                                      isApproved &&
+                                      item?.returnRequest?.approvedAt &&
+                                      Date.now() - new Date(item.returnRequest.approvedAt).getTime() > 14 * 24 * 60 * 60 * 1000;
+
+                                    return (
+                                      <div key={`${order._id}-${itemId}`} className="admin-return-item">
+                                        <div className="admin-return-item-header">
+                                          <strong className="admin-return-item-name">{item?.name || "Item"}</strong>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span className={`admin-order-status status-return-${returnStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                                              {returnStatus}
+                                            </span>
+                                            {isApprovedOverdue && (
+                                              <span
+                                                className="admin-order-status"
+                                                style={{
+                                                  backgroundColor: "#fee2e2",
+                                                  color: "#b91c1c",
+                                                  borderColor: "#fca5a5",
+                                                  fontWeight: 700
+                                                }}
+                                              >
+                                                Overdue (14+ days)
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {item?.returnRequest?.reason ? (
+                                          <p className="admin-status-note">Reason: {item.returnRequest.reason}</p>
+                                        ) : null}
+                                        {item?.returnRequest?.adminReason ? (
+                                          <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
+                                        ) : null}
+
+                                        {/* Requested: Approve / Reject */}
+                                        {canUpdateOrders && returnStatus === "Requested" ? (
+                                          <div className="admin-return-actions">
+                                            <button
+                                              type="button"
+                                              className="status-action-btn"
+                                              disabled={updatingOrderId === order._id}
+                                              onClick={() => updateReturnStatus(order._id, itemId, "Approved")}
+                                            >
+                                              {updatingOrderId === order._id ? "Updating..." : "Approve Return"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="status-action-btn cancel"
+                                              disabled={updatingOrderId === order._id}
+                                              onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                            >
+                                              {updatingOrderId === order._id ? "Updating..." : "Reject"}
+                                            </button>
+                                          </div>
+                                        ) : null}
+
+                                        {/* Approved: Awaiting return + customer courier/tracking + Mark received button */}
+                                        {returnStatus === "Approved" ? (
+                                          <div style={{ marginTop: "4px" }}>
+                                            <p className="admin-status-note" style={{ color: "#d97706", fontWeight: 600 }}>
+                                              ⏳ Awaiting return
+                                            </p>
+                                            {item?.returnRequest?.shipment?.courier && (
+                                              <p className="admin-status-note">
+                                                Courier: <strong>{item.returnRequest.shipment.courier}</strong>
+                                                {item.returnRequest.shipment.trackingNumber && (
+                                                  <>
+                                                    {" "}— Tracking:{" "}
+                                                    <a
+                                                      href={getCourierTrackingUrl(item.returnRequest.shipment.courier, item.returnRequest.shipment.trackingNumber)}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      style={{ textDecoration: "underline", color: "#2563eb" }}
+                                                    >
+                                                      {item.returnRequest.shipment.trackingNumber}
+                                                    </a>
+                                                  </>
+                                                )}
+                                              </p>
+                                            )}
+                                            {canUpdateOrders && (
+                                              <div className="admin-return-actions" style={{ marginTop: "6px" }}>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() =>
+                                                    setActionModal({
+                                                      isOpen: true,
+                                                      type: "markReceived",
+                                                      orderId: order._id,
+                                                      itemId,
+                                                      orderNumber: order.orderNumber || String(order._id).slice(-6),
+                                                      title: "Mark Return Item Received",
+                                                      courierPartner: "Delhivery",
+                                                      customPartner: "",
+                                                      trackingId: "",
+                                                      reason: "",
+                                                      condition: "Good",
+                                                      note: "",
+                                                      error: ""
+                                                    })
+                                                  }
+                                                >
+                                                  Mark received…
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn cancel"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                                >
+                                                  Reject return…
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : null}
+
+                                        {/* Received: Condition & note + Refund button + Reject return button */}
+                                        {returnStatus === "Received" ? (
+                                          <div style={{ marginTop: "4px" }}>
+                                            <p className="admin-status-note" style={{ color: "#166534" }}>
+                                              <strong>Condition:</strong> {item?.returnRequest?.condition || "Good"}
+                                              {item?.returnRequest?.conditionNote ? ` — Note: ${item.returnRequest.conditionNote}` : ""}
+                                            </p>
+                                            {canUpdateOrders && (
+                                              <div className="admin-return-actions" style={{ marginTop: "6px" }}>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => setRefundModalState({ isOpen: true, order, itemId })}
+                                                >
+                                                  Refund…
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn cancel"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => updateReturnStatus(order._id, itemId, "Rejected")}
+                                                >
+                                                  Reject return…
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </td>
-                      <td className="admin-order-actions">
-                        <Link
-                          to={`/admin/orders/${order._id}`}
-                          className="admin-order-icon-btn"
-                          title="View order"
-                          aria-label="View order"
-                        >
-                          <Icon name="view" />
-                        </Link>
-                        <button
-                          className="admin-order-icon-btn"
-                          disabled={generatingInvoiceOrderId === order._id}
-                          onClick={() => void generateInvoice(order)}
-                          title={generatingInvoiceOrderId === order._id ? "Generating invoice" : "Generate invoice"}
-                          aria-label={generatingInvoiceOrderId === order._id ? "Generating invoice" : "Generate invoice"}
-                        >
-                          <Icon name="invoice" />
-                        </button>
+                      <td className="admin-order-actions-cell col-actions">
+                        <div className="admin-order-actions">
+                          <Link
+                            to={`/admin/orders/${order._id}`}
+                            className="admin-order-icon-btn"
+                            title="View order details"
+                            aria-label="View order details"
+                          >
+                            <Icon name="view" />
+                          </Link>
+                          <button
+                            type="button"
+                            className="admin-order-icon-btn"
+                            disabled={generatingInvoiceOrderId === order._id}
+                            onClick={() => void generateInvoice(order)}
+                            title={generatingInvoiceOrderId === order._id ? "Generating invoice" : "Generate invoice"}
+                            aria-label={generatingInvoiceOrderId === order._id ? "Generating invoice" : "Generate invoice"}
+                          >
+                            <Icon name="invoice" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1113,6 +1728,7 @@ function AdminOrders() {
                   {actionModal.type === "shipped" && "📦"}
                   {actionModal.type === "cancelled" && "❌"}
                   {actionModal.type === "rejectReturn" && "⚠️"}
+                  {actionModal.type === "markReceived" && "📥"}
                   {actionModal.title} {actionModal.orderNumber ? `#${actionModal.orderNumber}` : ""}
                 </h3>
                 <button
@@ -1237,6 +1853,52 @@ function AdminOrders() {
                       />
                     </div>
                   )}
+
+                  {actionModal.type === "markReceived" && (
+                    <>
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-received-condition">Item Condition *</label>
+                        <select
+                          id="modal-received-condition"
+                          value={actionModal.condition || "Good"}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              condition: e.target.value,
+                              error: ""
+                            }))
+                          }
+                        >
+                          <option value="Good">Good (Eligible for restock)</option>
+                          <option value="Damaged">Damaged (Not eligible for restock)</option>
+                          <option value="Incomplete">Incomplete (Not eligible for restock)</option>
+                        </select>
+                      </div>
+                      <div className="admin-action-modal-field">
+                        <label htmlFor="modal-received-note">
+                          Inspection Note {actionModal.condition !== "Good" ? "*" : "(Optional)"}
+                        </label>
+                        <textarea
+                          id="modal-received-note"
+                          rows={3}
+                          placeholder={
+                            actionModal.condition !== "Good"
+                              ? "Describe why the item is damaged or incomplete (min 5 chars)..."
+                              : "e.g. Returned in original condition and packaging"
+                          }
+                          value={actionModal.note || ""}
+                          onChange={(e) =>
+                            setActionModal((prev) => ({
+                              ...prev,
+                              note: e.target.value,
+                              error: ""
+                            }))
+                          }
+                          required={actionModal.condition !== "Good"}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="admin-action-modal-footer">
@@ -1250,18 +1912,36 @@ function AdminOrders() {
                   <button
                     type="submit"
                     className={`admin-action-modal-btn ${
-                      actionModal.type === "shipped" ? "primary" : "danger"
+                      actionModal.type === "shipped" || actionModal.type === "markReceived" ? "primary" : "danger"
                     }`}
                   >
                     {actionModal.type === "shipped" && "Confirm Dispatch"}
                     {actionModal.type === "cancelled" && "Confirm Cancel"}
                     {actionModal.type === "rejectReturn" && "Reject Request"}
+                    {actionModal.type === "markReceived" && "Confirm Received"}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
+
+        <AdminRefundModal
+          order={refundModalState.order}
+          isOpen={refundModalState.isOpen}
+          preselectedItemId={refundModalState.itemId}
+          token={token}
+          onClose={() => setRefundModalState({ isOpen: false, order: null, itemId: null })}
+          onSuccess={async (updatedOrder) => {
+            await loadOrders();
+            const refundId = updatedOrder?.paymentMeta?.razorpayRefundId;
+            setPageMessage(
+              refundId
+                ? `Razorpay refund initiated! (Refund ID: ${refundId})`
+                : "Refund processed successfully."
+            );
+          }}
+        />
       </main>
     </div>
   );

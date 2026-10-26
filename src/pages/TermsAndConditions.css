@@ -1,0 +1,271 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TERMS AND CONDITIONS PAGE STYLES
+   Digital Sanskrit Guru | Vyoma Linguistic Labs Foundation
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.terms-policy-page {
+  min-height: 80vh;
+  padding: 40px 20px 70px;
+  background-color: var(--site-bg, #f8fafc);
+  color: var(--site-text, #0f172a);
+}
+
+.terms-policy-page .policy-container {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+/* ── Header Hero Section ─────────────────────────────────────────────────── */
+.terms-policy-page .policy-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.terms-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background-color: var(--site-surface-muted, #fef3c7);
+  border: 1px solid var(--site-border, #fde68a);
+  color: var(--site-accent, #b45309);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.terms-policy-page .policy-title {
+  font-size: clamp(2rem, 4vw, 2.5rem);
+  font-weight: 800;
+  color: var(--site-text, #0f172a);
+  margin: 0 0 12px;
+  letter-spacing: -0.025em;
+}
+
+.terms-policy-page .policy-subtitle {
+  font-size: 1.05rem;
+  color: var(--site-text-soft, #64748b);
+  max-width: 720px;
+  margin: 0 auto 12px;
+  line-height: 1.65;
+}
+
+.terms-meta-tags {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--site-text-soft, #64748b);
+  margin-top: 8px;
+}
+
+/* ── Official Source Banner ──────────────────────────────────────────────── */
+.terms-source-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background-color: var(--site-surface-muted, #fffbeb);
+  border: 1.5px solid var(--site-border, #fef08a);
+  color: var(--site-text, #854d0e);
+  margin-bottom: 36px;
+  box-shadow: 0 4px 16px rgba(180, 83, 9, 0.06);
+}
+
+.terms-source-banner .alert-icon {
+  font-size: 1.35rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.terms-source-banner .alert-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.terms-source-link {
+  color: var(--site-link, var(--site-button-bg, #2563eb));
+  font-weight: 700;
+  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.terms-source-link:hover {
+  color: var(--site-link-hover, #1d4ed8);
+}
+
+/* ── Main Policy Grid ────────────────────────────────────────────────────── */
+.terms-policy-page .policy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 24px;
+  margin-bottom: 36px;
+}
+
+@media (max-width: 580px) {
+  .terms-policy-page .policy-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.terms-policy-page .policy-card {
+  background: var(--site-surface, #ffffff);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 18px;
+  padding: 28px;
+  box-shadow: var(--site-card-shadow, 0 4px 20px rgba(0, 0, 0, 0.03));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.terms-policy-page .policy-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07);
+}
+
+.terms-policy-page .policy-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.terms-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--site-surface-muted, rgba(217, 119, 6, 0.08));
+  color: var(--site-accent, #d97706);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.terms-policy-page .policy-card-header h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0;
+  color: var(--site-text, #0f172a);
+}
+
+.terms-policy-page .policy-text {
+  font-size: 0.95rem;
+  color: var(--site-text, #334155);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.terms-policy-page .policy-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.terms-policy-page .policy-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.93rem;
+  line-height: 1.55;
+  color: var(--site-text, #334155);
+}
+
+.terms-policy-page .list-icon {
+  color: #10b981;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+/* ── Contact Seva Box ────────────────────────────────────────────────────── */
+.terms-policy-page .policy-contact-box {
+  background: var(--site-surface, #ffffff);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 18px;
+  padding: 32px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+.terms-policy-page .contact-box-header h3 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: var(--site-text, #0f172a);
+}
+
+.terms-policy-page .contact-box-header p {
+  font-size: 0.95rem;
+  color: var(--site-text-soft, #64748b);
+  margin: 0 0 20px;
+}
+
+.terms-policy-page .contact-links-grid {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.terms-policy-page .contact-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--site-surface-muted, #f8fafc);
+  border: 1px solid var(--site-border, #e2e8f0);
+  padding: 10px 18px;
+  border-radius: 12px;
+  color: var(--site-text, #1e293b);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.terms-policy-page .contact-pill:hover {
+  border-color: var(--site-button-bg, #2563eb);
+  background: var(--site-surface, #ffffff);
+  color: var(--site-button-bg, #2563eb);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.terms-policy-page .contact-pill.external {
+  background: var(--site-button-bg, #2563eb);
+  border-color: var(--site-button-bg, #2563eb);
+  color: var(--site-button-text, #ffffff);
+}
+
+.terms-policy-page .contact-pill.external:hover {
+  background: var(--site-button-hover, #1d4ed8);
+  color: var(--site-button-text, #ffffff);
+}
+
+/* ── Policy Footer Nav ───────────────────────────────────────────────────── */
+.terms-policy-page .policy-footer-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--site-border, #e2e8f0);
+}
+
+.terms-policy-page .policy-nav-link {
+  color: var(--site-link, var(--site-button-bg, #2563eb));
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.terms-policy-page .policy-nav-link:hover {
+  color: var(--site-link-hover, #1d4ed8);
+  text-decoration: underline;
+}

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { HashRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
 import { apiBaseUrl } from "./lib/api";
 import Navbar from "./components/layout/Navbar";
@@ -44,12 +44,15 @@ const AdminThemeSettings = lazy(() => import("./pages/AdminThemeSettings"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 const AdminSecurityLogs = lazy(() => import("./pages/AdminSecurityLogs"));
 const AdminTrash = lazy(() => import("./pages/AdminTrash"));
+const AdminUnmatchedPayments = lazy(() => import("./pages/AdminUnmatchedPayments"));
 const WpArchiveDashboard = lazy(() => import("./pages/admin/WpArchiveDashboard"));
 const GuestBuy = lazy(() => import("./pages/GuestBuy"));
 const About = lazy(() => import("./pages/About"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Contact = lazy(() => import("./pages/Contact"));
 const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("./pages/TermsAndConditions"));
 
 function RouteLoadingFallback() {
   return (
@@ -77,7 +80,7 @@ function AnalyticsTracker() {
     if (window.dataLayer) {
       window.dataLayer.push({
         event: "pageview",
-        page_path: location.pathname + location.search + location.hash,
+        page_path: location.pathname + location.search,
         page_title: document.title
       });
     }
@@ -102,7 +105,7 @@ function ScrollToTop() {
     }
 
     // If navigating with a specific section hash (e.g. #manage-address), don't force top scroll
-    if (hash && hash !== "#/") {
+    if (hash) {
       return;
     }
 
@@ -131,25 +134,6 @@ function App() {
   const [lastBannerText, setLastBannerText] = useState("");
 
   useEffect(() => {
-    // Redirect shared product links without HashRouter fragment (e.g. /product/123 -> /#/product/123)
-    const pathname = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-
-    if (pathname.includes("/product/") && !window.location.hash) {
-      const parts = pathname.split("/product/");
-      const productId = parts[1];
-      if (productId) {
-        window.location.replace(`${window.location.origin}${parts[0]}/#/product/${productId}`);
-      }
-    } else if (searchParams.has("product") && !window.location.hash) {
-      const productId = searchParams.get("product");
-      if (productId) {
-        window.location.replace(`${window.location.origin}/#/product/${productId}`);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
     if (festiveBanner.text && festiveBanner.text !== lastBannerText) {
       if (lastBannerText !== "") {
         try {
@@ -174,13 +158,15 @@ function App() {
       if (urlParams.has("v")) {
         urlParams.delete("v");
         const newSearch = urlParams.toString();
+        const hash = window.location.hash;
+        const anchor = hash && !hash.startsWith("#/") ? hash : "";
         const newPath =
           window.location.pathname +
           (newSearch ? `?${newSearch}` : "") +
-          window.location.hash;
+          anchor;
         window.history.replaceState({}, document.title, newPath);
       }
-    } catch (e) {
+    } catch {
       // Fail-silent
     }
   }, []);
@@ -195,7 +181,7 @@ function App() {
     return () => document.documentElement.classList.remove("banner-active");
   }, [isBannerActive]);
 
-  // Register service worker for push notifications
+  // Register service worker for push notifications & sync subscription
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
 
@@ -206,21 +192,22 @@ function App() {
         if (Notification.permission !== "granted") return;
 
         try {
-          const existing = await registration.pushManager.getSubscription();
-          if (existing) return; // Already subscribed
+          let sub = await registration.pushManager.getSubscription();
 
-          const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-          if (!keyRes.ok) return;
-          const { publicKey } = await keyRes.json();
-          if (!publicKey) return;
+          if (!sub) {
+            const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
+            if (!keyRes.ok) return;
+            const { publicKey } = await keyRes.json();
+            if (!publicKey) return;
 
-          const sub = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey)
-          });
+            sub = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(publicKey)
+            });
+          }
 
           const token = sessionStorage.getItem("token") || localStorage.getItem("token");
-          if (token) {
+          if (token && sub) {
             await fetch(`${apiBaseUrl || ""}/api/push/subscribe`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -307,7 +294,7 @@ function App() {
   }, []);
 
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AnalyticsTracker />
       <ScrollToTop />
       {isBannerActive && (
@@ -427,6 +414,14 @@ function App() {
             }
           />
           <Route
+            path="/admin/unmatched-payments"
+            element={
+              <AdminRoute requiredPage="orders">
+                <AdminUnmatchedPayments />
+              </AdminRoute>
+            }
+          />
+          <Route
             path="/admin/products"
             element={
               <AdminRoute requiredPage="products">
@@ -513,6 +508,11 @@ function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/shipping-refund-policy" element={<ShippingPolicy />} />
           <Route path="/refund-policy" element={<ShippingPolicy />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+          <Route path="/terms-conditions" element={<TermsAndConditions />} />
+          <Route path="/terms" element={<TermsAndConditions />} />
           <Route path="/buy/:id" element={<GuestBuy />} />
         </Routes>
       </Suspense>
@@ -521,7 +521,7 @@ function App() {
       <WhatsAppButton />
       <CookieConsent />
       <CartPopup />
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 

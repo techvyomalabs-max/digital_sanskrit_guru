@@ -2,9 +2,18 @@ const express = require("express");
 const StoreSettings = require("../models/StoreSettings");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { DEFAULT_CURRENCY_EXCHANGE_RATES, normalizeCurrencyRates } = require("../utils/currency");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
+const { normalizeCountryName } = require("../utils/deliveryPricing");
+const { validateBusinessDetails, normalizeGstin } = require("../utils/gstin");
+const {
+  normalizeDigitalFormatTypes,
+  canSaveProductSettings,
+  DEFAULT_DIGITAL_FORMAT_TYPES,
+  PRODUCT_SETTINGS_KEYS
+} = require("../utils/digitalFormatTypes");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -150,10 +159,6 @@ function normalizeDistancePricing(input, fallbackDeliveryCharge = 0) {
   };
 }
 
-function normalizeCountryName(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
 function normalizeCurrencyCode(value, fallback = DEFAULT_INTERNATIONAL_CURRENCY) {
   const normalized = String(value || "").trim().toUpperCase();
   if (SUPPORTED_PRICING_CURRENCIES.includes(normalized)) {
@@ -239,9 +244,19 @@ function normalizeHeroBanners(input, legacyImage = "", legacyProductId = "") {
     .map((item) => ({
       image: String(item?.image || "").trim(),
       mobileImage: String(item?.mobileImage || "").trim(),
-      productId: String(item?.productId || "").trim()
+      productId: String(item?.productId || "").trim(),
+      title: String(item?.title || "").trim(),
+      subtitle: String(item?.subtitle || "").trim(),
+      badgeText: String(item?.badgeText || "").trim(),
+      buttonText: String(item?.buttonText || "").trim(),
+      secondaryButtonText: String(item?.secondaryButtonText || "").trim(),
+      secondaryButtonLink: String(item?.secondaryButtonLink || "").trim(),
+      textPosition: String(item?.textPosition || "middle-left").trim(),
+      textAlign: String(item?.textAlign || "left").trim(),
+      textStyle: String(item?.textStyle || "modern").trim(),
+      overlayType: String(item?.overlayType || "feathered").trim()
     }))
-    .filter((item) => item.image);
+    .filter((item) => item.image || item.title);
 
   if (normalized.length > 0) {
     return normalized.slice(0, 10);
@@ -249,7 +264,21 @@ function normalizeHeroBanners(input, legacyImage = "", legacyProductId = "") {
 
   const fallbackImage = String(legacyImage || "").trim();
   const fallbackProductId = String(legacyProductId || "").trim();
-  return fallbackImage ? [{ image: fallbackImage, mobileImage: "", productId: fallbackProductId }] : [];
+  return fallbackImage ? [{
+    image: fallbackImage,
+    mobileImage: "",
+    productId: fallbackProductId,
+    title: "",
+    subtitle: "",
+    badgeText: "",
+    buttonText: "",
+    secondaryButtonText: "",
+    secondaryButtonLink: "",
+    textPosition: "middle-left",
+    textAlign: "left",
+    textStyle: "modern",
+    overlayType: "feathered"
+  }] : [];
 }
 
 function normalizeSponsors(input) {
@@ -265,6 +294,17 @@ function normalizeSponsors(input) {
     .filter((item) => item.name);
 }
 
+function normalizeBusinessDetails(input) {
+  return {
+    legalName: String(input?.legalName || "").trim(),
+    gstin: normalizeGstin(input?.gstin),
+    address: String(input?.address || "").trim(),
+    state: String(input?.state || "").trim(),
+    stateCode: String(input?.stateCode || "").trim(),
+    email: String(input?.email || "").trim()
+  };
+}
+
 function normalizeSettings(settings) {
   const heroBanners = normalizeHeroBanners(
     settings?.heroBanners || [],
@@ -275,7 +315,15 @@ function normalizeSettings(settings) {
   const VALID_ANIM_INTENSITIES = ["subtle", "medium", "heavy"];
   const rawAnimIntensity = String(settings?.festiveAnimation?.intensity || "subtle");
 
+  let digitalFormatTypes;
+  try {
+    digitalFormatTypes = normalizeDigitalFormatTypes(settings?.digitalFormatTypes || [], { autoAddBuiltIns: true });
+  } catch {
+    digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
+  }
+
   return {
+    businessDetails: normalizeBusinessDetails(settings?.businessDetails || {}),
     enableCurrentLocation: settings?.enableCurrentLocation !== false,
     gstPercent: Number(settings?.gstPercent || 0),
     deliveryCharge: Number(settings?.deliveryCharge || 0),
@@ -288,6 +336,7 @@ function normalizeSettings(settings) {
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
+    digitalFormatTypes,
     heroBannerImage: heroBanners[0]?.image || "",
     heroBannerProductId: heroBanners[0]?.productId || "",
     heroBanners,
@@ -361,7 +410,8 @@ function normalizeSettings(settings) {
       metaPhoneNumberId: String(settings?.whatsappSettings?.metaPhoneNumberId || "").trim(),
       metaAccessToken: String(settings?.whatsappSettings?.metaAccessToken || "").trim(),
       metaWabaId: String(settings?.whatsappSettings?.metaWabaId || "").trim(),
-      autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false
+      autoSendOrderConfirmation: settings?.whatsappSettings?.autoSendOrderConfirmation !== false,
+      enableOtpVerification: settings?.whatsappSettings?.enableOtpVerification !== false
     },
     turnstileEnabled: settings?.turnstileEnabled !== false,
     sponsors: normalizeSponsors(settings?.sponsors || []),
@@ -376,13 +426,42 @@ function normalizeSettings(settings) {
   };
 }
 
+function sanitizeSettingsForResponse(normalized, adminLevel) {
+  if (!normalized) return normalized;
+  if (normalized.whatsappSettings) {
+    const wa = normalized.whatsappSettings;
+    const token = String(wa.metaAccessToken || "").trim();
+    const phoneNumberId = String(wa.metaPhoneNumberId || "").trim();
+
+    delete wa.metaAccessToken;
+    wa.metaAccessTokenSet = Boolean(token);
+    wa.metaAccessTokenLast4 = token ? token.slice(-4) : "";
+
+    if (adminLevel !== 1) {
+      delete wa.metaPhoneNumberId;
+      delete wa.metaWabaId;
+      wa.apiConfigured = Boolean(token && phoneNumberId);
+    }
+  }
+  return normalized;
+}
+
 function buildPublicSettingsPayload(settings) {
   const normalized = normalizeSettings(settings);
   return {
+    sellerDetails: {
+      legalName: normalized.businessDetails.legalName,
+      gstin: normalized.businessDetails.gstin,
+      address: normalized.businessDetails.address,
+      state: normalized.businessDetails.state,
+      stateCode: normalized.businessDetails.stateCode
+    },
     enableCurrentLocation: normalized.enableCurrentLocation,
     gstPercent: normalized.gstPercent,
     deliveryCharge: normalized.deliveryCharge,
     warehouseLocation: normalized.warehouseLocation,
+    warehouseName: normalized.warehouseLocation?.name || "",
+    warehouseAddress: normalized.warehouseLocation?.address || "",
     distancePricing: normalized.distancePricing,
     internationalDelivery: normalized.internationalDelivery,
     pricingMarkets: normalized.pricingMarkets,
@@ -397,7 +476,8 @@ function buildPublicSettingsPayload(settings) {
       mode: normalized.whatsappSettings.mode,
       phoneNumber: normalized.whatsappSettings.phoneNumber,
       welcomeMessage: normalized.whatsappSettings.welcomeMessage,
-      autoSendOrderConfirmation: normalized.whatsappSettings.autoSendOrderConfirmation
+      autoSendOrderConfirmation: normalized.whatsappSettings.autoSendOrderConfirmation,
+      enableOtpVerification: normalized.whatsappSettings.mode === "api" && normalized.whatsappSettings.enableOtpVerification !== false
     },
     sponsors:         normalized.sponsors,
     storeIcons:       normalized.storeIcons
@@ -407,6 +487,9 @@ function buildPublicSettingsPayload(settings) {
 function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   const changes = [];
 
+  if (JSON.stringify(previousSettings?.businessDetails || {}) !== JSON.stringify(nextSettings?.businessDetails || {})) {
+    changes.push("Business / GST details");
+  }
   if (Boolean(previousSettings?.enableCurrentLocation) !== Boolean(nextSettings?.enableCurrentLocation)) changes.push("current location visibility");
   if (Number(previousSettings?.gstPercent || 0) !== Number(nextSettings?.gstPercent || 0)) changes.push("GST");
   if (Number(previousSettings?.deliveryCharge || 0) !== Number(nextSettings?.deliveryCharge || 0)) changes.push("delivery charge");
@@ -419,6 +502,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
+  if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
   if (JSON.stringify(previousSettings?.heroBanners || []) !== JSON.stringify(nextSettings?.heroBanners || [])) changes.push("hero banners");
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
@@ -437,11 +521,43 @@ async function getOrCreateSettings() {
   return settings;
 }
 
-// Full settings (no cache for admin panel to prevent config lag)
-router.get("/", async (req, res) => {
+const THEME_KEYS = new Set([
+  "siteTheme",
+  "customThemes",
+  "heroBanners",
+  "heroBannerImage",
+  "heroBannerProductId",
+  "festiveAnimation",
+  "festiveBanner",
+  "storeIcons",
+  "homeSectionVisibility",
+  "collectionFilterVisibility",
+  "sponsors"
+]);
+
+const PRICING_KEYS = new Set([
+  "businessDetails",
+  "gstPercent",
+  "deliveryCharge",
+  "distancePricing",
+  "internationalDelivery",
+  "pricingMarkets",
+  "internationalPricingDefaults",
+  "currencyConversionRates"
+]);
+
+// Full settings (requires admin authentication with settings, theme, or products permission)
+router.get("/", protect, admin, (req, res, next) => {
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  if (req.adminLevel === 1 || pages.includes("settings") || pages.includes("theme") || pages.includes("products") || pages.includes("add-products")) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied. Settings permission required." });
+}, async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   const settings = await getOrCreateSettings();
-  res.json(normalizeSettings(settings));
+  const normalized = normalizeSettings(settings);
+  res.json(sanitizeSettingsForResponse(normalized, req.adminLevel));
 });
 
 // Public: checkout/pricing settings (no browser cache to prevent configuration lag)
@@ -462,7 +578,25 @@ router.get(["/detect-country", "/detect_country"], (req, res) => {
   res.json({ country: String(country).toUpperCase() });
 });
 
-router.put("/", protect, admin, async (req, res) => {
+router.put("/", protect, admin, (req, res, next) => {
+  const bodyKeys = Object.keys(req.body || {});
+  const hasPricingKey = bodyKeys.some(k => PRICING_KEYS.has(k));
+  if (hasPricingKey && req.adminLevel !== 1) {
+    return res.status(403).json({ message: "Only super admins can change tax, delivery, and currency settings." });
+  }
+
+  const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
+  if (req.adminLevel === 1 || pages.includes("settings")) {
+    return next();
+  }
+  if (bodyKeys.length > 0 && bodyKeys.every(k => THEME_KEYS.has(k)) && pages.includes("theme")) {
+    return next();
+  }
+  if (canSaveProductSettings(bodyKeys, pages)) {
+    return next();
+  }
+  return res.status(403).json({ message: "Access denied. Insufficient permissions to update settings." });
+}, async (req, res) => {
   const actor = await getAdminActorSnapshot(req.user);
   const hasEnableCurrentLocation = req.body?.enableCurrentLocation !== undefined;
   const rawGst = Number(req.body?.gstPercent);
@@ -471,6 +605,7 @@ router.put("/", protect, admin, async (req, res) => {
   const hasSiteTheme = Boolean(String(req.body?.siteTheme || "").trim());
   const hasCustomThemes = Array.isArray(req.body?.customThemes);
   const hasProductCategories = Array.isArray(req.body?.productCategories);
+  const hasDigitalFormatTypes = Array.isArray(req.body?.digitalFormatTypes);
   const hasWarehouseLocation = Boolean(req.body?.warehouseLocation && typeof req.body.warehouseLocation === "object");
   const hasDistancePricing = Boolean(req.body?.distancePricing && typeof req.body.distancePricing === "object");
   const hasInternationalDelivery = Boolean(
@@ -504,6 +639,16 @@ router.put("/", protect, admin, async (req, res) => {
 
   const settings = await getOrCreateSettings();
   const previousSettings = normalizeSettings(settings.toObject ? settings.toObject() : settings);
+
+  const hasBusinessDetails = Boolean(req.body?.businessDetails && typeof req.body.businessDetails === "object");
+  if (hasBusinessDetails) {
+    const valResult = validateBusinessDetails(req.body.businessDetails, settings.businessDetails || {});
+    if (!valResult.ok) {
+      return res.status(400).json({ message: valResult.message });
+    }
+    settings.businessDetails = valResult.data;
+  }
+
   const nextDeliveryCharge = Number.isNaN(rawDelivery) ? Number(settings.deliveryCharge || 0) : deliveryCharge;
   const warehouseLocation = hasWarehouseLocation
     ? normalizeWarehouseLocation(req.body?.warehouseLocation)
@@ -529,6 +674,20 @@ router.put("/", protect, admin, async (req, res) => {
   const productCategories = hasProductCategories
     ? normalizeProductCategories(req.body?.productCategories)
     : normalizeProductCategories(settings.productCategories || []);
+  let digitalFormatTypes;
+  if (hasDigitalFormatTypes) {
+    try {
+      digitalFormatTypes = normalizeDigitalFormatTypes(req.body?.digitalFormatTypes);
+    } catch (err) {
+      return res.status(400).json({ message: err.message });
+    }
+  } else {
+    try {
+      digitalFormatTypes = normalizeDigitalFormatTypes(settings.digitalFormatTypes || [], { autoAddBuiltIns: true });
+    } catch {
+      digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
+    }
+  }
   const hasSponsors = Array.isArray(req.body?.sponsors);
   const sponsors = hasSponsors
     ? normalizeSponsors(req.body?.sponsors)
@@ -536,21 +695,86 @@ router.put("/", protect, admin, async (req, res) => {
 
   const hasWhatsappSettings = Boolean(req.body?.whatsappSettings && typeof req.body.whatsappSettings === "object");
   if (hasWhatsappSettings) {
-    settings.whatsappSettings = {
-      mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
-        ? req.body.whatsappSettings.mode
-        : "free",
-      phoneNumber: String(req.body.whatsappSettings.phoneNumber || "919999999999").trim(),
-      welcomeMessage: String(
-        req.body.whatsappSettings.welcomeMessage ||
-        "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."
-      ).trim(),
-      metaPhoneNumberId: String(req.body.whatsappSettings.metaPhoneNumberId || "").trim(),
-      metaAccessToken: String(req.body.whatsappSettings.metaAccessToken || "").trim(),
-      metaWabaId: String(req.body.whatsappSettings.metaWabaId || "").trim(),
-      autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false
-    };
-    settings.markModified("whatsappSettings");
+    const storedWa = settings.whatsappSettings || {};
+    const storedMode = ["disabled", "free", "api"].includes(storedWa.mode) ? storedWa.mode : "free";
+    const storedPhoneNumberId = String(storedWa.metaPhoneNumberId || "").trim();
+    const storedAccessToken = String(storedWa.metaAccessToken || "").trim();
+    const storedWabaId = String(storedWa.metaWabaId || "").trim();
+
+    if (req.adminLevel !== 1) {
+      const incoming = req.body.whatsappSettings;
+      const isModeChanged = incoming.mode !== undefined && incoming.mode !== storedMode;
+      const isPhoneIdChanged = incoming.metaPhoneNumberId !== undefined &&
+        String(incoming.metaPhoneNumberId).trim() !== storedPhoneNumberId;
+      const isWabaIdChanged = incoming.metaWabaId !== undefined &&
+        String(incoming.metaWabaId).trim() !== storedWabaId;
+      const incomingToken = incoming.metaAccessToken !== undefined ? String(incoming.metaAccessToken).trim() : undefined;
+      const isTokenChanged = incoming.clearAccessToken === true || (
+        incomingToken !== undefined &&
+        incomingToken !== "" &&
+        incomingToken !== "••••••••" &&
+        incomingToken !== storedAccessToken
+      );
+
+      if (isModeChanged || isPhoneIdChanged || isWabaIdChanged || isTokenChanged) {
+        return res.status(403).json({ message: "Only super admins can change WhatsApp API settings." });
+      }
+
+      settings.whatsappSettings = {
+        mode: storedMode,
+        phoneNumber: String(incoming.phoneNumber || storedWa.phoneNumber || "919999999999").trim(),
+        welcomeMessage: String(
+          incoming.welcomeMessage !== undefined
+            ? incoming.welcomeMessage
+            : (storedWa.welcomeMessage || "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.")
+        ).trim(),
+        metaPhoneNumberId: storedPhoneNumberId,
+        metaAccessToken: storedAccessToken,
+        metaWabaId: storedWabaId,
+        autoSendOrderConfirmation: incoming.autoSendOrderConfirmation !== undefined
+          ? incoming.autoSendOrderConfirmation !== false
+          : storedWa.autoSendOrderConfirmation !== false,
+        enableOtpVerification: incoming.enableOtpVerification !== undefined
+          ? incoming.enableOtpVerification !== false
+          : storedWa.enableOtpVerification !== false
+      };
+      settings.markModified("whatsappSettings");
+    } else {
+      let finalToken = storedAccessToken;
+      if (req.body.whatsappSettings.clearAccessToken === true) {
+        finalToken = "";
+      } else if (
+        req.body.whatsappSettings.metaAccessToken !== undefined &&
+        req.body.whatsappSettings.metaAccessToken !== null
+      ) {
+        const incomingToken = String(req.body.whatsappSettings.metaAccessToken).trim();
+        if (incomingToken && incomingToken !== "••••••••") {
+          finalToken = incomingToken;
+        }
+      }
+
+      settings.whatsappSettings = {
+        mode: ["disabled", "free", "api"].includes(req.body.whatsappSettings.mode)
+          ? req.body.whatsappSettings.mode
+          : storedMode,
+        phoneNumber: String(req.body.whatsappSettings.phoneNumber || storedWa.phoneNumber || "919999999999").trim(),
+        welcomeMessage: String(
+          req.body.whatsappSettings.welcomeMessage !== undefined
+            ? req.body.whatsappSettings.welcomeMessage
+            : (storedWa.welcomeMessage || "Hello! I am interested in learning more about your products on Digital Sanskrit Guru.")
+        ).trim(),
+        metaPhoneNumberId: req.body.whatsappSettings.metaPhoneNumberId !== undefined
+          ? String(req.body.whatsappSettings.metaPhoneNumberId).trim()
+          : storedPhoneNumberId,
+        metaAccessToken: finalToken,
+        metaWabaId: req.body.whatsappSettings.metaWabaId !== undefined
+          ? String(req.body.whatsappSettings.metaWabaId).trim()
+          : storedWabaId,
+        autoSendOrderConfirmation: req.body.whatsappSettings.autoSendOrderConfirmation !== false,
+        enableOtpVerification: req.body.whatsappSettings.enableOtpVerification !== false
+      };
+      settings.markModified("whatsappSettings");
+    }
   }
 
   const hasStoreIcons = Boolean(req.body?.storeIcons && typeof req.body.storeIcons === "object");
@@ -584,6 +808,7 @@ router.put("/", protect, admin, async (req, res) => {
   settings.currencyConversionRates = currencyConversionRates;
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
+  settings.digitalFormatTypes = digitalFormatTypes;
   settings.sponsors = sponsors;
   const nextHeroBanners = hasHeroBanners
     ? normalizeHeroBanners(req.body?.heroBanners || [])
@@ -701,9 +926,11 @@ router.put("/", protect, admin, async (req, res) => {
     }
   });
 
-  res.json(normalizedSettings);
+  res.json(sanitizeSettingsForResponse(normalizedSettings, req.adminLevel));
   // Settings change may affect pricing/home data — flush all relevant caches
   invalidateProductCache();
 });
+
+router.normalizeSettings = normalizeSettings;
 
 module.exports = router;

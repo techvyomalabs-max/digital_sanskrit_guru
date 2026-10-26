@@ -5,12 +5,16 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Typography ────────────────────────────────────────────────────────── */
-  --font-primary: "Source Sans 3", "Tiro Devanagari Sanskrit", system-ui, -apple-system, sans-serif;
+  /* ── Typography — Source Sans 3 + Classical Sanskrit Hierarchy ───────── */
+  --font-primary: "Source Sans 3", "Tiro Devanagari Sanskrit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sanskrit: "Tiro Devanagari Sanskrit", serif;
+  --font-display: "Cinzel", "Playfair Display", Georgia, serif;
+  --font-heading: "Source Sans 3", "Cinzel", "Tiro Devanagari Sanskrit", sans-serif;
   font-family: var(--font-primary);
-  line-height: 1.5;
+  line-height: 1.54;
   font-weight: 400;
+  letter-spacing: -0.008em;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "kern";
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -27,44 +31,88 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  /* ── Radius scale ─────────────────────────────────────────────────────── */
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-full: 999px;
+  /* ── Radius scale — Modern Minimalist Curvature ──────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* ── Glassmorphic Depth & Filter System ────────────────────────────────── */
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-blur-sm: blur(10px) saturate(160%);
+  --glass-blur-lg: blur(24px) saturate(190%);
+  --site-glass-surface: rgba(255, 255, 255, 0.82);
+  --site-glass-surface-subtle: rgba(255, 255, 255, 0.65);
+  --site-glass-border: rgba(255, 255, 255, 0.75);
+  --site-glass-border-subtle: rgba(0, 0, 0, 0.07);
+  --site-glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04), inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+  --site-glass-shadow-hover: 0 16px 40px -4px rgba(0, 0, 0, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 1);
 
   /* ── Shadow depth system ──────────────────────────────────────────────── */
-  --premium-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --premium-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
-  --premium-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04);
-  --premium-shadow-xl: 0 20px 48px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(15, 23, 42, 0.06);
-  --site-card-shadow: var(--premium-shadow-md);
+  --premium-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --premium-shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  --premium-shadow-lg: 0 16px 36px -6px rgba(0, 0, 0, 0.07), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
+  --premium-shadow-xl: 0 24px 48px -8px rgba(0, 0, 0, 0.1), 0 8px 20px -4px rgba(0, 0, 0, 0.04);
+  --site-card-shadow: var(--site-glass-shadow);
 
-  /* ── Default Baseline Color Palette ─────────────────────────────────────── */
-  --site-bg: #FAFAF8;
-  --site-surface: #ffffff;
-  --site-surface-muted: #F5F3EF;
-  --site-text: #0F172A;
-  --site-text-soft: #64748B;
-  --site-border: #E2E8F0;
-  --site-link: #0284c7;
-  --site-link-hover: #0369a1;
-  --site-header-bg: #0f172a;
-  --site-header-border: #1e293b;
-  --site-header-text: #ffffff;
-  --site-search-border: #0284c7;
-  --site-search-focus: #0369a1;
-  --site-badge-bg: #0284c7;
-  --site-badge-text: #F0F9FF;
-  --site-button-bg: #0284c7;
-  --site-button-hover: #0369a1;
-  --site-button-text: #F0F9FF;
-  --site-footer-bg: #0f172a;
-  --site-footer-border: #1e293b;
-  --site-footer-text: #CBD5E1;
-  --site-hero-start: #0f172a;
-  --site-hero-end: #0284c7;
+  /* ── Baseline Minimalist Glass Palette ────────────────────────────────── */
+  --site-bg: #fafaf9;
+  --site-surface: rgba(255, 255, 255, 0.85);
+  --site-surface-muted: rgba(244, 244, 245, 0.75);
+  --site-text: #18181b;
+  --site-text-soft: #71717a;
+  --site-border: rgba(228, 228, 231, 0.8);
+  --site-link: #2563eb;
+  --site-link-hover: #1d4ed8;
+  --site-header-bg: #18181b;
+  --site-header-bg-glass: rgba(24, 24, 27, 0.88);
+  --site-header-border: rgba(255, 255, 255, 0.1);
+  --site-header-text: #fafafa;
+  --site-search-border: rgba(228, 228, 231, 0.9);
+  --site-search-focus: #18181b;
+  --site-badge-bg: #18181b;
+  --site-badge-text: #fafafa;
+  --site-button-bg: #18181b;
+  --site-button-hover: #27272a;
+  --site-button-text: #fafafa;
+  --site-footer-bg: #18181b;
+  --site-footer-border: #27272a;
+  --site-footer-text: #d4d4d8;
+  --site-hero-start: #18181b;
+  --site-hero-end: #27272a;
+}
+
+/* ── Theme: Minimalism (Glassmorphic Minimal) ──────────────────────────── */
+:root[data-site-theme="minimalism"],
+:root[data-site-theme="minimal"],
+:root[data-site-theme="clean"] {
+  --site-bg: #fafaf9;
+  --site-surface: rgba(255, 255, 255, 0.85);
+  --site-surface-muted: rgba(244, 244, 245, 0.75);
+  --site-text: #18181b;
+  --site-text-soft: #71717a;
+  --site-border: rgba(228, 228, 231, 0.8);
+  --site-link: #2563eb;
+  --site-link-hover: #1d4ed8;
+  --site-header-bg: #18181b;
+  --site-header-bg-glass: rgba(24, 24, 27, 0.88);
+  --site-header-border: rgba(255, 255, 255, 0.1);
+  --site-header-text: #fafafa;
+  --site-search-border: rgba(228, 228, 231, 0.9);
+  --site-search-focus: #18181b;
+  --site-badge-bg: #18181b;
+  --site-badge-text: #fafafa;
+  --site-button-bg: #18181b;
+  --site-button-hover: #27272a;
+  --site-button-text: #fafafa;
+  --site-footer-bg: #18181b;
+  --site-footer-border: #27272a;
+  --site-footer-text: #d4d4d8;
+  --site-hero-start: #18181b;
+  --site-hero-end: #27272a;
+  --site-card-shadow: var(--site-glass-shadow);
 }
 
 /* ── Theme: Sunrise ─────────────────────────────────────────────────────── */
@@ -213,10 +261,12 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
   background: var(--site-bg);
+  scroll-behavior: smooth;
 }
 
 body {
@@ -224,17 +274,52 @@ body {
   min-width: 320px;
   min-height: 100vh;
   font-family: var(--font-primary);
-  background: var(--site-bg);
+  background-color: var(--site-bg);
+  background-image: 
+    radial-gradient(at 12% 12%, rgba(37, 99, 235, 0.035) 0px, transparent 45%),
+    radial-gradient(at 88% 22%, rgba(217, 119, 6, 0.035) 0px, transparent 45%),
+    radial-gradient(at 50% 80%, rgba(99, 102, 241, 0.03) 0px, transparent 55%);
+  background-attachment: fixed;
   color: var(--site-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
 }
 
 a {
   color: var(--site-link);
-  text-decoration: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
 a:hover {
   color: var(--site-link-hover);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-primary);
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  color: var(--site-text);
+  line-height: 1.25;
 }
 
 button,
@@ -245,7 +330,22 @@ select {
 }
 
 button {
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input, textarea, select {
+  font-family: var(--font-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--site-border);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--site-text);
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
 }
 
 #root {

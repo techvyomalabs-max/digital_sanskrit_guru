@@ -4,20 +4,39 @@ const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const crypto = require("crypto");
 const axios = require("axios");
+const { perWorker } = require("../utils/workerCount");
 const User = require("../models/User");
+const PhoneOtp = require("../models/PhoneOtp");
+const StoreSettings = require("../models/StoreSettings");
 const AdminAuditLog = require("../models/AdminAuditLog");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
+const { requireAdminPage, requireSuperAdmin } = require("../middleware/adminMiddleware");
 const { logAdminAction } = require("../utils/adminAudit");
 const { sendEmail } = require("../utils/email");
+const { sendPasswordResetEmail } = require("../utils/passwordReset");
+const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 
 const router = express.Router();
 
+const isWhatsAppOtpRequired = async () => {
+  const ws = (await StoreSettings.findOne().select("whatsappSettings").lean())?.whatsappSettings;
+  return !!ws && ws.mode === "api" && ws.enableOtpVerification !== false;
+};
+
+const consumePhoneVerification = (phone, token) =>
+  typeof token === "string" && token
+    ? PhoneOtp.findOneAndDelete({ phone, verificationToken: token, verified: true, expiresAt: { $gt: new Date() } })
+    : Promise.resolve(null);
+
+const isPhoneTakenByAnotherUser = async (phone, excludeId = null) =>
+  Boolean(await User.exists({ phone, isDeleted: { $ne: true }, ...(excludeId ? { _id: { $ne: excludeId } } : {}) }));
+
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                   // max 20 login attempts per window per IP
+  max: perWorker(20),        // max 20 login attempts per window per IP
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many attempts. Please try again in 15 minutes." }
@@ -25,7 +44,7 @@ const authLimiter = rateLimit({
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,                   // max 10 registrations per IP per hour
+  max: perWorker(10),        // max 10 registrations per IP per hour
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many accounts created. Please try again later." }
@@ -33,10 +52,18 @@ const registerLimiter = rateLimit({
 
 const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,                   // max 5 password reset attempts per IP per hour
+  max: perWorker(5),         // max 5 password reset attempts per IP per hour
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many password reset attempts. Please try again in an hour." }
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: perWorker(6),    // max 6 OTP requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many OTP attempts. Please wait a minute before trying again." }
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,6 +71,84 @@ const getTokenExpiry = (rememberMe) => (rememberMe ? "30d" : "12h");
 
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || "").trim().toLowerCase());
+
+const validatePhoneNumber = (rawPhone, country = "India") => {
+  const trimmed = String(rawPhone || "").trim();
+  if (!trimmed) {
+    return { isValid: false, message: "Phone number is required.", cleanPhone: "" };
+  }
+
+  const cleaned = trimmed.replace(/[\s\-()]/g, "");
+  const digitsOnly = cleaned.replace(/\D/g, "");
+
+  if (cleaned.startsWith("+")) {
+    if (cleaned.startsWith("+91")) {
+      const indianDigits = cleaned.slice(3).replace(/\D/g, "");
+      if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+        return {
+          isValid: false,
+          message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+          cleanPhone: indianDigits
+        };
+      }
+      return { isValid: true, message: "", cleanPhone: indianDigits };
+    }
+
+    if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid international phone number with country code (e.g. +1 2025550143).",
+        cleanPhone: cleaned
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: cleaned };
+  }
+
+  if (digitsOnly.length === 10) {
+    if (!/^[6-9]\d{9}$/.test(digitsOnly)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).",
+        cleanPhone: digitsOnly
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: digitsOnly };
+  }
+
+  if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
+    const indianDigits = digitsOnly.slice(2);
+    if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+        cleanPhone: indianDigits
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: indianDigits };
+  }
+
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
+    const indianDigits = digitsOnly.slice(1);
+    if (!/^[6-9]\d{9}$/.test(indianDigits)) {
+      return {
+        isValid: false,
+        message: "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
+        cleanPhone: indianDigits
+      };
+    }
+    return { isValid: true, message: "", cleanPhone: indianDigits };
+  }
+
+  if (country && country.toLowerCase() !== "india" && digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+    return { isValid: true, message: "", cleanPhone: digitsOnly };
+  }
+
+  return {
+    isValid: false,
+    message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9 (e.g. 9876543210).",
+    cleanPhone: digitsOnly
+  };
+};
 
 const validatePassword = (value) => {
   const password = typeof value === "string" ? value : "";
@@ -116,7 +221,136 @@ const normalizeAddressList = (rawAddresses = []) => {
   });
 };
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── WhatsApp OTP Endpoints ───────────────────────────────────────────────────
+
+router.post("/send-whatsapp-otp", otpLimiter, async (req, res) => {
+  try {
+    const otpRequired = await isWhatsAppOtpRequired();
+    if (!otpRequired) {
+      return res.status(400).json({
+        message: "WhatsApp OTP verification is currently disabled in store settings."
+      });
+    }
+
+    const rawPhone = String(req.body?.phone || "").trim();
+    if (!rawPhone) {
+      return res.status(400).json({ message: "Phone number is required." });
+    }
+
+    const phoneValidation = validatePhoneNumber(rawPhone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ message: phoneValidation.message });
+    }
+
+    const cleanPhone = phoneValidation.cleanPhone;
+
+    // Check if OTP was requested within last 30s
+    const existingOtp = await PhoneOtp.findOne({
+      phone: cleanPhone,
+      expiresAt: { $gt: new Date() },
+      verified: false
+    }).sort({ createdAt: -1 });
+
+    if (existingOtp && Date.now() - new Date(existingOtp.createdAt).getTime() < 30 * 1000) {
+      return res.status(429).json({
+        message: "Please wait 30 seconds before requesting a new OTP."
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    // Invalidate previous unverified OTPs for this phone
+    await PhoneOtp.deleteMany({ phone: cleanPhone, verified: false });
+
+    // Save new OTP record
+    await PhoneOtp.create({
+      phone: cleanPhone,
+      otpHash,
+      expiresAt
+    });
+
+    // Dispatch via WhatsApp
+    const dispatchResult = await sendWhatsAppOtp(cleanPhone, otp);
+
+    return res.json({
+      success: true,
+      message: `OTP sent to your WhatsApp (+${cleanPhone.replace(/^\+/, "")}) successfully.`,
+      phone: cleanPhone,
+      devMode: Boolean(dispatchResult?.devMode),
+      note: dispatchResult?.note || ""
+    });
+  } catch (error) {
+    console.error("[Auth] Send WhatsApp OTP error:", error);
+    return res.status(500).json({ message: "Failed to send WhatsApp OTP. Please try again." });
+  }
+});
+
+router.post("/verify-whatsapp-otp", otpLimiter, async (req, res) => {
+  try {
+    const rawPhone = String(req.body?.phone || "").trim();
+    const otp = String(req.body?.otp || "").trim();
+
+    if (!rawPhone || !otp) {
+      return res.status(400).json({ message: "Phone number and OTP code are required." });
+    }
+
+    const phoneValidation = validatePhoneNumber(rawPhone);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ message: phoneValidation.message });
+    }
+
+    const cleanPhone = phoneValidation.cleanPhone;
+
+    const record = await PhoneOtp.findOne({
+      phone: cleanPhone,
+      verified: false,
+      expiresAt: { $gt: new Date() }
+    }).sort({ createdAt: -1 });
+
+    if (!record) {
+      return res.status(400).json({
+        message: "OTP expired or not found. Please request a new verification code."
+      });
+    }
+
+    if (record.attempts >= 5) {
+      await PhoneOtp.deleteOne({ _id: record._id });
+      return res.status(400).json({
+        message: "Too many incorrect attempts. Please request a new OTP code."
+      });
+    }
+
+    const isMatch = await bcrypt.compare(otp, record.otpHash);
+    if (!isMatch) {
+      record.attempts = (record.attempts || 0) + 1;
+      await record.save();
+      const remaining = Math.max(0, 5 - record.attempts);
+      return res.status(400).json({
+        message: `Incorrect OTP. ${remaining} ${remaining === 1 ? "attempt" : "attempts"} remaining.`
+      });
+    }
+
+    // Generate phone verification token
+    const verificationToken = crypto.randomBytes(24).toString("hex");
+    record.verified = true;
+    record.verificationToken = verificationToken;
+    record.expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+    await record.save();
+
+    return res.json({
+      success: true,
+      message: "Phone number verified successfully!",
+      phone: cleanPhone,
+      phoneVerificationToken: verificationToken
+    });
+  } catch (error) {
+    console.error("[Auth] Verify WhatsApp OTP error:", error);
+    return res.status(500).json({ message: "Failed to verify OTP. Please try again." });
+  }
+});
 
 router.get("/register", (_req, res) => {
   res.status(405).json({ message: "Use POST /api/auth/register with name, email, and password." });
@@ -139,8 +373,28 @@ router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddlewar
     if (!isValidEmail(email)) {
       return res.status(400).json({ message: "Please enter a valid email address." });
     }
-    if (phone && !/^[+\d\s\-()]{5,20}$/.test(phone)) {
-      return res.status(400).json({ message: "Please enter a valid phone number." });
+    let cleanPhone = "";
+    if (phone) {
+      const phoneValidation = validatePhoneNumber(phone);
+      if (!phoneValidation.isValid) {
+        return res.status(400).json({ message: phoneValidation.message });
+      }
+      cleanPhone = phoneValidation.cleanPhone;
+
+      if (await isPhoneTakenByAnotherUser(cleanPhone)) {
+        return res.status(400).json({ message: "This phone number is already linked to another account." });
+      }
+
+      const otpRequired = await isWhatsAppOtpRequired();
+      if (otpRequired) {
+        if (!req.body?.phoneVerificationToken) {
+          return res.status(400).json({ message: "Please verify your phone number via WhatsApp OTP before registering." });
+        }
+        const consumed = await consumePhoneVerification(cleanPhone, req.body.phoneVerificationToken);
+        if (!consumed) {
+          return res.status(400).json({ message: "WhatsApp verification token expired or invalid. Please verify phone number again." });
+        }
+      }
     }
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
@@ -153,10 +407,10 @@ router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddlewar
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, password: hashedPassword, phone });
+    const user = await User.create({ name, email, password: hashedPassword, phone: cleanPhone || phone });
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
       process.env.JWT_SECRET,
       { expiresIn: getTokenExpiry(rememberMe === true) }
     );
@@ -202,9 +456,13 @@ router.post("/login", authLimiter, honeypotMiddleware, turnstileMiddleware, asyn
       return res.status(401).json({ message: "This account has been deleted or deactivated." });
     }
 
+    if (user && user.isBlocked) {
+      return res.status(401).json({ message: "This account is blocked. Please contact support." });
+    }
+
     if (user && await bcrypt.compare(password, user.password)) {
       const token = jwt.sign(
-        { id: user._id },
+        { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
         process.env.JWT_SECRET,
         { expiresIn: getTokenExpiry(rememberMe === true) }
       );
@@ -217,6 +475,7 @@ router.post("/login", authLimiter, honeypotMiddleware, turnstileMiddleware, asyn
         _id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || "",
         isAdmin: user.isAdmin,
         adminLevel,
         adminRole: user.adminRole || (adminLevel === 1 ? "Super Admin" : "Page Level Sub-Admin"),
@@ -242,6 +501,7 @@ const ALL_ADMIN_PAGES = [
   "coupons",
   "marketing",
   "theme",
+  "settings",
   "security-logs"
 ];
 
@@ -340,6 +600,10 @@ router.put("/update-admin-role", protect, admin, admin.requireSuperAdmin, async 
     const actor = await User.findById(req.user).select("name email").lean();
 
     if (actionType === "revokeAdmin") {
+      if (String(targetUser._id) === String(req.user)) {
+        return res.status(400).json({ message: "You cannot revoke your own Super Admin access." });
+      }
+
       targetUser.isAdmin = false;
       await targetUser.save();
 
@@ -409,7 +673,7 @@ router.post("/activity", protect, async (req, res) => {
   }
 });
 
-router.get("/admin/audit-logs", protect, admin, async (req, res) => {
+router.get("/admin/audit-logs", protect, admin, requireAdminPage("users"), async (req, res) => {
   try {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
@@ -447,7 +711,7 @@ router.get("/admin/audit-logs", protect, admin, async (req, res) => {
   }
 });
 
-router.get("/admin/security-logs", protect, admin, async (req, res) => {
+router.get("/admin/security-logs", protect, admin, requireSuperAdmin, async (req, res) => {
   try {
     const fs = require("fs");
     const path = require("path");
@@ -493,7 +757,7 @@ router.get("/admin/security-logs", protect, admin, async (req, res) => {
   }
 });
 
-router.get("/admin/users-metrics", protect, admin, async (req, res) => {
+router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limitQuery = req.query.limit;
@@ -519,27 +783,38 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
     const totalTimeSpentSec = timeAgg.length > 0 ? (timeAgg[0].totalSec || 0) : 0;
 
     // 2. Build filter query for user listing
+    const escapeRegex = (str) => String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const query = { isDeleted: { $ne: true } };
+    const conditions = [];
 
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } }
-      ];
+      const safeSearch = escapeRegex(search);
+      conditions.push({
+        $or: [
+          { name: { $regex: safeSearch, $options: "i" } },
+          { email: { $regex: safeSearch, $options: "i" } }
+        ]
+      });
     }
 
     if (statusFilter === "Online") {
       query.lastActiveAt = { $gte: activeThresholdDate };
     } else if (statusFilter === "Offline") {
-      query.$or = [
-        { lastActiveAt: { $lt: activeThresholdDate } },
-        { lastActiveAt: { $exists: false } },
-        { lastActiveAt: null }
-      ];
+      conditions.push({
+        $or: [
+          { lastActiveAt: { $lt: activeThresholdDate } },
+          { lastActiveAt: { $exists: false } },
+          { lastActiveAt: null }
+        ]
+      });
     } else if (statusFilter === "Admin") {
       query.isAdmin = true;
     } else if (statusFilter === "Customer") {
       query.isAdmin = { $ne: true };
+    }
+
+    if (conditions.length > 0) {
+      query.$and = conditions;
     }
 
     const skip = (page - 1) * limit;
@@ -617,13 +892,14 @@ router.get("/admin/users-metrics", protect, admin, async (req, res) => {
 
 router.get("/me", protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user).select("_id name email isAdmin adminLevel adminRole allowedPages addresses");
+    const user = await User.findById(req.user).select("_id name email phone isAdmin adminLevel adminRole allowedPages addresses");
     if (!user) return res.status(404).json({ message: "User not found" });
     const adminLevel = Number(user.adminLevel || 1);
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       adminLevel,
       adminRole: user.adminRole || (adminLevel === 1 ? "Super Admin" : "Page Level Sub-Admin"),
@@ -670,41 +946,11 @@ router.post("/forgot-password", passwordResetLimiter, honeypotMiddleware, turnst
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      // Standard security: do not leak existence of user, just say it's sent
-      return res.json({ message: "If that email is registered, a password reset link has been sent." });
+    if (user) {
+      await sendPasswordResetEmail(user);
     }
 
-    const token = crypto.randomBytes(20).toString("hex");
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-    await user.save();
-
-    // Construct reset link using HashRouter structure
-    const resetUrl = `${req.protocol}://${req.get("host")}/#/reset-password?token=${token}`;
-
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
-        <h2 style="color: #1a1a2e;">Password Reset Request</h2>
-        <p>Hello ${user.name || "User"},</p>
-        <p>You requested a password reset for your account. Please click the button below to set a new password:</p>
-        <p style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" style="background-color: #e94560; color: white; padding: 12px 24px; text-decoration: none; border-radius: 10px; display: inline-block; font-weight: bold;">Reset Password</a>
-        </p>
-        <p>Or copy and paste this URL into your browser:</p>
-        <p style="word-break: break-all; color: #666;"><a href="${resetUrl}">${resetUrl}</a></p>
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-        <p style="font-size: 0.85em; color: #999;">This link will expire in 1 hour. If you did not request this, you can safely ignore this email.</p>
-      </div>
-    `;
-
-    await sendEmail({
-      to: user.email,
-      subject: "Password Reset Link",
-      html: htmlContent,
-      type: "password-reset"
-    });
-
+    // Always return success to prevent account enumeration
     res.json({ message: "If that email is registered, a password reset link has been sent." });
   } catch (err) {
     console.error("[Auth] Forgot password error:", err.message);
@@ -714,17 +960,20 @@ router.post("/forgot-password", passwordResetLimiter, honeypotMiddleware, turnst
 
 router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnstileMiddleware, async (req, res) => {
   try {
-    const { token, password } = req.body;
-    if (!token) {
-      return res.status(400).json({ message: "Password reset token is required." });
+    const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
+      return res.status(400).json({ message: "Password reset token is invalid or has expired." });
     }
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
       return res.status(400).json({ message: passwordValidation.message });
     }
 
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
     const user = await User.findOne({
-      resetPasswordToken: token,
+      resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() }
     });
 
@@ -736,6 +985,7 @@ router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnsti
     user.password = hashedPassword;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
+    user.tokenVersion = Number(user.tokenVersion || 0) + 1; // Invalidate previous active sessions
     await user.save();
 
     res.json({ message: "Your password has been successfully updated. You can now log in." });
@@ -755,6 +1005,7 @@ router.put("/profile", protect, async (req, res) => {
 
     const name = String(req.body.name || "").trim();
     const email = String(req.body.email || "").trim().toLowerCase();
+    const phone = req.body.phone !== undefined ? String(req.body.phone || "").trim() : undefined;
     const password = req.body.password;
 
     if (name) {
@@ -764,29 +1015,62 @@ router.put("/profile", protect, async (req, res) => {
       user.name = name;
     }
 
-    if (email) {
-      if (!isValidEmail(email)) {
-        return res.status(400).json({ message: "Please provide a valid email address." });
+    if (phone !== undefined) {
+      if (phone) {
+        const phoneValidation = validatePhoneNumber(phone);
+        if (!phoneValidation.isValid) {
+          return res.status(400).json({ message: phoneValidation.message });
+        }
+        const cleanPhone = phoneValidation.cleanPhone;
+        const otpRequired = await isWhatsAppOtpRequired();
+        if (otpRequired && cleanPhone !== user.phone) {
+          if (!req.body?.phoneVerificationToken) {
+            return res.status(400).json({ message: "Please verify your new phone number via WhatsApp OTP." });
+          }
+          const otpRecord = await PhoneOtp.findOne({
+            phone: cleanPhone,
+            verificationToken: req.body.phoneVerificationToken,
+            verified: true,
+            expiresAt: { $gt: new Date() }
+          });
+          if (!otpRecord) {
+            return res.status(400).json({ message: "WhatsApp verification token expired or invalid. Please verify phone number again." });
+          }
+        }
+        user.phone = cleanPhone;
+      } else {
+        user.phone = "";
       }
-      const existingUser = await User.findOne({ email });
-      if (existingUser && String(existingUser._id) !== String(user._id)) {
-        return res.status(400).json({ message: "This email address is already in use by another account." });
-      }
-      user.email = email;
+    }
+
+    if (email && email !== String(user.email).toLowerCase()) {
+      return res.status(400).json({ message: "Email address cannot be changed." });
     }
 
     if (password) {
+      if (user.hasLocalPassword !== false) {
+        const currentPassword = req.body.currentPassword;
+        if (!currentPassword) {
+          return res.status(400).json({ message: "Current password is required to set a new password." });
+        }
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+          return res.status(400).json({ message: "Current password is incorrect." });
+        }
+      }
       const passwordValidation = validatePassword(password);
       if (!passwordValidation.isValid) {
         return res.status(400).json({ message: passwordValidation.message });
       }
       user.password = await bcrypt.hash(password, 12);
+      user.hasLocalPassword = true;
+      user.tokenVersion = Number(user.tokenVersion || 0) + 1;
     }
 
     await user.save();
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
       process.env.JWT_SECRET,
       { expiresIn: "12h" }
     );
@@ -796,6 +1080,7 @@ router.put("/profile", protect, async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       token,
       message: "Profile details updated successfully."
@@ -816,22 +1101,46 @@ router.post("/google", async (req, res) => {
 
     let email = "";
     let name = "";
+    let googleSub = "";
 
-    // Check for dev/testing simulation token
-    if (idToken.startsWith("mock-google-token-")) {
+    // Check for dev/testing simulation token (only in non-production)
+    if (process.env.NODE_ENV !== "production" && idToken.startsWith("mock-google-token-")) {
       email = "mock.google.user@example.com";
       name = "Demo Google User";
+      googleSub = "mock-google-sub";
     } else {
+      const expectedClientId = String(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "").trim();
+      if (process.env.NODE_ENV === "production" && !expectedClientId) {
+        return res.status(503).json({ message: "Google sign-in is not configured." });
+      }
+
       const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-      const googleRes = await axios.get(tokenInfoUrl);
+      const googleRes = await axios.get(tokenInfoUrl, { timeout: 5000 });
       
       const payload = googleRes.data;
       if (!payload || !payload.email) {
         return res.status(400).json({ message: "Invalid Google token payload." });
       }
 
+      if (expectedClientId && payload.aud !== expectedClientId) {
+        return res.status(401).json({ message: "Google token audience mismatch." });
+      }
+
+      if (payload.iss && !["accounts.google.com", "https://accounts.google.com"].includes(payload.iss)) {
+        return res.status(401).json({ message: "Google token issuer mismatch." });
+      }
+
+      if (payload.exp && Number(payload.exp) * 1000 <= Date.now()) {
+        return res.status(401).json({ message: "Google token expired." });
+      }
+
+      if (payload.email_verified === false || payload.email_verified === "false") {
+        return res.status(401).json({ message: "Google account email is not verified." });
+      }
+
       email = String(payload.email).trim().toLowerCase();
       name = String(payload.name || payload.given_name || "Google User").trim();
+      googleSub = String(payload.sub || "").trim();
     }
 
     if (!isValidEmail(email)) {
@@ -839,18 +1148,34 @@ router.post("/google", async (req, res) => {
     }
 
     let user = await User.findOne({ email });
-    if (!user) {
+    if (user) {
+      if (user.isDeleted || user.isBlocked) {
+        return res.status(403).json({ message: "This account is deactivated or blocked." });
+      }
+      if (user.googleSub && googleSub && user.googleSub !== googleSub) {
+        return res.status(401).json({ message: "Google account does not match this user." });
+      }
+      if (!user.googleSub && googleSub) {
+        if (user.isAdmin) {
+          return res.status(403).json({ message: "Admin accounts must sign in with email and password." });
+        }
+        user.googleSub = googleSub;
+        await user.save();
+      }
+    } else {
       const randomPassword = crypto.randomBytes(32).toString("hex");
       const hashedPassword = await bcrypt.hash(randomPassword, 12);
       user = await User.create({
         name,
         email,
-        password: hashedPassword
+        password: hashedPassword,
+        googleSub: googleSub || undefined,
+        hasLocalPassword: false
       });
     }
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
       process.env.JWT_SECRET,
       { expiresIn: getTokenExpiry(rememberMe === true) }
     );
@@ -859,6 +1184,7 @@ router.post("/google", async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
       token
     });

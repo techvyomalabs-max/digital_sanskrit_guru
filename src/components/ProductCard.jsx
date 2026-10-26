@@ -2,12 +2,31 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Share2, Heart } from "lucide-react";
 import { useWishlist } from "../hooks/useWishlist";
+import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
+import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
+
+function getProductFormat(product) {
+  const productType = String(product?.productType || "").toLowerCase();
+  if (productType === "bundle") {
+    return "Combo";
+  }
+  const isDigital = Boolean(product?.isDigital);
+  if (isDigital) {
+    const digitalType = String(product?.digitalType || "").toLowerCase();
+    if (digitalType.includes("kindle")) {
+      return "Kindle";
+    }
+    return "Digital";
+  }
+  return "Physical";
+}
 
 function ProductCard({ product, showDescription = true, variant = "default" }) {
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
+  const { selectedAddress } = useDeliveryLocation();
 
   const reviews = Array.isArray(product?.reviews) ? product.reviews : [];
   const reviewCount = product?.reviewsCount !== undefined ? product.reviewsCount : reviews.length;
@@ -19,7 +38,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const roundedStars = Math.max(0, Math.min(5, Math.round(displayRating)));
 
   const isWishlisted = wishlist.some((p) => p._id === product._id);
-  const pricing = getProductPriceDetails(product);
+  const pricing = getProductPriceDetails(product, selectedAddress?.country);
   const displayPrice = Number(pricing.price || 0);
   const displayCurrency = pricing.currency || "INR";
   const isFestiveOffer = product?.festiveOffer === true;
@@ -30,7 +49,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const bundleItems = Array.isArray(product?.bundleItems) ? product.bundleItems : [];
   const bundleOriginalTotal = bundleItems.reduce((sum, item) => {
     const bundledProduct = item?.product;
-    return sum + Number(getProductPriceDetails(bundledProduct).price || 0) * Math.max(1, Number(item?.quantity || 1));
+    return sum + Number(getProductPriceDetails(bundledProduct, selectedAddress?.country).price || 0) * Math.max(1, Number(item?.quantity || 1));
   }, 0);
   const bundleSavings = Math.max(0, bundleOriginalTotal - displayPrice);
   const marketRegularPrice = Number(pricing.marketRegularPrice || 0);
@@ -64,11 +83,11 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const handleShare = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const shareUrl = `${window.location.origin}/#/product/${product._id}`;
+    const shareUrl = `${window.location.origin}/product/${product._id}`;
     if (navigator.share) {
       navigator.share({
         title: product.name,
-        text: product.description || `Check out ${product.name} on Digital Sanskrit Guru!`,
+        text: htmlToPlainText(product.description, 140) || `Check out ${product.name} on Digital Sanskrit Guru!`,
         url: shareUrl
       }).catch((err) => console.log("Sharing failed", err));
     } else {
@@ -122,9 +141,17 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       {copied && <span className="share-tooltip">Link copied!</span>}
 
       <Link to={`/product/${product._id}`} className="product-image-wrap">
+        {product.image && (
+          <div
+            className="product-image-ambient-bg"
+            style={{ backgroundImage: `url(${product.image})` }}
+            aria-hidden="true"
+          />
+        )}
         <img
           src={product.image || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=="}
           alt={product.name}
+          className="product-image-main"
           width="300"
           height="200"
           loading="lazy"
@@ -133,7 +160,10 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       </Link>
 
       <div className="product-info">
-        <p className="product-category">{product.category || "General"}</p>
+        <div className="product-card-pills">
+          <span className="product-category">{product.category || "General"}</span>
+          <span className="product-format-pill">{getProductFormat(product)}</span>
+        </div>
 
         <Link to={`/product/${product._id}`} className="product-title-link" title={product.name}>
           <h3 className="product-title">{product.name}</h3>
@@ -141,7 +171,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
         {showDescription && (
           <p className="product-description">
-            {product.description || "Authentic learning material from Digital Sanskrit Guru."}
+            {htmlToPlainText(product.description) || "Authentic learning material from Digital Sanskrit Guru."}
           </p>
         )}
 

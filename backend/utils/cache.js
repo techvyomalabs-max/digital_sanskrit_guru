@@ -27,11 +27,25 @@ const TTL = {
 // stdTTL = 0 means no global default; each set() call specifies its own TTL.
 const appCache = new NodeCache({ stdTTL: 0, checkperiod: 30, useClones: false });
 
-/**
- * Invalidate all product-related cache keys.
- * Call this after any product create/update/delete or settings change.
- */
-function invalidateProductCache() {
+function broadcastInvalidation(payload) {
+  if (typeof process.send === "function") {
+    process.send({ type: "cache:invalidate", ...payload, from: process.pid });
+  }
+}
+
+if (typeof process.send === "function") {
+  process.on("message", (msg) => {
+    if (msg?.type === "cache:invalidate" && msg.from !== process.pid) {
+      if (msg.scope === "products") {
+        invalidateProductCacheLocal();
+      } else if (Array.isArray(msg.keys)) {
+        appCache.del(msg.keys);
+      }
+    }
+  });
+}
+
+function invalidateProductCacheLocal() {
   const keys = appCache.keys().filter((k) =>
     k.startsWith("products:") ||
     k.startsWith("home:") ||
@@ -42,6 +56,23 @@ function invalidateProductCache() {
   );
   if (keys.length > 0) {
     appCache.del(keys);
+  }
+}
+
+/**
+ * Invalidate all product-related cache keys.
+ * Call this after any product create/update/delete or settings change.
+ */
+function invalidateProductCache() {
+  invalidateProductCacheLocal();
+  broadcastInvalidation({ scope: "products" });
+}
+
+function invalidateKeys(keys) {
+  const normalized = Array.isArray(keys) ? keys : [keys];
+  if (normalized.length > 0) {
+    appCache.del(normalized);
+    broadcastInvalidation({ keys: normalized });
   }
 }
 
@@ -63,4 +94,4 @@ async function cacheAside(key, ttl, fetch) {
   return data;
 }
 
-module.exports = { appCache, TTL, invalidateProductCache, cacheAside };
+module.exports = { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside };

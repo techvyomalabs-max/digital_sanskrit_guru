@@ -33,7 +33,9 @@ function initVapid() {
 // ── Core push sender ─────────────────────────────────────────────────────────
 
 async function sendPushToSubscription(subscription, payload) {
-  if (!PUSH_ENABLED || !vapidInitialized) return { skipped: true };
+  initVapid();
+  const pushEnabled = String(process.env.PUSH_ENABLED || "true").toLowerCase() === "true";
+  if (!pushEnabled || !vapidInitialized) return { skipped: true };
 
   try {
     await webpush.sendNotification(
@@ -42,6 +44,7 @@ async function sendPushToSubscription(subscription, payload) {
     );
     return { sent: true };
   } catch (err) {
+    console.error("[Push] Error sending push notification:", err.message);
     // 410 Gone = subscription is expired/unsubscribed, remove it
     if (err.statusCode === 410 || err.statusCode === 404) {
       try {
@@ -58,6 +61,7 @@ async function sendPushToSubscription(subscription, payload) {
 
 async function sendPushToUser(userId, payload) {
   const subscriptions = await PushSubscription.find({ user: userId }).lean();
+  console.log(`[Push] Dispatching push to user ${userId} (${subscriptions.length} active device subscription(s))`);
   const results = await Promise.allSettled(
     subscriptions.map((sub) => sendPushToSubscription(sub, payload))
   );
@@ -88,7 +92,7 @@ function orderPayload(order, event) {
   return {
     title: msg.title,
     body: msg.body,
-    url: "/#/my-orders",
+    url: "/my-orders",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -98,7 +102,7 @@ function lowStockPayload(productName, stockLeft) {
   return {
     title: `${SITE_NAME} — Low Stock Alert`,
     body: `⚠️ "${productName}" has only ${stockLeft} unit(s) left.`,
-    url: "/#/admin/products",
+    url: "/admin/products",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -112,7 +116,7 @@ function wishlistLowStockPayload(productNames, stockLeft) {
   return {
     title: `${SITE_NAME} — Your Wishlist`,
     body,
-    url: "/#/wishlist",
+    url: "/wishlist",
     icon: "/favicon.ico",
     badge: "/favicon.ico"
   };
@@ -120,6 +124,43 @@ function wishlistLowStockPayload(productNames, stockLeft) {
 
 function broadcastPayload(title, body, url = "/") {
   return { title: `${SITE_NAME} — ${title}`, body, url, icon: "/favicon.ico", badge: "/favicon.ico" };
+}
+
+function refundRequestPayload({ orderId, kind, customerName, amountText }) {
+  const shortId = String(orderId || "").slice(-6).toUpperCase();
+  const title = kind === "cancellation" ? "Refund request: cancellation" : "Refund request: return";
+  const body = `${customerName} · Order #${shortId} · ${amountText}`;
+  return {
+    title,
+    body,
+    url: "/admin/orders",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
+}
+
+function accessGrantedPayload(order) {
+  return {
+    title: "Your access is ready",
+    body: "Open My Library to start",
+    url: "/my-library",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
+}
+
+function accessPendingPayload({ orderId, customerName, productNames }) {
+  const shortId = String(orderId || "").slice(-6).toUpperCase();
+  const names = Array.isArray(productNames) ? productNames.join(", ") : String(productNames || "");
+  const title = "Manual Access Required";
+  const body = `${customerName || "Customer"} · Order #${shortId}${names ? ` · ${names}` : ""}`;
+  return {
+    title,
+    body,
+    url: "/admin/orders",
+    icon: "/favicon.ico",
+    badge: "/favicon.ico"
+  };
 }
 
 module.exports = {
@@ -131,5 +172,8 @@ module.exports = {
   lowStockPayload,
   wishlistLowStockPayload,
   broadcastPayload,
+  refundRequestPayload,
+  accessGrantedPayload,
+  accessPendingPayload,
   getVapidPublicKey: () => process.env.VAPID_PUBLIC_KEY || ""
 };

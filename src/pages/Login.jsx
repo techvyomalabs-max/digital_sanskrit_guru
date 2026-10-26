@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
@@ -7,8 +7,10 @@ import TurnstileWidget from "../components/common/TurnstileWidget";
 import "./Login.css";
 
 function Login() {
-  const { login, loginWithGoogle } = useAuth();
+  const { user, login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+
+  const [alreadySignedIn] = useState(() => Boolean(user));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,10 +71,14 @@ function Login() {
         });
         const container = document.getElementById("google-signin-btn");
         if (container) {
+          container.innerHTML = "";
           window.google.accounts.id.renderButton(container, {
             theme: "outline",
             size: "large",
-            width: 300
+            type: "standard",
+            shape: "rectangular",
+            text: "signin_with",
+            logo_alignment: "left"
           });
         }
       }
@@ -144,6 +150,10 @@ function Login() {
       setIsForgotSubmitting(false);
     }
   };
+
+  if (alreadySignedIn) {
+    return <Navigate to="/account" replace />;
+  }
 
   return (
     <section className="login-page">

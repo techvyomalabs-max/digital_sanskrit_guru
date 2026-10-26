@@ -194,9 +194,6 @@ function isIndiaTimeZone(timeZone) {
 export function requestLocationPermissionForCurrency() {
   if (typeof window === "undefined" || typeof fetch === "undefined") return;
 
-  const alreadyPrompted = localStorage.getItem(STORAGE_KEYS.geoPrompted) === "1";
-  if (alreadyPrompted) return;
-
   fetch(`${apiBaseUrl || ""}/api/settings/detect-country`)
     .then((res) => {
       if (!res.ok) throw new Error("API error");
@@ -204,13 +201,15 @@ export function requestLocationPermissionForCurrency() {
     })
     .then((data) => {
       const country = String(data?.country || "IN").toUpperCase();
-      localStorage.setItem(STORAGE_KEYS.geoCountry, country === "IN" ? "IN" : "OTHER");
+      const prevCountry = localStorage.getItem(STORAGE_KEYS.geoCountry);
+      localStorage.setItem(STORAGE_KEYS.geoCountry, country);
       localStorage.setItem(STORAGE_KEYS.geoPrompted, "1");
+      if (prevCountry && prevCountry !== country) {
+        window.dispatchEvent(new Event("siteSettingsUpdated"));
+      }
     })
     .catch(() => {
-      // Fallback silently if offline or API error
-      localStorage.setItem(STORAGE_KEYS.geoCountry, "IN");
-      localStorage.setItem(STORAGE_KEYS.geoPrompted, "1");
+      // Keep existing or fallback silently
     });
 }
 
@@ -227,6 +226,11 @@ export function getUserCurrency() {
 
     const geoCountry = localStorage.getItem(STORAGE_KEYS.geoCountry);
     if (geoCountry === "IN") return "INR";
+    if (geoCountry) {
+      const region = normalizeCountryRegion(geoCountry);
+      if (region && REGION_TO_CURRENCY[region]) return REGION_TO_CURRENCY[region];
+      return "USD";
+    }
   }
 
   const languages = getBrowserLanguages();

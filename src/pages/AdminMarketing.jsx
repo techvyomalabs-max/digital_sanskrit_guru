@@ -256,21 +256,25 @@ function AdminMarketing() {
     if (result !== "granted") return;
     try {
       const sw = await navigator.serviceWorker.ready;
-      const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-      if (!keyRes.ok) return;
-      const { publicKey } = await keyRes.json();
-      if (!publicKey) return;
+      let sub = await sw.pushManager.getSubscription();
 
-      const existing = await sw.pushManager.getSubscription();
-      if (existing) return;
+      if (!sub) {
+        const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
+        if (!keyRes.ok) return;
+        const { publicKey } = await keyRes.json();
+        if (!publicKey) return;
 
-      const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
-      const base64 = (publicKey + padding).replace(/-/g, "+").replace(/_/g, "/");
-      const raw = window.atob(base64);
-      const key = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+        const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
+        const base64 = (publicKey + padding).replace(/-/g, "+").replace(/_/g, "/");
+        const raw = window.atob(base64);
+        const key = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 
-      const sub = await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      await axios.post("/api/push/subscribe", sub.toJSON(), { headers: getAuthHeaders() });
+        sub = await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      }
+
+      if (sub) {
+        await axios.post("/api/push/subscribe", sub.toJSON(), { headers: getAuthHeaders() });
+      }
       loadStats();
     } catch {
       // ignore
@@ -1079,7 +1083,7 @@ function AdminMarketing() {
               <div className="mkt-field">
                 <label>Link URL (optional)</label>
                 <input
-                  placeholder="/#/collection"
+                  placeholder="/collection"
                   value={pushUrl}
                   onChange={(e) => setPushUrl(e.target.value)}
                 />

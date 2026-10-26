@@ -44,7 +44,7 @@
               return;
             }
           }
-          document.documentElement.setAttribute("data-site-theme", "sky-blue");
+          document.documentElement.setAttribute("data-site-theme", "minimalism");
           fetch("/api/settings/public")
             .then(function(r) { return r.json(); })
             .then(function(d) {
@@ -60,16 +60,16 @@
             })
             .catch(function() {});
         } catch(e) {
-          document.documentElement.setAttribute("data-site-theme", "sky-blue");
+          document.documentElement.setAttribute("data-site-theme", "minimalism");
         }
       })();
     </script>
 
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <!-- Google Fonts — Source Sans 3 (Primary UI) & Tiro Devanagari Sanskrit (Sanskrit/Devanagari) -->
+    <!-- Google Fonts — Source Sans 3 (Primary UI), Tiro Devanagari Sanskrit, Cinzel (Classical Serif), Playfair Display, Montserrat -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,200..900;1,200..900&family=Tiro+Devanagari+Sanskrit:ital@0;1&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600;1,700&family=Source+Sans+3:ital,wght@0,300..900;1,300..900&family=Tiro+Devanagari+Sanskrit:ital@0;1&display=swap" rel="stylesheet" />
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Discover premium Sanskrit learning materials, grammar guides, scriptures, and traditional kits at Digital Sanskrit Guru." />

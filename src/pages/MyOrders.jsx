@@ -2,16 +2,71 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import axios from "axios";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useCart } from "../hooks/useCart";
+import { useWishlist } from "../hooks/useWishlist";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
+import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  HelpCircle,
+  Package,
+  RotateCcw,
+  ShieldCheck,
+  X,
+  Search,
+  Copy,
+  Check,
+  Truck,
+  ExternalLink,
+  Download,
+  BookOpen,
+  Zap,
+  Star,
+  ShoppingBag,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+  CreditCard,
+  Gift,
+  ArrowRight,
+  Compass,
+  Grid,
+  Heart,
+  Sparkles
+} from "lucide-react";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
+
+const CANCELLATION_REASONS = [
+  "Ordered by mistake",
+  "Found a better price elsewhere",
+  "Need to change shipping address or contact info",
+  "Delivery time is too long",
+  "Changed my mind / No longer needed",
+  "Other reason"
+];
+
+const RETURN_REASONS = [
+  "Damaged or defective product received",
+  "Wrong item delivered",
+  "Item does not match description",
+  "Missing parts or accessories",
+  "Quality not as expected",
+  "Other reason"
+];
 
 const RETURN_WINDOW_DAYS = 7;
 const INITIAL_VISIBLE_ORDERS = 8;
 
 function getEffectivePaymentStatus(order) {
+  if (String(order?.refundStatus || "").trim() === "Refunded") return "Refunded";
   const raw = String(order?.paymentStatus || "").trim();
   if (raw) return raw;
 
@@ -66,30 +121,291 @@ function getCourierTrackingUrl(courierName, trackingId) {
   return `https://www.google.com/search?q=track+${encodeURIComponent(courierName + " " + trId)}`;
 }
 
+function EmptyOrdersView({
+  user,
+  wishlist = [],
+  cartCount = 0,
+  isFiltered = false,
+  selectedView = "All",
+  onResetFilter
+}) {
+  const quickCategories = [
+    { label: "Paperback Books", category: "Book - Paperback", icon: BookOpen },
+    { label: "Web Versions", category: "Web Version", icon: Compass },
+    { label: "Flipbooks & E-Books", category: "Flipbook", icon: Grid },
+    { label: "Bundles & Combos", category: "Bundle", icon: Package },
+    { label: "Top Rated Picks", route: "/?scrollTo=top-rated", icon: Star }
+  ];
+
+  const perks = [
+    {
+      icon: Zap,
+      title: "Instant Digital Access",
+      desc: "Get immediate access to web versions and digital flipbooks on any device."
+    },
+    {
+      icon: Truck,
+      title: "Worldwide Tracked Shipping",
+      desc: "Fast and reliable door delivery for all physical books and Sanskrit study kits."
+    },
+    {
+      icon: ShieldCheck,
+      title: "100% Authentic Literature",
+      desc: "Original Sanskrit texts, verified commentaries, and expert learning material."
+    }
+  ];
+
+  return (
+    <div className="orders-empty-container">
+      <div className="orders-empty-hero-card">
+        <div className="orders-empty-icon-ring">
+          <div className="orders-empty-icon-circle">
+            <Package size={40} className="orders-empty-icon" />
+          </div>
+          <span className="orders-empty-icon-sparkle">
+            <Sparkles size={16} />
+          </span>
+        </div>
+
+        <div className="orders-empty-badge">
+          <Sparkles size={13} />
+          <span>
+            {isFiltered
+              ? `Filtered View: ${selectedView}`
+              : user?.name
+              ? `Welcome back, ${user.name}!`
+              : "Welcome to Digital Sanskrit Guru"}
+          </span>
+        </div>
+
+        <h2 className="orders-empty-title">
+          {isFiltered
+            ? `No ${selectedView.toLowerCase()} orders found`
+            : "You haven't placed any orders yet"}
+        </h2>
+
+        <p className="orders-empty-desc">
+          {isFiltered
+            ? `You don't have any orders under the "${selectedView}" filter. Switch to all orders or explore new titles.`
+            : "Explore our curated collection of authentic Sanskrit books, interactive web versions, flipbooks, and comprehensive study bundles. Your order history and digital reader access will show up right here."}
+        </p>
+
+        <div className="orders-empty-actions">
+          <Link to="/collection" className="orders-empty-primary-btn">
+            <ShoppingBag size={18} />
+            <span>Explore Collection</span>
+            <ArrowRight size={16} />
+          </Link>
+
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={onResetFilter}
+              className="orders-empty-secondary-btn"
+            >
+              <Package size={17} />
+              <span>View All Orders</span>
+            </button>
+          )}
+
+          {wishlist.length > 0 && (
+            <Link to="/wishlist" className="orders-empty-secondary-btn">
+              <Heart size={17} style={{ color: "#e11d48" }} />
+              <span>View Wishlist ({wishlist.length})</span>
+            </Link>
+          )}
+
+          {cartCount > 0 && (
+            <Link to="/cart" className="orders-empty-secondary-btn">
+              <ShoppingBag size={17} />
+              <span>View Cart ({cartCount})</span>
+            </Link>
+          )}
+        </div>
+
+        {/* Quick Categories Bar */}
+        <div className="orders-empty-categories-wrap">
+          <span className="orders-empty-categories-label">Explore by category</span>
+          <div className="orders-empty-categories-pills">
+            {quickCategories.map((item) => {
+              const IconComp = item.icon;
+              const targetUrl = item.route || `/collection?category=${encodeURIComponent(item.category)}`;
+              return (
+                <Link key={item.label} to={targetUrl} className="orders-empty-category-pill">
+                  <IconComp size={14} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Trust & Value Perks */}
+      <div className="orders-empty-perks-grid">
+        {perks.map((perk) => {
+          const PerkIcon = perk.icon;
+          return (
+            <div key={perk.title} className="orders-empty-perk-card">
+              <div className="orders-empty-perk-icon-wrap">
+                <PerkIcon size={20} />
+              </div>
+              <div className="orders-empty-perk-copy">
+                <h4>{perk.title}</h4>
+                <p>{perk.desc}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MyOrders() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { addToCart, cartItems = [] } = useCart();
+  const { wishlist = [] } = useWishlist();
   const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
+
   const [orders, setOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [retryingOrderId, setRetryingOrderId] = useState("");
-  const [requestingReturnOrderId, setRequestingReturnOrderId] = useState("");
   const [generatingInvoiceOrderId, setGeneratingInvoiceOrderId] = useState("");
   const [pageMessage, setPageMessage] = useState("");
   const [selectedView, setSelectedView] = useState("All");
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ORDERS);
   const [activeTracking, setActiveTracking] = useState({});
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
+  const [_showReviewModal, setShowReviewModal] = useState(false);
   const [activeKindleGuideItem, setActiveKindleGuideItem] = useState(null);
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState("Ordered by mistake");
+  const [customCancelReason, setCustomCancelReason] = useState("");
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [returnTarget, setReturnTarget] = useState(null);
+  const [returnReason, setReturnReason] = useState("Damaged or defective product received");
+  const [customReturnReason, setCustomReturnReason] = useState("");
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
+  const [copiedOrderId, setCopiedOrderId] = useState(null);
+  const [buyingAgainItemId, setBuyingAgainItemId] = useState(null);
+  const [returnAddress, setReturnAddress] = useState("");
+  const [shipmentInputs, setShipmentInputs] = useState({});
+  const [editingShipmentItemIds, setEditingShipmentItemIds] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    axios
+      .get("/api/settings/public")
+      .then((res) => {
+        if (!isMounted) return;
+        const data = res.data;
+        const name = data?.warehouseName || data?.warehouseLocation?.name || data?.sellerDetails?.legalName || "";
+        const address = data?.warehouseAddress || data?.warehouseLocation?.address || data?.sellerDetails?.address || "";
+        const parts = [name, address].map((s) => String(s || "").trim()).filter(Boolean);
+        if (parts.length > 0) {
+          setReturnAddress(parts.join(", "));
+        }
+      })
+      .catch((err) => {
+        console.warn("[MyOrders] Could not fetch public settings for return address:", err.message);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSaveReturnShipment = async (orderId, itemId) => {
+    const form = shipmentInputs[itemId] || {};
+    const courier = String(form.courier || "").trim();
+    const trackingNumber = String(form.trackingNumber || "").trim();
+
+    if (courier.length < 2 || courier.length > 60) {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: "Courier name must be between 2 and 60 characters." }
+      }));
+      return;
+    }
+    if (trackingNumber.length < 3 || trackingNumber.length > 60) {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: "Tracking number must be between 3 and 60 characters." }
+      }));
+      return;
+    }
+
+    setShipmentInputs((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], isSaving: true, error: "" }
+    }));
+
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/items/${itemId}/return-shipment`,
+        { courier, trackingNumber },
+        getAuthHeaders()
+      );
+      await loadOrders();
+      showToast("Return shipment details saved!", "success");
+      setEditingShipmentItemIds((prev) => prev.filter((id) => id !== itemId));
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Failed to save return shipment.";
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], error: errMsg, isSaving: false }
+      }));
+      showToast(errMsg, "error");
+    } finally {
+      setShipmentInputs((prev) => ({
+        ...prev,
+        [itemId]: { ...prev[itemId], isSaving: false }
+      }));
+    }
+  };
+
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
-  const isDummyPaymentEnabled =
-    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
   const deferredSelectedView = useDeferredValue(selectedView);
 
   const getAuthHeaders = () => ({
     headers: { Authorization: `Bearer ${token}` }
   });
+
+  const handleCopyOrderId = (id) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(id);
+      setCopiedOrderId(id);
+      showToast("Order ID copied!", "success");
+      setTimeout(() => setCopiedOrderId(null), 2000);
+    }
+  };
+
+  const handleBuyAgain = async (item) => {
+    const itemId = String(item?._id || item?.id || item?.product || "").trim();
+    if (!itemId) return;
+    setBuyingAgainItemId(itemId);
+    try {
+      await addToCart(
+        {
+          _id: itemId,
+          name: item.name,
+          price: item.price,
+          image: item.image || item.product?.image,
+          category: item.category || item.product?.category,
+          productType: item.productType,
+          isDigital: item.isDigital,
+          format: item.format
+        },
+        1
+      );
+      showToast(`Added "${item.name}" to cart!`, "success");
+    } catch {
+      showToast("Unable to add item to cart.", "error");
+    } finally {
+      setBuyingAgainItemId(null);
+    }
+  };
 
   const toggleTracking = async (orderId) => {
     if (activeTracking[orderId] !== undefined && activeTracking[orderId] !== false) {
@@ -106,12 +422,18 @@ function MyOrders() {
   };
 
   const loadOrders = async () => {
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     try {
       const res = await axios.get("/api/orders/my", getAuthHeaders());
       setOrders(Array.isArray(res.data) ? res.data : []);
     } catch {
       setOrders([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -146,47 +468,92 @@ function MyOrders() {
     setVisibleCount(INITIAL_VISIBLE_ORDERS);
   }, [selectedView, orders.length]);
 
+  // Prevent background page scrolling when modal is open
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(orderToCancel || returnTarget || activeKindleGuideItem);
+    if (!isAnyModalOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        if (!isCancellingOrder) setOrderToCancel(null);
+        if (!isSubmittingReturn) setReturnTarget(null);
+        setActiveKindleGuideItem(null);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [orderToCancel, returnTarget, activeKindleGuideItem, isCancellingOrder, isSubmittingReturn]);
+
   const updateOrderPaymentStatus = async (orderId, payload) => {
     await axios.put(`/api/orders/${orderId}/payment-status`, payload, getAuthHeaders());
   };
 
-  const cancelOrder = async (orderId) => {
-    const shouldCancel = window.confirm("Cancel this order before shipping?");
-    if (!shouldCancel) return;
+  const handleConfirmCancelOrder = async (e) => {
+    if (e) e.preventDefault();
+    if (!orderToCancel) return;
+    const finalReason =
+      cancelReason === "Other reason" && customCancelReason.trim()
+        ? customCancelReason.trim()
+        : cancelReason;
 
+    setIsCancellingOrder(true);
     try {
-      await axios.put(`/api/orders/${orderId}/cancel`, {}, getAuthHeaders());
+      await axios.put(`/api/orders/${orderToCancel._id}/cancel`, { reason: finalReason }, getAuthHeaders());
       await loadOrders();
       setPageMessage("Order cancelled successfully.");
+      showToast("Order cancelled successfully.", "success");
+      setOrderToCancel(null);
+      setCancelReason("Ordered by mistake");
+      setCustomCancelReason("");
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || "Unable to cancel this order right now.");
+      const errMsg = err?.response?.data?.message || "Unable to cancel this order right now.";
+      setPageMessage(errMsg);
+      showToast(errMsg, "error");
+    } finally {
+      setIsCancellingOrder(false);
     }
   };
 
-  const requestReturn = async (orderId, itemId) => {
-    const reason = window.prompt("Why are you returning this product?", "Requested by customer");
-    if (reason === null) return;
+  const handleConfirmReturnRequest = async (e) => {
+    if (e) e.preventDefault();
+    if (!returnTarget) return;
+    const finalReason =
+      returnReason === "Other reason" && customReturnReason.trim()
+        ? customReturnReason.trim()
+        : returnReason;
 
-    const requestKey = `${orderId}:${itemId}`;
-    setRequestingReturnOrderId(requestKey);
+    setIsSubmittingReturn(true);
     try {
       await axios.put(
-        `/api/orders/${orderId}/items/${itemId}/return-request`,
-        { reason },
+        `/api/orders/${returnTarget.orderId}/items/${returnTarget.itemId}/return-request`,
+        { reason: finalReason },
         getAuthHeaders()
       );
       await loadOrders();
       setPageMessage("Return request submitted successfully.");
+      showToast("Return request submitted successfully.", "success");
+      setReturnTarget(null);
+      setReturnReason("Damaged or defective product received");
+      setCustomReturnReason("");
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || "Unable to submit the return request right now.");
+      const errMsg = err?.response?.data?.message || "Unable to submit return request.";
+      setPageMessage(errMsg);
+      showToast(errMsg, "error");
     } finally {
-      setRequestingReturnOrderId("");
+      setIsSubmittingReturn(false);
     }
   };
 
   const handleContinuePayment = async (order) => {
     if (!order?._id) return;
-    if (!isDummyPaymentEnabled && !razorpayKey) {
+    if (!razorpayKey) {
       setPageMessage("Payment gateway key is missing. Please contact support.");
       return;
     }
@@ -194,53 +561,15 @@ function MyOrders() {
     setPageMessage("");
 
     try {
-      let RazorpayConstructor = window.Razorpay;
-      if (!isDummyPaymentEnabled) {
-        RazorpayConstructor = await loadRazorpayCheckout();
-      }
+      const RazorpayConstructor = await loadRazorpayCheckout();
 
-      const { data } = await axios.post("/api/payment/create-order", {
-        amount: Number(order.total || 0)
-      });
-
-      const isOrderDummy =
-        isDummyPaymentEnabled ||
-        Boolean(data?.isDummy) ||
-        String(data?.id || "").startsWith("dummy_order_");
-
-      if (isOrderDummy) {
-        const wantsToProceed = window.confirm("Dummy payment mode: click OK to mark this order as paid.");
-        if (!wantsToProceed) {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
-          await loadOrders();
-          setPageMessage("Payment was cancelled. You can retry anytime.");
-          return;
-        }
-
-        const response = {
-          razorpay_order_id: data.id || `dummy_order_${Date.now()}`,
-          razorpay_payment_id: `dummy_pay_${Date.now()}`,
-          razorpay_signature: "dummy_signature",
-          dummy: true
-        };
-
-        const verify = await axios.post("/api/payment/verify", response);
-        if (!verify.data?.success) {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
-          await loadOrders();
-          setPageMessage("Payment verification failed. Please try again.");
-          return;
-        }
-
-        await updateOrderPaymentStatus(order._id, {
-          paymentStatus: "Paid",
-          razorpayOrderId: response.razorpay_order_id,
-          razorpayPaymentId: response.razorpay_payment_id
-        });
-        await loadOrders();
-        showToast("Payment successful. Order is now confirmed.");
-        return;
-      }
+      const { data } = await axios.post(
+        "/api/payment/create-order",
+        {
+          orderId: order._id
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
       const cleanPhone = String(order?.shipping?.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(order?.user?.email || order?.shipping?.email || "").trim();
@@ -250,7 +579,7 @@ function MyOrders() {
         amount: data.amount,
         currency: data.currency,
         name: "Digital Sanskrit Guru",
-        description: "Continue Order Payment",
+        description: "Complete Order Payment",
         order_id: data.id,
         prefill: {
           name: order?.shipping?.name || "",
@@ -272,16 +601,17 @@ function MyOrders() {
             await updateOrderPaymentStatus(order._id, {
               paymentStatus: "Paid",
               razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature
             });
             await loadOrders();
-            showToast("Payment successful. Order is now confirmed.");
+            showToast("Payment successful! Order is confirmed.", "success");
           } catch {
-            setPageMessage("Unable to finalize payment. Please try again.");
+            setPageMessage("Unable to finalize payment.");
           }
         },
         theme: {
-          color: "#1f6feb"
+          color: "#b45309"
         }
       });
 
@@ -290,19 +620,23 @@ function MyOrders() {
           await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
           await loadOrders();
         } catch {
-          // Ignore update errors here; user can retry.
+          // Ignore
         }
         const failReason =
           response?.error?.description ||
           response?.error?.reason ||
-          "Payment failed. You can retry again from My Orders.";
-        console.error("Razorpay payment failed:", response?.error);
+          "Payment failed. You can retry from My Orders.";
         setPageMessage(`Payment failed: ${failReason}`);
       });
 
       rzp.open();
     } catch (err) {
-      setPageMessage(err?.response?.data?.message || err?.message || "Unable to continue payment right now.");
+      const serverMsg = err?.response?.data?.message;
+      if (err?.response?.status === 409) {
+        setPageMessage(serverMsg || "You already own digital items in this order.");
+      } else {
+        setPageMessage(serverMsg || err?.message || "Unable to continue payment.");
+      }
     } finally {
       setRetryingOrderId("");
     }
@@ -314,13 +648,13 @@ function MyOrders() {
 
     try {
       const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      generateInvoicePdf(order, {
+      await generateInvoicePdf(order, {
         customerName: order?.shipping?.name || "Customer",
         customerEmail: "N/A",
         filePrefix: "invoice"
       });
     } catch {
-      setPageMessage("Unable to generate invoice right now.");
+      setPageMessage("Unable to generate invoice.");
     } finally {
       setGeneratingInvoiceOrderId("");
     }
@@ -330,6 +664,7 @@ function MyOrders() {
     const buckets = {
       All: [],
       ActionRequired: [],
+      AccessPending: [],
       Completed: []
     };
 
@@ -338,6 +673,8 @@ function MyOrders() {
       buckets.All.push(order);
       if (paymentStatus !== "Paid") {
         buckets.ActionRequired.push(order);
+      } else if (orderHasPendingAccess(order)) {
+        buckets.AccessPending.push(order);
       } else {
         buckets.Completed.push(order);
       }
@@ -350,6 +687,7 @@ function MyOrders() {
     () => ({
       All: orderBuckets.All.length,
       ActionRequired: orderBuckets.ActionRequired.length,
+      AccessPending: orderBuckets.AccessPending.length,
       Completed: orderBuckets.Completed.length
     }),
     [orderBuckets]
@@ -374,415 +712,931 @@ function MyOrders() {
       <div className="my-orders-head">
         <h1>Your Orders</h1>
       </div>
-      <div className="my-orders-filters">
-        <button
-          type="button"
-          className={selectedView === "All" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("All")}
-        >
-          All ({viewCounts.All})
-        </button>
-        <button
-          type="button"
-          className={selectedView === "ActionRequired" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("ActionRequired")}
-        >
-          Action Required ({viewCounts.ActionRequired})
-        </button>
-        <button
-          type="button"
-          className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
-          onClick={() => selectView("Completed")}
-        >
-          Completed ({viewCounts.Completed})
-        </button>
-      </div>
 
-      {deferredSelectedView !== selectedView ? (
+      {!isLoading && orders.length > 0 && (
+        <div className="my-orders-filters">
+          <button
+            type="button"
+            className={selectedView === "All" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("All")}
+          >
+            All ({isLoading ? "..." : viewCounts.All})
+          </button>
+          <button
+            type="button"
+            className={selectedView === "ActionRequired" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("ActionRequired")}
+          >
+            Action Required ({isLoading ? "..." : viewCounts.ActionRequired})
+          </button>
+          {viewCounts.AccessPending > 0 && (
+            <button
+              type="button"
+              className={selectedView === "AccessPending" ? "my-orders-filter active" : "my-orders-filter"}
+              onClick={() => selectView("AccessPending")}
+            >
+              Access pending ({isLoading ? "..." : viewCounts.AccessPending})
+            </button>
+          )}
+          <button
+            type="button"
+            className={selectedView === "Completed" ? "my-orders-filter active" : "my-orders-filter"}
+            onClick={() => selectView("Completed")}
+          >
+            Completed ({isLoading ? "..." : viewCounts.Completed})
+          </button>
+        </div>
+      )}
+
+      {deferredSelectedView !== selectedView && (
         <p className="my-orders-updating">Updating orders view...</p>
-      ) : null}
+      )}
 
-      {pageMessage ? <p className="my-orders-banner">{pageMessage}</p> : null}
+      {pageMessage && <p className="my-orders-banner">{pageMessage}</p>}
 
-      {visibleOrders.length === 0 && <p className="my-orders-empty">No orders in this view.</p>}
+      {isLoading ? (
+        <LoadingSpinner text="Loading your orders..." minHeight="240px" />
+      ) : orders.length === 0 ? (
+        <EmptyOrdersView
+          user={user}
+          wishlist={wishlist}
+          cartCount={cartItems.reduce((acc, i) => acc + Math.max(1, Number(i.quantity || 1)), 0)}
+          isFiltered={false}
+        />
+      ) : visibleOrders.length === 0 ? (
+        <EmptyOrdersView
+          user={user}
+          wishlist={wishlist}
+          cartCount={cartItems.reduce((acc, i) => acc + Math.max(1, Number(i.quantity || 1)), 0)}
+          isFiltered={true}
+          selectedView={
+            selectedView === "ActionRequired"
+              ? "Action Required"
+              : selectedView === "AccessPending"
+              ? "Access pending"
+              : selectedView
+          }
+          onResetFilter={() => selectView("All")}
+        />
+      ) : (
+        visibleOrders.map((order) => {
+          const status = String(order.status || "Pending");
+          const paymentStatus = getEffectivePaymentStatus(order);
+          const isPaid = paymentStatus === "Paid";
+          const isWpOrder = Boolean(order?.isWpArchive || order?.legacyAccess || String(order?._id || "").startsWith("wp_"));
+          const orderStatusLabel =
+            status === "Cancelled"
+              ? "Cancelled"
+              : !isPaid
+              ? "On Hold"
+              : orderHasPendingAccess(order)
+              ? "Access pending"
+              : status;
+          const refundStatus = String(order?.refundStatus || "Not Applicable");
+          const paymentStatusLabel = paymentStatus;
+          const items = Array.isArray(order.items) ? order.items : [];
 
-      {visibleOrders.map((order) => {
-        const status = String(order.status || "Pending");
-        const paymentStatus = getEffectivePaymentStatus(order);
-        const isPaid = paymentStatus === "Paid";
-        const orderStatusLabel = status === "Cancelled" ? "Cancelled" : isPaid ? status : "On Hold";
-        const refundStatus = String(order?.refundStatus || "Not Applicable");
-        const paymentStatusLabel = paymentStatus;
-        const items = Array.isArray(order.items) ? order.items : [];
-        const isDigitalOnly = items.length > 0 && items.every((item) =>
-          Boolean(
-            item.isDigital ||
-            item.webReaderLink ||
-            item.kindleLink ||
-            String(item.name || "").toLowerCase().includes("web") ||
-            String(item.name || "").toLowerCase().includes("kindle") ||
-            String(item.name || "").toLowerCase().includes("flipbook") ||
-            String(item.format || "").toLowerCase().includes("web") ||
-            String(item.format || "").toLowerCase().includes("flipbook")
-          )
-        );
-        const canDownloadInvoice = isPaid && (
-          status === "Shipped" ||
-          status === "Delivered" ||
-          status === "Completed" ||
-          isDigitalOnly
-        );
-        const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
-        const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
-        const canContinuePayment = !isPaid && status !== "Delivered" && status !== "Cancelled";
-        const canCancelOrder = status === "Pending";
-        const shouldShowRefundStatus = refundStatus !== "Not Applicable";
-        const deliveryCharge = Number(order?.deliveryCharge || 0);
+          const isDigitalOnly =
+            items.length > 0 &&
+            items.every((item) =>
+              Boolean(
+                item.isDigital ||
+                  isExternalDelivery(item) ||
+                  item.legacyAccess ||
+                  item.webReaderLink ||
+                  item.kindleLink ||
+                  String(item.name || "").toLowerCase().includes("web") ||
+                  String(item.name || "").toLowerCase().includes("kindle") ||
+                  String(item.name || "").toLowerCase().includes("flipbook") ||
+                  String(item.format || "").toLowerCase().includes("web") ||
+                  String(item.format || "").toLowerCase().includes("flipbook")
+              )
+            );
 
-        return (
-          <div key={order._id} className="my-order-card">
-            <div className="my-order-card-head">
-              <div>
-                <span>ORDER PLACED</span>
-                <strong>{formatDate(order.createdAt)}</strong>
-              </div>
-              <div>
-                <span>TOTAL</span>
-                <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
-                <small className="my-order-total-note">Includes delivery {formatOrderDisplayCurrency(order, "deliveryCharge", deliveryCharge)}</small>
-              </div>
-              <div>
-                <span>ORDER STATUS</span>
-                <strong className={orderStatusClass}>{orderStatusLabel}</strong>
-                {orderStatusLabel === "Delivered" && order.deliveredAt && (
-                  <small style={{ display: 'block', fontSize: '11px', color: 'var(--site-text-soft)', marginTop: '2px' }}>
-                    Delivered: {formatDate(order.deliveredAt)}
+          const canDownloadInvoice =
+            isPaid &&
+            (status === "Shipped" || status === "Delivered" || status === "Completed" || isDigitalOnly);
+
+          const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
+          const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
+          const canContinuePayment = !isWpOrder && !isPaid && status !== "Delivered" && status !== "Cancelled";
+          const canCancelOrder = !isWpOrder && status === "Pending";
+          const shouldShowRefundStatus = refundStatus !== "Not Applicable";
+          const deliveryCharge = Number(order?.deliveryCharge || 0);
+
+          return (
+            <div key={order._id} className="my-order-card">
+              {/* ── 5-Column Header Bar (Desktop & Mobile Optimized) ── */}
+              <div className="my-order-card-head">
+                <div className="order-head-cell">
+                  <span>ORDER PLACED</span>
+                  <strong>{formatDate(order.createdAt)}</strong>
+                </div>
+
+                <div className="order-head-cell">
+                  <span>TOTAL</span>
+                  <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
+                  <small className="my-order-total-note">
+                    Includes delivery {formatOrderDisplayCurrency(order, "deliveryCharge", deliveryCharge)}
                   </small>
-                )}
-              </div>
-              <div>
-                <span>PAYMENT</span>
-                <strong className={paymentStatusClass}>{paymentStatusLabel}</strong>
-              </div>
-              <div className="my-order-id-wrap">
-                <span>ORDER #</span>
-                <strong>{order._id}</strong>
-              </div>
-            </div>
+                </div>
 
-            <div className="my-order-card-body">
-              <div className="my-order-items">
-                <h3>{status === "Delivered" ? "Delivered items" : "Order items"}</h3>
-                {items.length === 0 ? (
-                  <p className="my-order-items-empty">No items found for this order.</p>
-                ) : (
-                  items.map((item, i) => {
-                    const itemId = String(item?._id || item?.id || item?.product || "").trim();
-                    const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
-                    const returnWindow = getReturnWindowInfo(order, item);
-                    const canRequestReturn =
-                      status === "Delivered" &&
-                      isPaid &&
-                      Boolean(itemId) &&
-                      returnRequestStatus === "Not Requested" &&
-                      returnWindow.eligible;
-
-                    return (
-                      <div key={i} className="my-order-item">
-                        <div className="my-order-item-content">
-                          {itemId ? (
-                            <Link to={`/product/${itemId}`} className="my-order-item-link">
-                              <strong>{item.name}</strong>
-                            </Link>
-                          ) : (
-                            <strong>{item.name}</strong>
-                          )}
-                          {item.productType === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length > 0 && (
-                            <div className="my-order-item-bundle-details" style={{ marginTop: '8px', paddingLeft: '12px', borderLeft: '2px solid var(--site-border)' }}>
-                              <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 'bold', color: 'var(--site-text-soft)' }}>
-                                Pack Includes:
-                              </p>
-                              <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                                {item.bundleItems.map((bi, idx) => (
-                                  <li key={idx} style={{ fontSize: '12.5px', color: 'var(--site-text)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                                    <span style={{ color: 'var(--site-text-soft)' }}>•</span>
-                                    <span>{bi.name}</span>
-                                    <span style={{ color: 'var(--site-text-soft)' }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {status === "Delivered" ? (
-                            <p className="my-order-item-return-note">
-                              {returnRequestStatus === "Requested"
-                                ? "Return requested. Our team will review it."
-                                : returnRequestStatus === "Approved"
-                                  ? "Return approved. Refund is being processed."
-                                  : returnRequestStatus === "Rejected"
-                                    ? "Return request was rejected."
-                                    : returnRequestStatus === "Refunded"
-                                      ? "Returned and refunded."
-                                      : returnWindow.eligible
-                                        ? `Return available for ${returnWindow.daysLeft} more day${returnWindow.daysLeft === 1 ? "" : "s"}.`
-                                        : "7-day return window has closed."}
-                            </p>
-                          ) : null}
-
-                          {isPaid && (item.isDigital || String(item.name || "").toLowerCase().includes("kindle") || String(item.name || "").toLowerCase().includes("web version") || item.webReaderLink || item.kindleLink) && (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
-                            <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "8px", border: "1px solid rgba(59, 130, 246, 0.3)", backgroundColor: "rgba(59, 130, 246, 0.05)" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 700, color: "#2563eb", marginBottom: "8px" }}>
-                                ⚡ Digital Reader Access Granted
-                              </div>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                                {(item.webReaderLink || String(item.name || "").toLowerCase().includes("web") || String(item.name || "").toLowerCase().includes("flipbook") || item.isDigital) && (
-                                  <button
-                                    onClick={() => {
-                                      const readerLink = item.webReaderLink || item.product?.webReaderLink;
-                                      navigate("/my-library", { state: { autoOpenUrl: readerLink, search: item.name } });
-                                    }}
-                                    style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#2563eb", color: "#fff", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-                                  >
-                                    {String(item.name || "").toLowerCase().includes("flipbook") || String(item.digitalType || item.product?.digitalType || "").toLowerCase().includes("flipbook") ? "📖 Read Flipbook" : "📖 Read Web Version"}
-                                  </button>
-                                )}
-                                {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
-                                  <a
-                                    href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#ff9900", color: "#111", border: "none", fontSize: "12px", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", textDecoration: "none" }}
-                                  >
-                                    📱 View Kindle Edition on Amazon ↗
-                                  </a>
-                                )}
-                                <button
-                                  onClick={() => setActiveKindleGuideItem(item)}
-                                  style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "transparent", border: "1px solid var(--site-border)", color: "var(--site-text)", fontSize: "12px", cursor: "pointer" }}
-                                >
-                                  💡 How to Access
-                                </button>
-                              </div>
-                              {item.digitalInstructions && (
-                                <p style={{ margin: "8px 0 0", fontSize: "11px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
-                                  {item.digitalInstructions}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {isPaid && (order.isGift || item.giftCode) && (
-                            <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "8px", border: "1px dashed #d97706", backgroundColor: "rgba(217, 119, 6, 0.06)" }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-                                <div>
-                                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#d97706", display: "block" }}>🎟️ 1-Time Gift Pass Code</span>
-                                  <code style={{ fontSize: "15px", fontWeight: 700, color: "var(--site-text)", letterSpacing: "1px" }}>
-                                    {item.giftCode || (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) || "GIFT-PASS-GENERATED"}
-                                  </code>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const code = item.giftCode || (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code);
-                                    if (code) {
-                                      navigator.clipboard.writeText(code);
-                                      showToast("Gift Pass Code copied to clipboard!");
-                                    }
-                                  }}
-                                  style={{ padding: "6px 12px", borderRadius: "6px", backgroundColor: "#d97706", color: "#fff", border: "none", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
-                                >
-                                  📋 Copy Code
-                                </button>
-                              </div>
-                              <p style={{ margin: "6px 0 0", fontSize: "11.5px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
-                                Share this code with your recipient. They can redeem it anytime under <strong>🎟️ Redeem Gift Pass</strong> in the top header!
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="my-order-item-side">
-                          <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
-                          <span>Qty: {item.quantity || 1}</span>
-                          {canRequestReturn ? (
-                            <button
-                              className="my-order-return-btn"
-                              onClick={() => requestReturn(order._id, itemId)}
-                              disabled={requestingReturnOrderId === `${order._id}:${itemId}`}
-                            >
-                              {requestingReturnOrderId === `${order._id}:${itemId}` ? "Submitting..." : "Return product"}
-                            </button>
-                          ) : null}
-                          {isPaid && status !== "Cancelled" ? (
-                            <a
-                              href="https://review.digitalsanskritguru.com/"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="my-order-review-link"
-                            >
-                              Write Review
-                            </a>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="my-order-actions">
-                <button
-                  className="my-order-invoice-btn"
-                  disabled={!canDownloadInvoice || generatingInvoiceOrderId === order._id}
-                  onClick={() => {
-                    if (!canDownloadInvoice) return;
-                    void generateInvoice(order);
-                  }}
-                >
-                  {generatingInvoiceOrderId === order._id
-                    ? "Generating invoice..."
-                    : canDownloadInvoice
-                      ? "Download invoice"
-                      : isDigitalOnly
-                        ? "Invoice after payment"
-                        : "Invoice after shipping"}
-                </button>
-
-                {order.trackingId ? (
-                  <button
-                    className="my-order-track-btn"
-                    onClick={() => void toggleTracking(order._id)}
-                  >
-                    {activeTracking[order._id] ? "Hide Tracking" : "Track Package"}
-                  </button>
-                ) : null}
-
-                <p className="my-order-invoice-note">
-                  {status === "Cancelled"
-                    ? "Invoice is not available for cancelled orders."
-                    : canDownloadInvoice
-                      ? "Your invoice is ready to download."
-                      : isDigitalOnly
-                        ? "Invoice will be available once this order is paid."
-                        : "Invoice will be available once this order is paid and shipped."}
-                </p>
-
-                {shouldShowRefundStatus ? (
-                  <p className="my-order-refund-note">Refund status: {refundStatus}</p>
-                ) : null}
-
-                {canContinuePayment ? (
-                  <button
-                    className="my-order-continue-btn"
-                    onClick={() => handleContinuePayment(order)}
-                    disabled={retryingOrderId === order._id}
-                  >
-                    {retryingOrderId === order._id ? "Opening payment..." : "Continue Payment"}
-                  </button>
-                ) : null}
-
-                {canCancelOrder ? (
-                  <button
-                    className="my-order-cancel-btn"
-                    onClick={() => cancelOrder(order._id)}
-                  >
-                    Cancel order
-                  </button>
-                ) : null}
-              </div>
-
-              {activeTracking[order._id] !== undefined && activeTracking[order._id] !== false && (
-                <div className="my-order-tracking-panel">
-                  {activeTracking[order._id] === null ? (
-                    <p style={{ fontSize: '13px', color: 'var(--site-text-soft)', padding: '12px' }}>
-                      Fetching live tracking details...
-                    </p>
-                  ) : activeTracking[order._id].error ? (
-                    <p style={{ fontSize: '13px', color: '#ef4444', padding: '12px' }}>
-                      Unable to load tracking details at the moment.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="my-order-tracking-info-grid">
-                        <div className="my-order-tracking-info-item">
-                          <span>Courier Partner</span>
-                          <strong>{activeTracking[order._id].courier || "Delhivery"}</strong>
-                        </div>
-                        <div className="my-order-tracking-info-item">
-                          <span>Tracking ID</span>
-                          <strong>{activeTracking[order._id].trackingId}</strong>
-                        </div>
-                        <div className="my-order-tracking-info-item">
-                          <span>Status</span>
-                          <strong>{activeTracking[order._id].status}</strong>
-                        </div>
-                      </div>
-
-                      {activeTracking[order._id].trackingId && (
-                        <div style={{ display: "flex", justifyContent: "flex-start", padding: "0 12px 14px 12px", marginTop: "10px" }}>
-                          <a
-                            href={getCourierTrackingUrl(activeTracking[order._id].courier || "Delhivery", activeTracking[order._id].trackingId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="my-order-track-website-link"
-                            onClick={() => {
-                              if (navigator.clipboard && activeTracking[order._id].trackingId) {
-                                void navigator.clipboard.writeText(activeTracking[order._id].trackingId);
-                                showToast("Tracking ID copied to clipboard! Paste it on the tracking page.", "success");
-                              }
-                            }}
-                            style={{
-                              fontSize: "12.5px",
-                              fontWeight: "600",
-                              color: "var(--site-accent, #e94560)",
-                              textDecoration: "none",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "5px",
-                              borderBottom: "1px dashed var(--site-accent, #e94560)",
-                              cursor: "pointer"
-                            }}
-                          >
-                            🔗 Track on {activeTracking[order._id].courier || "Delhivery"} Website
-                          </a>
-                        </div>
-                      )}
-
-                      <div className="my-order-tracking-stepper">
-                        {activeTracking[order._id].checkpoints && activeTracking[order._id].checkpoints.length > 0 ? (
-                          activeTracking[order._id].checkpoints.map((cp, idx, arr) => {
-                            const isLatest = idx === arr.length - 1;
-                            const stepClass = `my-order-tracking-step active ${isLatest ? 'latest' : ''}`;
-                            return (
-                              <div key={idx} className={stepClass}>
-                                <div className="my-order-tracking-bullet" />
-                                <div className="my-order-tracking-content">
-                                  <span className="my-order-tracking-status">{cp.status}</span>
-                                  <p className="my-order-tracking-desc">{cp.description}</p>
-                                  <div className="my-order-tracking-meta">
-                                    <span className="my-order-tracking-location">{cp.location}</span>
-                                    <span>•</span>
-                                    <span>{new Date(cp.time).toLocaleString()}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <p style={{ fontSize: '12.5px', color: 'var(--site-text-soft)' }}>
-                            No tracking checkpoints logged yet.
-                          </p>
-                        )}
-                      </div>
-                    </>
+                <div className="order-head-cell">
+                  <span>ORDER STATUS</span>
+                  <strong className={orderStatusClass}>{orderStatusLabel}</strong>
+                  {orderStatusLabel === "Delivered" && order.deliveredAt && (
+                    <small style={{ display: "block", fontSize: "11px", color: "var(--site-text-soft)", marginTop: "2px" }}>
+                      Delivered: {formatDate(order.deliveredAt)}
+                    </small>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
 
-      {hasMoreOrders ? (
+                <div className="order-head-cell">
+                  <span>PAYMENT</span>
+                  <strong className={paymentStatusClass}>{paymentStatusLabel}</strong>
+                </div>
+
+                <div className="order-head-cell my-order-id-wrap">
+                  <span>ORDER #</span>
+                  <div className="order-id-inner-row" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                    <strong>{order._id}</strong>
+                    <button
+                      type="button"
+                      className="order-head-copy-btn"
+                      onClick={() => handleCopyOrderId(order._id)}
+                      title="Copy Order ID"
+                      aria-label="Copy Order ID"
+                    >
+                      {copiedOrderId === order._id ? (
+                        <Check size={12} className="text-emerald" />
+                      ) : (
+                        <Copy size={12} />
+                      )}
+                    </button>
+                    {isPaid && order.invoiceNumber ? (
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "var(--site-text-soft, #64748b)",
+                          overflowWrap: "anywhere"
+                        }}
+                      >
+                        Invoice: {order.invoiceNumber}
+                      </span>
+                    ) : null}
+                  </div>
+                  {isWpOrder && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        marginTop: "4px",
+                        padding: "2px 6px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        borderRadius: "4px",
+                        backgroundColor: "#fef3c7",
+                        color: "#92400e",
+                        border: "1px solid #fde68a"
+                      }}
+                    >
+                      Previous website order
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Order Body (Items on Left, Sidebar Box on Right) ── */}
+              <div className="my-order-card-body">
+                <div className="my-order-items">
+                  <h3>{status === "Delivered" ? "Delivered items" : "Order items"}</h3>
+                  {items.length === 0 ? (
+                    <p className="my-order-items-empty">No items found for this order.</p>
+                  ) : (
+                    items.map((item, i) => {
+                      const itemId = String(item?._id || item?.id || item?.product || "").trim();
+                      const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
+                      const returnWindow = getReturnWindowInfo(order, item);
+                      const isItemDigital = Boolean(
+                        item.isDigital ||
+                          isExternalDelivery(item) ||
+                          item.legacyAccess ||
+                          item.webReaderLink ||
+                          item.kindleLink ||
+                          String(item.name || "").toLowerCase().includes("web") ||
+                          String(item.name || "").toLowerCase().includes("kindle") ||
+                          String(item.name || "").toLowerCase().includes("flipbook") ||
+                          String(item.format || "").toLowerCase().includes("web") ||
+                          String(item.format || "").toLowerCase().includes("flipbook")
+                      );
+                      const comboHasDigital = Boolean(
+                        Array.isArray(item.bundleItems) &&
+                          item.bundleItems.some(
+                            (bi) =>
+                              bi.isDigital ||
+                              isExternalDelivery(bi) ||
+                              bi.webReaderLink ||
+                              bi.kindleLink ||
+                              String(bi.name || "").toLowerCase().includes("web") ||
+                              String(bi.name || "").toLowerCase().includes("flipbook") ||
+                              String(bi.name || "").toLowerCase().includes("kindle")
+                          )
+                      );
+                      const showDigitalBox = isItemDigital || comboHasDigital;
+                      const isComboItem = Boolean(
+                        item.productType === "bundle" ||
+                          (Array.isArray(item.bundleItems) && item.bundleItems.length > 0)
+                      );
+                      const isExternalOrCombo = isExternalDelivery(item) || isComboItem;
+
+                      const canRequestReturn =
+                        !isWpOrder &&
+                        status === "Delivered" &&
+                        isPaid &&
+                        Boolean(itemId) &&
+                        returnRequestStatus === "Not Requested" &&
+                        returnWindow.eligible &&
+                        !isItemDigital;
+
+                      return (
+                        <div key={i} className="my-order-item">
+                          <div className="my-order-item-main">
+                            {itemId ? (
+                              <Link to={`/product/${itemId}`} className="my-order-item-image-link" tabIndex={-1}>
+                                <img
+                                  src={item.image || item.product?.image || "/no-image.webp"}
+                                  alt={item.name}
+                                  className="my-order-item-thumb"
+                                  onError={(e) => {
+                                    e.currentTarget.src = "/no-image.webp";
+                                  }}
+                                />
+                              </Link>
+                            ) : (
+                              <img
+                                src={item.image || item.product?.image || "/no-image.webp"}
+                                alt={item.name}
+                                className="my-order-item-thumb"
+                                onError={(e) => {
+                                  e.currentTarget.src = "/no-image.webp";
+                                }}
+                              />
+                            )}
+
+                            <div className="my-order-item-content">
+                              {itemId ? (
+                                <Link to={`/product/${itemId}`} className="my-order-item-link">
+                                  <strong>{item.name}</strong>
+                                </Link>
+                              ) : (
+                                <strong>{item.name}</strong>
+                              )}
+
+                              {item.productType === "bundle" &&
+                                Array.isArray(item.bundleItems) &&
+                                item.bundleItems.length > 0 && (
+                                  <div className="my-order-item-bundle-details">
+                                    <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: "bold", color: "var(--site-text-soft)" }}>
+                                      Pack Includes:
+                                    </p>
+                                    <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                                      {item.bundleItems.map((bi, idx) => (
+                                        <li
+                                          key={idx}
+                                          style={{
+                                            fontSize: "12.5px",
+                                            color: "var(--site-text)",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            marginBottom: "2px"
+                                          }}
+                                        >
+                                          <span style={{ color: "var(--site-text-soft)" }}>•</span>
+                                          <span>{bi.name}</span>
+                                          <span style={{ color: "var(--site-text-soft)" }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                              {Number(item.upgradeCredit) > 0 && (
+                                <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--site-text-soft, #64748b)" }}>
+                                  Price includes {formatCurrencyExact(Number(item.upgradeCredit), item?.currency || order?.currencyDisplay?.currency || "INR")} taken off for items already owned: {
+                                    Array.isArray(item.upgradeOwnedDetails) && item.upgradeOwnedDetails.length > 0
+                                      ? item.upgradeOwnedDetails
+                                          .map((od) => `${od.name} (-${formatCurrencyExact(Number(od.amount || 0), item?.currency || order?.currencyDisplay?.currency || "INR")})`)
+                                          .join(", ")
+                                      : (Array.isArray(item.upgradeOwnedItems) ? item.upgradeOwnedItems.join(", ") : "")
+                                  }
+                                </p>
+                              )}
+
+                              {status === "Delivered" && !isItemDigital && (
+                                <div className="my-order-item-return-note-block" style={{ marginTop: "6px" }}>
+                                  {returnRequestStatus === "Requested" && (
+                                    <p className="my-order-item-return-note">
+                                      Return requested. Our team will review it.
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Approved" && (
+                                    <div className="my-order-item-return-approved-block">
+                                      {item.returnRequest?.shipment?.courier && !editingShipmentItemIds.includes(itemId) ? (
+                                        <p className="my-order-item-return-note">
+                                          You posted it via <strong>{item.returnRequest.shipment.courier}</strong> ({item.returnRequest.shipment.trackingNumber}). We'll update you when it arrives.
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setShipmentInputs((prev) => ({
+                                                ...prev,
+                                                [itemId]: {
+                                                  courier: item.returnRequest.shipment.courier,
+                                                  trackingNumber: item.returnRequest.shipment.trackingNumber
+                                                }
+                                              }));
+                                              setEditingShipmentItemIds((prev) => [...prev, itemId]);
+                                            }}
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              color: "var(--site-accent, #2563eb)",
+                                              textDecoration: "underline",
+                                              fontSize: "12px",
+                                              cursor: "pointer",
+                                              marginLeft: "8px"
+                                            }}
+                                          >
+                                            Update tracking
+                                          </button>
+                                        </p>
+                                      ) : (
+                                        <>
+                                          <p className="my-order-item-return-note">
+                                            Return approved. Please post the item to: <strong>{returnAddress || "the address in your email"}</strong>, then add the courier and tracking number below.
+                                          </p>
+                                          <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+                                            <input
+                                              type="text"
+                                              placeholder="Courier (e.g. India Post, Delhivery)"
+                                              value={shipmentInputs[itemId]?.courier ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setShipmentInputs((prev) => ({
+                                                  ...prev,
+                                                  [itemId]: { ...prev[itemId], courier: val, error: "" }
+                                                }));
+                                              }}
+                                              style={{
+                                                padding: "6px 10px",
+                                                fontSize: "12.5px",
+                                                borderRadius: "6px",
+                                                border: "1px solid var(--site-border, #cbd5e1)",
+                                                background: "var(--site-surface, #fff)",
+                                                color: "var(--site-text, #0f172a)",
+                                                minWidth: "150px"
+                                              }}
+                                            />
+                                            <input
+                                              type="text"
+                                              placeholder="Tracking number"
+                                              value={shipmentInputs[itemId]?.trackingNumber ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setShipmentInputs((prev) => ({
+                                                  ...prev,
+                                                  [itemId]: { ...prev[itemId], trackingNumber: val, error: "" }
+                                                }));
+                                              }}
+                                              style={{
+                                                padding: "6px 10px",
+                                                fontSize: "12.5px",
+                                                borderRadius: "6px",
+                                                border: "1px solid var(--site-border, #cbd5e1)",
+                                                background: "var(--site-surface, #fff)",
+                                                color: "var(--site-text, #0f172a)",
+                                                minWidth: "150px"
+                                              }}
+                                            />
+                                            <button
+                                              type="button"
+                                              className="my-order-reorder-btn"
+                                              disabled={shipmentInputs[itemId]?.isSaving}
+                                              onClick={() => handleSaveReturnShipment(order._id, itemId)}
+                                              style={{ padding: "6px 14px", fontSize: "12px" }}
+                                            >
+                                              {shipmentInputs[itemId]?.isSaving ? "Saving..." : "Save"}
+                                            </button>
+                                            {editingShipmentItemIds.includes(itemId) && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setEditingShipmentItemIds((prev) => prev.filter((id) => id !== itemId))}
+                                                style={{
+                                                  background: "none",
+                                                  border: "none",
+                                                  color: "var(--site-text-soft, #64748b)",
+                                                  fontSize: "12px",
+                                                  cursor: "pointer"
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            )}
+                                            {shipmentInputs[itemId]?.error && (
+                                              <span style={{ color: "#dc2626", fontSize: "11.5px", width: "100%", display: "block" }}>
+                                                ⚠️ {shipmentInputs[itemId].error}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {returnRequestStatus === "Received" && (
+                                    <p className="my-order-item-return-note">
+                                      {item?.returnRequest?.condition === "Damaged" || item?.returnRequest?.condition === "Incomplete"
+                                        ? "We received your item and will contact you about the refund."
+                                        : "We received your item. Your refund is being processed."}
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Rejected" && (
+                                    <p className="my-order-item-return-note">
+                                      Return request was rejected.{item?.returnRequest?.adminReason ? ` Reason: ${item.returnRequest.adminReason}` : ""}
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Refunded" && (
+                                    <p className="my-order-item-return-note">
+                                      Returned and refunded.
+                                    </p>
+                                  )}
+
+                                  {returnRequestStatus === "Not Requested" && (
+                                    <p className="my-order-item-return-note">
+                                      {returnWindow.eligible
+                                        ? `Return available for ${returnWindow.daysLeft} more day${
+                                            returnWindow.daysLeft === 1 ? "" : "s"
+                                          }.`
+                                        : "7-day return window has closed."}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Digital Reader Access Box */}
+                              {isPaid &&
+                                showDigitalBox &&
+                                (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
+                                  isWpOrder ? (
+                                    <div
+                                      className="my-order-legacy-note-box"
+                                      style={{
+                                        marginTop: "8px",
+                                        padding: "10px 12px",
+                                        backgroundColor: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: "6px",
+                                        fontSize: "12.5px",
+                                        color: "var(--site-text-soft, #475569)",
+                                        lineHeight: 1.4
+                                      }}
+                                    >
+                                      These were purchased on our previous website. Please access them there using the same email address.
+                                    </div>
+                                  ) : (
+                                    <div className="my-order-digital-box">
+                                      <div className="my-order-digital-head">
+                                        {isExternalOrCombo
+                                          ? (isAccessPending(item)
+                                              ? "⏳ Access being set up"
+                                              : "Digital item, available in My Digital Library")
+                                          : "⚡ Digital Reader Access Granted"}
+                                      </div>
+                                      <div className="my-order-digital-btns">
+                                        {isExternalOrCombo ? (
+                                          isAccessPending(item) ? (
+                                            <p
+                                              className="my-order-access-pending-note"
+                                              style={{
+                                                fontSize: "12.5px",
+                                                color: "var(--site-text-soft, #64748b)",
+                                                margin: 0,
+                                                lineHeight: 1.4
+                                              }}
+                                            >
+                                              Our team is setting up your access. We'll email you as soon as it's ready.
+                                            </p>
+                                          ) : (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                                              <button
+                                                type="button"
+                                                className="my-order-digital-btn-read"
+                                                onClick={() => {
+                                                  navigate("/my-library", { state: { search: item.name } });
+                                                }}
+                                              >
+                                                Open in My Digital Library
+                                              </button>
+                                              {item.accessNote && (
+                                                <div
+                                                  className="my-order-access-note-box"
+                                                  style={{
+                                                    padding: "8px 10px",
+                                                    backgroundColor: "var(--site-surface-2, #f8fafc)",
+                                                    border: "1px solid var(--site-border, #e2e8f0)",
+                                                    borderRadius: "6px",
+                                                    fontSize: "12px",
+                                                    color: "var(--site-text, #334155)",
+                                                    lineHeight: 1.4
+                                                  }}
+                                                >
+                                                  <strong
+                                                    style={{
+                                                      display: "block",
+                                                      marginBottom: "4px",
+                                                      fontSize: "11.5px",
+                                                      color: "var(--site-text-soft, #475569)"
+                                                    }}
+                                                  >
+                                                    Note
+                                                  </strong>
+                                                  <div style={{ whiteSpace: "pre-wrap" }}>{item.accessNote}</div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        ) : (
+                                          <>
+                                            {(item.webReaderLink ||
+                                              String(item.name || "").toLowerCase().includes("web") ||
+                                              String(item.name || "").toLowerCase().includes("flipbook") ||
+                                              item.isDigital) && (
+                                              <button
+                                                type="button"
+                                                className="my-order-digital-btn-read"
+                                                onClick={() => {
+                                                  const readerLink = item.webReaderLink || item.product?.webReaderLink;
+                                                  navigate("/my-library", {
+                                                    state: { autoOpenUrl: readerLink, search: item.name }
+                                                  });
+                                                }}
+                                              >
+                                                {String(item.name || "").toLowerCase().includes("flipbook") ||
+                                                String(item.digitalType || item.product?.digitalType || "")
+                                                  .toLowerCase()
+                                                  .includes("flipbook")
+                                                  ? "📖 Read Flipbook"
+                                                  : "📖 Read Web Version"}
+                                              </button>
+                                            )}
+                                            {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
+                                              <a
+                                                href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="my-order-digital-btn-kindle"
+                                              >
+                                                📱 View Kindle Edition ↗
+                                              </a>
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="my-order-digital-btn-guide"
+                                              onClick={() => setActiveKindleGuideItem(item)}
+                                            >
+                                              💡 How to Access
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                )}
+
+                              {/* 1-Time Gift Passcode */}
+                              {isPaid && (order.isGift || item.giftCode) && (
+                                <div className="my-order-gift-box">
+                                  <div className="my-order-gift-inner">
+                                    <div>
+                                      <span className="my-order-gift-title">🎟️ 1-Time Gift Pass Code</span>
+                                      <code className="my-order-gift-code">
+                                        {item.giftCode ||
+                                          (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||
+                                          "GIFT-PASS-GENERATED"}
+                                      </code>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="my-order-gift-copy-btn"
+                                      onClick={() => {
+                                        const code =
+                                          item.giftCode ||
+                                          (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code);
+                                        if (code) {
+                                          navigator.clipboard.writeText(code);
+                                          showToast("Gift Pass Code copied to clipboard!", "success");
+                                        }
+                                      }}
+                                    >
+                                      📋 Copy Code
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="my-order-item-side">
+                            <span className="my-order-item-price">
+                              {formatCurrencyExact(
+                                Number(item?.price || 0),
+                                item?.currency || order?.currencyDisplay?.currency || "INR"
+                              )}
+                            </span>
+                            <span className="my-order-item-qty">Qty: {item.quantity || 1}</span>
+
+                            <div className="my-order-item-btn-stack">
+                              {isKindleProduct(item) ? (
+                                <a
+                                  href={item.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="my-order-reorder-btn my-order-reorder-kindle-btn"
+                                >
+                                  Buy on Amazon ↗
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="my-order-reorder-btn"
+                                  disabled={buyingAgainItemId === itemId}
+                                  onClick={() => handleBuyAgain(item)}
+                                >
+                                  {buyingAgainItemId === itemId ? "Adding..." : "Buy Again"}
+                                </button>
+                              )}
+
+                              {isPaid && status !== "Cancelled" && (
+                                itemId ? (
+                                  <Link
+                                    to={`/product/${itemId}#write-review`}
+                                    className="my-order-review-link"
+                                  >
+                                    Write Review
+                                  </Link>
+                                ) : (
+                                  <Link
+                                    to="/collection"
+                                    className="my-order-review-link"
+                                  >
+                                    Write Review
+                                  </Link>
+                                )
+                              )}
+
+                              {canRequestReturn && (
+                                <button
+                                  type="button"
+                                  className="my-order-return-btn"
+                                  onClick={() =>
+                                    setReturnTarget({
+                                      orderId: order._id,
+                                      itemId,
+                                      itemName: item?.name || "Product"
+                                    })
+                                  }
+                                >
+                                  Return product
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* ── Right Actions Sidebar Card ── */}
+                <div className="my-order-actions">
+                  <button
+                    type="button"
+                    className="my-order-invoice-btn"
+                    disabled={!canDownloadInvoice || generatingInvoiceOrderId === order._id}
+                    onClick={() => {
+                      if (!canDownloadInvoice) return;
+                      void generateInvoice(order);
+                    }}
+                  >
+                    {generatingInvoiceOrderId === order._id
+                      ? "Generating invoice..."
+                      : canDownloadInvoice
+                      ? "Download invoice"
+                      : isDigitalOnly
+                      ? "Invoice after payment"
+                      : "Invoice after shipping"}
+                  </button>
+
+                  {order.trackingId && (
+                    <button
+                      type="button"
+                      className="my-order-track-btn"
+                      onClick={() => void toggleTracking(order._id)}
+                    >
+                      {activeTracking[order._id] ? "Hide Tracking" : "Track Package"}
+                    </button>
+                  )}
+
+                  <p className="my-order-invoice-note">
+                    {status === "Cancelled"
+                      ? "Invoice is not available for cancelled orders."
+                      : canDownloadInvoice
+                      ? "Your invoice is ready to download."
+                      : isDigitalOnly
+                      ? "Invoice will be available once this order is paid."
+                      : "Invoice will be available once this order is paid and shipped."}
+                  </p>
+
+                  {shouldShowRefundStatus && (() => {
+                    const activeReturnItems = items.filter(
+                      (item) =>
+                        item?.isDigital !== true &&
+                        item?.returnRequest?.status &&
+                        item.returnRequest.status !== "Refunded" &&
+                        item.returnRequest.status !== "Rejected"
+                    );
+
+                    let returnStage = null;
+                    if (activeReturnItems.some((item) => item.returnRequest.status === "Received")) {
+                      returnStage = "received";
+                    } else if (activeReturnItems.some((item) => item.returnRequest.status === "Approved")) {
+                      returnStage = "approved";
+                    } else if (activeReturnItems.some((item) => item.returnRequest.status === "Requested")) {
+                      returnStage = "requested";
+                    }
+
+                    const isReturnInFlight =
+                      returnStage !== null && (refundStatus === "Pending" || refundStatus === "Processing");
+
+                    let badgeText = refundStatus;
+                    let subnote = "";
+
+                    if (isReturnInFlight) {
+                      if (returnStage === "requested") {
+                        badgeText = "Under review";
+                        subnote =
+                          "Return requested. Our team will review it. Your refund starts after we receive the item.";
+                      } else if (returnStage === "approved") {
+                        badgeText = "Waiting for item";
+                        subnote =
+                          "Return approved. Your refund will be processed after we receive your item. Please post it and add the tracking number.";
+                      } else if (returnStage === "received") {
+                        badgeText = "Item received";
+                        const isDamagedOrIncomplete = activeReturnItems.some(
+                          (item) =>
+                            item.returnRequest?.status === "Received" &&
+                            (item.returnRequest?.condition === "Damaged" ||
+                              item.returnRequest?.condition === "Incomplete")
+                        );
+                        subnote = isDamagedOrIncomplete
+                          ? "We received your item and will contact you about the refund."
+                          : "We received your item. Your refund will be processed shortly.";
+                      }
+                    } else {
+                      if (refundStatus === "Pending") {
+                        subnote = "Refund initiated. Processing in 3–5 business days.";
+                      } else if (refundStatus === "Processing") {
+                        subnote = "Refund is currently being processed with the bank.";
+                      } else if (refundStatus === "Refunded") {
+                        subnote = "Refund has been sent to your original payment source.";
+                      } else if (refundStatus === "Partially Refunded") {
+                        subnote = "Part of your order has been refunded.";
+                      } else if (refundStatus === "Rejected") {
+                        subnote = "Refund request could not be processed.";
+                      }
+                    }
+
+                    return (
+                      <div className="my-order-refund-block">
+                        <p className="my-order-refund-note">
+                          <span>Refund:</span>{" "}
+                          <span className={`my-order-status status-refund-${refundStatus.toLowerCase()}`}>
+                            {badgeText}
+                          </span>
+                        </p>
+                        <p className="my-order-refund-subnote">{subnote}</p>
+                      </div>
+                    );
+                  })()}
+
+                  {canContinuePayment && (
+                    <button
+                      type="button"
+                      className="my-order-continue-btn"
+                      onClick={() => handleContinuePayment(order)}
+                      disabled={retryingOrderId === order._id}
+                    >
+                      {retryingOrderId === order._id ? "Opening payment..." : "Continue Payment"}
+                    </button>
+                  )}
+
+                  {canCancelOrder && (
+                    <button
+                      type="button"
+                      className="my-order-cancel-btn"
+                      onClick={() => setOrderToCancel(order)}
+                    >
+                      Cancel order
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Tracking Details Drawer (if open) ── */}
+                {activeTracking[order._id] !== undefined && activeTracking[order._id] !== false && (
+                  <div className="my-order-tracking-panel">
+                    {activeTracking[order._id] === null ? (
+                      <p style={{ fontSize: "13px", color: "var(--site-text-soft)", padding: "12px" }}>
+                        Fetching live tracking details...
+                      </p>
+                    ) : activeTracking[order._id].error ? (
+                      <p style={{ fontSize: "13px", color: "#ef4444", padding: "12px" }}>
+                        Unable to load tracking details at the moment.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="my-order-tracking-info-grid">
+                          <div className="my-order-tracking-info-item">
+                            <span>Courier Partner</span>
+                            <strong>{activeTracking[order._id].courier || "Delhivery"}</strong>
+                          </div>
+                          <div className="my-order-tracking-info-item">
+                            <span>Tracking ID</span>
+                            <strong>{activeTracking[order._id].trackingId}</strong>
+                          </div>
+                          <div className="my-order-tracking-info-item">
+                            <span>Status</span>
+                            <strong>{activeTracking[order._id].status}</strong>
+                          </div>
+                        </div>
+
+                        {activeTracking[order._id].trackingId && (
+                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0 12px 14px 12px", marginTop: "6px" }}>
+                            <a
+                              href={getCourierTrackingUrl(
+                                activeTracking[order._id].courier || "Delhivery",
+                                activeTracking[order._id].trackingId
+                              )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="my-order-track-website-link"
+                            >
+                              🔗 Track on {activeTracking[order._id].courier || "Delhivery"} Website ↗
+                            </a>
+                          </div>
+                        )}
+
+                        <div className="my-order-tracking-stepper">
+                          {activeTracking[order._id].checkpoints &&
+                          activeTracking[order._id].checkpoints.length > 0 ? (
+                            activeTracking[order._id].checkpoints.map((cp, idx, arr) => {
+                              const isLatest = idx === arr.length - 1;
+                              const stepClass = `my-order-tracking-step active ${isLatest ? "latest" : ""}`;
+                              return (
+                                <div key={idx} className={stepClass}>
+                                  <div className="my-order-tracking-bullet" />
+                                  <div className="my-order-tracking-content">
+                                    <span className="my-order-tracking-status">{cp.status}</span>
+                                    <p className="my-order-tracking-desc">{cp.description}</p>
+                                    <div className="my-order-tracking-meta">
+                                      <span className="my-order-tracking-location">{cp.location}</span>
+                                      <span>•</span>
+                                      <span>{new Date(cp.time).toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p style={{ fontSize: "12.5px", color: "var(--site-text-soft)" }}>
+                              No tracking checkpoints logged yet.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {/* ── Pagination / Load More ── */}
+      {!isLoading && hasMoreOrders && (
         <div className="my-orders-load-more-wrap">
           <p className="my-orders-load-more-note">
             Showing {visibleOrders.length} of {filteredOrders.length} orders
@@ -795,114 +1649,234 @@ function MyOrders() {
             Show more orders
           </button>
         </div>
-      ) : null}
-      {showReviewModal && (
-        <div className="review-redirect-modal-backdrop">
-          <div className="review-redirect-modal">
-            <h2>Thank you for your purchase!</h2>
-            <p>We hope you love your new product. We would be extremely grateful if you could share your feedback with us.</p>
-            <div className="review-redirect-modal-actions">
+      )}
+
+      {/* ── Modal: Order Cancellation ── */}
+      {orderToCancel && (
+        <div
+          className="order-cancel-modal-backdrop"
+          onClick={() => {
+            if (!isCancellingOrder) setOrderToCancel(null);
+          }}
+        >
+          <div className="order-cancel-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="order-cancel-modal-header">
+              <div className="order-cancel-modal-header-info">
+                <div className="order-cancel-modal-icon-badge">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="order-cancel-modal-title">Cancel Order</h3>
+                  <p className="order-cancel-modal-id">#{orderToCancel._id.slice(-8).toUpperCase()}</p>
+                </div>
+              </div>
               <button
                 type="button"
-                className="review-redirect-btn-primary"
+                className="order-modal-close-btn"
                 onClick={() => {
-                  setShowReviewModal(false);
-                  window.location.href = "https://review.digitalsanskritguru.com/";
+                  if (!isCancellingOrder) setOrderToCancel(null);
                 }}
+                disabled={isCancellingOrder}
               >
-                Leave a Review
-              </button>
-              <button
-                type="button"
-                className="review-redirect-btn-secondary"
-                onClick={() => setShowReviewModal(false)}
-              >
-                Go to My Orders
+                <X size={16} />
               </button>
             </div>
+
+            <form onSubmit={handleConfirmCancelOrder} className="order-cancel-form">
+              {orderHasPendingAccess(orderToCancel) && (
+                <div
+                  className="order-cancel-pending-notice"
+                  style={{
+                    padding: "10px 12px",
+                    backgroundColor: "var(--site-surface-2, #fffbf0)",
+                    border: "1px solid var(--site-border, #fde68a)",
+                    borderRadius: "8px",
+                    fontSize: "12.5px",
+                    color: "var(--site-button-bg, #b45309)",
+                    lineHeight: 1.4
+                  }}
+                >
+                  Access has not been set up yet, so you will not lose anything you are using.
+                </div>
+              )}
+              <div className="order-cancel-field-group">
+                <label className="order-cancel-field-label">Reason for cancellation</label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="order-cancel-select"
+                  required
+                >
+                  {CANCELLATION_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+
+                {cancelReason === "Other reason" && (
+                  <textarea
+                    value={customCancelReason}
+                    onChange={(e) => setCustomCancelReason(e.target.value)}
+                    placeholder="Provide specific reason..."
+                    className="order-cancel-textarea"
+                    rows={2}
+                    required
+                  />
+                )}
+              </div>
+
+              <div className="order-cancel-modal-actions">
+                <button
+                  type="button"
+                  className="order-cancel-btn-keep"
+                  onClick={() => setOrderToCancel(null)}
+                  disabled={isCancellingOrder}
+                >
+                  Keep Order
+                </button>
+                <button type="submit" className="order-cancel-btn-confirm" disabled={isCancellingOrder}>
+                  {isCancellingOrder ? "Cancelling..." : "Confirm Cancellation"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* ── Modal: Return Request ── */}
+      {returnTarget && (
+        <div
+          className="order-cancel-modal-backdrop"
+          onClick={() => {
+            if (!isSubmittingReturn) setReturnTarget(null);
+          }}
+        >
+          <div className="order-cancel-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="order-cancel-modal-header">
+              <div className="order-cancel-modal-header-info">
+                <div className="order-cancel-modal-icon-badge return-badge">
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className="order-cancel-modal-title">Return Item</h3>
+                  <p className="order-cancel-modal-id">{returnTarget.itemName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="order-modal-close-btn"
+                onClick={() => {
+                  if (!isSubmittingReturn) setReturnTarget(null);
+                }}
+                disabled={isSubmittingReturn}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReturnRequest} className="order-cancel-form">
+              <div className="order-cancel-field-group">
+                <label className="order-cancel-field-label">Reason for return</label>
+                <select
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  className="order-cancel-select"
+                  required
+                >
+                  {RETURN_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="order-cancel-field-label" style={{ marginTop: "10px" }}>
+                  Additional Details
+                </label>
+                <textarea
+                  value={customReturnReason}
+                  onChange={(e) => setCustomReturnReason(e.target.value)}
+                  placeholder="Additional feedback (optional)..."
+                  className="order-cancel-textarea"
+                  rows={2}
+                />
+              </div>
+
+              <div className="order-cancel-modal-actions">
+                <button
+                  type="button"
+                  className="order-cancel-btn-keep"
+                  onClick={() => setReturnTarget(null)}
+                  disabled={isSubmittingReturn}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="order-cancel-btn-confirm return-submit"
+                  disabled={isSubmittingReturn}
+                >
+                  {isSubmittingReturn ? "Submitting..." : "Submit Return"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Kindle Setup Guide ── */}
       {activeKindleGuideItem && (
         <div className="review-redirect-modal-backdrop" onClick={() => setActiveKindleGuideItem(null)}>
-          <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "540px", textAlign: "left" }}>
-            <h3 style={{ margin: "0 0 6px", color: "var(--site-text)" }}>📱 Access Your Digital & Kindle Content</h3>
-            <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--site-text-soft)" }}>
-              Instructions for reading <strong>{activeKindleGuideItem.name}</strong> on Web, Kindle app, or Kindle E-Reader device.
+          <div
+            className="review-redirect-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "500px", textAlign: "left" }}
+          >
+            <h3 style={{ margin: "0 0 6px", color: "var(--site-text)" }}>📱 Access Digital Content</h3>
+            <p style={{ margin: "0 0 14px", fontSize: "13px", color: "var(--site-text-soft)" }}>
+              Instructions for reading <strong>{activeKindleGuideItem.name}</strong>.
             </p>
 
-            <div style={{ display: "grid", gap: "12px" }}>
-              <div style={{ padding: "12px", borderRadius: "8px", border: "1px solid var(--site-border)", backgroundColor: "var(--site-bg-soft)" }}>
-                <h4 style={{ margin: "0 0 4px", fontSize: "14px" }}>📖 Option 1: Instant Web Reader</h4>
-                <p style={{ margin: 0, fontSize: "12.5px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
-                  Click <strong>"Read Web Version"</strong> above to open the interactive online reader in your web browser on mobile or desktop instantly.
+            <div style={{ display: "grid", gap: "10px" }}>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--site-border)",
+                  backgroundColor: "var(--site-surface-muted)"
+                }}
+              >
+                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}>📖 Web Reader</h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
+                  Click <strong>"Read Web Version"</strong> on the order item to read directly in your browser.
                 </p>
               </div>
 
-              <div style={{ padding: "12px", borderRadius: "8px", border: "1px solid var(--site-border)", backgroundColor: "var(--site-bg-soft)" }}>
-                <h4 style={{ margin: "0 0 4px", fontSize: "14px" }}>📱 Option 2: Send to Kindle / Amazon Kindle App</h4>
-                <ol style={{ margin: "4px 0 0", paddingLeft: "20px", fontSize: "12.5px", color: "var(--site-text-soft)", lineHeight: 1.5 }}>
-                  <li>Open your Amazon Kindle app or Kindle E-Reader device.</li>
-                  <li>Use your Amazon account's <strong>Send to Kindle email address</strong> or click <strong>"Open on Kindle"</strong> to claim your copy.</li>
-                  {activeKindleGuideItem.kindleAsin && (
-                    <li>Kindle ASIN / Code: <code>{activeKindleGuideItem.kindleAsin}</code></li>
-                  )}
-                </ol>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--site-border)",
+                  backgroundColor: "var(--site-surface-muted)"
+                }}
+              >
+                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}>📱 Kindle / Amazon</h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
+                  Open your Kindle app and use your Send-to-Kindle email to read.
+                </p>
               </div>
             </div>
 
-            <div style={{ marginTop: "20px", textAlign: "right" }}>
+            <div style={{ marginTop: "16px", textAlign: "right" }}>
               <button
                 type="button"
                 className="review-redirect-btn-primary"
                 onClick={() => setActiveKindleGuideItem(null)}
               >
-                Close Guide
+                Got It
               </button>
             </div>
-          </div>
-        </div>
-      )}
-      {activeWebReaderUrl && (
-        <div
-          className="review-redirect-modal-backdrop"
-          onClick={() => setActiveWebReaderUrl("")}
-          style={{ backgroundColor: "rgba(0,0,0,0.85)", zIndex: 9999, padding: "12px" }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: "1100px",
-              height: "90vh",
-              backgroundColor: "#1a1a2e",
-              borderRadius: "12px",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
-            }}
-          >
-            <div style={{ padding: "12px 16px", backgroundColor: "#16213e", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #0f3460" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
-                <span>📖 Digital Sanskrit Reader • Protected Access</span>
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => setActiveWebReaderUrl("")}
-                  style={{ padding: "6px 14px", borderRadius: "6px", backgroundColor: "#e94560", color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}
-                >
-                  Close Reader
-                </button>
-              </div>
-            </div>
-            <iframe
-              src={activeWebReaderUrl}
-              title="Digital Web Reader"
-              onContextMenu={(e) => e.preventDefault()}
-              style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#ffffff", userSelect: "none" }}
-              allow="fullscreen"
-            />
           </div>
         </div>
       )}

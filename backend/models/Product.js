@@ -186,6 +186,11 @@ const productSchema = new mongoose.Schema(
       default: false
     },
 
+    skipOwnershipRules: {
+      type: Boolean,
+      default: false
+    },
+
     digitalType: {
       type: String,
       default: "Web Version"
@@ -215,6 +220,28 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+
+    digitalDelivery: {
+      type: String,
+      enum: ["onsite", "external"],
+      default: "onsite"
+    },
+
+    externalAccessLink: {
+      type: String,
+      default: ""
+    },
+
+    externalAccessLabel: {
+      type: String,
+      default: ""
+    },
+
+    externalAccessManual: {
+      type: Boolean,
+      default: false
+    },
+
 
     bundleItems: {
       type: [bundleItemSchema],

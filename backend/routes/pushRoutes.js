@@ -36,8 +36,12 @@ router.post("/subscribe", protect, async (req, res) => {
     res.json({ message: "Subscribed to push notifications." });
   } catch (err) {
     if (err.code === 11000) {
-      // Duplicate endpoint (already subscribed) — fine
-      return res.json({ message: "Already subscribed." });
+      // Duplicate endpoint (already subscribed) — update user and keys
+      await PushSubscription.updateOne(
+        { endpoint: req.body.endpoint },
+        { user: req.user, keys: req.body.keys }
+      );
+      return res.json({ message: "Subscription updated." });
     }
     res.status(500).json({ message: "Failed to save subscription." });
   }
@@ -65,6 +69,32 @@ router.post("/status", protect, async (req, res) => {
     res.json({ subscribed: Boolean(exists) });
   } catch {
     res.json({ subscribed: false });
+  }
+});
+
+// POST /api/push/test — send an instant test push to the logged-in user
+router.post("/test", protect, async (req, res) => {
+  try {
+    const { sendPushToUser } = require("../utils/webPush");
+    const count = await PushSubscription.countDocuments({ user: req.user });
+    if (count === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No push subscription found for your account. Please enable notifications first."
+      });
+    }
+
+    const results = await sendPushToUser(req.user, {
+      title: "Digital Sanskrit Guru — Test Notification",
+      body: "🔔 Push notifications are working perfectly on your device!",
+      url: "/account",
+      icon: "/favicon.ico",
+      badge: "/favicon.ico"
+    });
+
+    res.json({ success: true, message: "Test notification sent!", results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

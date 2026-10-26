@@ -218,7 +218,10 @@ export function getFallbackPricingCountry() {
 
     const geoCountry = String(localStorage.getItem("geoCountry") || "").trim().toUpperCase();
     if (geoCountry === "IN") return "India";
-    if (geoCountry === "OTHER") return "International";
+    if (geoCountry) {
+      if (geoCountry === "OTHER" || geoCountry === "US" || geoCountry === "USA") return "United States";
+      return geoCountry;
+    }
   }
 
   return getUserCurrency() === "INR" ? "India" : "International";

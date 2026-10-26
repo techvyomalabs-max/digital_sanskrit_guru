@@ -1,18 +1,144 @@
-import { useCallback, useEffect, useState, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useToast } from "../hooks/useToast";
+import { useDialog } from "../hooks/useDialog";
 import { useWishlist } from "../hooks/useWishlist";
 import "./Product.css";
+import { useDigitalOwnership } from "../hooks/useDigitalOwnership";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
+import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isKindleProduct } from "../utils/kindle";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
+import { htmlToPlainText } from "../utils/plainText";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
+import {
+  Star,
+  CheckCircle2,
+  ThumbsUp,
+  Filter,
+  PenLine,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  ChevronDown,
+  MessageCircle,
+  X
+} from "lucide-react";
+import { validatePhoneNumber } from "../utils/phoneValidation";
+import {
+  COUNTRY_PHONE_CODES,
+  getCountryPhoneData
+} from "../utils/countryPhoneCodes";
+import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
+import { formatDate } from "../utils/date";
+
+const AVATAR_PALETTES = [
+  { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
+  { bg: "rgba(22, 163, 74, 0.12)", text: "#16a34a" }, // Green
+  { bg: "rgba(147, 51, 234, 0.12)", text: "#9333ea" }, // Purple
+  { bg: "rgba(217, 119, 6, 0.12)", text: "#d97706" }, // Amber
+  { bg: "rgba(225, 29, 72, 0.12)", text: "#e11d48" }, // Rose
+  { bg: "rgba(13, 148, 136, 0.12)", text: "#0d9488" }  // Teal
+];
+
+function getAvatarColors(name = "") {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % AVATAR_PALETTES.length;
+  return AVATAR_PALETTES[index];
+}
+
+const RATING_DESCRIPTIONS = {
+  1: "1.0 - Poor",
+  2: "2.0 - Below Average",
+  3: "3.0 - Average",
+  4: "4.0 - Very Good",
+  5: "5.0 - Outstanding / Excellent"
+};
+
+function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
+  if (!Array.isArray(upgradeCreditItems)) return [];
+  const map = new Map();
+  for (const item of upgradeCreditItems) {
+    if (Array.isArray(item?.ownedDetails) && item.ownedDetails.length > 0) {
+      for (const od of item.ownedDetails) {
+        const name = String(od?.name || "").trim();
+        if (!name) continue;
+        const prev = map.get(name) || 0;
+        map.set(name, Math.round((prev + (Number(od?.amount) || 0)) * 100) / 100);
+      }
+    } else if (Array.isArray(item?.ownedItems)) {
+      for (const nameStr of item.ownedItems) {
+        const name = String(nameStr || "").trim();
+        if (!name || map.has(name)) continue;
+        map.set(name, null);
+      }
+    }
+  }
+  return Array.from(map.entries()).map(([name, amount]) => ({ name, amount }));
+}
+
+function StarRating({ rating = 0, size = 16, className = "" }) {
+  const num = Number(rating || 0);
+  return (
+    <span
+      className={`star-rating-row ${className}`}
+      style={{ display: "inline-flex", alignItems: "center", gap: "2px", verticalAlign: "middle" }}
+      aria-label={`${num} out of 5 stars`}
+    >
+      {[1, 2, 3, 4, 5].map((star) => {
+        const fillPercent = Math.max(0, Math.min(100, (num - (star - 1)) * 100));
+        return (
+          <span
+            key={star}
+            className="star-icon-wrapper"
+            style={{
+              position: "relative",
+              display: "inline-block",
+              width: `${size}px`,
+              height: `${size}px`,
+              lineHeight: 0
+            }}
+          >
+            <Star
+              size={size}
+              className="star-empty"
+              style={{ color: "#cbd5e1", fill: "#e2e8f0" }}
+            />
+            {fillPercent > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: `${fillPercent}%`,
+                  height: "100%",
+                  overflow: "hidden",
+                  lineHeight: 0
+                }}
+              >
+                <Star
+                  size={size}
+                  className="star-filled"
+                  style={{ color: "#f59e0b", fill: "#f59e0b" }}
+                />
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 const PRODUCT_EXTRA_DETAILS = {
   soundaryalahari: {
@@ -59,9 +185,17 @@ function buildAboutProductPoints(product, extraProductDetails) {
       .filter(Boolean);
   }
 
+  const stockHighlight = product.isDigital === true
+    ? (product.externalAccessManual === true
+      ? "Access will be given by our team within 24–48 hours of purchase."
+      : isKindleProduct(product)
+        ? "Kindle edition, sold on Amazon."
+        : "Instant digital access.")
+    : (product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.");
+
   const points = [
     `${product.category || "General"} title for readers looking for ${String(product.category || "traditional learning").toLowerCase()} material.`,
-    product.stock > 0 ? `${product.stock} copies currently available for order.` : "Currently unavailable for ordering.",
+    stockHighlight,
     `${Number(product.rating || 0).toFixed(1)} / 5 rating from ${Array.isArray(product.reviews) ? product.reviews.length : 0} customer reviews.`
   ];
 
@@ -166,12 +300,25 @@ function ProductNotFound() {
   );
 }
 
+function isDigitalOnlyBundle(product) {
+  const items = Array.isArray(product?.bundleItems) ? product.bundleItems : [];
+  if (items.length === 0) return false;
+  return items.every((comp) => {
+    if (comp?.product && typeof comp.product === "object" && typeof comp.product.isDigital === "boolean") {
+      return comp.product.isDigital === true;
+    }
+    return comp?.isDigital === true;
+  });
+}
+
 function Product() {
   const { id } = useParams();
+  const location = useLocation();
   const { addToCart } = useCart();
   const { user, token } = useAuth();
   const { selectedAddress } = useDeliveryLocation();
   const { showToast } = useToast();
+  const { prompt: dialogPrompt } = useDialog();
   const navigate = useNavigate();
   const { wishlist, addToWishlist, removeFromWishlist } = useWishlist();
 
@@ -179,15 +326,105 @@ function Product() {
   const [reviews, setReviews] = useState([]);
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
-  useDocumentMetadata(product?.name, product?.description);
+  useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState(null);
+  const [reviewSort, setReviewSort] = useState("newest");
+  const [helpfulVotes, setHelpfulVotes] = useState({});
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    if (!loading && product && (location.hash === "#write-review" || location.hash === "#reviews-section" || location.state?.scrollToReview)) {
+      if (location.hash === "#write-review" || location.state?.scrollToReview) {
+        setIsReviewFormOpen(true);
+      }
+      setTimeout(() => {
+        const targetEl = document.getElementById("write-review") || document.getElementById("reviews-section");
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          const textarea = targetEl.querySelector("textarea");
+          if (textarea) {
+            textarea.focus();
+          }
+        }
+      }, 300);
+    }
+  }, [loading, product, location.hash, location.state]);
+
+  const ratingDistribution = useMemo(() => {
+    const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    const total = reviews.length;
+    reviews.forEach((r) => {
+      const star = Math.max(1, Math.min(5, Math.round(Number(r.rating || 5))));
+      counts[star] = (counts[star] || 0) + 1;
+    });
+    return [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      count: counts[star],
+      percent: total > 0 ? Math.round((counts[star] / total) * 100) : 0
+    }));
+  }, [reviews]);
+
+  const averageRating = useMemo(() => {
+    if (!reviews.length) return Number(product?.rating || 0);
+    const sum = reviews.reduce((acc, r) => acc + Number(r.rating || 0), 0);
+    return Math.round((sum / reviews.length) * 10) / 10;
+  }, [reviews, product?.rating]);
+
+  const filteredReviews = useMemo(() => {
+    let list = [...reviews];
+    if (selectedRatingFilter !== null) {
+      list = list.filter((r) => Math.round(Number(r.rating || 5)) === selectedRatingFilter);
+    }
+    if (reviewSort === "highest") {
+      list.sort((a, b) => Number(b.rating || 5) - Number(a.rating || 5));
+    } else if (reviewSort === "lowest") {
+      list.sort((a, b) => Number(a.rating || 5) - Number(b.rating || 5));
+    } else {
+      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    return list;
+  }, [reviews, selectedRatingFilter, reviewSort]);
+
+  const handleHelpfulClick = (reviewId) => {
+    setHelpfulVotes((prev) => {
+      const current = prev[reviewId] || { count: 0, voted: false };
+      if (current.voted) {
+        return { ...prev, [reviewId]: { count: Math.max(0, current.count - 1), voted: false } };
+      }
+      showToast("Thank you for your feedback!");
+      return { ...prev, [reviewId]: { count: current.count + 1, voted: true } };
+    });
+  };
 
   const [qty, setQty] = useState(1);
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
   const [reviewError, setReviewError] = useState("");
+
+  const MAX_REVIEW_WORDS = 800;
+  const reviewWordCount = useMemo(() => {
+    const trimmed = String(comment || "").trim();
+    if (!trimmed) return 0;
+    return trimmed.split(/\s+/).filter(Boolean).length;
+  }, [comment]);
+
+  const hasUserReviewed = useMemo(() => {
+    if (!user || !Array.isArray(reviews)) return false;
+    const currentUserId = String(user._id || user.id || "").trim();
+    const currentUserName = String(user.name || "").trim().toLowerCase();
+    return reviews.some((r) => {
+      if (r.userId && String(r.userId).trim() === currentUserId) return true;
+      if (r.user && String(r.user).trim() === currentUserId) return true;
+      if (r.userName && currentUserName && String(r.userName).trim().toLowerCase() === currentUserName) return true;
+      return false;
+    });
+  }, [reviews, user]);
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [showAllThumbnails, setShowAllThumbnails] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
@@ -197,8 +434,16 @@ function Product() {
     setShowLightbox(false);
   }, [id]);
 
-  const [purchasedProducts, setPurchasedProducts] = useState([]);
   const [purchaseAsGift, setPurchaseAsGift] = useState(false);
+  const digitalOwnershipItems = useMemo(() => {
+    if (!product?._id) return [];
+    const isDigital = product.isDigital === true;
+    const isCombo =
+      product.productType === "bundle" ||
+      (Array.isArray(product.bundleItems) && product.bundleItems.length > 0);
+    return isDigital || isCombo ? [{ product: product._id, quantity: 1 }] : [];
+  }, [product]);
+  const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift, selectedAddress?.country);
   const [storeSettings, setStoreSettings] = useState(null);
 
   useEffect(() => {
@@ -219,6 +464,11 @@ function Product() {
   const [bulkName, setBulkName] = useState("");
   const [bulkEmail, setBulkEmail] = useState("");
   const [bulkPhone, setBulkPhone] = useState("");
+  const [bulkPhoneCountry, setBulkPhoneCountry] = useState("India");
+  const [bulkPhoneError, setBulkPhoneError] = useState("");
+  const [isBulkPhoneVerified, setIsBulkPhoneVerified] = useState(false);
+  const [bulkPhoneVerificationToken, setBulkPhoneVerificationToken] = useState("");
+  const [isBulkOtpModalOpen, setIsBulkOtpModalOpen] = useState(false);
   const [bulkQty, setBulkQty] = useState(20);
   const [bulkInst, setBulkInst] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
@@ -226,35 +476,67 @@ function Product() {
   const [bulkSuccess, setBulkSuccess] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const [honeyValue, setHoneyValue] = useState("");
+  const [showReviewSuccessModal, setShowReviewSuccessModal] = useState(false);
 
+  const currentBulkPhoneData = useMemo(() => getCountryPhoneData(bulkPhoneCountry), [bulkPhoneCountry]);
+
+  // Prevent background page scrolling when modal or lightbox is open
   useEffect(() => {
-    if (token) {
-      axios.get("/api/orders/my", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then((res) => {
-          const list = [];
-          if (Array.isArray(res.data)) {
-            res.data.forEach((order) => {
-              const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
-              if (!isPaid || !Array.isArray(order.items)) return;
-              order.items.forEach((item) => {
-                const isGiftItem = Boolean(order.isGift || item.giftCode);
-                if (isGiftItem && !order.isRedeemedGift) {
-                  return;
-                }
-                const pId = String(item.product || item._id || item.id || "").trim();
-                if (pId) {
-                  list.push(pId);
-                }
-              });
-            });
-          }
-          setPurchasedProducts(list);
-        })
-        .catch((err) => console.error("Error fetching my orders:", err));
+    const isAnyModalOpen = Boolean(showBulkModal || showReviewSuccessModal || showLightbox);
+    if (!isAnyModalOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setShowBulkModal(false);
+        setShowReviewSuccessModal(false);
+        setShowLightbox(false);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [showBulkModal, showReviewSuccessModal, showLightbox]);
+
+  const whatsappSettings = storeSettings?.whatsappSettings;
+  const isBulkOtpRequired = Boolean(
+    whatsappSettings?.mode === "api" && whatsappSettings?.enableOtpVerification !== false
+  );
+
+  const getFullBulkPhoneNumber = () => {
+    const clean = String(bulkPhone || "").trim();
+    if (!clean) return "";
+    if (clean.startsWith("+")) return clean;
+    return `${currentBulkPhoneData.code} ${clean}`.trim();
+  };
+
+  const handleOpenBulkOtpModal = () => {
+    const fullPhone = getFullBulkPhoneNumber();
+    if (!fullPhone) {
+      setBulkPhoneError("Please enter a phone number to verify.");
+      return;
     }
-  }, [token]);
+    const phoneValidation = validatePhoneNumber(fullPhone, bulkPhoneCountry);
+    if (!phoneValidation.isValid) {
+      setBulkPhoneError(phoneValidation.message);
+      return;
+    }
+    setBulkPhoneError("");
+    setIsBulkOtpModalOpen(true);
+  };
+
+  const handleBulkOtpVerified = ({ phone: verifiedPhone, phoneVerificationToken: token }) => {
+    setIsBulkPhoneVerified(true);
+    setBulkPhoneVerificationToken(token);
+    setBulkPhone(verifiedPhone);
+    setBulkPhoneError("");
+  };
+
 
   const thumbnailColumnRef = useRef(null);
 
@@ -287,17 +569,12 @@ function Product() {
       showToast("Removed from wishlist");
     } else {
       addToWishlist(product);
-      showToast("Added to wishlist");
     }
   };
 
   const handleShare = async () => {
     if (!product) return;
-    const origin = window.location.origin;
-    const pathname = window.location.pathname.endsWith("/")
-      ? window.location.pathname.slice(0, -1)
-      : window.location.pathname;
-    const shareUrl = `${origin}${pathname}/#/product/${product._id}`;
+    const shareUrl = `${window.location.origin}/product/${product._id}`;
 
     // 1. Web Share API (Mobile & supported desktop browsers)
     if (navigator.share) {
@@ -305,7 +582,7 @@ function Product() {
         await navigator.share({
           title: product.name,
           text: product.description
-            ? `${product.name} - ${product.description.substring(0, 80).replace(/\n/g, " ")}...`
+            ? `${product.name} - ${htmlToPlainText(product.description, 80)}`
             : `Check out ${product.name} on Digital Sanskrit Guru!`,
           url: shareUrl
         });
@@ -343,14 +620,26 @@ function Product() {
       if (successful) {
         showToast("Product link copied to clipboard!");
       } else {
-        prompt("Copy product share link:", shareUrl);
+        await dialogPrompt({
+          title: "Share Link",
+          message: "Copy product share link:",
+          defaultValue: shareUrl,
+          confirmText: "Done",
+          cancelText: "Close"
+        });
       }
-    } catch (e) {
-      prompt("Copy product share link:", shareUrl);
+    } catch {
+      await dialogPrompt({
+        title: "Share Link",
+        message: "Copy product share link:",
+        defaultValue: shareUrl,
+        confirmText: "Done",
+        cancelText: "Close"
+      });
     }
   };
 
-  const renderStars = (value) => {
+  const _renderStars = (value) => {
     const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
     return `${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}`;
   };
@@ -451,7 +740,7 @@ function Product() {
       "@type": "Product",
       "name": product.name,
       "image": product.image ? [product.image] : [],
-      "description": product.description || `Buy ${product.name} on Digital Sanskrit Guru.`,
+      "description": htmlToPlainText(product.description) || `Buy ${product.name} on Digital Sanskrit Guru.`,
       "brand": {
         "@type": "Brand",
         "name": "Digital Sanskrit Guru"
@@ -462,7 +751,7 @@ function Product() {
         "priceCurrency": displayCurrency,
         "price": displayPrice.toString(),
         "itemCondition": "https://schema.org/NewCondition",
-        "availability": product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+        "availability": (product.isDigital === true || product.stock > 0) ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
       }
     };
 
@@ -498,27 +787,48 @@ function Product() {
       showToast("Please login to submit a review.");
       return;
     }
+    if (hasUserReviewed) {
+      setReviewError("You have already submitted a review for this product.");
+      return;
+    }
     if (!comment.trim()) {
       setReviewError("Please write a review comment.");
       return;
     }
+    if (reviewWordCount > MAX_REVIEW_WORDS) {
+      setReviewError(`Review comment cannot exceed ${MAX_REVIEW_WORDS} words (currently ${reviewWordCount} words).`);
+      return;
+    }
 
     try {
+      setSubmittingReview(true);
       await axios.post(
         `/api/products/${id}/reviews`,
-        { rating: Number(rating), comment },
+        { rating: Number(rating), comment: comment.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setRating("5");
+      setHoverRating(0);
       setComment("");
       setReviewError("");
-      showToast("Review submitted!");
+      setShowReviewSuccessModal(true);
+      setIsReviewFormOpen(false);
       await loadData();
     } catch (err) {
       const message = err?.response?.data?.message || "Failed to submit review";
       setReviewError(message);
+    } finally {
+      setSubmittingReview(false);
     }
+  };
+
+  const handleCancelReview = () => {
+    setIsReviewFormOpen(false);
+    setComment("");
+    setRating("5");
+    setHoverRating(0);
+    setReviewError("");
   };
 
   const handleLoadMoreReviews = async () => {
@@ -545,19 +855,43 @@ function Product() {
   };
 
   useEffect(() => {
-    if (user) {
+    if (user && showBulkModal) {
       setBulkName(user.name || "");
       setBulkEmail(user.email || "");
+      if (user.phone) {
+        setBulkPhone(user.phone || "");
+        if (user.isPhoneVerified) {
+          setIsBulkPhoneVerified(true);
+        }
+      }
     }
   }, [user, showBulkModal]);
 
   const handleBulkSubmit = async (e) => {
     e.preventDefault();
     setBulkError("");
+    setBulkPhoneError("");
     setBulkSuccess(false);
 
     if (!bulkName || !bulkEmail || !bulkQty) {
-      setBulkError("Please fill in all required fields (Name, Email, and Quantity).");
+      setBulkError("Please fill in all required fields (Name, Email, Phone, and Quantity).");
+      return;
+    }
+
+    const fullPhone = getFullBulkPhoneNumber();
+    if (!bulkPhone || !fullPhone) {
+      setBulkPhoneError("Phone number is required for bulk quotes.");
+      return;
+    }
+
+    const phoneValidation = validatePhoneNumber(fullPhone, bulkPhoneCountry);
+    if (!phoneValidation.isValid) {
+      setBulkPhoneError(phoneValidation.message);
+      return;
+    }
+
+    if (isBulkOtpRequired && !isBulkPhoneVerified) {
+      setIsBulkOtpModalOpen(true);
       return;
     }
 
@@ -566,7 +900,9 @@ function Product() {
       await axios.post(`/api/products/${product._id}/bulk-enquiry`, {
         name: bulkName,
         email: bulkEmail,
-        phone: bulkPhone,
+        phone: fullPhone,
+        isPhoneVerified: isBulkPhoneVerified,
+        phoneVerificationToken: bulkPhoneVerificationToken,
         quantity: Number(bulkQty),
         institution: bulkInst,
         message: bulkMsg,
@@ -577,6 +913,8 @@ function Product() {
       setBulkInst("");
       setBulkMsg("");
       setHoneyValue("");
+      setIsBulkPhoneVerified(false);
+      setBulkPhoneVerificationToken("");
       setTimeout(() => {
         setShowBulkModal(false);
         setBulkSuccess(false);
@@ -589,7 +927,7 @@ function Product() {
   };
 
   const handleBuyNow = async () => {
-    if (product.stock === 0) return;
+    if (product.isDigital !== true && product.stock === 0) return;
     await addToCart(product, qty);
     navigate("/checkout");
   };
@@ -637,30 +975,18 @@ function Product() {
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
         : fallbackOriginalPrice;
-  const calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
+  const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
-  const calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
+  const _calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
   const discountPercent = listPrice > 0 ? Math.max(0, Math.round(((listPrice - displayPrice) / listPrice) * 100)) : 0;
   const trailerVideo = getProductTrailerEmbed(product.trailerVideoUrl);
   const mediaItems = buildProductMediaItems(product, galleryImages, trailerVideo);
   const activeMedia = selectedMedia || mediaItems[0] || null;
-  const isKindleBook = Boolean(
-    product.kindleLink ||
-    String(product.digitalType || "").toLowerCase().includes("kindle") ||
-    String(product.name || "").toLowerCase().includes("kindle")
-  );
+  const isKindleBook = isKindleProduct(product);
 
-  const isWebVersion = product && (
-    product.isDigital &&
-    (String(product.digitalType || "").toLowerCase().includes("web") ||
-      String(product.name || "").toLowerCase().includes("web") ||
-      String(product.name || "").toLowerCase().includes("flipbook") ||
-      String(product.format || "").toLowerCase().includes("web") ||
-      String(product.format || "").toLowerCase().includes("flipbook"))
-  ) && !isKindleBook;
 
-  const alreadyPurchased = product && purchasedProducts.includes(String(product._id));
-  const hasPurchasedWebVersion = isWebVersion && alreadyPurchased;
+
+
 
   const activeMediaIndex = mediaItems.findIndex((item) => item.key === activeMedia?.key);
   const currentMediaNum = activeMediaIndex >= 0 ? activeMediaIndex + 1 : 1;
@@ -908,8 +1234,14 @@ function Product() {
                     : (festiveDiscountPercent > 0 ? `Festive offer • ${festiveDiscountPercent}% off` : "Festive offer")}
             </p>
           ) : null}
-          {/* <p className="product-store-link">Visit the Digital Sanskrit Guru Store</p> */}
-          <p className="rating">{renderStars(product.rating)} <span>{Number(product.rating || 0).toFixed(1)} | {reviewCount} ratings</span></p>
+          <div className="product-hero-rating-wrap">
+            <StarRating rating={product.rating || averageRating || 0} size={18} />
+            <span className="product-hero-rating-val">{Number(product.rating || averageRating || 0).toFixed(1)}</span>
+            <span className="product-hero-rating-sep">•</span>
+            <a href="#reviews-section" className="product-hero-reviews-link">
+              {reviewCount} {reviewCount === 1 ? "customer review" : "customer reviews"}
+            </a>
+          </div>
           <hr />
           <div className="price-block">
             <p className="price">
@@ -932,7 +1264,15 @@ function Product() {
             <p className="tax-note">Inclusive of all taxes</p>
           </div>
           <p className="stock">
-            {product.stock > 0 ? (
+            {product.isDigital === true ? (
+              <span className="in-stock">
+                {product.externalAccessManual === true
+                  ? "Access within 24–48 hours"
+                  : isKindleProduct(product)
+                    ? "Sold on Amazon Kindle"
+                    : "Instant digital access"}
+              </span>
+            ) : product.stock > 0 ? (
               <span className="in-stock">In Stock</span>
             ) : (
               <span className="out-stock">Out of Stock</span>
@@ -952,7 +1292,17 @@ function Product() {
               ) : null}
             </p>
             {/* <p className="delivery">Fast Delivery</p> */}
-            <p className="buy-box-note">Fast delivery available at your selected location.</p>
+            <p className="buy-box-note">
+              {isExternalDelivery(product)
+                ? (product.externalAccessManual === true
+                  ? "Delivered via another website. After you pay, our team will set up your access and email you when it's ready. You'll then find your link in My Digital Library."
+                  : "Delivered via another website. After purchase, find your link in My Digital Library.")
+                : isKindleBook
+                  ? "Kindle edition: sold and delivered by Amazon Kindle."
+                  : (product.isDigital === true || isDigitalOnlyBundle(product))
+                    ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
+                    : "Delivery available at your selected location."}
+            </p>
 
             {isKindleBook ? (
               <div className="product-kindle-btn-wrap">
@@ -970,20 +1320,79 @@ function Product() {
               </div>
             ) : (
               <>
-                {hasPurchasedWebVersion ? (
+                {digitalOwnership.blocked ? (
                   <div className="product-purchased-alert">
                     <p className="product-purchased-alert-title">
-                      <span>⚠️</span> You have already purchased this web version.
+                      <span>⚠️</span> {digitalOwnership.message || "You have already purchased this web version."}
                     </p>
-                    <label className="product-purchased-gift-label">
-                      <input
-                        type="checkbox"
-                        checked={purchaseAsGift}
-                        onChange={(e) => setPurchaseAsGift(e.target.checked)}
-                        className="product-purchased-checkbox"
-                      />
-                      🎁 Purchase as a gift for someone else
-                    </label>
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
+                      <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
+                        Tick &quot;Purchase as a gift for someone else&quot; below to proceed.
+                      </p>
+                    )}
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
+                      <label className="product-purchased-gift-label">
+                        <input
+                          type="checkbox"
+                          checked={purchaseAsGift}
+                          onChange={(e) => setPurchaseAsGift(e.target.checked)}
+                          className="product-purchased-checkbox"
+                        />
+                        🎁 Purchase as a gift for someone else
+                      </label>
+                    )}
+                  </div>
+                ) : digitalOwnership.notice ? (
+                  <div
+                    className="product-ownership-notice"
+                    style={{
+                      margin: "10px 0 16px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #93c5fd",
+                      backgroundColor: "#eff6ff",
+                      color: "#1e40af",
+                      fontSize: "13px",
+                      lineHeight: 1.4,
+                      textAlign: "left"
+                    }}
+                  >
+                    <p style={{ margin: 0, fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>ℹ️</span> {digitalOwnership.message}
+                    </p>
+                    {digitalOwnership.upgradeCredit > 0 && (() => {
+                      const mergedDetails = getMergedUpgradeOwnedDetails(digitalOwnership.upgradeCreditItems);
+                      return (
+                        <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px" }}>
+                          <p style={{ margin: "0 0 6px", fontWeight: "500" }}>
+                            You already own these, so {formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)} is taken off the price automatically at checkout.
+                          </p>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            {mergedDetails.map((od) => (
+                              <div key={od.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span>{od.name}</span>
+                                <span>{od.amount !== null ? `-${formatCurrencyExact(od.amount, digitalOwnership.currency)}` : ""}</span>
+                              </div>
+                            ))}
+                            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "700", marginTop: "4px", borderTop: "1px dashed #bfdbfe", paddingTop: "4px" }}>
+                              <span>Total taken off</span>
+                              <span>-{formatCurrencyExact(digitalOwnership.upgradeCredit, digitalOwnership.currency)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {digitalOwnership.giftAllowed && !product.externalAccessManual && (
+                      <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
+                        <input
+                          type="checkbox"
+                          checked={purchaseAsGift}
+                          onChange={(e) => setPurchaseAsGift(e.target.checked)}
+                          className="product-purchased-checkbox"
+                        />
+                        🎁 Purchase as a gift for someone else
+                      </label>
+                    )}
                   </div>
                 ) : null}
 
@@ -1005,7 +1414,11 @@ function Product() {
                 ) : isDigitalItem(product) ? (
                   <div className="product-digital-badge-wrap">
                     <p className="product-digital-badge-pill">
-                      💻 Web Version - 1 License Per User
+                      {isExternalDelivery(product)
+                        ? (product.externalAccessManual === true
+                          ? "🌐 Access will be provided within 24–48 hours of purchase"
+                          : "🌐 External Digital Access")
+                        : "💻 Web Version – Available for one-time purchase only."}
                     </p>
                   </div>
                 ) : (
@@ -1017,7 +1430,7 @@ function Product() {
                         className="qty-input product-retail-qty-input"
                         value={qty}
                         min="1"
-                        max={Math.min(5, product.stock || 5)}
+                        max={product.isDigital === true ? 5 : Math.min(5, product.stock || 5)}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === "") {
@@ -1025,7 +1438,7 @@ function Product() {
                           } else {
                             const num = parseInt(val, 10);
                             if (!isNaN(num)) {
-                              setQty(Math.max(1, Math.min(Math.min(5, product.stock || 5), num)));
+                              setQty(Math.max(1, Math.min(product.isDigital === true ? 5 : Math.min(5, product.stock || 5), num)));
                             }
                           }
                         }}
@@ -1039,7 +1452,7 @@ function Product() {
                       <button
                         type="button"
                         className="qty-btn"
-                        onClick={() => setQty(Number(qty || 1) < Math.min(5, product.stock || 5) ? Number(qty || 1) + 1 : Number(qty || 1))}
+                        onClick={() => setQty(Number(qty || 1) < (product.isDigital === true ? 5 : Math.min(5, product.stock || 5)) ? Number(qty || 1) + 1 : Number(qty || 1))}
                       >+</button>
                     </div>
                     <p className="product-retail-qty-note">
@@ -1056,22 +1469,22 @@ function Product() {
 
                 <button
                   className="add-cart-btn"
-                  disabled={product.stock === 0 || (hasPurchasedWebVersion && !purchaseAsGift) || isIntlPhysicalRestricted}
+                  disabled={(product.isDigital !== true && product.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={() => addToCart(product, qty)}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
-                  {product.stock === 0 ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
+                  {(product.isDigital !== true && product.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
                 </button>
                 <button
                   className="buy-now-btn"
-                  disabled={product.stock === 0 || (hasPurchasedWebVersion && !purchaseAsGift) || isIntlPhysicalRestricted}
+                  disabled={(product.isDigital !== true && product.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
                   onClick={handleBuyNow}
                   style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                 >
-                  {product.stock === 0 ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Buy Now"}
+                  {(product.isDigital !== true && product.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Buy Now"}
                 </button>
 
-                {product.stock > 0 && product.productType !== "bulk" && (
+                {(product.isDigital === true || product.stock > 0) && product.productType !== "bulk" && (
                   <div className="product-bulk-quote-section">
                     <p className="product-bulk-quote-hint">
                       Planning to purchase in bulk for a school, class, or institution?
@@ -1125,10 +1538,12 @@ function Product() {
             <span>Product Name</span>
             <strong>{product.name}</strong>
           </div>
-          <div className="product-detail-card">
-            <span>Availability</span>
-            <strong>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</strong>
-          </div>
+          {product.isDigital !== true && (
+            <div className="product-detail-card">
+              <span>Availability</span>
+              <strong>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</strong>
+            </div>
+          )}
           <div className="product-detail-card">
             <span>Rating</span>
             <strong>{Number(product.rating || 0).toFixed(1)} / 5</strong>
@@ -1226,63 +1641,440 @@ function Product() {
         )}
       </div>
 
-      <div className="reviews-section">
-        <h3>Customer Reviews</h3>
+      {/* ── Customer Reviews Section ─────────────────────────────────── */}
+      <div className="reviews-section" id="reviews-section">
+        <div className="reviews-section-header">
+          <div className="reviews-header-titles">
+            <h3 className="reviews-main-title">
+              Customer Reviews
+              <span className="reviews-count-badge">{reviews.length}</span>
+            </h3>
+            <p className="reviews-subtitle">
+              Verified feedback from Sanskrit learners, scholars, and readers worldwide
+            </p>
+          </div>
 
-        {reviews.length > 0 ? (
-          <>
-            {reviews.map((r, index) => (
-              <div key={index} className="review-card">
-                <strong>{r.user}</strong>
-                <p>{renderStars(r.rating)}</p>
-                <p>{r.comment}</p>
+          {!isReviewFormOpen && (
+            hasUserReviewed ? (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  backgroundColor: "rgba(16, 185, 129, 0.1)",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                  color: "#059669",
+                  fontSize: "13px",
+                  fontWeight: 600
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>Reviewed by you</span>
               </div>
-            ))}
-            {hasMoreReviews && (
-              <div style={{ display: "flex", justifyContent: "flex-start", marginTop: "16px" }}>
+            ) : reviews.length > 0 ? (
+              <button
+                type="button"
+                className="reviews-write-cta-btn"
+                onClick={() => {
+                  setIsReviewFormOpen(true);
+                  setTimeout(() => {
+                    const targetEl = document.getElementById("write-review");
+                    if (targetEl) {
+                      targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                      const textarea = targetEl.querySelector("textarea");
+                      if (textarea) textarea.focus();
+                    }
+                  }, 100);
+                }}
+              >
+                <PenLine size={16} />
+                <span>Write a Review</span>
+              </button>
+            ) : null
+          )}
+        </div>
+
+        {/* ── Review Summary & Breakdown Dashboard ── */}
+        <div className="reviews-dashboard-grid">
+          {/* 1. Overall Score Box */}
+          <div className="reviews-score-card">
+            <div className="reviews-score-big">
+              {Number(averageRating || product.rating || 0).toFixed(1)}
+            </div>
+            <div className="reviews-score-stars">
+              <StarRating rating={averageRating || product.rating || 0} size={20} />
+            </div>
+            <div className="reviews-score-meta">
+              Based on <strong>{reviews.length}</strong> {reviews.length === 1 ? "rating" : "ratings"}
+            </div>
+            <div className="reviews-verified-badge-tag">
+              <ShieldCheck size={14} />
+              <span>100% Verified Purchases</span>
+            </div>
+          </div>
+
+          {/* 2. Rating Breakdown Bars */}
+          <div className="reviews-breakdown-card">
+            <h4 className="reviews-breakdown-title">Rating Breakdown</h4>
+            <div className="reviews-breakdown-list">
+              {ratingDistribution.map(({ star, count, percent }) => {
+                const isActive = selectedRatingFilter === star;
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    className={`reviews-breakdown-row ${isActive ? "active-filter" : ""}`}
+                    onClick={() => {
+                      setSelectedRatingFilter(isActive ? null : star);
+                    }}
+                    title={`Filter by ${star} star reviews (${count})`}
+                  >
+                    <span className="reviews-star-label">
+                      {star} <Star size={13} className="star-mini" style={{ fill: "#f59e0b", color: "#f59e0b" }} />
+                    </span>
+                    <div className="reviews-bar-track">
+                      <div
+                        className="reviews-bar-fill"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <span className="reviews-bar-percent">{percent}%</span>
+                    <span className="reviews-bar-count">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Review Form (Expandable / Anchorable) ── */}
+        {isReviewFormOpen && (
+          <div className="reviews-form-panel" id="write-review">
+            <div className="reviews-form-header">
+              <div className="reviews-form-title-wrap">
+                <PenLine size={18} className="form-pen-icon" />
+                <h4>Write a Customer Review</h4>
+              </div>
+              <button
+                type="button"
+                className="reviews-form-close-btn"
+                onClick={handleCancelReview}
+                aria-label="Close review form"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {hasUserReviewed ? (
+              <div className="reviews-login-gate" style={{ padding: "30px 20px", textAlign: "center" }}>
+                <div className="reviews-login-gate-icon" style={{ background: "rgba(16, 185, 129, 0.12)", color: "#10b981", margin: "0 auto 12px" }}>
+                  <CheckCircle2 size={32} />
+                </div>
+                <h5 style={{ margin: "0 0 8px", fontSize: "16px", color: "var(--site-text)", fontWeight: 700 }}>
+                  You've Already Reviewed This Product
+                </h5>
+                <p style={{ margin: "0 auto 18px", maxWidth: "440px", fontSize: "13.5px", color: "var(--site-text-soft)", lineHeight: 1.5 }}>
+                  Thank you for your valuable feedback! To maintain authentic community ratings, each registered customer can submit one review per product.
+                </p>
                 <button
                   type="button"
-                  className="load-more-btn"
-                  disabled={isLoadingMoreReviews}
-                  onClick={handleLoadMoreReviews}
+                  className="reviews-form-cancel-btn"
+                  onClick={handleCancelReview}
+                  style={{ display: "inline-block", padding: "8px 22px" }}
                 >
-                  {isLoadingMoreReviews ? "Loading..." : "Load More Reviews"}
+                  Close
                 </button>
               </div>
+            ) : user ? (
+              <div className="reviews-form-body">
+                <div className="reviews-form-group">
+                  <label className="reviews-form-label">
+                    Overall Rating <span className="req-star">*</span>
+                  </label>
+                  <div className="star-picker-container">
+                    <div
+                      className="star-picker-row"
+                      onMouseLeave={() => setHoverRating(0)}
+                    >
+                      {[1, 2, 3, 4, 5].map((starVal) => {
+                        const activeVal = hoverRating || Number(rating) || 5;
+                        const isFilled = starVal <= activeVal;
+                        return (
+                          <button
+                            key={starVal}
+                            type="button"
+                            className="star-picker-btn"
+                            onMouseEnter={() => setHoverRating(starVal)}
+                            onClick={() => setRating(String(starVal))}
+                            aria-label={`${starVal} Star`}
+                          >
+                            <Star
+                              size={28}
+                              style={{
+                                color: isFilled ? "#f59e0b" : "#cbd5e1",
+                                fill: isFilled ? "#f59e0b" : "transparent"
+                              }}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="star-picker-hint">
+                      {RATING_DESCRIPTIONS[hoverRating || Number(rating) || 5]}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="reviews-form-group">
+                  <div className="reviews-label-row">
+                    <label className="reviews-form-label">
+                      Your Review <span className="req-star">*</span>
+                    </label>
+                    <span
+                      className="reviews-char-hint"
+                      style={{
+                        color: reviewWordCount > MAX_REVIEW_WORDS ? "#ef4444" : undefined,
+                        fontWeight: reviewWordCount > MAX_REVIEW_WORDS ? 700 : 500
+                      }}
+                    >
+                      {reviewWordCount} / {MAX_REVIEW_WORDS} words
+                    </span>
+                  </div>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => {
+                      setComment(e.target.value);
+                      setReviewError("");
+                    }}
+                    rows={4}
+                    placeholder="What did you like or dislike? How was the content, print quality, or language clarity? (Maximum 800 words)"
+                    className="reviews-form-textarea"
+                    style={
+                      reviewWordCount > MAX_REVIEW_WORDS
+                        ? { borderColor: "#ef4444", boxShadow: "0 0 0 2px rgba(239, 68, 68, 0.2)" }
+                        : undefined
+                    }
+                  />
+                  {reviewWordCount > MAX_REVIEW_WORDS && (
+                    <p className="review-form-error-msg" style={{ marginTop: "6px" }}>
+                      ⚠️ Word limit exceeded: Your review has {reviewWordCount} words. Please shorten it to at most {MAX_REVIEW_WORDS} words to submit.
+                    </p>
+                  )}
+                  {reviewError && (
+                    <p className="review-form-error-msg">⚠️ {reviewError}</p>
+                  )}
+                </div>
+
+                <div className="reviews-form-actions">
+                  <button
+                    type="button"
+                    className="reviews-form-cancel-btn"
+                    onClick={handleCancelReview}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="reviews-form-submit-btn"
+                    disabled={submittingReview || reviewWordCount > MAX_REVIEW_WORDS}
+                    onClick={submitReview}
+                  >
+                    {submittingReview ? "Submitting Review..." : "Submit Review"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="reviews-login-gate">
+                <div className="reviews-login-gate-icon">
+                  <MessageSquare size={28} />
+                </div>
+                <h5>Sign in to Share Your Review</h5>
+                <p>You must have an account to post a review and help the reader community.</p>
+                <Link
+                  to="/login"
+                  state={{ from: `/product/${id}#write-review` }}
+                  className="reviews-login-gate-btn"
+                >
+                  Sign In to Review
+                </Link>
+              </div>
             )}
-          </>
-        ) : (
-          <p>No reviews yet</p>
+          </div>
         )}
 
-        {/* ── Fix #8: Gate review form — show login prompt for guests ── */}
-        <div className="review-form">
-          <h4>Add Review</h4>
-          {user ? (
-            <>
-              <label>Rating</label>
-              <select value={rating} onChange={(e) => setRating(e.target.value)}>
-                <option value="5">5 stars</option>
-                <option value="4">4 stars</option>
-                <option value="3">3 stars</option>
-                <option value="2">2 stars</option>
-                <option value="1">1 star</option>
-              </select>
-              <textarea
-                value={comment}
-                onChange={(e) => { setComment(e.target.value); setReviewError(""); }}
-                rows={3}
-                placeholder="Write your review..."
-              />
-              {reviewError && <p className="review-form-error">{reviewError}</p>}
-              <button className="add-cart-btn" onClick={submitReview}>
-                Submit Review
+        {/* ── Filter & Sort Toolbar ── */}
+        {reviews.length > 0 && (
+          <div className="reviews-toolbar">
+            <div className="reviews-filter-chips">
+              <span className="reviews-toolbar-label">
+                <Filter size={14} /> Filter:
+              </span>
+              <button
+                type="button"
+                className={`reviews-chip ${selectedRatingFilter === null ? "active" : ""}`}
+                onClick={() => setSelectedRatingFilter(null)}
+              >
+                All ({reviews.length})
               </button>
-            </>
+              {ratingDistribution
+                .filter((d) => d.count > 0)
+                .map((d) => (
+                  <button
+                    key={d.star}
+                    type="button"
+                    className={`reviews-chip ${selectedRatingFilter === d.star ? "active" : ""}`}
+                    onClick={() => setSelectedRatingFilter(selectedRatingFilter === d.star ? null : d.star)}
+                  >
+                    {d.star} ★ ({d.count})
+                  </button>
+                ))}
+            </div>
+
+            <div className="reviews-sort-wrap">
+              <label htmlFor="review-sort-select">Sort by:</label>
+              <select
+                id="review-sort-select"
+                value={reviewSort}
+                onChange={(e) => setReviewSort(e.target.value)}
+                className="reviews-sort-select"
+              >
+                <option value="newest">Most Recent</option>
+                <option value="highest">Highest Rating</option>
+                <option value="lowest">Lowest Rating</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Active Filter Notice */}
+        {selectedRatingFilter !== null && (
+          <div className="reviews-active-filter-alert">
+            <span>Showing only <strong>{selectedRatingFilter}-star</strong> reviews ({filteredReviews.length} found)</span>
+            <button
+              type="button"
+              className="reviews-clear-filter-btn"
+              onClick={() => setSelectedRatingFilter(null)}
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
+
+        {/* ── Reviews Cards List ── */}
+        <div className="reviews-cards-list">
+          {filteredReviews.length > 0 ? (
+            filteredReviews.map((r, index) => {
+              const reviewId = r._id || `rev-${index}`;
+              const reviewerName = r.userName || (typeof r.user === "string" ? r.user : r.user?.name) || "Customer";
+              const avatarColors = getAvatarColors(reviewerName);
+              const initial = reviewerName.trim().charAt(0).toUpperCase() || "U";
+              const isHelpfulVoted = helpfulVotes[reviewId]?.voted;
+              const helpfulCount = (helpfulVotes[reviewId]?.count || 0) + (r.helpfulCount || 0);
+
+              return (
+                <div key={reviewId} className="review-card-modern">
+                  <div className="review-card-top">
+                    <div className="review-user-info">
+                      <div
+                        className="review-avatar-circle"
+                        style={{ backgroundColor: avatarColors.bg, color: avatarColors.text }}
+                      >
+                        {initial}
+                      </div>
+                      <div className="review-user-meta">
+                        <div className="review-user-name-row">
+                          <strong className="review-user-name">{reviewerName}</strong>
+                          <span className="review-verified-tag">
+                            <CheckCircle2 size={13} className="check-icon" />
+                            Verified Buyer
+                          </span>
+                        </div>
+                        {r.createdAt && (
+                          <span className="review-date-text">
+                            Reviewed on {formatDate(r.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="review-rating-pill">
+                      <StarRating rating={r.rating} size={15} />
+                      <span className="review-rating-num">{Number(r.rating || 5).toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  <div className="review-card-content">
+                    <p className="review-comment-text">{r.comment}</p>
+                  </div>
+
+                  <div className="review-card-footer">
+                    <button
+                      type="button"
+                      className={`review-helpful-btn ${isHelpfulVoted ? "voted" : ""}`}
+                      onClick={() => handleHelpfulClick(reviewId)}
+                      title="Mark as helpful"
+                    >
+                      <ThumbsUp size={14} />
+                      <span>{isHelpfulVoted ? "Helpful (Voted)" : "Helpful"}</span>
+                      {helpfulCount > 0 && <span className="helpful-count-badge">{helpfulCount}</span>}
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : reviews.length === 0 ? (
+            <div className="reviews-empty-state">
+              <div className="reviews-empty-icon">
+                <Sparkles size={36} />
+              </div>
+              <h4>No Customer Reviews Yet</h4>
+              <p>
+                {isReviewFormOpen
+                  ? "Writing your review in the form above..."
+                  : "Be the first person to share your experience and thoughts about this book!"}
+              </p>
+              {!isReviewFormOpen && !hasUserReviewed && (
+                <button
+                  type="button"
+                  className="reviews-empty-cta-btn"
+                  onClick={() => {
+                    setIsReviewFormOpen(true);
+                    setTimeout(() => {
+                      const targetEl = document.getElementById("write-review");
+                      if (targetEl) targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 100);
+                  }}
+                >
+                  <PenLine size={16} />
+                  Write the First Review
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="review-login-prompt">
-              <p>You must be signed in to leave a review.</p>
-              <Link to="/login" className="buy-now-btn review-login-btn">Sign in to review</Link>
+            <div className="reviews-no-filter-results">
+              <p>No reviews found matching the selected rating filter ({selectedRatingFilter} stars).</p>
+              <button
+                type="button"
+                className="reviews-chip active"
+                onClick={() => setSelectedRatingFilter(null)}
+              >
+                View all {reviews.length} reviews
+              </button>
+            </div>
+          )}
+
+          {hasMoreReviews && selectedRatingFilter === null && (
+            <div className="reviews-load-more-wrap">
+              <button
+                type="button"
+                className="reviews-load-more-btn"
+                disabled={isLoadingMoreReviews}
+                onClick={handleLoadMoreReviews}
+              >
+                {isLoadingMoreReviews ? "Loading Reviews..." : "Load More Reviews"}
+              </button>
             </div>
           )}
         </div>
@@ -1403,17 +2195,83 @@ function Product() {
                     </div>
                   </div>
 
-                  <div className="product-bulk-modal-row">
-                    <div className="product-bulk-modal-col">
-                      <label className="product-bulk-modal-label">Phone</label>
-                      <input
-                        type="tel"
-                        value={bulkPhone}
-                        onChange={(e) => setBulkPhone(e.target.value)}
-                        placeholder="Phone number"
-                        className="product-bulk-modal-input"
-                      />
+                  {/* Row 2: Full-Width Phone & WhatsApp Verification */}
+                  <div style={{ marginBottom: "12px" }}>
+                    <div className="product-bulk-modal-label-row">
+                      <label className="product-bulk-modal-label">Phone <span className="product-bulk-modal-req">*</span></label>
+                      {isBulkPhoneVerified ? (
+                        <span className="product-bulk-verified-badge">
+                          <CheckCircle2 size={13} /> Verified on WhatsApp
+                        </span>
+                      ) : null}
                     </div>
+                    <div className="product-bulk-phone-field-row">
+                      <div className={`product-bulk-phone-input-group ${bulkPhoneError ? "invalid-input" : ""}`}>
+                        <div
+                          className="product-bulk-phone-prefix-wrap"
+                          title="Click to change country calling code"
+                        >
+                          <span className="product-bulk-phone-prefix-display">
+                            <span>{currentBulkPhoneData.flag}</span>
+                            <span>{currentBulkPhoneData.code}</span>
+                            <ChevronDown size={13} className="product-bulk-phone-chevron" />
+                          </span>
+                          <select
+                            className="product-bulk-phone-select-overlay"
+                            value={bulkPhoneCountry}
+                            onChange={(e) => {
+                              setBulkPhoneCountry(e.target.value);
+                              if (isBulkPhoneVerified) {
+                                setIsBulkPhoneVerified(false);
+                                setBulkPhoneVerificationToken("");
+                              }
+                            }}
+                            aria-label="Select Country Phone Code"
+                          >
+                            {COUNTRY_PHONE_CODES.map((item) => (
+                              <option key={`${item.country}-${item.code}`} value={item.country}>
+                                {item.flag} {item.code} - {item.country}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          type="tel"
+                          required
+                          maxLength={16}
+                          placeholder={currentBulkPhoneData.placeholder || "Phone number"}
+                          value={bulkPhone}
+                          onChange={(e) => {
+                            setBulkPhone(e.target.value.replace(/[^\d+\s-]/g, ""));
+                            if (bulkPhoneError) setBulkPhoneError("");
+                            if (isBulkPhoneVerified) {
+                              setIsBulkPhoneVerified(false);
+                              setBulkPhoneVerificationToken("");
+                            }
+                          }}
+                          className="product-bulk-modal-phone-input"
+                        />
+                      </div>
+                      {Boolean(bulkPhone && !isBulkPhoneVerified) && (
+                        <button
+                          type="button"
+                          onClick={handleOpenBulkOtpModal}
+                          className="product-bulk-verify-wa-btn"
+                          title="Verify phone number via WhatsApp OTP"
+                        >
+                          <MessageCircle size={14} /> Verify via WhatsApp
+                        </button>
+                      )}
+                    </div>
+                    {bulkPhoneError && (
+                      <span className="product-bulk-field-error">
+                        {bulkPhoneError}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Row 3: Quantity Needed & Institution / School Name */}
+                  <div className="product-bulk-modal-row">
                     <div className="product-bulk-modal-col">
                       <label className="product-bulk-modal-label">Quantity Needed <span className="product-bulk-modal-req">*</span></label>
                       <input
@@ -1426,17 +2284,16 @@ function Product() {
                         className="product-bulk-modal-input"
                       />
                     </div>
-                  </div>
-
-                  <div style={{ marginBottom: "12px" }}>
-                    <label className="product-bulk-modal-label">Institution / School Name</label>
-                    <input
-                      type="text"
-                      value={bulkInst}
-                      onChange={(e) => setBulkInst(e.target.value)}
-                      placeholder="e.g. Sanskrit Academy / Public School"
-                      className="product-bulk-modal-input"
-                    />
+                    <div className="product-bulk-modal-col">
+                      <label className="product-bulk-modal-label">Institution / School Name</label>
+                      <input
+                        type="text"
+                        value={bulkInst}
+                        onChange={(e) => setBulkInst(e.target.value)}
+                        placeholder="e.g. Sanskrit Academy / Public School"
+                        className="product-bulk-modal-input"
+                      />
+                    </div>
                   </div>
 
                   <div style={{ marginBottom: "20px" }}>
@@ -1502,6 +2359,15 @@ function Product() {
         </div>
       )}
 
+      {isBulkOtpModalOpen && (
+        <WhatsAppOtpModal
+          phone={getFullBulkPhoneNumber()}
+          isOpen={isBulkOtpModalOpen}
+          onClose={() => setIsBulkOtpModalOpen(false)}
+          onVerified={handleBulkOtpVerified}
+        />
+      )}
+
       {showLightbox && activeMedia?.kind === "image" && (
         <div className="product-lightbox-modal" onClick={() => setShowLightbox(false)}>
           <div className="product-lightbox-content" onClick={(e) => e.stopPropagation()}>
@@ -1545,6 +2411,25 @@ function Product() {
               style={{ position: "absolute", bottom: "-36px", right: "50%", transform: "translateX(50%)" }}
             >
               {currentMediaNum} / {mediaItems.length}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReviewSuccessModal && (
+        <div className="review-redirect-modal-backdrop" onClick={() => setShowReviewSuccessModal(false)}>
+          <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="review-success-popup-icon">✓</div>
+            <h2>Review Added Successfully!</h2>
+            <p>Thank you for sharing your feedback. Your review has been added to this product.</p>
+            <div className="review-redirect-modal-actions">
+              <button
+                type="button"
+                className="review-redirect-btn-primary"
+                onClick={() => setShowReviewSuccessModal(false)}
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

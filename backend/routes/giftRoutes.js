@@ -1,16 +1,19 @@
 const express = require("express");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const { perWorker } = require("../utils/workerCount");
 const GiftPass = require("../models/GiftPass");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
+const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
+const { getOwnedDigitalIdsForUser } = require("../services/digitalOwnershipService");
 
 const router = express.Router();
 
 const giftRedeemLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,                  // max 10 attempts per IP per 15 minutes
+  max: perWorker(10),       // max 10 attempts per IP per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many gift pass redemption attempts. Please try again later." }
@@ -30,45 +33,59 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       return res.status(400).json({ message: "Please enter a Gift Pass Code." });
     }
 
-    const giftPass = await GiftPass.findOne({ code: rawCode });
-    if (!giftPass) {
+    if (req.body?.isGift === true) {
+      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    }
+
+    const existingPass = await GiftPass.findOne({ code: rawCode });
+    if (!existingPass) {
       return res.status(404).json({ message: "Invalid Gift Pass Code. Please double check the code." });
     }
 
-    if (giftPass.isRedeemed) {
+    if (existingPass.order) {
+      const parentOrder = await Order.findById(existingPass.order).select("isGift items").lean();
+      if ((parentOrder?.isGift || req.body?.isGift) && (parentOrder?.items || []).some((it) => it.accessManual)) {
+        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+      }
+    }
+
+    if (existingPass.isRedeemed) {
       return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
     }
 
     // Check if the user already owns this product
-    const alreadyPurchased = await Order.findOne({
-      user: req.user,
-      paymentStatus: "Paid",
-      "items.product": giftPass.product
-    });
-
-    const alreadyRedeemed = await GiftPass.findOne({
-      redeemedBy: req.user,
-      product: giftPass.product,
-      isRedeemed: true
-    });
-
-    if (alreadyPurchased || alreadyRedeemed) {
+    const ownedDigitalIds = await getOwnedDigitalIdsForUser(req.user);
+    if (ownedDigitalIds.has(String(existingPass.product))) {
       return res.status(400).json({
         message: "You already own this web version in your library. Please share this Gift Pass code with someone else."
       });
     }
 
-    giftPass.isRedeemed = true;
-    giftPass.redeemedBy = req.user;
-    giftPass.redeemedAt = new Date();
-    await giftPass.save();
+    // Atomically claim the gift pass
+    const giftPass = await GiftPass.findOneAndUpdate(
+      { code: rawCode, isRedeemed: false },
+      {
+        $set: {
+          isRedeemed: true,
+          redeemedBy: req.user,
+          redeemedAt: new Date()
+        }
+      },
+      { new: true }
+    );
 
-    const product = await Product.findById(giftPass.product).lean();
+    if (!giftPass) {
+      return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
+    }
+
+    const product = await Product.findById(giftPass.product)
+      .select(PUBLIC_PRODUCT_EXCLUDE)
+      .lean();
 
     return res.json({
       success: true,
       message: `Congratulations! You have successfully redeemed "${giftPass.productName || product?.name || 'Digital Item'}"!`,
-      product
+      product: toPublicProduct(product)
     });
   } catch (err) {
     console.error("[GiftRoutes] Redeem error:", err.message);
@@ -80,11 +97,16 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
 router.get("/my-redeemed", protect, async (req, res) => {
   try {
     const redeemedPasses = await GiftPass.find({ redeemedBy: req.user, isRedeemed: true })
-      .populate("product")
+      .populate({ path: "product", select: PUBLIC_PRODUCT_EXCLUDE })
       .sort({ redeemedAt: -1 })
       .lean();
 
-    return res.json(redeemedPasses);
+    const sanitizedPasses = (redeemedPasses || []).map((gp) => ({
+      ...gp,
+      product: toPublicProduct(gp.product)
+    }));
+
+    return res.json(sanitizedPasses);
   } catch (err) {
     console.error("[GiftRoutes] Fetch redeemed error:", err.message);
     return res.status(500).json({ message: "Failed to fetch redeemed gift passes." });

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 const protect = require("../middleware/authMiddleware");
+const { isKindleProduct } = require("../utils/kindle");
 
 const router = express.Router();
 
@@ -51,7 +52,18 @@ const formatCart = (cart) => {
       description: item.product.description || "",
       category: item.product.category || "General",
       stock: Number(item.product.stock || 0),
-      quantity: Number(item.quantity || 1)
+      quantity: Number(item.quantity || 1),
+      festiveOffer: Boolean(item.product.festiveOffer),
+      festiveDiscountPercent: Number(item.product.festiveDiscountPercent || 0),
+      discountType: item.product.discountType || "",
+      hsnSac: item.product.hsnSac || "",
+      format: item.product.format || "",
+      isDigital: Boolean(item.product.isDigital),
+      digitalType: item.product.digitalType || "Web Version",
+      kindleLink: item.product.kindleLink || "",
+      digitalDelivery: item.product.digitalDelivery || "onsite",
+      externalAccessManual: Boolean(item.product.externalAccessManual),
+      productType: item.product.productType || "single"
     }));
 };
 
@@ -93,9 +105,13 @@ router.post("/", protect, async (req, res) => {
     return res.status(400).json({ message: "productId is required" });
   }
 
-  const product = await Product.findById(productId).select("_id productType stock name category isDigital format");
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType");
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
+  }
+
+  if (isKindleProduct(product)) {
+    return res.status(400).json({ message: "Kindle editions are sold on Amazon." });
   }
 
   const cart = await getOrCreateCart(req.user);
@@ -138,6 +154,11 @@ router.put("/:productId", protect, async (req, res) => {
   const index = cart.items.findIndex((item) => getProductId(item.product) === targetProductId);
   if (index < 0) {
     return res.status(404).json({ message: "Cart item not found" });
+  }
+
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType");
+  if (product && isKindleProduct(product)) {
+    return res.status(400).json({ message: "Kindle editions are sold on Amazon." });
   }
 
   const itemProduct = cart.items[index].product;

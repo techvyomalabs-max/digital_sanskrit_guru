@@ -1,4 +1,7 @@
-/* Shipping & Refund Policy Page Styles */
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHIPPING & REFUND POLICY PAGE STYLES (STRICTLY SCOPED)
+   Digital Sanskrit Guru
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 .policy-page {
   min-height: 80vh;
@@ -7,18 +10,18 @@
   color: var(--site-text, #0f172a);
 }
 
-.policy-container {
+.policy-page .policy-container {
   max-width: 1040px;
   margin: 0 auto;
 }
 
 /* Header Section */
-.policy-header {
+.policy-page .policy-header {
   text-align: center;
   margin-bottom: 32px;
 }
 
-.policy-badge {
+.policy-page .policy-badge {
   display: inline-block;
   padding: 6px 14px;
   border-radius: 999px;
@@ -31,7 +34,7 @@
   margin-bottom: 12px;
 }
 
-.policy-title {
+.policy-page .policy-title {
   font-size: 2.25rem;
   font-weight: 800;
   color: var(--site-text, #0f172a);
@@ -39,7 +42,7 @@
   letter-spacing: -0.02em;
 }
 
-.policy-subtitle {
+.policy-page .policy-subtitle {
   font-size: 1.05rem;
   color: var(--site-text-soft, #64748b);
   max-width: 680px;
@@ -48,7 +51,7 @@
 }
 
 /* Alert Banner */
-.policy-alert-banner {
+.policy-page .policy-alert-banner {
   display: flex;
   align-items: flex-start;
   gap: 14px;
@@ -61,19 +64,19 @@
   box-shadow: 0 2px 8px rgba(217, 119, 6, 0.06);
 }
 
-.alert-icon {
+.policy-page .policy-alert-banner .alert-icon {
   font-size: 1.25rem;
   flex-shrink: 0;
   margin-top: 1px;
 }
 
-.alert-text {
+.policy-page .policy-alert-banner .alert-text {
   font-size: 0.95rem;
   line-height: 1.5;
 }
 
 /* Policy Grid */
-.policy-grid {
+.policy-page .policy-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
   gap: 24px;
@@ -81,12 +84,12 @@
 }
 
 @media (max-width: 580px) {
-  .policy-grid {
+  .policy-page .policy-grid {
     grid-template-columns: 1fr;
   }
 }
 
-.policy-card {
+.policy-page .policy-card {
   background: var(--site-surface, #ffffff);
   border: 1px solid var(--site-border, #e2e8f0);
   border-radius: 16px;
@@ -95,19 +98,19 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.policy-card:hover {
+.policy-page .policy-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
 }
 
-.policy-card-header {
+.policy-page .policy-card-header {
   display: flex;
   align-items: center;
   gap: 14px;
   margin-bottom: 18px;
 }
 
-.card-icon-wrap {
+.policy-page .policy-card .card-icon-wrap {
   width: 44px;
   height: 44px;
   border-radius: 10px;
@@ -118,14 +121,14 @@
   justify-content: center;
 }
 
-.policy-card-header h2 {
+.policy-page .policy-card-header h2 {
   font-size: 1.3rem;
   font-weight: 700;
   margin: 0;
   color: var(--site-text, #0f172a);
 }
 
-.policy-text {
+.policy-page .policy-card .policy-text {
   font-size: 0.95rem;
   color: var(--site-text, #334155);
   line-height: 1.6;
@@ -133,7 +136,7 @@
   margin-bottom: 16px;
 }
 
-.policy-list {
+.policy-page .policy-card .policy-list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -142,7 +145,7 @@
   gap: 14px;
 }
 
-.policy-list li {
+.policy-page .policy-card .policy-list li {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -151,14 +154,14 @@
   color: var(--site-text, #334155);
 }
 
-.list-icon {
+.policy-page .policy-card .list-icon {
   color: #10b981;
   flex-shrink: 0;
   margin-top: 3px;
 }
 
 /* Special Audio Device Box */
-.policy-special-box {
+.policy-page .policy-special-box {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   color: #ffffff;
   border-radius: 16px;
@@ -167,28 +170,28 @@
   box-shadow: 0 8px 30px rgba(15, 23, 42, 0.15);
 }
 
-.special-head h3 {
+.policy-page .policy-special-box .special-head h3 {
   font-size: 1.2rem;
   font-weight: 700;
   margin: 0 0 12px;
   color: #f59e0b;
 }
 
-.special-body p {
+.policy-page .policy-special-box .special-body p {
   font-size: 0.95rem;
   line-height: 1.65;
   margin: 0 0 10px;
   color: #e2e8f0;
 }
 
-.special-note {
+.policy-page .policy-special-box .special-note {
   font-size: 0.85rem !important;
   color: #94a3b8 !important;
   margin-bottom: 0 !important;
 }
 
 /* Contact Seva Box */
-.policy-contact-box {
+.policy-page .policy-contact-box {
   background: var(--site-surface, #ffffff);
   border: 1px solid var(--site-border, #e2e8f0);
   border-radius: 16px;
@@ -201,34 +204,34 @@
 }
 
 @media (max-width: 768px) {
-  .policy-contact-box {
+  .policy-page .policy-contact-box {
     grid-template-columns: 1fr;
     gap: 24px;
     padding: 24px;
   }
 }
 
-.contact-box-left h2 {
+.policy-page .policy-contact-box .contact-box-left h2 {
   font-size: 1.4rem;
   font-weight: 700;
   margin: 0 0 8px;
   color: var(--site-text, #0f172a);
 }
 
-.contact-box-left p {
+.policy-page .policy-contact-box .contact-box-left p {
   font-size: 0.93rem;
   color: var(--site-text-soft, #64748b);
   margin: 0;
   line-height: 1.6;
 }
 
-.contact-box-right {
+.policy-page .policy-contact-box .contact-box-right {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.contact-item {
+.policy-page .policy-contact-box .contact-item {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -238,12 +241,12 @@
   border: 1px solid var(--site-border, #e2e8f0);
 }
 
-.contact-icon {
+.policy-page .policy-contact-box .contact-icon {
   color: var(--site-primary, #d97706);
   flex-shrink: 0;
 }
 
-.contact-label {
+.policy-page .policy-contact-box .contact-label {
   display: block;
   font-size: 0.78rem;
   font-weight: 700;
@@ -252,7 +255,7 @@
   letter-spacing: 0.5px;
 }
 
-.contact-val {
+.policy-page .policy-contact-box .contact-val {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--site-text, #0f172a);
@@ -260,17 +263,17 @@
   transition: color 0.15s ease;
 }
 
-.contact-val:hover {
+.policy-page .policy-contact-box .contact-val:hover {
   color: var(--site-primary, #d97706);
 }
 
-.contact-link {
+.policy-page .policy-contact-box .contact-link {
   font-size: 0.92rem;
   font-weight: 700;
   color: #2563eb;
   text-decoration: none;
 }
 
-.contact-link:hover {
+.policy-page .policy-contact-box .contact-link:hover {
   text-decoration: underline;
 }

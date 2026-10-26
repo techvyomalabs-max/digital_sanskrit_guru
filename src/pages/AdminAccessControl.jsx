@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../hooks/useToast";
+import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
@@ -23,6 +25,8 @@ const ALL_PAGES = [
 
 function AdminAccessControl() {
   const { token, user: currentUser } = useAuth();
+  const { showToast } = useToast();
+  const { confirm, alert } = useDialog();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatingUserId, setUpdatingUserId] = useState("");
@@ -149,10 +153,14 @@ function AdminAccessControl() {
         { userId, action: "updateRole", adminLevel, adminRole, allowedPages },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      alert(res?.data?.message || "Admin permissions updated successfully.");
+      showToast(res?.data?.message || "Admin permissions updated successfully.", "success");
       await fetchMetrics();
     } catch (err) {
-      alert(err?.response?.data?.message || "Failed to update admin role.");
+      await alert({
+        title: "Error",
+        message: err?.response?.data?.message || "Failed to update admin role.",
+        tone: "danger"
+      });
     } finally {
       setUpdatingUserId("");
     }
@@ -170,7 +178,13 @@ function AdminAccessControl() {
   };
 
   const handleRevokeAdmin = async (userId) => {
-    if (!window.confirm("Are you sure you want to revoke admin access for this user?")) return;
+    const confirmed = await confirm({
+      title: "Revoke Admin Access?",
+      message: "Are you sure you want to revoke admin access for this user?",
+      tone: "danger",
+      confirmText: "Revoke Access"
+    });
+    if (!confirmed) return;
     setUpdatingUserId(userId);
     try {
       await axios.put(
@@ -180,7 +194,11 @@ function AdminAccessControl() {
       );
       await fetchMetrics();
     } catch (err) {
-      alert(err?.response?.data?.message || "Failed to revoke admin access.");
+      await alert({
+        title: "Error",
+        message: err?.response?.data?.message || "Failed to revoke admin access.",
+        tone: "danger"
+      });
     } finally {
       setUpdatingUserId("");
     }

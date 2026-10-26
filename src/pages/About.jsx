@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { BookOpen, Cpu, Award, Users } from "lucide-react";
 import "./About.css";
 
@@ -98,9 +99,9 @@ function About() {
             Explore our collection of learning kits, grammar books, and digital courses designed 
             for students, scholars, and language enthusiasts.
           </p>
-          <a href="#/collection" className="about-cta-btn">
+          <Link to="/collection" className="about-cta-btn">
             Explore Collection
-          </a>
+          </Link>
         </section>
       </div>
     </div>

@@ -32,6 +32,14 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     cluster.fork();
   });
 
+  cluster.on("message", (worker, msg) => {
+    if (msg?.type !== "cache:invalidate") return;
+    for (const id in cluster.workers) {
+      const w = cluster.workers[id];
+      if (w && w !== worker) w.send(msg);
+    }
+  });
+
 } else {
   // ── Worker process ──────────────────────────────────────────────────────────
   const dns = require("dns");
@@ -59,11 +67,18 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const pushRoutes = require("./routes/pushRoutes");
   const wishlistRoutes = require("./routes/wishlistRoutes");
   const marketingRoutes = require("./routes/marketingRoutes");
+  const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
   const trashRoutes = require("./routes/trashRoutes");
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
+  const { initPaymentReconciler } = require("./services/paymentReconciler");
+  const { paymentWebhookHandler } = require("./routes/paymentWebhook");
+  const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
   const { globalApiLimiter } = require("./utils/spamFilter");
+  const { buildRedirectMap, createRedirectMiddleware } = require("./utils/legacyRedirects");
+  const legacyRedirectsConfig = require("./config/legacyRedirects.json");
+  const legacyRedirectMap = buildRedirectMap(legacyRedirectsConfig);
 
   const app = express();
   app.use(helmet({
@@ -100,9 +115,53 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       : undefined
   ));
 
-  // 2. Global JSON body limit: increased to 25mb to support Base64 product image uploads
-  app.use(express.json({ limit: "25mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+  const requireDatabase = (req, res, next) => {
+    if (!dbConnected) {
+      return res.status(503).json({
+        message: "Database is not connected. Start MongoDB or update MONGO_URI."
+      });
+    }
+    next();
+  };
+
+  // ── Razorpay Webhook (Raw body required before JSON parsers & vulnerabilityGuard)
+  app.post("/api/payment/webhook", requireDatabase, express.raw({ type: "application/json", limit: "1mb" }), paymentWebhookHandler);
+
+  // 2. Smart JSON body limits: 25mb for authenticated admin media/banner upload routes, 1mb default everywhere else
+  const defaultJson = express.json({ limit: "1mb" });
+  const largeJson = express.json({ limit: "25mb" });
+  const defaultUrlencoded = express.urlencoded({ extended: true, limit: "1mb" });
+  const largeUrlencoded = express.urlencoded({ extended: true, limit: "25mb" });
+
+  app.use((req, res, next) => {
+    const p = String(req.path || "").toLowerCase();
+    const isWriteMethod = req.method === "POST" || req.method === "PUT" || req.method === "PATCH";
+    const hasAuth = typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ");
+    const isPublicSubpath = p.endsWith("/reviews") || p.endsWith("/bulk-enquiry") || p.includes("/reviews") || p.includes("/bulk-enquiry");
+
+    const isLargeAdminRoute =
+      isWriteMethod &&
+      hasAuth &&
+      !isPublicSubpath &&
+      (
+        p.startsWith("/api/products") ||
+        p.startsWith("/api/settings") ||
+        p.startsWith("/api/marketing")
+      );
+
+    if (isLargeAdminRoute) {
+      return largeJson(req, res, (err) => {
+        if (err) return next(err);
+        largeUrlencoded(req, res, next);
+      });
+    }
+
+    return defaultJson(req, res, (err) => {
+      if (err) return next(err);
+      defaultUrlencoded(req, res, next);
+    });
+  });
+
   app.use(vulnerabilityGuard);
   app.use("/api", globalApiLimiter);
 
@@ -119,8 +178,11 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     });
   });
 
+  const protect = require("./middleware/authMiddleware");
+  const admin = require("./middleware/adminMiddleware");
+
   // ── Cache stats endpoint (admin only reference) ─────────────────────────────
-  app.get("/api/cache/stats", (req, res) => {
+  app.get("/api/cache/stats", requireDatabase, protect, admin, admin.requireSuperAdmin, (req, res) => {
     try {
       const { appCache } = require("./utils/cache");
       res.json({ keys: appCache.keys().length, stats: appCache.getStats() });
@@ -128,15 +190,6 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       res.json({ keys: 0 });
     }
   });
-
-  const requireDatabase = (req, res, next) => {
-    if (!dbConnected) {
-      return res.status(503).json({
-        message: "Database is not connected. Start MongoDB or update MONGO_URI."
-      });
-    }
-    next();
-  };
 
   // ── Routes ──────────────────────────────────────────────────────────────────
   const { router: giftRoutes } = require("./routes/giftRoutes");
@@ -153,8 +206,13 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/push", requireDatabase, pushRoutes);
   app.use("/api/wishlist", requireDatabase, wishlistRoutes);
   app.use("/api/marketing", requireDatabase, marketingRoutes);
+  app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
+  app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
+
+  // ── Legacy URL & trailing-slash redirects ─────────────────────────────────
+  app.use(createRedirectMiddleware(legacyRedirectMap));
 
   // ── Static files (served after API routes) ─────────────────────────────────
   if (clientBuildExists) {
@@ -177,8 +235,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use((error, req, res, next) => {
     console.error("Unhandled request error:", error?.stack || error?.message || error);
     if (res.headersSent) return next(error);
-    return res.status(error?.status || 500).json({
-      message: error?.message || "Internal server error"
+    const status = Number(error?.status || error?.statusCode || 500);
+    return res.status(status >= 100 && status < 600 ? status : 500).json({
+      message: status >= 500 ? "Internal server error" : (error?.message || "An error occurred")
     });
   });
 
@@ -216,6 +275,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   connectToDatabase();
   initVapid();
   initWishlistScheduler();
+  initPaymentReconciler();
 
   // Retry connection if disconnected
   setInterval(() => {
@@ -245,7 +305,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   });
 
   process.on("uncaughtException", (error) => {
-    console.error("Uncaught exception:", error?.stack || error?.message || error);
+    console.error("Uncaught exception — exiting:", error?.stack || error?.message || error);
+    server.close(() => process.exit(1));
+    setTimeout(() => process.exit(1), 10000).unref();
   });
 
   async function shutdown(signal) {

@@ -1,10 +1,12 @@
 import { Link } from "react-router-dom";
 import { formatResolvedPrice } from "../../utils/currency";
 import { getProductPriceDetails } from "../../utils/productPricing";
+import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 
 function ProductCard({ product }) {
+  const { selectedAddress } = useDeliveryLocation();
   const productId = product._id || product.id;
-  const pricing = getProductPriceDetails(product);
+  const pricing = getProductPriceDetails(product, selectedAddress?.country);
 
   return (
     <div style={styles.card}>

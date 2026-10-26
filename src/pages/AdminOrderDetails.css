@@ -278,6 +278,92 @@
   filter: brightness(1.05);
 }
 
+.admin-order-details-refund-control-wrap {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-order-details-refund-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.admin-order-details-refund-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-order-details-refund-select {
+  flex: 1;
+  min-width: 130px;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-order-details-refund-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-order-details-refund-btn:hover {
+  background: #dbeafe;
+}
+
+.admin-order-details-refund-btn.refund-btn-success {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-order-details-refund-btn.refund-btn-success:hover {
+  background: #bbf7d0;
+}
+
+.admin-order-details-refund-btn.refund-btn-danger {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.admin-order-details-refund-btn.refund-btn-danger:hover {
+  background: #ffe4e6;
+}
+
+.admin-order-details-refund-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1100px) {
   .admin-order-details-grid,
   .admin-order-details-layout {
@@ -300,3 +386,108 @@
     width: 100%;
   }
 }
+
+/* ── Manual Access Pending / Granted ────────────────────────────────────────── */
+.admin-order-pending-access-banner {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.admin-order-pending-access-banner h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #92400e;
+}
+
+.admin-order-pending-access-banner p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #b45309;
+}
+
+body.admin-dark .admin-order-pending-access-banner {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+body.admin-dark .admin-order-pending-access-banner h2 {
+  color: #fbbf24;
+}
+
+body.admin-dark .admin-order-pending-access-banner p {
+  color: #fde68a;
+}
+
+.admin-item-access-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.admin-item-access-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.admin-item-access-badge.granted {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+body.admin-dark .admin-item-access-badge.pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+body.admin-dark .admin-item-access-badge.granted {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.admin-order-shipping-digital-granted {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+body.admin-dark .admin-order-shipping-digital-granted {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.admin-order-shipping-digital-pending {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+body.admin-dark .admin-order-shipping-digital-pending {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "NODE_ENV=production node backend/server.js",
     "dev": "vite",
     "dev:server": "nodemon backend/server.js",
     "dev:client": "vite",

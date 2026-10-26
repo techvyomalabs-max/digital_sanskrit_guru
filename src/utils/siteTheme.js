@@ -1,7 +1,26 @@
-export const DEFAULT_SITE_THEME = "sunrise";
+export const DEFAULT_SITE_THEME = "minimalism";
 const SITE_THEME_STORAGE_KEY = "site-theme-settings";
 
 export const BUILT_IN_THEME_DEFINITIONS = [
+  {
+    value: "minimalism",
+    aliases: ["minimal", "clean", "zen"],
+    label: "Minimalism",
+    description: "Ultra-clean modern aesthetics, refined slate and obsidian monochrome",
+    palette: {
+      bg: "#fafaf9",
+      surface: "#ffffff",
+      text: "#18181b",
+      header: "#18181b",
+      accent: "#2563eb",
+      button: "#18181b",
+      navBottom: "#27272a",
+      footerBg: "#18181b",
+      footerText: "#f4f4f5",
+      sectionBg: "#f4f4f5",
+      sectionText: "#18181b"
+    }
+  },
   {
     value: "sunrise",
     label: "Sunrise",

@@ -1,8 +1,10 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
+import { isExternalDelivery } from "../utils/digitalDelivery";
+import { isAccessPending } from "../utils/accessStatus";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -24,15 +26,123 @@ function MyLibrary() {
   const location = useLocation();
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeWebReaderUrl, setActiveWebReaderUrl] = useState("");
-  const [activeGuideItem, setActiveGuideItem] = useState(null);
+  const [searchQuery, setSearchQuery] = useState(
+    () => location.state?.search || ""
+  );
 
   useEffect(() => {
-    if (location.state?.autoOpenUrl) {
-      setActiveWebReaderUrl(location.state.autoOpenUrl);
+    if (location.state?.search) {
+      setSearchQuery(location.state.search);
     }
-  }, [location.state]);
+  }, [location.state?.search]);
+
+  // Secure Reader State
+  const [activeReaderItem, setActiveReaderItem] = useState(null);
+  const [activeBlobUrl, setActiveBlobUrl] = useState("");
+  const [mediaType, setMediaType] = useState("frame"); // "video" | "audio" | "pdf" | "frame"
+  const [isOpeningReader, setIsOpeningReader] = useState(false);
+  const [readerError, setReaderError] = useState("");
+  const [activeGuideItem, setActiveGuideItem] = useState(null);
+
+  const closeSecureReader = useCallback(() => {
+    if (activeBlobUrl && activeBlobUrl.startsWith("blob:")) {
+      try {
+        URL.revokeObjectURL(activeBlobUrl);
+      } catch {
+        // ignore
+      }
+    }
+    setActiveBlobUrl("");
+    setActiveReaderItem(null);
+    setReaderError("");
+    setIsOpeningReader(false);
+    setMediaType("frame");
+  }, [activeBlobUrl]);
+
+  const openSecureReader = useCallback(async (book) => {
+    if (!book || book.legacyAccess || book.isWpArchive) {
+      return;
+    }
+    const rawUrl = String(book.webReaderLink || book.product?.webReaderLink || "").trim();
+    if (!rawUrl && !book.orderId) {
+      showToast("Digital Reader link is being configured. Please contact support.");
+      return;
+    }
+
+    setActiveReaderItem(book);
+    setIsOpeningReader(true);
+    setReaderError("");
+    setActiveBlobUrl("");
+
+    // Detect external embed viewer sites (e.g. Heyzine, FlipHTML5, Canva, Drive, Vimeo)
+    const isExternalViewer = /^(https?:\/\/)?(online\.fliphtml5\.com|heyzine\.com|canva\.com|drive\.google\.com|youtube\.com|vimeo\.com|player\.vimeo\.com)/i.test(rawUrl);
+
+    if (isExternalViewer) {
+      setMediaType("frame");
+      setActiveBlobUrl(rawUrl);
+      setIsOpeningReader(false);
+      return;
+    }
+
+    try {
+      const orderId = book.orderId || book.orderNumber;
+      const itemId = book._id || book.product || book.id;
+
+      let streamUrl = "";
+      if (orderId && itemId) {
+        streamUrl = `/api/orders/digital-stream/${orderId}/${itemId}`;
+      } else {
+        streamUrl = rawUrl;
+      }
+
+      const response = await fetch(streamUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      if (contentType.includes("video") || /\.(mp4|webm|mkv|mov|avi)(\?.*)?$/i.test(rawUrl)) {
+        setMediaType("video");
+      } else if (contentType.includes("audio") || /\.(mp3|wav|ogg|m4a)(\?.*)?$/i.test(rawUrl)) {
+        setMediaType("audio");
+      } else if (contentType.includes("pdf") || /\.(pdf)(\?.*)?$/i.test(rawUrl)) {
+        setMediaType("pdf");
+      } else {
+        setMediaType("frame");
+      }
+
+      setActiveBlobUrl(objectUrl);
+    } catch (err) {
+      console.error("[Secure Reader] Stream error:", err);
+      // Fallback if direct URL is usable
+      if (rawUrl) {
+        setActiveBlobUrl(rawUrl);
+        setMediaType("frame");
+      } else {
+        setReaderError("Unable to establish secure stream for this digital item. Please try again.");
+      }
+    } finally {
+      setIsOpeningReader(false);
+    }
+  }, [token, showToast]);
+
+  useEffect(() => {
+    return () => {
+      if (activeBlobUrl && activeBlobUrl.startsWith("blob:")) {
+        try {
+          URL.revokeObjectURL(activeBlobUrl);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [activeBlobUrl]);
 
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [redeemCode, setRedeemCode] = useState("");
@@ -59,6 +169,28 @@ function MyLibrary() {
   useEffect(() => {
     fetchOrders();
   }, [token]);
+
+  // Prevent background page scrolling when digital reader or guide modal is open
+  useEffect(() => {
+    const isAnyModalOpen = Boolean(activeReaderItem || activeGuideItem);
+    if (!isAnyModalOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        closeSecureReader();
+        setActiveGuideItem(null);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeReaderItem, activeGuideItem, closeSecureReader]);
 
   const handleRedeemGift = async (e) => {
     e.preventDefault();
@@ -96,16 +228,90 @@ function MyLibrary() {
     orders.forEach((order) => {
       const isPaid = String(order.paymentStatus || "").toLowerCase() === "paid";
       if (!isPaid || !Array.isArray(order.items)) return;
+      const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
       order.items.forEach((item) => {
+        const isExternal = isExternalDelivery(item);
+        if (isExternal) {
+          const isGiftItem = Boolean(order.isGift || item.giftCode);
+          if (isGiftItem && !order.isRedeemedGift) {
+            return;
+          }
+
+          const isCancelledOrRefunded =
+            order.status === "Cancelled" ||
+            order.refundStatus === "Refunded" ||
+            item.returnRequest?.status === "Refunded";
+
+          if (isCancelledOrRefunded) {
+            return;
+          }
+
+          const isItemPending = isAccessPending(item);
+          const externalLink = item.externalAccessLink || "";
+          const externalLabel = item.externalAccessLabel || "";
+          const accessNote = item.accessNote || "";
+          const accessGrantedAt = item.accessGrantedAt || null;
+
+          const key = String((item.product || item._id || item.name) + (isOrderLegacy ? "_legacy" : "")).trim();
+          if (seenMap.has(key)) {
+            const existing = seenMap.get(key);
+            existing.copies += Number(item.quantity || 1);
+
+            if (existing.accessPending && !isItemPending) {
+              existing.accessPending = false;
+              existing.externalAccessLink = externalLink;
+              existing.externalAccessLabel = externalLabel;
+              existing.accessNote = accessNote;
+              existing.accessGrantedAt = accessGrantedAt;
+            } else if (!existing.accessPending && !isItemPending) {
+              if (!existing.externalAccessLink && externalLink) {
+                existing.externalAccessLink = externalLink;
+              }
+              if (!existing.externalAccessLabel && externalLabel) {
+                existing.externalAccessLabel = externalLabel;
+              }
+              if (!existing.accessNote && accessNote) {
+                existing.accessNote = accessNote;
+              }
+              if (!existing.accessGrantedAt && accessGrantedAt) {
+                existing.accessGrantedAt = accessGrantedAt;
+              }
+            }
+          } else {
+            const entry = {
+              ...item,
+              _id: item.product || item._id,
+              orderId: order._id,
+              orderDate: order.createdAt,
+              orderNumber: order._id,
+              copies: Number(item.quantity || 1),
+              isExternal: true,
+              digitalDelivery: "external",
+              externalAccessLink: externalLink,
+              externalAccessLabel: externalLabel,
+              accessPending: isItemPending,
+              accessNote: accessNote,
+              accessGrantedAt: accessGrantedAt,
+              legacyAccess: isOrderLegacy,
+              isWpArchive: isOrderLegacy
+            };
+            seenMap.set(key, entry);
+            list.push(entry);
+          }
+          return;
+        }
+
         const isBundle = String(item.productType || "").toLowerCase() === "bundle" || (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
 
         if (isBundle && Array.isArray(item.bundleItems)) {
           // Iterate over individual bundle items
           item.bundleItems.forEach((subItem) => {
             const subNameLower = String(subItem.name || "").toLowerCase();
+            const isSubLegacy = Boolean(isOrderLegacy || item.legacyAccess || subItem.legacyAccess);
             const isSubDigital = Boolean(
               subItem.isDigital ||
+              subItem.legacyAccess ||
               subItem.webReaderLink ||
               subItem.kindleLink ||
               subNameLower.includes("web") ||
@@ -115,7 +321,7 @@ function MyLibrary() {
             );
 
             if (isSubDigital) {
-              const subKey = String(subItem.product || subItem._id || subItem.name).trim();
+              const subKey = String((subItem.product || subItem._id || subItem.name) + (isSubLegacy ? "_legacy" : "")).trim();
               const subQty = Number(subItem.quantity || 1) * Number(item.quantity || 1);
 
               if (seenMap.has(subKey)) {
@@ -128,10 +334,13 @@ function MyLibrary() {
                   orderId: order._id,
                   orderDate: order.createdAt,
                   orderNumber: order._id,
+                  bundleName: item.name,
                   copies: subQty,
-                  webReaderLink: subItem.webReaderLink || "",
-                  kindleLink: subItem.kindleLink || "",
-                  digitalInstructions: subItem.digitalInstructions || ""
+                  webReaderLink: isSubLegacy ? "" : (subItem.webReaderLink || ""),
+                  kindleLink: isSubLegacy ? "" : (subItem.kindleLink || ""),
+                  digitalInstructions: isSubLegacy ? "" : (subItem.digitalInstructions || ""),
+                  legacyAccess: isSubLegacy,
+                  isWpArchive: isOrderLegacy
                 };
                 seenMap.set(subKey, entry);
                 list.push(entry);
@@ -142,8 +351,10 @@ function MyLibrary() {
           // Handle standard single product
           const nameLower = String(item.name || "").toLowerCase();
           const formatLower = String(item.format || "").toLowerCase();
+          const isItemLegacy = Boolean(isOrderLegacy || item.legacyAccess);
           const isDigital = Boolean(
             item.isDigital ||
+            item.legacyAccess ||
             item.webReaderLink ||
             item.kindleLink ||
             nameLower.includes("web") ||
@@ -160,7 +371,7 @@ function MyLibrary() {
               return;
             }
 
-            const key = String(item.product || item._id || item.name).trim();
+            const key = String((item.product || item._id || item.name) + (isItemLegacy ? "_legacy" : "")).trim();
             if (seenMap.has(key)) {
               const existing = seenMap.get(key);
               existing.copies += Number(item.quantity || 1);
@@ -171,8 +382,10 @@ function MyLibrary() {
                 orderDate: order.createdAt,
                 orderNumber: order._id,
                 copies: Number(item.quantity || 1),
-                webReaderLink: item.webReaderLink || item.product?.webReaderLink || "",
-                kindleLink: item.kindleLink || item.product?.kindleLink || ""
+                webReaderLink: isItemLegacy ? "" : (item.webReaderLink || item.product?.webReaderLink || ""),
+                kindleLink: isItemLegacy ? "" : (item.kindleLink || item.product?.kindleLink || ""),
+                legacyAccess: isItemLegacy,
+                isWpArchive: isOrderLegacy
               };
               seenMap.set(key, entry);
               list.push(entry);
@@ -191,9 +404,42 @@ function MyLibrary() {
     const query = searchQuery.toLowerCase().trim();
     return digitalBooks.filter((book) =>
       String(book.name || "").toLowerCase().includes(query) ||
-      String(book.format || "").toLowerCase().includes(query)
+      String(book.format || "").toLowerCase().includes(query) ||
+      String(book.bundleName || "").toLowerCase().includes(query)
     );
   }, [digitalBooks, searchQuery]);
+
+  const nativeBooks = useMemo(
+    () => filteredBooks.filter((book) => !book.legacyAccess && !book.isWpArchive),
+    [filteredBooks]
+  );
+  const legacyBooks = useMemo(
+    () => filteredBooks.filter((book) => Boolean(book.legacyAccess || book.isWpArchive)),
+    [filteredBooks]
+  );
+
+  // Auto-open reader if navigated from MyOrders with autoOpenUrl
+  useEffect(() => {
+    if (location.state?.autoOpenUrl && digitalBooks.length > 0 && !activeReaderItem) {
+      const targetUrl = location.state.autoOpenUrl;
+      const targetSearch = location.state.search;
+      const match = digitalBooks.find(
+        (b) =>
+          !b.legacyAccess &&
+          !b.isWpArchive &&
+          ((b.webReaderLink && b.webReaderLink === targetUrl) ||
+            (b.name && targetSearch && b.name.toLowerCase().includes(String(targetSearch).toLowerCase())))
+      );
+      if (match) {
+        openSecureReader(match);
+      } else if (targetUrl) {
+        openSecureReader({
+          name: targetSearch || "Digital Content",
+          webReaderLink: targetUrl
+        });
+      }
+    }
+  }, [location.state, digitalBooks, activeReaderItem, openSecureReader]);
 
   return (
     <div className="my-library-container">
@@ -245,93 +491,198 @@ function MyLibrary() {
             <span>Showing <strong>{filteredBooks.length}</strong> of <strong>{digitalBooks.length}</strong> digital items</span>
           </div>
 
-          <div className="my-library-grid">
-            {filteredBooks.map((book, idx) => {
-              const readerUrl = book.webReaderLink || book.product?.webReaderLink;
-              const isKindle = String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink);
-              const isFlipbook = Boolean(
-                String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
-                String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
-                String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
-                String(book.name || "").toLowerCase().includes("flipbook")
-              );
+          {nativeBooks.length > 0 && (
+            <div className="my-library-grid">
+              {nativeBooks.map((book, idx) => {
+                const isExternal = Boolean(book.isExternal || isExternalDelivery(book));
+                const isKindle = !isExternal && (String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink));
+                const isFlipbook = !isExternal && Boolean(
+                  String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
+                  String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
+                  String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
+                  String(book.name || "").toLowerCase().includes("flipbook")
+                );
 
-              return (
-                <div key={`${book.name}-${idx}`} className="my-library-card">
-                  <div className="my-library-card-cover-container">
-                    <img
-                      src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
-                      alt={book.name}
-                      className="my-library-card-cover"
-                      onError={(e) => {
-                        e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
-                      }}
-                    />
-                    <span className="my-library-format-badge">
-                      {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
-                    </span>
-                  </div>
-
-                  <div className="my-library-card-body">
-                    <h3 className="my-library-card-title">{book.name}</h3>
-
-                    <div className="my-library-card-meta">
-                      <span>Purchased: {formatDate(book.orderDate)}</span>
-                      {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                return (
+                  <div key={`${book.name}-${idx}`} className="my-library-card">
+                    <div className="my-library-card-cover-container">
+                      <img
+                        src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
+                        alt={book.name}
+                        className="my-library-card-cover"
+                        onError={(e) => {
+                          e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
+                        }}
+                      />
+                      <span className={`my-library-format-badge ${isExternal && book.accessPending ? "pending" : ""}`}>
+                        {isExternal
+                          ? (book.accessPending ? "⏳ Access being set up" : "🌐 External Access")
+                          : isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                      </span>
                     </div>
 
-                    {book.digitalInstructions && (
-                      <p className="my-library-instructions-snippet">{book.digitalInstructions}</p>
-                    )}
+                    <div className="my-library-card-body">
+                      <h3 className="my-library-card-title">{book.name}</h3>
 
-                    <div className="my-library-card-actions">
-                      {!isKindle ? (
-                        <button
-                          type="button"
-                          className="my-library-btn-primary"
-                          onClick={() => {
-                            if (readerUrl) {
-                              setActiveWebReaderUrl(readerUrl);
-                            } else {
-                              showToast("Digital Reader link is being configured. Please contact support.");
-                            }
-                          }}
-                        >
-                          {isFlipbook ? "📖 Read Flipbook" : "📖 Read Web Version"}
-                        </button>
-                      ) : (
-                        <a
-                          href={book.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="my-library-btn-kindle"
-                        >
-                          📱 View on Amazon ↗
-                        </a>
+                      <div className="my-library-card-meta">
+                        <span>Purchased: {formatDate(book.orderDate)}</span>
+                        {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                      </div>
+
+                      {book.digitalInstructions && (
+                        <p className="my-library-instructions-snippet">{book.digitalInstructions}</p>
                       )}
 
-                      <button
-                        type="button"
-                        className="my-library-btn-outline"
-                        onClick={() => setActiveGuideItem(book)}
-                      >
-                        💡 Guide
-                      </button>
+                      {isExternal && !book.accessPending && Boolean(book.accessNote) && (
+                        <div className="my-library-access-note-box">
+                          <strong className="my-library-access-note-title">Note</strong>
+                          <div className="my-library-access-note-content">{book.accessNote}</div>
+                        </div>
+                      )}
+
+                      <div className="my-library-card-actions">
+                        {isExternal ? (
+                          book.accessPending ? (
+                            <span
+                              className="my-library-pending-note"
+                              style={{
+                                fontSize: "12.5px",
+                                color: "var(--site-text-soft, #64748b)",
+                                fontStyle: "italic",
+                                padding: "8px 0",
+                                display: "inline-block",
+                                lineHeight: 1.4
+                              }}
+                            >
+                              Our team is setting up your access. We'll email you when it's ready.
+                            </span>
+                          ) : book.externalAccessLink ? (
+                            <a
+                              href={book.externalAccessLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="my-library-btn-primary"
+                              style={{
+                                textDecoration: "none",
+                                textAlign: "center",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center"
+                              }}
+                            >
+                              {book.externalAccessLabel?.trim()
+                                ? (book.externalAccessLabel.includes("↗")
+                                  ? book.externalAccessLabel.trim()
+                                  : `${book.externalAccessLabel.trim()} ↗`)
+                                : "View ↗"}
+                            </a>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: "12.5px",
+                                color: "var(--site-text-soft, #64748b)",
+                                fontStyle: "italic",
+                                padding: "8px 0",
+                                display: "inline-block"
+                              }}
+                            >
+                              Access link not available yet
+                            </span>
+                          )
+                        ) : !isKindle ? (
+                          <button
+                            type="button"
+                            className="my-library-btn-primary"
+                            onClick={() => openSecureReader(book)}
+                          >
+                            {isFlipbook ? "📖 Read Flipbook" : "📖 Read Web Version"}
+                          </button>
+                        ) : (
+                          <a
+                            href={book.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="my-library-btn-kindle"
+                          >
+                            📱 View on Amazon ↗
+                          </a>
+                        )}
+
+                        {!isExternal && (
+                          <button
+                            type="button"
+                            className="my-library-btn-outline"
+                            onClick={() => setActiveGuideItem(book)}
+                          >
+                            💡 Guide
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
+
+          {legacyBooks.length > 0 && (
+            <div className="my-library-legacy-section" style={{ marginTop: nativeBooks.length > 0 ? "40px" : "10px" }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: "700", marginBottom: "6px", color: "var(--site-text, #1f2937)" }}>
+                Purchased on our previous website
+              </h2>
+              <p style={{ fontSize: "0.95rem", color: "var(--site-text-soft, #4b5563)", marginBottom: "20px" }}>
+                These were purchased on our previous website. Please access them there using the same email address.
+              </p>
+
+              <div className="my-library-grid">
+                {legacyBooks.map((book, idx) => {
+                  const isKindle = String(book.name || "").toLowerCase().includes("kindle");
+                  const isFlipbook = Boolean(
+                    String(book.digitalType || book.product?.digitalType || "").toLowerCase().includes("flipbook") ||
+                    String(book.format || book.product?.format || "").toLowerCase().includes("flipbook") ||
+                    String(book.category || book.product?.category || "").toLowerCase().includes("flipbook") ||
+                    String(book.name || "").toLowerCase().includes("flipbook")
+                  );
+
+                  return (
+                    <div key={`legacy-${book.name}-${idx}`} className="my-library-card">
+                      <div className="my-library-card-cover-container">
+                        <img
+                          src={book.image || "https://placehold.co/300x400?text=Digital+Book"}
+                          alt={book.name}
+                          className="my-library-card-cover"
+                          onError={(e) => {
+                            e.target.src = "https://placehold.co/300x400?text=Sanskrit+Book";
+                          }}
+                        />
+                        <span className="my-library-format-badge">
+                          {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                        </span>
+                      </div>
+
+                      <div className="my-library-card-body">
+                        <h3 className="my-library-card-title">{book.name}</h3>
+
+                        <div className="my-library-card-meta">
+                          <span>Purchased: {formatDate(book.orderDate)}</span>
+                          {book.copies > 1 && <span className="my-library-copies-badge">{book.copies} Copies</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Embedded Full-Screen Web Reader Modal */}
-      {activeWebReaderUrl && (
+      {/* Embedded Full-Screen Web Reader Modal (Secure In-Memory Blob Stream) */}
+      {(activeReaderItem || isOpeningReader) && (
         <div
           className="review-redirect-modal-backdrop"
-          onClick={() => setActiveWebReaderUrl("")}
-          style={{ backgroundColor: "rgba(0,0,0,0.85)", zIndex: 9999, padding: "12px" }}
+          onClick={closeSecureReader}
+          style={{ backgroundColor: "rgba(0,0,0,0.88)", zIndex: 9999, padding: "12px" }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -344,30 +695,149 @@ function MyLibrary() {
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
+              boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+              border: "1px solid rgba(255,255,255,0.08)"
             }}
           >
-            <div style={{ padding: "12px 16px", backgroundColor: "#16213e", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #0f3460" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
-                <span>📖 Digital Sanskrit Reader • Protected Access</span>
+            <div
+              style={{
+                padding: "12px 18px",
+                backgroundColor: "#16213e",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid #0f3460"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
+                <span style={{ fontSize: "16px" }}>🔒</span>
+                <span>
+                  {activeReaderItem?.name || "Digital Sanskrit Reader"} • <span style={{ color: "#4ade80", fontSize: "12px", fontWeight: 500 }}>Encrypted Protected Session</span>
+                </span>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
                   type="button"
-                  onClick={() => setActiveWebReaderUrl("")}
-                  style={{ padding: "6px 14px", borderRadius: "6px", backgroundColor: "#e94560", color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}
+                  onClick={closeSecureReader}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    backgroundColor: "#e94560",
+                    color: "#fff",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: "12px"
+                  }}
                 >
                   Close Reader
                 </button>
               </div>
             </div>
-            <iframe
-              src={activeWebReaderUrl}
-              title="Digital Web Reader"
-              onContextMenu={(e) => e.preventDefault()}
-              style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#ffffff", userSelect: "none" }}
-              allow="fullscreen"
-            />
+
+            {isOpeningReader ? (
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "16px",
+                  color: "#e2e8f0"
+                }}
+              >
+                <div className="my-library-spinner" />
+                <p style={{ margin: 0, fontSize: "14px", fontWeight: 500 }}>
+                  🔒 Initializing secure session & streaming content...
+                </p>
+              </div>
+            ) : readerError ? (
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "14px",
+                  padding: "24px",
+                  textAlign: "center"
+                }}
+              >
+                <div style={{ fontSize: "40px" }}>⚠️</div>
+                <h3 style={{ color: "#ff6b6b", margin: 0 }}>Unable to Load Digital Media</h3>
+                <p style={{ color: "#94a3b8", maxWidth: "450px", margin: 0, fontSize: "13.5px" }}>{readerError}</p>
+                <button
+                  type="button"
+                  onClick={() => activeReaderItem && openSecureReader(activeReaderItem)}
+                  className="review-redirect-btn-primary"
+                  style={{ marginTop: "10px", padding: "8px 20px" }}
+                >
+                  Retry Loading 🔄
+                </button>
+              </div>
+            ) : activeBlobUrl ? (
+              mediaType === "video" ? (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#000",
+                    overflow: "hidden"
+                  }}
+                >
+                  <video
+                    src={activeBlobUrl}
+                    controls
+                    autoPlay
+                    controlsList="nodownload"
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{ width: "100%", maxHeight: "100%", objectFit: "contain" }}
+                  />
+                </div>
+              ) : mediaType === "audio" ? (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#0d1117",
+                    padding: "40px",
+                    gap: "20px"
+                  }}
+                >
+                  <div style={{ fontSize: "56px" }}>🎧</div>
+                  <h3 style={{ color: "#fff", margin: 0 }}>{activeReaderItem?.name}</h3>
+                  <audio
+                    src={activeBlobUrl}
+                    controls
+                    autoPlay
+                    controlsList="nodownload"
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{ width: "100%", maxWidth: "500px" }}
+                  />
+                </div>
+              ) : (
+                <iframe
+                  src={activeBlobUrl}
+                  title="Digital Sanskrit Reader"
+                  onContextMenu={(e) => e.preventDefault()}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    backgroundColor: "#ffffff",
+                    userSelect: "none"
+                  }}
+                  allow="fullscreen"
+                />
+              )
+            ) : null}
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { MessageCircle, Phone, Mail, Video, MapPin, Briefcase } from "lucide-react";
 import "./Contact.css";
 
@@ -79,7 +80,7 @@ function Contact() {
             <div className="inquiry-card">
               <h3>For Product Inquiries</h3>
               <p>
-                Browse products in our <a href="#/collection">Master Catalog</a>, or send an email to{" "}
+                Browse products in our <Link to="/collection">Master Catalog</Link>, or send an email to{" "}
                 <a href="mailto:support@digitalsanskritguru.com">support@digitalsanskritguru.com</a>.
               </p>
             </div>

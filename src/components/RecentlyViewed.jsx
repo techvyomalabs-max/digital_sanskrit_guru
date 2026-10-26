@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { formatResolvedPrice } from "../utils/currency";
-import { getProductPriceDetails } from "../utils/productPricing";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import ProductCard from "./ProductCard";
 import "./RecentlyViewed.css";
 
 function RecentlyViewed({ className = "" }) {
   const [products, setProducts] = useState([]);
+  const sliderRef = useRef(null);
 
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem("recentProducts")) || [];
@@ -17,42 +17,63 @@ function RecentlyViewed({ className = "" }) {
     setProducts([]);
   };
 
+  const scrollRow = (direction) => {
+    if (!sliderRef.current) return;
+    const distance = sliderRef.current.clientWidth * 0.75;
+    sliderRef.current.scrollBy({
+      left: distance * direction,
+      behavior: "smooth"
+    });
+  };
+
   if (products.length === 0) return null;
 
   return (
-    <section className={`recent-section ${className}`.trim()}>
-      <div className="recent-header">
+    <section className={`home-section recent-section ${className}`.trim()}>
+      <div className="home-section-head">
         <div>
+          <span className="home-section-kicker">Jump back in</span>
           <h2>Recently Viewed</h2>
-          <p>Jump back into products you explored recently.</p>
         </div>
-        <button className="recent-clear-btn" onClick={clearRecentlyViewed}>
-          Clear
+        <button
+          type="button"
+          className="home-inline-link recent-clear-inline-btn"
+          onClick={clearRecentlyViewed}
+        >
+          Clear all
         </button>
       </div>
-      <div className="recent-grid">
-        {products.map((p) => (
-          <div key={p._id} className="recent-card">
-            <Link to={`/product/${p._id}`}>
-              <img
-                src={p.image || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzk5OTk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=="}
-                alt={p.name}
-                width="300"
-                height="200"
-                loading="lazy"
-                decoding="async"
-              />
-            </Link>
-            <h4>{p.name}</h4>
-            <span className="recent-caption">Viewed recently</span>
-            <div className="recent-card-footer">
-              <p>{formatResolvedPrice(getProductPriceDetails(p))}</p>
-              <Link to={`/product/${p._id}`} className="recent-action-link">
-                <button className="view-btn">View</button>
-              </Link>
+
+      <div className="home-slider-wrapper">
+        {products.length > 3 ? (
+          <button
+            type="button"
+            className="home-slider-arrow left"
+            onClick={() => scrollRow(-1)}
+            aria-label="Previous recently viewed products"
+          >
+            <ChevronLeft size={52} strokeWidth={3.5} />
+          </button>
+        ) : null}
+
+        <div ref={sliderRef} className="home-spotlight-row recent-grid">
+          {products.map((p) => (
+            <div key={p._id} className="home-spotlight-item">
+              <ProductCard product={p} showDescription={false} variant="home" />
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        {products.length > 3 ? (
+          <button
+            type="button"
+            className="home-slider-arrow right"
+            onClick={() => scrollRow(1)}
+            aria-label="Next recently viewed products"
+          >
+            <ChevronRight size={52} strokeWidth={3.5} />
+          </button>
+        ) : null}
       </div>
     </section>
   );

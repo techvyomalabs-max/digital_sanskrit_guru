@@ -45,9 +45,28 @@ const giftPassSchema = new mongoose.Schema(
     redeemedAt: {
       type: Date,
       default: null
+    },
+    lineIndex: {
+      type: Number,
+      default: 0
+    },
+    isRevoked: {
+      type: Boolean,
+      default: false
+    },
+    revokedAt: {
+      type: Date,
+      default: null
+    },
+    revokedReason: {
+      type: String,
+      default: ""
     }
   },
   { timestamps: true }
 );
+
+giftPassSchema.index({ order: 1, product: 1, lineIndex: 1 }, { unique: true });
+giftPassSchema.index({ redeemedBy: 1, isRedeemed: 1 });
 
 module.exports = mongoose.model("GiftPass", giftPassSchema);

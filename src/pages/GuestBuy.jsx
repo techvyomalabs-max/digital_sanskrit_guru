@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
-import { formatResolvedPrice, convertCurrencyAmount } from "../utils/currency";
+import { convertCurrencyAmount } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
+import { isKindleProduct } from "../utils/kindle";
 import "./Checkout.css";
 
 function GuestBuy() {
@@ -77,8 +78,6 @@ function GuestBuy() {
   const [settings, setSettings] = useState(null);
   const [coords, setCoords] = useState({ latitude: null, longitude: null });
 
-  const isDummyPaymentEnabled =
-    String(import.meta.env.VITE_ENABLE_DUMMY_PAYMENT || "").toLowerCase() === "true";
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   useEffect(() => {
@@ -251,84 +250,31 @@ function GuestBuy() {
     });
     const grandTotal = finalTotal + deliveryCharge;
 
+    if (!razorpayKey) {
+      setCheckoutMessage("Payment gateway key is missing. Please contact support.");
+      setIsPaying(false);
+      return;
+    }
+
     try {
-      let RazorpayConstructor = window.Razorpay;
-      if (!isDummyPaymentEnabled) {
-        RazorpayConstructor = await loadRazorpayCheckout();
-      }
+      const RazorpayConstructor = await loadRazorpayCheckout();
 
-      // 1. Create Razorpay Order (converting to INR paise)
-      const amountInInr = convertCurrencyAmount(grandTotal, {
-        sourceCurrency: displayCurrency,
-        currency: "INR"
-      });
-
+      // 1. Create Razorpay Order with authoritative server pricing
       const { data: rpOrder } = await axios.post("/api/payment/create-order", {
-        amount: Math.round(amountInInr * 100) / 100,
-        honey_pot_field: honeyPot
-      });
-
-      // 2. Process payment (Dummy / Live)
-      const isOrderDummy =
-        isDummyPaymentEnabled ||
-        Boolean(rpOrder?.isDummy) ||
-        String(rpOrder?.id || "").startsWith("dummy_order_");
-
-      if (isOrderDummy) {
-        const wantsToProceed = window.confirm(
-          "Dummy payment mode is enabled. Click OK to simulate a successful payment."
-        );
-
-        if (!wantsToProceed) {
-          setIsPaying(false);
-          setCheckoutMessage("Payment was cancelled.");
-          return;
-        }
-
-        const response = {
-          razorpay_order_id: rpOrder.id || `dummy_order_${Date.now()}`,
-          razorpay_payment_id: `dummy_pay_${Date.now()}`,
-          razorpay_signature: "dummy_signature",
-          dummy: true
-        };
-
-        const verify = await axios.post("/api/payment/verify", response);
-        if (!verify.data?.success) {
-          setIsPaying(false);
-          setCheckoutMessage("Payment verification failed.");
-          return;
-        }
-
-        // 3. Create Direct Buy Order on Backend
-        const orderRes = await axios.post("/api/orders/direct-buy", {
-          items: [{
+        items: [
+          {
             product: product._id,
-            _id: product._id,
-            id: product._id,
-            name: product.name,
-            image: product.image,
             price: unitPrice,
             quantity: buyQuantity,
-            isDigital
-          }],
-          shipping: shippingInfo,
-          billing: shippingInfo,
-          paymentStatus: "Paid",
-          honey_pot_field: honeyPot,
-          razorpayOrderId: response.razorpay_order_id,
-          razorpayPaymentId: response.razorpay_payment_id,
-          currencyDisplay: {
             currency: displayCurrency,
-            amount: grandTotal,
-            detectedCountry: isDigital ? "India" : country.trim()
+            digitalDelivery: product.digitalDelivery || "onsite",
+            externalAccessManual: Boolean(product.externalAccessManual)
           }
-        });
-
-        setOrderSuccess(orderRes.data?.order);
-        setCredentialsSent(orderRes.data?.accountCreated);
-        setIsPaying(false);
-        return;
-      }
+        ],
+        shipping: shippingInfo,
+        couponCode: "",
+        honey_pot_field: honeyPot
+      });
 
       const cleanPhone = String(phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(email || "").trim().toLowerCase();
@@ -374,7 +320,9 @@ function GuestBuy() {
                 image: product.image,
                 price: unitPrice,
                 quantity: buyQuantity,
-                isDigital
+                isDigital,
+                digitalDelivery: product.digitalDelivery || "onsite",
+                externalAccessManual: Boolean(product.externalAccessManual)
               }],
               shipping: shippingInfo,
               billing: shippingInfo,
@@ -382,6 +330,7 @@ function GuestBuy() {
               honey_pot_field: honeyPot,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
               currencyDisplay: {
                 currency: displayCurrency,
                 amount: grandTotal,
@@ -432,6 +381,58 @@ function GuestBuy() {
         <button onClick={() => navigate("/")} className="checkout-btn" style={{ maxWidth: "200px", marginTop: "16px" }}>
           Return to Store
         </button>
+      </div>
+    );
+  }
+
+  if (isKindleProduct(product)) {
+    const amazonLink = product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru";
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "40px 16px", minHeight: "80vh", backgroundColor: "var(--site-bg, #fafafa)" }}>
+        <div style={{ maxWidth: "550px", width: "100%", backgroundColor: "var(--site-surface, #ffffff)", padding: "32px", borderRadius: "12px", border: "1px solid var(--site-border, #e2e8f0)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)", textAlign: "center" }}>
+          <div style={{ fontSize: "40px", marginBottom: "12px" }}>📱</div>
+          <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--site-text, #1e293b)", marginBottom: "8px" }}>
+            {product.name}
+          </h2>
+          <p style={{ color: "var(--site-text-soft, #64748b)", fontSize: "15px", marginBottom: "24px" }}>
+            Kindle editions are sold on Amazon.
+          </p>
+          <a
+            href={amazonLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="checkout-btn"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "14px 20px",
+              textDecoration: "none",
+              fontSize: "15px",
+              fontWeight: "600",
+              boxSizing: "border-box"
+            }}
+          >
+            Buy on Amazon ↗
+          </a>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            style={{
+              marginTop: "16px",
+              background: "transparent",
+              border: "none",
+              color: "var(--site-link, #0284c7)",
+              cursor: "pointer",
+              fontSize: "14px",
+              textDecoration: "underline"
+            }}
+          >
+            Return to Store
+          </button>
+        </div>
       </div>
     );
   }
@@ -497,8 +498,8 @@ function GuestBuy() {
           id: product._id,
           name: product.name,
           image: product.image,
-          price: finalTotal,
-          quantity: 1,
+          price: unitPrice,
+          quantity: buyQuantity,
           isDigital,
           weight: product.weight,
           height: product.height,

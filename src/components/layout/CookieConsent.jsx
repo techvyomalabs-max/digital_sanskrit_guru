@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import "./CookieConsent.css";
 
 export default function CookieConsent() {
@@ -75,7 +76,10 @@ export default function CookieConsent() {
 
         <div className="cookie-body">
           <p>
-            We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. In compliance with the EU GDPR and India's Digital Personal Data Protection (DPDP) Act, 2023, please select your preferences below.
+            We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. In compliance with the EU GDPR and India's Digital Personal Data Protection (DPDP) Act, 2023, please select your preferences below. Read our{" "}
+            <Link to="/privacy-policy" style={{ color: "var(--site-link, #2563eb)", fontWeight: 700, textDecoration: "underline" }}>
+              Privacy Policy
+            </Link>.
           </p>
         </div>
 
