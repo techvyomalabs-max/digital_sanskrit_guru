@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import { apiBaseUrl } from "../lib/api";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
+import { uploadImageDataUrl } from "../utils/mediaUpload";
 import "./AdminMarketing.css";
 import "./AdminShared.css";
 
@@ -307,27 +308,54 @@ function AdminMarketing() {
     }
   };
 
-  const handleCampaignLogoUpload = (e) => {
+  const downscaleImageFile = (file, maxWidth = 1600, quality = 0.85) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Could not read logo file."));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("Could not process logo image."));
+        img.onload = () => {
+          const width = img.naturalWidth || img.width;
+          const height = img.naturalHeight || img.height;
+          const scale = Math.min(maxWidth / width, 1);
+          const targetWidth = Math.max(1, Math.round(width * scale));
+          const targetHeight = Math.max(1, Math.round(height * scale));
+
+          const canvas = document.createElement("canvas");
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(String(reader.result || ""));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          const mimeMatch = String(reader.result || "").match(/^data:([^;]+);base64/);
+          const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+          const outputMime = mimeType === "image/png" ? "image/png" : "image/jpeg";
+          resolve(canvas.toDataURL(outputMime, outputMime === "image/jpeg" ? quality : undefined));
+        };
+        img.src = String(reader.result || "");
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleCampaignLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploadingCampaignLogo(true);
     setEmailMsg("");
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setCampaignLogoUrl(String(reader.result || ""));
-        setEmailMsg("Logo attached. Save branding to persist.");
-        setIsUploadingCampaignLogo(false);
-      };
-      reader.onerror = () => {
-        setEmailMsg("Could not read logo file.");
-        setIsUploadingCampaignLogo(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      setEmailMsg("Failed to upload logo.");
-      setIsUploadingCampaignLogo(false);
+      const dataUrl = await downscaleImageFile(file, 1600, 0.85);
+      const publicUrl = await uploadImageDataUrl(dataUrl, { kind: "banner", token });
+      setCampaignLogoUrl(publicUrl);
+      setEmailMsg("Logo attached. Save branding to persist.");
+    } catch (err) {
+      setEmailMsg(err?.message || "Failed to upload logo.");
     } finally {
+      setIsUploadingCampaignLogo(false);
       e.target.value = "";
     }
   };
@@ -499,27 +527,20 @@ function AdminMarketing() {
     }
   };
 
-  const handleOrderLogoUpload = (e) => {
+  const handleOrderLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploadingOrderLogo(true);
     setOrderEmailMsg("");
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setOrderEmailLogoUrl(String(reader.result || ""));
-        setOrderEmailMsg("Logo attached. Save template settings to persist.");
-        setIsUploadingOrderLogo(false);
-      };
-      reader.onerror = () => {
-        setOrderEmailMsg("Could not read logo file.");
-        setIsUploadingOrderLogo(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
-      setOrderEmailMsg("Failed to upload logo.");
-      setIsUploadingOrderLogo(false);
+      const dataUrl = await downscaleImageFile(file, 1600, 0.85);
+      const publicUrl = await uploadImageDataUrl(dataUrl, { kind: "banner", token });
+      setOrderEmailLogoUrl(publicUrl);
+      setOrderEmailMsg("Logo attached. Save template settings to persist.");
+    } catch (err) {
+      setOrderEmailMsg(err?.message || "Failed to upload logo.");
     } finally {
+      setIsUploadingOrderLogo(false);
       e.target.value = "";
     }
   };

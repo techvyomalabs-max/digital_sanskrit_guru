@@ -4,6 +4,7 @@ import axios from "axios";
 import { AlignLeft, AlignCenter, AlignRight, Sliders, Type, Layout, Sparkles } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
+import { uploadImageDataUrl, isUploadedImageUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
@@ -146,6 +147,9 @@ function readFileAsDataUrl(file) {
 }
 
 async function optimizeImageSource(source, { maxWidth, maxHeight, quality = 0.82 } = {}) {
+  if (!String(source || "").startsWith("data:")) {
+    return source;
+  }
   const image = await loadImageElement(source);
   const safeMaxWidth = Math.max(1, Number(maxWidth || image.width || 1));
   const safeMaxHeight = Math.max(1, Number(maxHeight || image.height || 1));
@@ -425,22 +429,24 @@ function AdminThemeSettings() {
         setHeroBannerMessage("Please choose image files only.");
         return;
       }
-      const uploadedBanners = await Promise.all(
-        imageFiles.slice(0, 10).map(async (file) => ({
-          image: await optimizeHeroBannerFile(file),
-          productId: ""
-        }))
-      );
-      setHeroBanners((current) => {
-        const existingConfigured = current.filter((item) => String(item?.image || "").trim());
-        const next = [...existingConfigured, ...uploadedBanners].slice(0, 10);
-        const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
-        setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
-        return finalList;
-      });
-      setHeroBannerMessage(`${uploadedBanners.length} banner image(s) added. Save to publish.`);
-    } catch {
-      setHeroBannerMessage("Could not upload banner images.");
+      let addedCount = 0;
+      for (const file of imageFiles.slice(0, 10)) {
+        const optimized = await optimizeHeroBannerFile(file);
+        const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+        setHeroBanners((current) => {
+          const existingConfigured = current.filter((item) => String(item?.image || "").trim());
+          const next = [...existingConfigured, { image: publicUrl, productId: "" }].slice(0, 10);
+          const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
+          setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
+          return finalList;
+        });
+        addedCount++;
+      }
+      if (addedCount > 0) {
+        setHeroBannerMessage(`${addedCount} banner image(s) added. Save to publish.`);
+      }
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload banner images.");
     } finally {
       setIsUploadingHeroBanners(false);
       event.target.value = "";
@@ -458,10 +464,11 @@ function AdminThemeSettings() {
         return;
       }
       const optimized = await optimizeHeroBannerFile(file);
-      updateHeroBanner(index, "image", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "image", publicUrl);
       setHeroBannerMessage("Desktop banner image attached. Save to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload desktop banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload desktop banner image.");
     } finally {
       setIsUploadingDesktopHeroBanners(false);
       event.target.value = "";
@@ -479,10 +486,11 @@ function AdminThemeSettings() {
         return;
       }
       const optimized = await optimizeImageFile(file, { maxWidth: 800, maxHeight: 1200, quality: 0.95 });
-      updateHeroBanner(index, "mobileImage", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "mobileImage", publicUrl);
       setHeroBannerMessage("Mobile banner image attached. Save to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload mobile banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload mobile banner image.");
     } finally {
       setIsUploadingMobileHeroBanners(false);
       event.target.value = "";
@@ -500,12 +508,16 @@ function AdminThemeSettings() {
           if (nextImage.startsWith("data:image/")) {
             try {
               nextImage = await optimizeImageSource(nextImage, { maxWidth: 2048, maxHeight: 1080, quality: 0.92 });
-            } catch {}
+            } catch {
+              // ignore optimization error and keep current
+            }
           }
           if (nextMobile.startsWith("data:image/")) {
             try {
               nextMobile = await optimizeImageSource(nextMobile, { maxWidth: 800, maxHeight: 1200, quality: 0.92 });
-            } catch {}
+            } catch {
+              // ignore optimization error and keep current
+            }
           }
           return { ...item, image: nextImage, mobileImage: nextMobile };
         })
@@ -1122,7 +1134,7 @@ function AdminThemeSettings() {
                   </div>
                 </div>
 
-                {activeHeroBanner.image.startsWith("data:image/") ? (
+                {activeHeroBanner.image.startsWith("data:image/") || isUploadedImageUrl(activeHeroBanner.image) ? (
                   <div className="hero-banner-base64-badge-row">
                     <span className="hero-banner-base64-badge">🖼️ Image File Uploaded</span>
                     <button
@@ -1130,8 +1142,8 @@ function AdminThemeSettings() {
                       className="hero-banner-text-link-btn"
                       onClick={async () => {
                         const raw = await prompt({
-                          title: "Raw Image Data URL",
-                          message: "Edit raw image data URL:",
+                          title: "Raw Image URL",
+                          message: "Edit raw image URL:",
                           defaultValue: activeHeroBanner.image || "",
                           multiline: true,
                           confirmText: "Update",
@@ -1181,7 +1193,7 @@ function AdminThemeSettings() {
                   </div>
                 </div>
 
-                {activeHeroBanner.mobileImage?.startsWith("data:image/") ? (
+                {activeHeroBanner.mobileImage?.startsWith("data:image/") || isUploadedImageUrl(activeHeroBanner.mobileImage) ? (
                   <div className="hero-banner-base64-badge-row">
                     <span className="hero-banner-base64-badge">📱 Mobile Image Uploaded</span>
                     <button
@@ -1189,8 +1201,8 @@ function AdminThemeSettings() {
                       className="hero-banner-text-link-btn"
                       onClick={async () => {
                         const raw = await prompt({
-                          title: "Raw Mobile Image Data URL",
-                          message: "Edit raw mobile image data URL:",
+                          title: "Raw Mobile Image URL",
+                          message: "Edit raw mobile image URL:",
                           defaultValue: activeHeroBanner.mobileImage || "",
                           multiline: true,
                           confirmText: "Update",
