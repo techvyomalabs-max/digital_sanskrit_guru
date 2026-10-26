@@ -58,6 +58,15 @@ const orderRateLimiter = rateLimit({
   message: { message: "Too many order attempts. Please wait a few minutes before trying again." }
 });
 
+// Media presign upload rate limiter (prevents flooding of presigned URL generation)
+const mediaRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: perWorker(200),      // max 200 presign requests per 10 mins per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many upload requests. Please wait a few minutes before trying again." }
+});
+
 const estimateRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: perWorker(300),
@@ -150,6 +159,7 @@ module.exports = {
   globalApiLimiter,
   reviewRateLimiter,
   orderRateLimiter,
+  mediaRateLimiter,
   estimateRateLimiter,
   paymentRateLimiter,
   bulkEnquiryLimiter,

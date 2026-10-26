@@ -76,7 +76,32 @@ const requireAdminPage = (pageKey) => {
   };
 };
 
+const requireAnyAdminPage = (...pageKeys) => {
+  const keys = pageKeys.flat();
+  return (req, res, next) => {
+    if (!req.adminUser || !req.adminUser.isAdmin) {
+      return res.status(403).json({ message: "Admin access denied." });
+    }
+
+    const level = Number(req.adminLevel || 1);
+    if (level === 1) {
+      return next(); // Level 1 Super Admins have access to all pages
+    }
+
+    const pages = Array.isArray(req.allowedPages) ? req.allowedPages : ["dashboard"];
+    const hasPermission = keys.some((k) => pages.includes(k));
+    if (hasPermission) {
+      return next();
+    }
+
+    return res.status(403).json({
+      message: `Access denied. At least one of the following permissions is required: ${keys.join(", ")}`
+    });
+  };
+};
+
 module.exports = adminMiddleware;
 module.exports.requireSuperAdmin = requireSuperAdmin;
 module.exports.requireAdminRole = requireAdminRole;
 module.exports.requireAdminPage = requireAdminPage;
+module.exports.requireAnyAdminPage = requireAnyAdminPage;

@@ -69,6 +69,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const marketingRoutes = require("./routes/marketingRoutes");
   const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
   const trashRoutes = require("./routes/trashRoutes");
+  const mediaRoutes = require("./routes/mediaRoutes");
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
   const { initPaymentReconciler } = require("./services/paymentReconciler");
@@ -208,6 +209,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/marketing", requireDatabase, marketingRoutes);
   app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
+  app.use("/api/media", requireDatabase, mediaRoutes);
   app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
 
