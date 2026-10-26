@@ -2515,7 +2515,7 @@ router.get("/my", protect, async (req, res) => {
 
     if (queryConditions.length > 0) {
       const products = await Product.find({ $or: queryConditions })
-        .select("name isDigital digitalType digitalDelivery externalAccessLink externalAccessLabel webReaderLink kindleLink kindleAsin digitalInstructions")
+        .select("name isDigital digitalType digitalDelivery externalAccessManual externalAccessLink externalAccessLabel webReaderLink kindleLink kindleAsin digitalInstructions")
         .lean();
 
       const productMapById = new Map();
@@ -2553,6 +2553,12 @@ router.get("/my", protect, async (req, res) => {
                 const subProd = productMapById.get(subPId) || productMapByName.get(subPName);
                 if (subProd) {
                   if (subProd.isDigital !== undefined) subItem.isDigital = subProd.isDigital;
+                  if (subProd.digitalDelivery) subItem.digitalDelivery = subProd.digitalDelivery;
+                  subItem.digitalDelivery = subItem.digitalDelivery || "onsite";
+                  if (subItem.digitalDelivery === "external" && !(item.accessManual === true && !item.accessGrantedAt)) {
+                    if (subProd.externalAccessLink) subItem.externalAccessLink = subProd.externalAccessLink;
+                    if (subProd.externalAccessLabel) subItem.externalAccessLabel = subProd.externalAccessLabel;
+                  }
                   if (subProd.webReaderLink) subItem.webReaderLink = subProd.webReaderLink;
                   if (subProd.kindleLink) subItem.kindleLink = subProd.kindleLink;
                   if (subProd.kindleAsin) subItem.kindleAsin = subProd.kindleAsin;

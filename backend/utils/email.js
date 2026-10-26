@@ -1221,7 +1221,17 @@ function buildAccessGrantedEmail(order, user, grantedItems, note) {
   const subject = cleanSubject(`Your access is ready — ${SITE_NAME}`);
   const items = Array.isArray(grantedItems) ? grantedItems : [];
   const itemsList = items
-    .map((it) => `<li><strong>${escapeHtml(it.name || "Item")}</strong></li>`)
+    .map((it) => {
+      const hasComponents = Array.isArray(it.bundleItems) && it.bundleItems.length > 0;
+      let componentsHtml = "";
+      if (hasComponents) {
+        const subList = it.bundleItems
+          .map((bi) => `<li style="font-size: 13px; color: #64748b; font-weight: normal;">${escapeHtml(bi.name || "Item")}</li>`)
+          .join("");
+        componentsHtml = `<ul style="margin: 4px 0 0 0; padding-left: 20px;">${subList}</ul>`;
+      }
+      return `<li><strong>${escapeHtml(it.name || "Item")}</strong>${componentsHtml}</li>`;
+    })
     .join("");
 
   let noteBox = "";
@@ -1270,7 +1280,17 @@ function buildAccessPendingAdminAlert(order, pendingItems, customer) {
   const subject = cleanSubject(`⚠️ Manual Access Required — Order #${idStr} — ${SITE_NAME}`);
   const items = Array.isArray(pendingItems) ? pendingItems : [];
   const itemsList = items
-    .map((it) => `<li>${escapeHtml(it.name || "Item")} (qty: ${it.quantity || 1})</li>`)
+    .map((it) => {
+      const hasComponents = Array.isArray(it.bundleItems) && it.bundleItems.length > 0;
+      let componentsHtml = "";
+      if (hasComponents) {
+        const subList = it.bundleItems
+          .map((bi) => `<li style="font-size: 13px; color: #64748b; font-weight: normal;">${escapeHtml(bi.name || "Item")}</li>`)
+          .join("");
+        componentsHtml = `<ul style="margin: 4px 0 0 0; padding-left: 20px;">${subList}</ul>`;
+      }
+      return `<li>${escapeHtml(it.name || "Item")} (qty: ${it.quantity || 1})${componentsHtml}</li>`;
+    })
     .join("");
 
   const custName = escapeHtml(customer?.name || "Customer");
