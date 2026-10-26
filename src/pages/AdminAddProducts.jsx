@@ -3,6 +3,7 @@ import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
+import { uploadImageDataUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatTime } from "../utils/date";
@@ -276,6 +277,9 @@ function loadImageElement(src) {
 }
 
 async function optimizeImageSource(source, { maxWidth, maxHeight, quality = 0.82 } = {}) {
+  if (!String(source || "").startsWith("data:")) {
+    return source;
+  }
   const image = await loadImageElement(source);
   const safeMaxWidth = Math.max(1, Number(maxWidth || image.width || 1));
   const safeMaxHeight = Math.max(1, Number(maxHeight || image.height || 1));
@@ -874,24 +878,25 @@ function AdminAddProducts() {
         return;
       }
 
-      const uploadedBanners = await Promise.all(
-        imageFiles.slice(0, 10).map(async (file) => ({
-          image: await optimizeHeroBannerFile(file),
-          productId: ""
-        }))
-      );
+      let addedCount = 0;
+      for (const file of imageFiles.slice(0, 10)) {
+        const optimized = await optimizeHeroBannerFile(file);
+        const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+        setHeroBanners((current) => {
+          const existingConfigured = current.filter((item) => String(item?.image || "").trim());
+          const next = [...existingConfigured, { image: publicUrl, productId: "" }].slice(0, 10);
+          const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
+          setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
+          return finalList;
+        });
+        addedCount++;
+      }
 
-      setHeroBanners((current) => {
-        const existingConfigured = current.filter((item) => String(item?.image || "").trim());
-        const next = [...existingConfigured, ...uploadedBanners].slice(0, 10);
-        const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
-        setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
-        return finalList;
-      });
-
-      setHeroBannerMessage(`${uploadedBanners.length} banner image${uploadedBanners.length === 1 ? "" : "s"} added. Save hero banners to publish them.`);
-    } catch {
-      setHeroBannerMessage("Could not upload banner images.");
+      if (addedCount > 0) {
+        setHeroBannerMessage(`${addedCount} banner image${addedCount === 1 ? "" : "s"} added. Save hero banners to publish them.`);
+      }
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload banner images.");
     } finally {
       setIsUploadingHeroBanners(false);
       event.target.value = "";
@@ -912,10 +917,11 @@ function AdminAddProducts() {
       }
 
       const optimized = await optimizeHeroBannerFile(file);
-      updateHeroBanner(index, "image", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "image", publicUrl);
       setHeroBannerMessage("Desktop banner image attached. Save hero banners to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload desktop banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload desktop banner image.");
     } finally {
       setIsUploadingDesktopHeroBanners(false);
       event.target.value = "";
@@ -940,11 +946,11 @@ function AdminAddProducts() {
         maxHeight: 1200,
         quality: 0.95
       });
-
-      updateHeroBanner(index, "mobileImage", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "mobileImage", publicUrl);
       setHeroBannerMessage("Mobile banner image optimized and attached. Save hero banners to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload mobile banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload mobile banner image.");
     } finally {
       setIsUploadingMobileHeroBanners(false);
       event.target.value = "";
@@ -969,10 +975,11 @@ function AdminAddProducts() {
         maxHeight: 1200,
         quality: 0.8
       });
-      setImage(optimizedImage);
+      const publicUrl = await uploadImageDataUrl(optimizedImage, { kind: "product", token });
+      setImage(publicUrl);
       setFormMessage("Primary product image optimized and attached.");
-    } catch {
-      setFormMessage("Could not process the primary product image.");
+    } catch (err) {
+      setFormMessage(err?.message || "Could not process the primary product image.");
     } finally {
       setIsUploadingProductImages(false);
       event.target.value = "";
@@ -993,28 +1000,31 @@ function AdminAddProducts() {
         return;
       }
 
-      const optimizedImages = await Promise.all(
-        imageFiles.slice(0, 8).map((file) =>
-          optimizeImageFile(file, {
-            maxWidth: 1200,
-            maxHeight: 1200,
-            quality: 0.78
-          })
-        )
-      );
+      let addedCount = 0;
+      for (const file of imageFiles.slice(0, 8)) {
+        const optimizedImage = await optimizeImageFile(file, {
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.78
+        });
+        const publicUrl = await uploadImageDataUrl(optimizedImage, { kind: "product", token });
+        setImagesInput((current) => {
+          const existing = current
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return [...existing, publicUrl].slice(0, 8).join("\n");
+        });
+        addedCount++;
+      }
 
-      setImagesInput((current) => {
-        const existing = current
-          .split(/\r?\n/)
-          .map((item) => item.trim())
-          .filter(Boolean);
-        return [...existing, ...optimizedImages].slice(0, 8).join("\n");
-      });
-      setFormMessage(
-        `${optimizedImages.length} gallery image${optimizedImages.length === 1 ? "" : "s"} optimized and added.`
-      );
-    } catch {
-      setFormMessage("Could not process the gallery images.");
+      if (addedCount > 0) {
+        setFormMessage(
+          `${addedCount} gallery image${addedCount === 1 ? "" : "s"} optimized and added.`
+        );
+      }
+    } catch (err) {
+      setFormMessage(err?.message || "Could not process the gallery images.");
     } finally {
       setIsUploadingProductImages(false);
       event.target.value = "";
