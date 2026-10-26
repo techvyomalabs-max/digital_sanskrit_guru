@@ -20,62 +20,81 @@ const getProductId = (productRef) => {
   return String(productRef);
 };
 
+const CART_POPULATE = {
+  path: "items.product",
+  populate: {
+    path: "bundleItems.product",
+    select: "digitalDelivery externalAccessManual"
+  }
+};
+
 const formatCart = (cart) => {
   return (cart.items || [])
     .filter((item) => item?.product)
-    .map((item) => ({
-      id: String(item.product._id),
-      _id: String(item.product._id),
-      name: item.product.name,
-      price: Number(item.product.price || 0),
-      internationalPrice:
-        item.product.internationalPrice === null || item.product.internationalPrice === undefined
-          ? null
-          : Number(item.product.internationalPrice || 0),
-      internationalCountryPrices: Array.isArray(item.product.internationalCountryPrices)
-        ? item.product.internationalCountryPrices.map((entry) => ({
-            country: String(entry?.country || "").trim(),
-            price: Number(entry?.price || 0)
-          }))
-        : [],
-      marketPrices: Array.isArray(item.product.marketPrices)
-        ? item.product.marketPrices.map((entry) => ({
-            market: String(entry?.market || "").trim(),
-            regularPrice: Number(entry?.regularPrice || 0),
-            salePrice:
-              entry?.salePrice === null || entry?.salePrice === undefined ? null : Number(entry?.salePrice || 0),
-            startDate: entry?.startDate || null,
-            endDate: entry?.endDate || null
-          }))
-        : [],
-      image: item.product.image || "",
-      description: item.product.description || "",
-      category: item.product.category || "General",
-      stock: Number(item.product.stock || 0),
-      quantity: Number(item.quantity || 1),
-      festiveOffer: Boolean(item.product.festiveOffer),
-      festiveDiscountPercent: Number(item.product.festiveDiscountPercent || 0),
-      discountType: item.product.discountType || "",
-      hsnSac: item.product.hsnSac || "",
-      format: item.product.format || "",
-      isDigital: Boolean(item.product.isDigital),
-      digitalType: item.product.digitalType || "Web Version",
-      kindleLink: item.product.kindleLink || "",
-      digitalDelivery: item.product.digitalDelivery || "onsite",
-      externalAccessManual: Boolean(item.product.externalAccessManual),
-      productType: item.product.productType || "single"
-    }));
+    .map((item) => {
+      const hasManualBundleBook =
+        Array.isArray(item.product.bundleItems) &&
+        item.product.bundleItems.some((bi) => {
+          const bp = bi?.product && typeof bi.product === "object" ? bi.product : null;
+          const delivery = bp?.digitalDelivery || bi?.digitalDelivery;
+          const manual = bp?.externalAccessManual === true || bi?.externalAccessManual === true;
+          return manual && delivery === "external";
+        });
+
+      return {
+        id: String(item.product._id),
+        _id: String(item.product._id),
+        name: item.product.name,
+        price: Number(item.product.price || 0),
+        internationalPrice:
+          item.product.internationalPrice === null || item.product.internationalPrice === undefined
+            ? null
+            : Number(item.product.internationalPrice || 0),
+        internationalCountryPrices: Array.isArray(item.product.internationalCountryPrices)
+          ? item.product.internationalCountryPrices.map((entry) => ({
+              country: String(entry?.country || "").trim(),
+              price: Number(entry?.price || 0)
+            }))
+          : [],
+        marketPrices: Array.isArray(item.product.marketPrices)
+          ? item.product.marketPrices.map((entry) => ({
+              market: String(entry?.market || "").trim(),
+              regularPrice: Number(entry?.regularPrice || 0),
+              salePrice:
+                entry?.salePrice === null || entry?.salePrice === undefined ? null : Number(entry?.salePrice || 0),
+              startDate: entry?.startDate || null,
+              endDate: entry?.endDate || null
+            }))
+          : [],
+        image: item.product.image || "",
+        description: item.product.description || "",
+        category: item.product.category || "General",
+        stock: Number(item.product.stock || 0),
+        quantity: Number(item.quantity || 1),
+        festiveOffer: Boolean(item.product.festiveOffer),
+        festiveDiscountPercent: Number(item.product.festiveDiscountPercent || 0),
+        discountType: item.product.discountType || "",
+        hsnSac: item.product.hsnSac || "",
+        format: item.product.format || "",
+        isDigital: Boolean(item.product.isDigital),
+        digitalType: item.product.digitalType || "Web Version",
+        kindleLink: item.product.kindleLink || "",
+        digitalDelivery: item.product.digitalDelivery || "onsite",
+        externalAccessManual: Boolean(item.product.externalAccessManual) || Boolean(hasManualBundleBook),
+        productType: item.product.productType || "single"
+      };
+    });
 };
 
 async function getCartByUser(userId) {
-  return Cart.findOne({ user: userId }).populate("items.product");
+  return Cart.findOne({ user: userId }).populate(CART_POPULATE);
 }
 
 async function getOrCreateCart(userId) {
   let cart = await getCartByUser(userId);
   if (!cart) {
     cart = await Cart.create({ user: userId, items: [] });
-    await cart.populate("items.product");
+    await cart.populate(CART_POPULATE);
   }
   return cart;
 }
@@ -135,7 +154,7 @@ router.post("/", protect, async (req, res) => {
   }
 
   await cart.save();
-  await cart.populate("items.product");
+  await cart.populate(CART_POPULATE);
 
   res.json({ items: formatCart(cart) });
 });
@@ -168,7 +187,7 @@ router.put("/:productId", protect, async (req, res) => {
 
   cart.items[index].quantity = isDigital ? 1 : (isBulk ? nextQty : Math.min(maxQty, nextQty));
   await cart.save();
-  await cart.populate("items.product");
+  await cart.populate(CART_POPULATE);
 
   res.json({ items: formatCart(cart) });
 });
@@ -185,7 +204,7 @@ router.delete("/:productId", protect, async (req, res) => {
       { user: req.user },
       { $pull: { items: { product: queryProductId } } },
       { new: true }
-    ).populate("items.product");
+    ).populate(CART_POPULATE);
 
     if (!cart) {
       return res.json({ items: [] });
@@ -212,5 +231,7 @@ router.delete("/", protect, async (req, res) => {
     res.status(500).json({ message: "Could not clear cart" });
   }
 });
+
+router.formatCart = formatCart;
 
 module.exports = router;
