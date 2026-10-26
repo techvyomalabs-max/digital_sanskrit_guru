@@ -24,9 +24,13 @@ const ROUTE_MAP = {
   about: { label: "About Us", path: "/about" },
   faq: { label: "FAQs", path: "/faq" },
   contact: { label: "Contact Us", path: "/contact" },
-  "shipping-policy": { label: "Shipping Policy", path: "/shipping-policy" },
   "shipping-refund-policy": { label: "Shipping & Refund Policy", path: "/shipping-refund-policy" },
   "refund-policy": { label: "Refund Policy", path: "/refund-policy" },
+  "privacy-policy": { label: "Privacy Policy", path: "/privacy-policy" },
+  privacy: { label: "Privacy Policy", path: "/privacy-policy" },
+  "terms-and-conditions": { label: "Terms & Conditions", path: "/terms-and-conditions" },
+  "terms-conditions": { label: "Terms & Conditions", path: "/terms-and-conditions" },
+  terms: { label: "Terms & Conditions", path: "/terms-and-conditions" },
 
   // Admin Pages
   admin: { label: "Admin Console", path: "/admin" },
@@ -34,6 +38,7 @@ const ROUTE_MAP = {
   sales: { label: "Sales Analytics", path: "/admin/sales-dashboard", parent: { label: "Admin Console", path: "/admin" } },
   "financial-dashboard": { label: "Finance & Taxes", path: "/admin/financial-dashboard", parent: { label: "Admin Console", path: "/admin" } },
   orders: { label: "Orders", path: "/admin/orders", parent: { label: "Admin Console", path: "/admin" } },
+  "unmatched-payments": { label: "Unmatched Payments", path: "/admin/unmatched-payments", parent: { label: "Admin Console", path: "/admin" } },
   products: { label: "Warehouse", path: "/admin/products", parent: { label: "Admin Console", path: "/admin" } },
   "add-products": { label: "Add & Edit Products", path: "/admin/add-products", parent: { label: "Admin Console", path: "/admin" } },
   coupons: { label: "Discount Coupons", path: "/admin/coupons", parent: { label: "Admin Console", path: "/admin" } },
@@ -48,9 +53,35 @@ const ROUTE_MAP = {
   "wp-archive": { label: "WP Archive Dashboard", path: "/admin/wp-archive", parent: { label: "Admin Console", path: "/admin" } }
 };
 
+const EXCLUDED_JSONLD_PATHS = [
+  "/admin",
+  "/account",
+  "/my-orders",
+  "/my-library",
+  "/checkout",
+  "/cart",
+  "/wishlist",
+  "/redeem-gift"
+];
+
+function shouldExcludeJsonLd(pathname) {
+  return EXCLUDED_JSONLD_PATHS.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+function removeJsonLdScript() {
+  if (typeof document === "undefined") return;
+  const scriptEl = document.getElementById("dynamic-breadcrumb-jsonld");
+  if (scriptEl) {
+    scriptEl.remove();
+  }
+}
+
 export default function Breadcrumb() {
   const location = useLocation();
-  const [currentTitle, setCurrentTitle] = useState(typeof document !== "undefined" ? document.title : "");
+  const [productMeta, setProductMeta] = useState({ name: "", category: "" });
+  const [prevPath, setPrevPath] = useState(location.pathname);
   const [lastRoute, setLastRoute] = useState(() => {
     try {
       return sessionStorage.getItem("dsg_last_nav_route") || "";
@@ -60,34 +91,33 @@ export default function Breadcrumb() {
   });
 
   // Track previous route in session storage to support context-aware breadcrumbs
-  useEffect(() => {
+  if (prevPath !== location.pathname) {
+    setPrevPath(location.pathname);
+    setLastRoute(prevPath);
+    setProductMeta({ name: "", category: "" });
     try {
-      const currentPath = location.pathname;
-      const prevStored = sessionStorage.getItem("dsg_current_nav_route");
-      if (prevStored && prevStored !== currentPath) {
-        sessionStorage.setItem("dsg_last_nav_route", prevStored);
-        setLastRoute(prevStored);
-      }
-      sessionStorage.setItem("dsg_current_nav_route", currentPath);
-    } catch {}
-  }, [location.pathname]);
+      sessionStorage.setItem("dsg_last_nav_route", prevPath);
+      sessionStorage.setItem("dsg_current_nav_route", location.pathname);
+    } catch {
+      // ignore storage errors
+    }
+  }
 
-  // Listen for dynamic page/document title changes (e.g., after product or async metadata loads)
+  // Subscribe to product breadcrumb publication events
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    const handleProductBreadcrumb = (event) => {
+      const detail = event?.detail || {};
+      setProductMeta({
+        name: typeof detail.name === "string" ? detail.name : "",
+        category: typeof detail.category === "string" ? detail.category : ""
+      });
+    };
 
-    setCurrentTitle(document.title);
-
-    const titleElement = document.querySelector("title");
-    if (!titleElement) return;
-
-    const observer = new MutationObserver(() => {
-      setCurrentTitle(document.title);
-    });
-
-    observer.observe(titleElement, { childList: true, characterData: true, subtree: true });
-    return () => observer.disconnect();
-  }, [location.pathname]);
+    window.addEventListener("dsg:breadcrumb", handleProductBreadcrumb);
+    return () => {
+      window.removeEventListener("dsg:breadcrumb", handleProductBreadcrumb);
+    };
+  }, []);
 
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
@@ -98,6 +128,25 @@ export default function Breadcrumb() {
     }
 
     const segments = path.split("/").filter(Boolean);
+    if (segments.length === 0) {
+      return [];
+    }
+
+    const primarySegment = segments[0];
+
+    // Unknown routes: only build a breadcrumb for paths whose first segment is in ROUTE_MAP or is product / collection / search / buy / admin; otherwise render nothing.
+    const isKnownRoot =
+      Boolean(ROUTE_MAP[primarySegment]) ||
+      primarySegment === "product" ||
+      primarySegment === "collection" ||
+      primarySegment === "search" ||
+      primarySegment === "buy" ||
+      primarySegment === "admin";
+
+    if (!isKnownRoot) {
+      return [];
+    }
+
     const searchParams = new URLSearchParams(location.search);
     const items = [{ label: "Home", path: "/" }];
 
@@ -107,18 +156,18 @@ export default function Breadcrumb() {
       location.state?.targetSection === "manage-address";
 
     // Handle Admin Routes
-    if (segments[0] === "admin") {
+    if (primarySegment === "admin") {
       items.push({ label: "Admin Console", path: "/admin" });
 
       if (segments.length === 1) {
-        items.push({ label: "Dashboard", path: "/admin" });
         return items;
       }
 
       const subSegment = segments[1];
       if (subSegment === "orders" && segments[2]) {
         items.push({ label: "Orders", path: "/admin/orders" });
-        items.push({ label: `Order #${segments[2]}`, path: location.pathname });
+        const shortCode = String(segments[2] || "").slice(-6).toUpperCase();
+        items.push({ label: `Order #${shortCode}`, path: location.pathname });
         return items;
       }
 
@@ -133,24 +182,25 @@ export default function Breadcrumb() {
     }
 
     // Handle Product Detail Route: /product/:id
-    if (segments[0] === "product") {
+    if (primarySegment === "product") {
       items.push({ label: "Store Catalog", path: "/collection" });
-      
-      // Clean product title from current document title if available
-      let productTitle = "Product Details";
-      if (currentTitle && !currentTitle.toLowerCase().includes("loading")) {
-        const rawTitle = currentTitle.split("|")[0].split("—")[0].trim();
-        const ignoredTitles = ["home", "collection", "digital sanskrit guru", "loading...", "store catalog"];
-        if (rawTitle && !ignoredTitles.includes(rawTitle.toLowerCase())) {
-          productTitle = rawTitle;
-        }
+
+      const category = typeof productMeta?.category === "string" ? productMeta.category.trim() : "";
+      if (category && category.toLowerCase() !== "general") {
+        items.push({
+          label: category,
+          path: `/collection?category=${encodeURIComponent(category)}`
+        });
       }
+
+      const rawName = typeof productMeta?.name === "string" ? productMeta.name.trim() : "";
+      const productTitle = rawName || "Product Details";
       items.push({ label: productTitle, path: location.pathname });
       return items;
     }
 
     // Handle Collection / Catalog Page: /collection
-    if (segments[0] === "collection") {
+    if (primarySegment === "collection") {
       items.push({ label: "Store Catalog", path: "/collection" });
       const categoryParam = searchParams.get("category");
       if (categoryParam) {
@@ -160,7 +210,7 @@ export default function Breadcrumb() {
     }
 
     // Handle Search Page: /search
-    if (segments[0] === "search") {
+    if (primarySegment === "search") {
       items.push({ label: "Store Catalog", path: "/collection" });
       const queryParam = searchParams.get("q");
       if (queryParam) {
@@ -172,16 +222,14 @@ export default function Breadcrumb() {
     }
 
     // Handle Quick / Guest Buy Route: /buy/:id
-    if (segments[0] === "buy") {
+    if (primarySegment === "buy") {
       items.push({ label: "Store Catalog", path: "/collection" });
       items.push({ label: "Quick Checkout", path: location.pathname });
       return items;
     }
 
     // Handle Standard Routes
-    const primarySegment = segments[0];
     const mapped = ROUTE_MAP[primarySegment];
-
     if (mapped) {
       // Dynamic origin injection for Cart & Checkout when arriving from My Account
       if ((primarySegment === "cart" || primarySegment === "checkout") && cameFromAccount) {
@@ -218,17 +266,27 @@ export default function Breadcrumb() {
           items.push({ label: "Notification Settings", path: "/account#notifications" });
         }
       }
-    } else {
-      const formattedLabel = primarySegment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      items.push({ label: formattedLabel, path: `/${primarySegment}` });
     }
 
     return items;
-  }, [location.pathname, location.search, location.hash, currentTitle, lastRoute]);
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state?.from,
+    location.state?.targetSection,
+    lastRoute,
+    productMeta
+  ]);
 
   // Inject Structured Data (JSON-LD BreadcrumbList) for SEO
   useEffect(() => {
-    if (breadcrumbs.length <= 1) return;
+    if (typeof document === "undefined") return;
+
+    if (breadcrumbs.length <= 1 || shouldExcludeJsonLd(location.pathname)) {
+      removeJsonLdScript();
+      return;
+    }
 
     const schema = {
       "@context": "https://schema.org",
@@ -250,7 +308,11 @@ export default function Breadcrumb() {
       document.head.appendChild(scriptEl);
     }
     scriptEl.textContent = JSON.stringify(schema);
-  }, [breadcrumbs]);
+
+    return () => {
+      removeJsonLdScript();
+    };
+  }, [breadcrumbs, location.pathname]);
 
   if (breadcrumbs.length <= 1) {
     return null;

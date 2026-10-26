@@ -339,6 +339,30 @@ function Product() {
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (product?.name) {
+        window.dispatchEvent(
+          new CustomEvent("dsg:breadcrumb", {
+            detail: {
+              name: product.name,
+              category: product.category || ""
+            }
+          })
+        );
+      }
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dsg:breadcrumb", {
+            detail: { name: "", category: "" }
+          })
+        );
+      }
+    };
+  }, [product?.name, product?.category]);
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
