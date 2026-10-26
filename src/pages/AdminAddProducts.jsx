@@ -19,6 +19,34 @@ const DEFAULT_CATEGORY_OPTIONS = [
   "Sanskrit",
   "Books"
 ];
+const DEFAULT_DIGITAL_FORMAT_TYPES = [
+  "Web Version",
+  "Flipbook",
+  "Kindle",
+  "E-Book",
+  "PDF",
+  "Other"
+];
+const BUILT_IN_DIGITAL_FORMAT_TYPES = ["Web Version", "Flipbook", "Kindle"];
+
+const getDigitalFormatTypeLabel = (type) => {
+  switch (type) {
+    case "Web Version":
+      return "Web Version (Online Reader)";
+    case "Flipbook":
+      return "Flipbook (Interactive Book)";
+    case "Kindle":
+      return "Kindle E-Book";
+    case "E-Book":
+      return "Standard E-Book (EPUB/PDF)";
+    case "PDF":
+      return "PDF Download";
+    case "Other":
+      return "Other Digital Access";
+    default:
+      return type;
+  }
+};
 
 function createEmptyHeroBanner() {
   return { image: "", mobileImage: "", productId: "" };
@@ -323,6 +351,7 @@ function AdminAddProducts() {
   const [digitalDelivery, setDigitalDelivery] = useState("onsite");
   const [externalAccessLink, setExternalAccessLink] = useState("");
   const [externalAccessLabel, setExternalAccessLabel] = useState("");
+  const [externalAccessManual, setExternalAccessManual] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
@@ -337,6 +366,10 @@ function AdminAddProducts() {
   const [newCategory, setNewCategory] = useState("");
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [categoryMessage, setCategoryMessage] = useState("");
+  const [digitalFormatTypeOptions, setDigitalFormatTypeOptions] = useState(DEFAULT_DIGITAL_FORMAT_TYPES);
+  const [newDigitalType, setNewDigitalType] = useState("");
+  const [editingDigitalTypeName, setEditingDigitalTypeName] = useState("");
+  const [digitalTypeMessage, setDigitalTypeMessage] = useState("");
   const [stock, setStock] = useState("1");
   const [weight, setWeight] = useState("0");
   const [height, setHeight] = useState("0");
@@ -379,6 +412,10 @@ function AdminAddProducts() {
           ? res.data.productCategories
           : DEFAULT_CATEGORY_OPTIONS;
         setCategoryOptions(nextCategories);
+        const nextDigitalTypes = Array.isArray(res.data?.digitalFormatTypes) && res.data.digitalFormatTypes.length > 0
+          ? res.data.digitalFormatTypes
+          : DEFAULT_DIGITAL_FORMAT_TYPES;
+        setDigitalFormatTypeOptions(nextDigitalTypes);
         setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
         const nextHeroBanners =
           Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
@@ -404,10 +441,15 @@ function AdminAddProducts() {
             ? res.data.productCategories
             : DEFAULT_CATEGORY_OPTIONS;
           setCategoryOptions(nextCategories);
+          const nextDigitalTypes = Array.isArray(res.data?.digitalFormatTypes) && res.data.digitalFormatTypes.length > 0
+            ? res.data.digitalFormatTypes
+            : DEFAULT_DIGITAL_FORMAT_TYPES;
+          setDigitalFormatTypeOptions(nextDigitalTypes);
           setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
         }).catch(() => {});
         if (!active) return;
         setCategoryOptions(DEFAULT_CATEGORY_OPTIONS);
+        setDigitalFormatTypeOptions(DEFAULT_DIGITAL_FORMAT_TYPES);
         setPricingMarkets([]);
         setHeroBanners([createEmptyHeroBanner()]);
         setActiveHeroBannerIndex(0);
@@ -445,6 +487,20 @@ function AdminAddProducts() {
       ? data.productCategories
       : DEFAULT_CATEGORY_OPTIONS;
     setCategoryOptions(normalized);
+    return normalized;
+  };
+
+  const saveDigitalFormatTypeOptions = async (nextTypes) => {
+    const { data } = await axios.put(
+      "/api/settings",
+      { digitalFormatTypes: nextTypes },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const normalized = Array.isArray(data?.digitalFormatTypes) && data.digitalFormatTypes.length > 0
+      ? data.digitalFormatTypes
+      : DEFAULT_DIGITAL_FORMAT_TYPES;
+    setDigitalFormatTypeOptions(normalized);
     return normalized;
   };
 
@@ -620,9 +676,13 @@ function AdminAddProducts() {
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setDigitalType("Web Version");
+    setEditingDigitalTypeName("");
+    setNewDigitalType("");
+    setDigitalTypeMessage("");
     setDigitalDelivery("onsite");
     setExternalAccessLink("");
     setExternalAccessLabel("");
+    setExternalAccessManual(false);
     setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
@@ -666,6 +726,7 @@ function AdminAddProducts() {
       digitalDelivery,
       externalAccessLink,
       externalAccessLabel,
+      externalAccessManual,
       webReaderLink,
       kindleLink,
       kindleAsin,
@@ -1192,6 +1253,220 @@ function AdminAddProducts() {
     }
   };
 
+  const displayedDigitalTypeOptions = useMemo(() => {
+    const current = String(digitalType || "").trim();
+    if (
+      current &&
+      !digitalFormatTypeOptions.some(
+        (opt) => opt.toLowerCase() === current.toLowerCase()
+      )
+    ) {
+      return [current, ...digitalFormatTypeOptions];
+    }
+    return digitalFormatTypeOptions;
+  }, [digitalType, digitalFormatTypeOptions]);
+
+  const handleAddDigitalType = async () => {
+    const value = newDigitalType.trim();
+    if (!value) {
+      setDigitalTypeMessage("Enter a format type name first.");
+      return;
+    }
+
+    if (value.toLowerCase().includes("kindle")) {
+      setDigitalTypeMessage("Format type name cannot contain 'kindle'.");
+      return;
+    }
+
+    if (value.toLowerCase().includes("flipbook")) {
+      setDigitalTypeMessage("Format type name cannot contain 'flipbook'.");
+      return;
+    }
+
+    const exists = digitalFormatTypeOptions.some(
+      (option) =>
+        option.toLowerCase() === value.toLowerCase() &&
+        option.toLowerCase() !== editingDigitalTypeName.toLowerCase()
+    );
+    if (exists) {
+      setDigitalTypeMessage("That format type already exists.");
+      return;
+    }
+
+    try {
+      if (editingDigitalTypeName) {
+        if (
+          BUILT_IN_DIGITAL_FORMAT_TYPES.some(
+            (b) => b.toLowerCase() === editingDigitalTypeName.toLowerCase()
+          )
+        ) {
+          setDigitalTypeMessage("Built-in format types cannot be renamed.");
+          return;
+        }
+
+        const impactedProducts = products.filter(
+          (product) =>
+            String(product?.digitalType || "").trim().toLowerCase() ===
+            editingDigitalTypeName.toLowerCase()
+        );
+
+        if (impactedProducts.length > 0) {
+          const confirmed = await confirm({
+            title: "Rename Format Type?",
+            message: `Rename "${editingDigitalTypeName}" to "${value}"?\n\nThis will update ${impactedProducts.length} product${
+              impactedProducts.length === 1 ? "" : "s"
+            } using this format type.`,
+            confirmText: "Rename Format Type"
+          });
+          if (!confirmed) return;
+        }
+
+        const updated = await saveDigitalFormatTypeOptions(
+          digitalFormatTypeOptions.map((option) =>
+            option.toLowerCase() === editingDigitalTypeName.toLowerCase() ? value : option
+          )
+        );
+
+        if (impactedProducts.length > 0) {
+          await Promise.all(
+            impactedProducts.map((product) =>
+              axios.put(
+                `/api/products/${product._id}`,
+                { digitalType: value },
+                { headers: { Authorization: `Bearer ${token}` } }
+              )
+            )
+          );
+          await loadProducts();
+        }
+
+        if (digitalType.toLowerCase() === editingDigitalTypeName.toLowerCase()) {
+          setDigitalType(
+            updated.find((option) => option.toLowerCase() === value.toLowerCase()) || value
+          );
+        }
+        setEditingDigitalTypeName("");
+        setDigitalTypeMessage(
+          `Format type updated successfully.${
+            impactedProducts.length > 0
+              ? ` ${impactedProducts.length} product${
+                  impactedProducts.length === 1 ? "" : "s"
+                } updated.`
+              : ""
+          }`
+        );
+      } else {
+        const updated = await saveDigitalFormatTypeOptions([...digitalFormatTypeOptions, value]);
+        setDigitalType(
+          updated.find((option) => option.toLowerCase() === value.toLowerCase()) || value
+        );
+        setDigitalTypeMessage("Format type added successfully.");
+      }
+
+      setNewDigitalType("");
+    } catch (err) {
+      setDigitalTypeMessage(
+        err?.response?.data?.message ||
+          `Could not ${editingDigitalTypeName ? "update" : "add"} format type.`
+      );
+    }
+  };
+
+  const handleStartDigitalTypeEdit = (option) => {
+    if (
+      BUILT_IN_DIGITAL_FORMAT_TYPES.some(
+        (b) => b.toLowerCase() === option.toLowerCase()
+      )
+    ) {
+      setDigitalTypeMessage("Built-in format types cannot be edited.");
+      return;
+    }
+    setEditingDigitalTypeName(option);
+    setNewDigitalType(option);
+    setDigitalType(option);
+    setDigitalTypeMessage("");
+  };
+
+  const handleCancelDigitalTypeEdit = () => {
+    setEditingDigitalTypeName("");
+    setNewDigitalType("");
+    setDigitalTypeMessage("");
+  };
+
+  const handleDeleteDigitalType = async () => {
+    if (!editingDigitalTypeName) return;
+
+    if (
+      BUILT_IN_DIGITAL_FORMAT_TYPES.some(
+        (b) => b.toLowerCase() === editingDigitalTypeName.toLowerCase()
+      )
+    ) {
+      setDigitalTypeMessage("Built-in format types cannot be deleted.");
+      return;
+    }
+
+    const fallbackType =
+      editingDigitalTypeName.toLowerCase() === "other" ? "Web Version" : "Other";
+
+    const affected = products.filter(
+      (p) =>
+        String(p?.digitalType || "").trim().toLowerCase() ===
+        editingDigitalTypeName.toLowerCase()
+    );
+
+    const confirmed = await confirm({
+      title: "Delete Format Type?",
+      message: `Delete the format type "${editingDigitalTypeName}"?\n\n${affected.length} product${
+        affected.length === 1 ? "" : "s"
+      } currently using this format type will be moved to "${fallbackType}".`,
+      tone: "danger",
+      confirmText: "Delete Format Type"
+    });
+    if (!confirmed) return;
+
+    try {
+      const nextOptions = digitalFormatTypeOptions.filter(
+        (opt) => opt.toLowerCase() !== editingDigitalTypeName.toLowerCase()
+      );
+      if (!nextOptions.some((opt) => opt.toLowerCase() === fallbackType.toLowerCase())) {
+        nextOptions.push(fallbackType);
+      }
+
+      await saveDigitalFormatTypeOptions(nextOptions);
+
+      if (affected.length > 0) {
+        await Promise.all(
+          affected.map((p) =>
+            axios.put(
+              `/api/products/${p._id}`,
+              { digitalType: fallbackType },
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+          )
+        );
+        await loadProducts();
+      }
+
+      if (digitalType.toLowerCase() === editingDigitalTypeName.toLowerCase()) {
+        setDigitalType(fallbackType);
+      }
+
+      setEditingDigitalTypeName("");
+      setNewDigitalType("");
+      setDigitalTypeMessage(
+        `Format type "${editingDigitalTypeName}" deleted.${
+          affected.length > 0
+            ? ` ${affected.length} product${affected.length === 1 ? "" : "s"} moved to "${fallbackType}".`
+            : ""
+        }`
+      );
+    } catch (err) {
+      setDigitalTypeMessage(
+        err?.response?.data?.message || "Could not delete format type."
+      );
+    }
+  };
+
   const saveProduct = async () => {
     if (!formSummary.isValid) {
       if (!formSummary.isNameValid) {
@@ -1301,6 +1576,7 @@ function AdminAddProducts() {
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
       externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
       externalAccessLabel: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLabel.trim() : "",
+      externalAccessManual: isEligibleForExternal && digitalDelivery === "external" ? externalAccessManual : false,
       webReaderLink: webReaderLink.trim(),
       kindleLink: kindleLink.trim(),
       kindleAsin: kindleAsin.trim(),
@@ -1403,6 +1679,7 @@ function AdminAddProducts() {
     setDigitalDelivery(product.digitalDelivery || "onsite");
     setExternalAccessLink(product.externalAccessLink || "");
     setExternalAccessLabel(product.externalAccessLabel || "");
+    setExternalAccessManual(product.externalAccessManual === true);
     setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
@@ -2208,8 +2485,28 @@ function AdminAddProducts() {
                               />
                             </label>
                           </div>
-                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "#64748b", lineHeight: "1.4" }}>
-                            Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                          <label style={{ display: "inline-flex", alignItems: "flex-start", gap: "8px", cursor: "pointer", fontSize: "13.5px", fontWeight: 500, marginTop: "4px" }}>
+                            <input
+                              type="checkbox"
+                              checked={externalAccessManual}
+                              onChange={(e) => setExternalAccessManual(e.target.checked)}
+                              style={{ marginTop: "2px" }}
+                            />
+                            <div>
+                              <span>Our team gives access manually</span>
+                              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)", fontWeight: "normal", lineHeight: "1.4" }}>
+                                Customers will not see the link straight away. The order stays Pending until an admin clicks Grant access on the order. Gift purchases are not allowed for this product.
+                              </p>
+                            </div>
+                          </label>
+                          <p style={{ margin: "2px 0 0", fontSize: "12.5px", color: "var(--admin-muted, #64748b)", lineHeight: "1.4" }}>
+                            {externalAccessManual ? (
+                              "Customers see this link only after an admin grants access, in My Digital Library."
+                            ) : (
+                              <>
+                                Customers see this link only after they pay, in My Digital Library. They will not see &apos;instant access&apos; messages for this product.
+                              </>
+                            )}
                           </p>
                           {externalLinkError && (
                             <div style={{ color: "#dc2626", fontSize: "12.5px", fontWeight: 500, marginTop: "2px" }}>
@@ -2223,19 +2520,110 @@ function AdminAddProducts() {
 
                   {isDigital && (
                     <div className="admin-digital-fields-box">
-                      <div className="admin-field-grid">
-                        <label className="admin-field">
-                          <span>Digital Format Type</span>
-                          <select value={digitalType} onChange={(e) => setDigitalType(e.target.value)}>
-                            <option value="Web Version">Web Version (Online Reader)</option>
-                            <option value="Flipbook">Flipbook (Interactive Book)</option>
-                            <option value="Kindle">Kindle E-Book</option>
-                            <option value="E-Book">Standard E-Book (EPUB/PDF)</option>
-                            <option value="PDF">PDF Download</option>
-                            <option value="Other">Other Digital Access</option>
-                          </select>
-                        </label>
-                        {!(productType !== "bundle" && digitalDelivery === "external") && (
+                      <div className="admin-field admin-field-wide">
+                        <span>Digital Format Type</span>
+                        <div className="admin-category-manager">
+                          <div className="admin-category-select-row">
+                            <select
+                              value={digitalType}
+                              onChange={(e) => setDigitalType(e.target.value)}
+                              className="admin-category-select-dropdown"
+                            >
+                              {displayedDigitalTypeOptions.map((option) => {
+                                const isBuiltIn = BUILT_IN_DIGITAL_FORMAT_TYPES.some(
+                                  (b) => b.toLowerCase() === option.toLowerCase()
+                                );
+                                return (
+                                  <option key={option} value={option}>
+                                    {isBuiltIn ? "🔒 " : ""}{getDigitalFormatTypeLabel(option)}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {BUILT_IN_DIGITAL_FORMAT_TYPES.some(
+                              (b) => b.toLowerCase() === (digitalType || "Web Version").toLowerCase()
+                            ) ? (
+                              <span
+                                className="admin-category-locked-badge"
+                                style={{
+                                  fontSize: "12px",
+                                  color: "var(--site-text-soft, #64748b)",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "6px 10px",
+                                  background: "var(--site-surface-2, #f1f5f9)",
+                                  borderRadius: "6px",
+                                  fontWeight: 500
+                                }}
+                              >
+                                🔒 Built-in
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="admin-category-inline-edit"
+                                onClick={() => handleStartDigitalTypeEdit(digitalType || "E-Book")}
+                              >
+                                Edit Selected
+                              </button>
+                            )}
+                          </div>
+                          <div className="admin-category-compact-meta">
+                            <small>
+                              {digitalFormatTypeOptions.length} format types available. Selected: <strong>{getDigitalFormatTypeLabel(digitalType || "Web Version")}</strong>
+                            </small>
+                          </div>
+
+                          <div className="admin-category-manager-actions">
+                            <div className="theme-form-row">
+                              <input
+                                placeholder="e.g. Audio Book"
+                                maxLength={40}
+                                value={newDigitalType}
+                                onChange={(e) => {
+                                  setNewDigitalType(e.target.value);
+                                  setDigitalTypeMessage("");
+                                }}
+                              />
+                              <button type="button" onClick={handleAddDigitalType}>
+                                {editingDigitalTypeName ? "Save" : "Add"}
+                              </button>
+                              {editingDigitalTypeName ? (
+                                <>
+                                  <button type="button" onClick={handleCancelDigitalTypeEdit}>
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-category-delete-btn"
+                                    onClick={handleDeleteDigitalType}
+                                    title={`Delete "${editingDigitalTypeName}" format type`}
+                                  >
+                                    🗑 Delete
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                            <small className="admin-category-helper">
+                              {editingDigitalTypeName
+                                ? `Editing "${editingDigitalTypeName}". Saving will rename it everywhere it is used.`
+                                : "Need a new digital format? Add it here and select it immediately."}
+                            </small>
+                            {digitalTypeMessage ? (
+                              <small
+                                className={`admin-category-feedback${
+                                  digitalTypeMessage.includes("successfully") ? " success" : " error"
+                                }`}
+                              >
+                                {digitalTypeMessage}
+                              </small>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      {!(productType !== "bundle" && digitalDelivery === "external") && (
+                        <div className="admin-field-grid">
                           <label className="admin-field">
                             <span>Kindle ASIN / Redeem Code</span>
                             <input
@@ -2244,8 +2632,8 @@ function AdminAddProducts() {
                               onChange={(e) => setKindleAsin(e.target.value)}
                             />
                           </label>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {!(productType !== "bundle" && digitalDelivery === "external") && (
                         <>

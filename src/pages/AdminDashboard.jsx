@@ -61,7 +61,8 @@ const NON_DISMISSIBLE_NOTIFICATION_IDS = [
   "returns-overdue",
   "cancel-refunds",
   "refund-processing",
-  "unmatched-payments"
+  "unmatched-payments",
+  "access-pending"
 ];
 
 function normalizeStatus(status) {
@@ -345,6 +346,7 @@ function AdminDashboard() {
   const [orderLoadError, setOrderLoadError] = useState("");
   const [dismissedNotifications, setDismissedNotifications] = useState([]);
   const [unmatchedPaymentsCount, setUnmatchedPaymentsCount] = useState(0);
+  const [pendingAccessCount, setPendingAccessCount] = useState(0);
   const adminLevel = Number(user?.adminLevel || 1);
   const allowedPages = Array.isArray(user?.allowedPages) ? user.allowedPages : ["dashboard"];
   const canAccessOrders = Boolean(user?.isAdmin) && (adminLevel === 1 || allowedPages.includes("orders"));
@@ -407,6 +409,19 @@ function AdminDashboard() {
         } catch {
           if (!active) return;
           setUnmatchedPaymentsCount(0);
+        }
+
+        try {
+          const accessRes = await axios.get("/api/orders/admin/access-pending", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!active) return;
+          const data = accessRes.data;
+          const count = typeof data?.count === "number" ? data.count : (Array.isArray(data?.orders) ? data.orders.length : 0);
+          setPendingAccessCount(count);
+        } catch {
+          if (!active) return;
+          setPendingAccessCount(0);
         }
       }
     };
@@ -1185,6 +1200,14 @@ function AdminDashboard() {
         link: "/admin/unmatched-payments"
       });
     }
+    if (pendingAccessCount > 0) {
+      list.push({
+        id: "access-pending",
+        type: "alert",
+        text: `${pendingAccessCount} order(s) waiting for access to be granted.`,
+        link: "/admin/orders?tab=access-pending"
+      });
+    }
     if (analytics.statuses.Pending >= 5) {
       list.push({
         id: "pending",
@@ -1210,6 +1233,7 @@ function AdminDashboard() {
   }, [
     orders,
     unmatchedPaymentsCount,
+    pendingAccessCount,
     analytics.statuses.Pending,
     analytics.repeatRate,
     dismissedNotifications,

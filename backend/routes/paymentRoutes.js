@@ -8,7 +8,7 @@ const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
 const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
 const { SETTLEMENT_CURRENCY, getSettlementCharge, verifyRazorpaySignature } = require("../utils/paymentVerification");
-const { computeOrderTotals } = require("../utils/orderTotals");
+const { computeOrderTotals, OrderTotalsError } = require("../utils/orderTotals");
 const { expandItemsForStock } = require("../utils/stock");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
@@ -68,6 +68,10 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         }
       }
 
+      if (o.isGift && (o.items || []).some((it) => it.accessManual)) {
+        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+      }
+
       itemsToCheck = o.items;
       const ic = resolveItemsCurrency(o.items);
       const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
@@ -106,6 +110,11 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         userId: req.user || null,
         settings
       });
+
+      if (req.body.isGift === true && (totals.normalizedItems || []).some((it) => it.accessManual)) {
+        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+      }
+
       itemsToCheck = totals.normalizedItems;
       amount = totals.chargeAmount || totals.totalInInr || totals.total;
       currency = totals.chargeCurrency || SETTLEMENT_CURRENCY;
@@ -177,7 +186,8 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       "Failed to create Razorpay order";
 
     console.error("[Payment] create-order failed:", message);
-    return res.status(500).json({ message });
+    const status = error instanceof OrderTotalsError || error?.status ? error.status : 500;
+    return res.status(status).json({ message });
   }
 });
 

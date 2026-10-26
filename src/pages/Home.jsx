@@ -6,6 +6,7 @@ import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
 import { formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, storePricingConfig } from "../utils/productPricing";
+import { isKindleProduct } from "../utils/kindle";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Home.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
@@ -711,7 +712,17 @@ function Home() {
                     <span>{formatPrice(getDisplayPrice(product, selectedAddress?.country))}</span>
                   </div>
                   <strong>{product.name}</strong>
-                  <span>{Number(product?.stock || 0) > 0 ? "In stock now" : "Currently unavailable"}</span>
+                  <span>
+                    {product?.isDigital === true
+                      ? (product.externalAccessManual === true
+                          ? "Access within 24–48 hours"
+                          : isKindleProduct(product)
+                          ? "Sold on Amazon Kindle"
+                          : "Instant digital access")
+                      : Number(product?.stock || 0) > 0
+                      ? "In stock now"
+                      : "Currently unavailable"}
+                  </span>
                 </Link>
               ))
             )}

@@ -6,6 +6,7 @@ import { useCart } from "../hooks/useCart";
 import { useToast } from "../hooks/useToast";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
+import { isKindleProduct } from "../utils/kindle";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Wishlist.css";
 
@@ -67,7 +68,7 @@ function Wishlist() {
                 const isBundle =
                   String(product?.productType || "single") === "bundle" ||
                   (Array.isArray(product?.bundleItems) && product.bundleItems.length > 0);
-                const isOutOfStock = product?.stock !== undefined && Number(product.stock) <= 0;
+                const isOutOfStock = product?.isDigital !== true && product?.stock !== undefined && Number(product.stock) <= 0;
 
                 // Original/list price calculation matching ProductCard
                 const festiveDiscountPercent = Math.min(95, Math.max(0, Number(product?.festiveDiscountPercent || 0)));
@@ -125,22 +126,42 @@ function Wishlist() {
                     {/* Column 3: Stock Status */}
                     <div className="wishlist-item-cell col-stock" data-label="Stock">
                       <span className={`wishlist-stock-badge ${isOutOfStock ? "out-of-stock" : "in-stock"}`}>
-                        {isOutOfStock ? "Out of Stock" : "In Stock"}
+                        {product?.isDigital === true
+                          ? (product.externalAccessManual === true
+                              ? "Access within 24–48 hours"
+                              : isKindleProduct(product)
+                              ? "Sold on Amazon Kindle"
+                              : "Instant digital access")
+                          : isOutOfStock
+                          ? "Out of Stock"
+                          : "In Stock"}
                       </span>
                     </div>
 
                     {/* Column 4: Action Buttons */}
                     <div className="wishlist-item-cell col-actions" data-label="">
                       <div className="wishlist-action-buttons">
-                        <button
-                          type="button"
-                          className="wishlist-add-to-cart-btn"
-                          disabled={isOutOfStock}
-                          onClick={() => handleAddToCart(product)}
-                          aria-label="Add to cart"
-                        >
-                          <ShoppingCart size={16} /> Add to Cart
-                        </button>
+                        {isKindleProduct(product) ? (
+                          <a
+                            href={product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="wishlist-add-to-cart-btn wishlist-kindle-btn"
+                            aria-label="Buy on Amazon"
+                          >
+                            Buy on Amazon ↗
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            className="wishlist-add-to-cart-btn"
+                            disabled={isOutOfStock}
+                            onClick={() => handleAddToCart(product)}
+                            aria-label="Add to cart"
+                          >
+                            <ShoppingCart size={16} /> Add to Cart
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="wishlist-remove-btn"

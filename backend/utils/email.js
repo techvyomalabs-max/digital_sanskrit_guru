@@ -307,17 +307,33 @@ async function sendOrderConfirmation(order, user) {
     )
   );
 
+  const pendingManualItems = Array.isArray(order.items)
+    ? order.items.filter((item) =>
+        item &&
+        item.accessManual === true &&
+        !item.accessGrantedAt &&
+        String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+      )
+    : [];
+  const externalAccessNotice = resolveExternalAccessNotice(order.items);
+  const hasPendingManual = pendingManualItems.length > 0;
+  const digitalAccessButtonText = hasPendingManual ? "Open My Library" : "📚 Go to My Digital Library";
+
   let defaultBody = "";
   if (hasDigitalItems && hasPhysicalItems) {
+    const heading = resolveDigitalAccessHeading(
+      order.items,
+      hasExternalDelivery ? "Digital Access Unlocked!" : "⚡ Instant Digital Access Unlocked!"
+    );
     defaultBody = `
       <h2>Thank you for your order! 🎉</h2>
       <p>Hi <strong>{{USER_NAME}}</strong>,</p>
       <p>Your mixed order has been placed successfully. Below are the details for your digital and physical items:</p>
       
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
-        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Unlocked!" : "⚡ Instant Digital Access Unlocked!"}</h3>
-        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now."}</p>
-        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${heading}</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? externalAccessNotice : "Your digital book(s) (Web Version / E-Book) have been automatically added to your library and are ready to read right now."}</p>
+        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">${digitalAccessButtonText}</a>
       </div>
 
       <p style="margin-top: 16px; font-size: 14px; color: #334155; line-height: 1.5;">
@@ -333,15 +349,19 @@ async function sendOrderConfirmation(order, user) {
       </p>
     `;
   } else if (hasDigitalItems) {
+    const heading = resolveDigitalAccessHeading(
+      order.items,
+      hasExternalDelivery ? "Digital Access Granted!" : "⚡ Instant Digital Access Granted!"
+    );
     defaultBody = `
       <h2>Thank you for your order! 🎉</h2>
       <p>Hi <strong>{{USER_NAME}}</strong>,</p>
-      <p>Your order has been placed successfully. Since this order contains only digital items, ${hasExternalDelivery ? "access has been granted!" : "access has been granted instantly!"}</p>
+      <p>Your order has been placed successfully. Since this order contains only digital items, ${hasPendingManual ? "our team is setting up your access." : hasExternalDelivery ? "access has been granted!" : "access has been granted instantly!"}</p>
       
       <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
-        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${hasExternalDelivery ? "Digital Access Granted!" : "⚡ Instant Digital Access Granted!"}</h3>
-        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? "Your access link is waiting in My Library." : "Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately."}</p>
-        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">📚 Go to My Digital Library</a>
+        <h3 style="margin: 0 0 8px; color: #15803d; font-size: 16px; display: flex; align-items: center; gap: 6px;">${heading}</h3>
+        <p style="margin: 0 0 12px; font-size: 13.5px; color: #166534; line-height: 1.4;">${hasExternalDelivery ? externalAccessNotice : "Your digital book(s) (Web Version / E-Book) are now unlocked in your account. You can start reading them immediately."}</p>
+        <a href="${siteLink("/my-library")}" style="display: inline-block; padding: 9px 18px; background-color: #166534; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">${digitalAccessButtonText}</a>
       </div>
 
       <p><strong>Order ID:</strong> {{ORDER_ID}}</p>
@@ -366,7 +386,7 @@ async function sendOrderConfirmation(order, user) {
   }
 
   let substitutedSubject = subject;
-  let substitutedBody = body || defaultBody;
+  let substitutedBody = body ? applyDigitalAccessNoticeToBody(body, pendingManualItems) : defaultBody;
 
   const tags = {
     "{{USER_NAME}}": userName,
@@ -376,7 +396,8 @@ async function sendOrderConfirmation(order, user) {
     "{{ORDER_TOTAL}}": orderTotal,
     "{{ITEMS_TABLE}}": itemsTableHtml,
     "{{SUMMARY_TABLE}}": summaryTableHtml,
-    "{{SHIPPING_INFO}}": shippingInfoHtml
+    "{{SHIPPING_INFO}}": shippingInfoHtml,
+    "{{DIGITAL_ACCESS_NOTICE}}": buildPendingAccessNoticeBox(pendingManualItems)
   };
 
   Object.entries(tags).forEach(([tag, val]) => {
@@ -402,13 +423,15 @@ async function sendOrderConfirmation(order, user) {
     console.error("[WhatsApp] Utility load error:", err?.message || err);
   }
 
-  return sendEmail({
+  const sendResult = await sendEmail({
     to,
     subject: substitutedSubject,
     html,
     type: "order-confirm",
     orderId: String(order._id || "")
   });
+
+  return { ...(sendResult || {}), html, subject: substitutedSubject };
 }
 
 function getCourierTrackingUrl(courierName, trackingId) {
@@ -1125,6 +1148,163 @@ async function sendWishlistReminderEmail(user, wishlistItems = []) {
   });
 }
 
+function resolveDigitalAccessHeading(items, fallback) {
+  const hasPending = Array.isArray(items) && items.some(
+    (item) =>
+      item &&
+      item.accessManual === true &&
+      !item.accessGrantedAt &&
+      String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+  );
+  if (hasPending) {
+    return "We are setting up your access";
+  }
+
+  if (typeof fallback === "string") {
+    return fallback;
+  }
+
+  const { isMixed = false, hasExternalDelivery = false } = fallback || {};
+  if (isMixed) {
+    return hasExternalDelivery ? "Digital Access Unlocked!" : "⚡ Instant Digital Access Unlocked!";
+  }
+  return hasExternalDelivery ? "Digital Access Granted!" : "⚡ Instant Digital Access Granted!";
+}
+
+function resolveExternalAccessNotice(items) {
+  const pendingManualItems = Array.isArray(items)
+    ? items.filter((item) =>
+        item &&
+        item.accessManual === true &&
+        !item.accessGrantedAt &&
+        String(item.returnRequest?.status || "").trim().toLowerCase() !== "refunded"
+      )
+    : [];
+
+  return pendingManualItems.length > 0
+    ? buildPendingAccessNotice(pendingManualItems)
+    : "Your access link is waiting in My Library.";
+}
+
+function buildPendingAccessNotice(pendingItems) {
+  const list = Array.isArray(pendingItems) ? pendingItems : [];
+  const names = list.map((it) => escapeHtml(it.name || "Item")).join(", ");
+  return `We are setting up your access for ${names}. You will get another email as soon as it is ready.`;
+}
+
+function buildPendingAccessNoticeBox(pendingItems) {
+  const items = Array.isArray(pendingItems) ? pendingItems : [];
+  if (items.length === 0) return "";
+  const noticeText = buildPendingAccessNotice(items);
+  return `<div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-family: sans-serif;"><p style="margin: 0; font-size: 13.5px; color: #166534; line-height: 1.4;">${noticeText}</p></div>`;
+}
+
+function applyDigitalAccessNoticeToBody(bodyTemplate, pendingItems = []) {
+  if (typeof bodyTemplate !== "string" || !bodyTemplate) return bodyTemplate;
+  const items = Array.isArray(pendingItems) ? pendingItems : [];
+  const hasPending = items.length > 0;
+  const boxHtml = hasPending ? buildPendingAccessNoticeBox(items) : "";
+
+  if (bodyTemplate.includes("{{DIGITAL_ACCESS_NOTICE}}")) {
+    return bodyTemplate.replaceAll("{{DIGITAL_ACCESS_NOTICE}}", boxHtml);
+  }
+  if (hasPending) {
+    if (bodyTemplate.includes("{{ITEMS_TABLE}}")) {
+      return bodyTemplate.replace("{{ITEMS_TABLE}}", `${boxHtml}\n{{ITEMS_TABLE}}`);
+    }
+    return `${bodyTemplate}\n${boxHtml}`;
+  }
+  return bodyTemplate;
+}
+
+function buildAccessGrantedEmail(order, user, grantedItems, note) {
+  const subject = cleanSubject(`Your access is ready — ${SITE_NAME}`);
+  const items = Array.isArray(grantedItems) ? grantedItems : [];
+  const itemsList = items
+    .map((it) => `<li><strong>${escapeHtml(it.name || "Item")}</strong></li>`)
+    .join("");
+
+  let noteBox = "";
+  const trimmedNote = typeof note === "string" ? note.trim() : "";
+  if (trimmedNote) {
+    const escapedNote = escapeHtml(trimmedNote).replace(/\n/g, "<br/>");
+    noteBox = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
+        <strong style="color: #334155; display: block; margin-bottom: 6px;">Instructions / Access Note:</strong>
+        <p style="margin: 0; color: #475569; font-size: 14px; line-height: 1.5;">${escapedNote}</p>
+      </div>`;
+  }
+
+  const bodyHtml = `
+    <h2>Your access is ready! 🎉</h2>
+    <p>Hi <strong>${escapeHtml(user?.name || "Customer")}</strong>,</p>
+    <p>We are pleased to inform you that access to your digital item(s) has been granted and is now available in your library.</p>
+    <ul style="line-height: 1.8; color: #334155;">
+      ${itemsList}
+    </ul>
+    ${noteBox}
+    <p>You can view your materials anytime from your library:</p>
+    <a class="cta" href="${siteLink("/my-library")}">Go to My Library</a>
+    <p style="color: #64748b; font-size: 13px; margin-top: 24px;">If you have any questions or need assistance accessing your content, simply reply to this email.</p>
+  `;
+
+  const html = htmlWrapper("Access Ready", bodyHtml);
+  return { subject, html };
+}
+
+async function sendAccessGrantedEmail(order, user, grantedItems, note) {
+  const to = String(user?.email || "").trim().toLowerCase();
+  if (!to) return { skipped: true };
+  const { subject, html } = buildAccessGrantedEmail(order, user, grantedItems, note);
+  return sendEmail({
+    to,
+    subject,
+    html,
+    type: "access-granted",
+    orderId: String(order?._id || "")
+  });
+}
+
+function buildAccessPendingAdminAlert(order, pendingItems, customer) {
+  const idStr = order?.invoiceNumber ? String(order.invoiceNumber) : String(order?._id || "").slice(-8).toUpperCase();
+  const subject = cleanSubject(`⚠️ Manual Access Required — Order #${idStr} — ${SITE_NAME}`);
+  const items = Array.isArray(pendingItems) ? pendingItems : [];
+  const itemsList = items
+    .map((it) => `<li>${escapeHtml(it.name || "Item")} (qty: ${it.quantity || 1})</li>`)
+    .join("");
+
+  const custName = escapeHtml(customer?.name || "Customer");
+  const custEmail = escapeHtml(customer?.email || "—");
+
+  const bodyHtml = `
+    <h2>⚠️ Manual Access Setup Needed</h2>
+    <p>A customer has paid for one or more products that require manual access provisioning on an external platform.</p>
+    <p><strong>Order ID:</strong> ${escapeHtml(String(order?.invoiceNumber || order?._id || ""))}</p>
+    <p><strong>Customer:</strong> ${custName} (${custEmail})</p>
+    <h3>Pending Items:</h3>
+    <ul style="line-height: 1.8; color: #334155;">
+      ${itemsList}
+    </ul>
+    <p>Once you have configured their access on the external site, click below to mark access as granted:</p>
+    <a class="cta" href="${siteLink("/admin/orders")}">Go to Admin Orders</a>
+  `;
+
+  const html = htmlWrapper("Manual Access Required", bodyHtml);
+  return { to: ADMIN_EMAIL, subject, html };
+}
+
+async function sendAccessPendingAdminAlert(order, pendingItems, customer) {
+  if (!ADMIN_EMAIL) return { skipped: true };
+  const { to, subject, html } = buildAccessPendingAdminAlert(order, pendingItems, customer);
+  return sendEmail({
+    to,
+    subject,
+    html,
+    type: "access-pending-admin",
+    orderId: String(order?._id || "")
+  });
+}
+
 module.exports = {
   sendEmail,
   sendOrderConfirmation,
@@ -1139,5 +1319,14 @@ module.exports = {
   sendBulkEnquiryEmail,
   sendWelcomeCredentialsEmail,
   sendWishlistReminderEmail,
-  sendReturnStatusEmail
+  sendReturnStatusEmail,
+  buildPendingAccessNotice,
+  buildPendingAccessNoticeBox,
+  applyDigitalAccessNoticeToBody,
+  resolveExternalAccessNotice,
+  resolveDigitalAccessHeading,
+  buildAccessGrantedEmail,
+  sendAccessGrantedEmail,
+  buildAccessPendingAdminAlert,
+  sendAccessPendingAdminAlert
 };

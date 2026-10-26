@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
-import { formatResolvedPrice, convertCurrencyAmount } from "../utils/currency";
+import { convertCurrencyAmount } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
+import { isKindleProduct } from "../utils/kindle";
 import "./Checkout.css";
 
 function GuestBuy() {
@@ -265,7 +266,9 @@ function GuestBuy() {
             product: product._id,
             price: unitPrice,
             quantity: buyQuantity,
-            currency: displayCurrency
+            currency: displayCurrency,
+            digitalDelivery: product.digitalDelivery || "onsite",
+            externalAccessManual: Boolean(product.externalAccessManual)
           }
         ],
         shipping: shippingInfo,
@@ -317,7 +320,9 @@ function GuestBuy() {
                 image: product.image,
                 price: unitPrice,
                 quantity: buyQuantity,
-                isDigital
+                isDigital,
+                digitalDelivery: product.digitalDelivery || "onsite",
+                externalAccessManual: Boolean(product.externalAccessManual)
               }],
               shipping: shippingInfo,
               billing: shippingInfo,
@@ -376,6 +381,58 @@ function GuestBuy() {
         <button onClick={() => navigate("/")} className="checkout-btn" style={{ maxWidth: "200px", marginTop: "16px" }}>
           Return to Store
         </button>
+      </div>
+    );
+  }
+
+  if (isKindleProduct(product)) {
+    const amazonLink = product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru";
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "40px 16px", minHeight: "80vh", backgroundColor: "var(--site-bg, #fafafa)" }}>
+        <div style={{ maxWidth: "550px", width: "100%", backgroundColor: "var(--site-surface, #ffffff)", padding: "32px", borderRadius: "12px", border: "1px solid var(--site-border, #e2e8f0)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)", textAlign: "center" }}>
+          <div style={{ fontSize: "40px", marginBottom: "12px" }}>📱</div>
+          <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--site-text, #1e293b)", marginBottom: "8px" }}>
+            {product.name}
+          </h2>
+          <p style={{ color: "var(--site-text-soft, #64748b)", fontSize: "15px", marginBottom: "24px" }}>
+            Kindle editions are sold on Amazon.
+          </p>
+          <a
+            href={amazonLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="checkout-btn"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "14px 20px",
+              textDecoration: "none",
+              fontSize: "15px",
+              fontWeight: "600",
+              boxSizing: "border-box"
+            }}
+          >
+            Buy on Amazon ↗
+          </a>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            style={{
+              marginTop: "16px",
+              background: "transparent",
+              border: "none",
+              color: "var(--site-link, #0284c7)",
+              cursor: "pointer",
+              fontSize: "14px",
+              textDecoration: "underline"
+            }}
+          >
+            Return to Store
+          </button>
+        </div>
       </div>
     );
   }

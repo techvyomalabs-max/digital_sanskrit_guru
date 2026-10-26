@@ -6,7 +6,9 @@ import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/currency";
 import { formatDateTime } from "../utils/date";
+import { isDigitalLikeItem, pendingAccessItems } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
+import GrantAccessModal from "../components/admin/GrantAccessModal";
 import "./AdminOrderDetails.css";
 
 function AdminOrderDetails() {
@@ -18,6 +20,7 @@ function AdminOrderDetails() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isUpdatingRefund, setIsUpdatingRefund] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isGrantAccessModalOpen, setIsGrantAccessModalOpen] = useState(false);
   const [pageMessage, setPageMessage] = useState("");
 
   const isManualRefund = (ord) => {
@@ -58,6 +61,29 @@ function AdminOrderDetails() {
       active = false;
     };
   }, [id, token]);
+
+  const reloadOrder = () => {
+    if (!token || !id) return;
+    axios
+      .get(`/api/orders/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then((res) => {
+        setOrder(res.data || null);
+      })
+      .catch((err) => {
+        setPageMessage(err?.response?.data?.message || "Unable to reload order.");
+      });
+  };
+
+  const pendingItems = useMemo(() => {
+    return pendingAccessItems(order);
+  }, [order]);
+
+  const isOrderPaid = String(order?.paymentStatus || "").toLowerCase() === "paid";
+  const isOrderCancelled = String(order?.status || "").toLowerCase() === "cancelled";
+  const isOrderRefunded = String(order?.refundStatus || "").toLowerCase() === "refunded";
+  const showPendingAccessCard = pendingItems.length > 0 && isOrderPaid && !isOrderCancelled && !isOrderRefunded;
 
   const updateRefundStatus = async (newRefundStatus, forceManual = false) => {
     if (!order?._id) return;
@@ -408,6 +434,32 @@ function AdminOrderDetails() {
               </article>
             </section>
 
+            {showPendingAccessCard && (
+              <div className="admin-order-pending-access-banner">
+                <div>
+                  <h2>Customer is waiting for access</h2>
+                  <p>
+                    {pendingItems.length === 1
+                      ? "1 digital item requires manual access to be granted on the external website."
+                      : `${pendingItems.length} digital items require manual access to be granted on the external website.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="admin-order-details-btn"
+                  style={{
+                    backgroundColor: "#d97706",
+                    color: "#ffffff",
+                    borderColor: "#b45309",
+                    whiteSpace: "nowrap"
+                  }}
+                  onClick={() => setIsGrantAccessModalOpen(true)}
+                >
+                  Grant access
+                </button>
+              </div>
+            )}
+
             <section className="admin-order-details-layout">
               <article className="admin-order-details-card">
                 <h2>Items</h2>
@@ -445,6 +497,42 @@ function AdminOrderDetails() {
                             </p>
                           )}
                           <p>Qty: {Math.max(1, Number(item?.quantity || 1))}</p>
+                          {item.accessManual === true && (
+                            <div style={{ marginTop: "8px" }}>
+                              {!item.accessGrantedAt ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <span className="admin-item-access-badge pending">
+                                    Access pending
+                                  </span>
+                                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
+                                    Set up this customer&apos;s access on the other website, then click Grant access.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <span className="admin-item-access-badge granted">
+                                    Access granted on {formatDateTime(item.accessGrantedAt)}
+                                  </span>
+                                  {item.accessNote && (
+                                    <div
+                                      style={{
+                                        margin: "4px 0 0",
+                                        fontSize: "12px",
+                                        color: "var(--admin-text, #334155)",
+                                        whiteSpace: "pre-wrap",
+                                        background: "var(--admin-surface-2, #f8fafc)",
+                                        padding: "6px 10px",
+                                        borderRadius: "6px",
+                                        border: "1px solid var(--admin-border, #e2e8f0)"
+                                      }}
+                                    >
+                                      {item.accessNote}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
                       </div>
@@ -458,21 +546,16 @@ function AdminOrderDetails() {
               <aside className="admin-order-side-stack">
                 <article className="admin-order-details-card">
                   <h2>Shipping</h2>
-                  {Array.isArray(order?.items) && order.items.length > 0 && order.items.every((item) =>
-                    Boolean(
-                      item.isDigital ||
-                      item.webReaderLink ||
-                      item.kindleLink ||
-                      String(item.name || "").toLowerCase().includes("web") ||
-                      String(item.name || "").toLowerCase().includes("kindle") ||
-                      String(item.name || "").toLowerCase().includes("flipbook") ||
-                      String(item.format || "").toLowerCase().includes("web") ||
-                      String(item.format || "").toLowerCase().includes("flipbook")
+                  {Array.isArray(order?.items) && order.items.length > 0 && order.items.every(isDigitalLikeItem) ? (
+                    pendingItems.length > 0 ? (
+                      <div className="admin-order-shipping-digital-pending">
+                        Digital order: waiting for our team to grant access. No physical shipping required.
+                      </div>
+                    ) : (
+                      <div className="admin-order-shipping-digital-granted">
+                        ⚡ Digital Order: Instant online access granted. No physical shipping required.
+                      </div>
                     )
-                  ) ? (
-                    <div style={{ padding: "8px 12px", borderRadius: "6px", backgroundColor: "rgba(37, 99, 235, 0.08)", color: "#2563eb", fontSize: "12.5px", fontWeight: 700 }}>
-                      ⚡ Digital Order: Instant online access granted. No physical shipping required.
-                    </div>
                   ) : (
                     <div className="admin-order-address-block">
                       <strong>{order.shipping?.name || "Customer"}</strong>
@@ -566,6 +649,15 @@ function AdminOrderDetails() {
                 : "Refund processed successfully."
             );
           }}
+        />
+
+        <GrantAccessModal
+          order={order}
+          isOpen={isGrantAccessModalOpen}
+          token={token}
+          onClose={() => setIsGrantAccessModalOpen(false)}
+          onSuccess={(updatedOrder) => setOrder(updatedOrder)}
+          onReload={reloadOrder}
         />
       </main>
     </div>

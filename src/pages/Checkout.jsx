@@ -47,9 +47,9 @@ const getItemHsnSac = (item) => {
   if (item?.hsnSac) return String(item.hsnSac).trim();
   const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
   const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-  
+
   // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital = 
+  const isDigital =
     category.includes("ebook") ||
     category.includes("e-book") ||
     category.includes("kindle") ||
@@ -64,13 +64,13 @@ const getItemHsnSac = (item) => {
     name.includes("flipbook") ||
     name.includes("epub") ||
     name.includes("pdf");
-    
+
   if (isDigital) {
     return "9973"; // Digital products/services (18% GST)
   }
 
   // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook = 
+  const isPrintedBook =
     category.includes("book") ||
     category.includes("sanskrit") ||
     category.includes("gita") ||
@@ -83,7 +83,7 @@ const getItemHsnSac = (item) => {
     name.includes("vol.") ||
     name.includes("hardcover") ||
     name.includes("paperback");
-    
+
   return isPrintedBook ? "4901" : "8523";
 };
 
@@ -181,14 +181,22 @@ function Checkout() {
   const selectedBillingAddress = addresses[selectedBillingIndex];
   const navigate = useNavigate();
 
+  const hasManualAccessItem = useMemo(() => {
+    return cartItems.some((item) => item?.externalAccessManual === true);
+  }, [cartItems]);
+
   const noGift = useDigitalOwnership(cartItems, false);
   const current = useDigitalOwnership(cartItems, isGift);
 
   useEffect(() => {
+    if (hasManualAccessItem) {
+      setIsGift(false);
+      return;
+    }
     if (noGift.blocked && noGift.giftAllowed) {
       setIsGift(true);
     }
-  }, [noGift.blocked, noGift.giftAllowed]);
+  }, [hasManualAccessItem, noGift.blocked, noGift.giftAllowed]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const [charges, setCharges] = useState({
@@ -365,7 +373,7 @@ function Checkout() {
 
       addAddress(payload);
       setShowNewAddressForm(false);
-      
+
       if (addressFormTriggerSource === "billing") {
         setSelectedBillingIndex(addresses.length);
         setIsEditingBillingAddress(false);
@@ -500,48 +508,48 @@ function Checkout() {
     setIsCalculatingTotals(true);
 
     const headers = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-    
+
     axios.post("/api/orders/calculate-totals", {
       items: cartItems,
       shipping: selectedAddress || {},
       couponCode: couponCode || "",
       currencyDisplay: { currency: displayCurrency }
     }, headers)
-    .then((res) => {
-      if (!active) return;
-      setServerTotals(res.data);
-      if (res.data.discount !== undefined) {
-        setDiscount(res.data.discount);
-      }
-    })
-    .catch((err) => {
-      if (!active) return;
-      console.error("Failed to calculate totals:", err);
-      if (couponCode) {
-        axios.post("/api/orders/calculate-totals", {
-          items: cartItems,
-          shipping: selectedAddress || {},
-          currencyDisplay: { currency: displayCurrency }
-        }, headers)
-        .then((resWithoutCoupon) => {
-          if (!active) return;
-          setServerTotals(resWithoutCoupon.data);
-          setDiscount(0);
-          setCouponCode("");
-          setCouponMessage(err?.response?.data?.message || "Invalid coupon removed.");
-        })
-        .catch((fallbackErr) => {
-          if (!active) return;
-          console.error("Fallback calculation failed:", fallbackErr);
-        });
-      } else {
-        setCheckoutMessage(err?.response?.data?.message || "Failed to calculate totals from server.");
-      }
-    })
-    .finally(() => {
-      if (!active) return;
-      setIsCalculatingTotals(false);
-    });
+      .then((res) => {
+        if (!active) return;
+        setServerTotals(res.data);
+        if (res.data.discount !== undefined) {
+          setDiscount(res.data.discount);
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to calculate totals:", err);
+        if (couponCode) {
+          axios.post("/api/orders/calculate-totals", {
+            items: cartItems,
+            shipping: selectedAddress || {},
+            currencyDisplay: { currency: displayCurrency }
+          }, headers)
+            .then((resWithoutCoupon) => {
+              if (!active) return;
+              setServerTotals(resWithoutCoupon.data);
+              setDiscount(0);
+              setCouponCode("");
+              setCouponMessage(err?.response?.data?.message || "Invalid coupon removed.");
+            })
+            .catch((fallbackErr) => {
+              if (!active) return;
+              console.error("Fallback calculation failed:", fallbackErr);
+            });
+        } else {
+          setCheckoutMessage(err?.response?.data?.message || "Failed to calculate totals from server.");
+        }
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsCalculatingTotals(false);
+      });
 
     return () => {
       active = false;
@@ -549,13 +557,20 @@ function Checkout() {
   }, [cartItems, selectedAddress, couponCode, displayCurrency, token]);
 
   const totals = useMemo(() => {
+    const total = Number(serverTotals.total || 0);
+    const deliveryCharge = Number(serverTotals.deliveryCharge || 0);
+    const upgradeCredit = Number(serverTotals.upgradeCredit || 0);
+    const discount = Number(serverTotals.discount || 0);
+    const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
     return {
       subtotal: serverTotals.subtotal,
       gstAmount: serverTotals.gstAmount,
       deliveryCharge: serverTotals.deliveryCharge,
-      grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge)
+      grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge),
+      isInternational: isInternationalCountry(selectedAddress?.country),
+      itemsInclGst
     };
-  }, [serverTotals]);
+  }, [serverTotals, selectedAddress?.country]);
 
   const finalTotal = serverTotals.total;
 
@@ -646,8 +661,8 @@ function Checkout() {
         billing,
         couponCode: couponCode || "",
         discount,
-        isGift,
-        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+        isGift: hasManualAccessItem ? false : isGift,
+        giftRecipientEmail: !hasManualAccessItem && isGift ? String(giftRecipientEmail || "").trim() : "",
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
@@ -690,12 +705,12 @@ function Checkout() {
       return null;
     }
 
-    if (isGift && !giftRecipientEmail.trim()) {
+    if (!hasManualAccessItem && isGift && !giftRecipientEmail.trim()) {
       setCheckoutMessage("Please enter the recipient's email address to purchase as a gift.");
       return null;
     }
 
-    if (isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    if (!hasManualAccessItem && isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
       return null;
     }
@@ -746,7 +761,7 @@ function Checkout() {
           shipping: selected,
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
-          isGift: Boolean(isGift)
+          isGift: hasManualAccessItem ? false : Boolean(isGift)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -1336,54 +1351,55 @@ function Checkout() {
 
           {/* Digital Gift Option */}
           {hasDigitalItemsInCart && (
-            <div className="checkout-gift-card">
-              <label className="checkout-gift-toggle-label">
-                <input
-                  type="checkbox"
-                  checked={isGift}
-                  onChange={(e) => {
-                    if (!(noGift.blocked && noGift.giftAllowed)) {
-                      setIsGift(e.target.checked);
-                    }
-                  }}
-                  disabled={noGift.blocked && noGift.giftAllowed}
-                />
-                <Gift size={18} className="checkout-gift-icon" />
-                <span>Purchase digital items in this order as Gift Passes</span>
-              </label>
+            hasManualAccessItem ? null : (
+              <div className="checkout-gift-card">
+                <label className="checkout-gift-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={isGift}
+                    onChange={(e) => {
+                      if (!(noGift.blocked && noGift.giftAllowed)) {
+                        setIsGift(e.target.checked);
+                      }
+                    }}
+                    disabled={noGift.blocked && noGift.giftAllowed}
+                  />
+                  <Gift size={18} className="checkout-gift-icon" />
+                  <span>Purchase digital items in this order as Gift Passes</span>
+                </label>
 
-              {noGift.blocked && noGift.giftAllowed && (
-                <p className="checkout-gift-warning">
-                  <AlertCircle size={14} />
-                  <span>
-                    You already own {noGift.ownedItems?.length > 0 ? noGift.ownedItems.join(", ") : "digital items in this order"}.
-                    This order will automatically generate Gift Passes so you can share them.
-                  </span>
-                </p>
-              )}
+                {noGift.blocked && noGift.giftAllowed && (
+                  <p className="checkout-gift-warning">
+                    <AlertCircle size={14} />
+                    <span>
+                      You already own {noGift.ownedItems?.length > 0 ? noGift.ownedItems.join(", ") : "digital items in this order"}.
+                      This order will automatically generate Gift Passes so you can share them.
+                    </span>
+                  </p>
+                )}
 
-              {isGift && (
-                <div className="checkout-gift-form">
-                  <p className="checkout-gift-note">
-                    Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
-                  </p>
-                  <label className="checkout-form-label">
-                    <span>Recipient's Email Address (Optional):</span>
-                    <input
-                      type="email"
-                      placeholder="recipient@example.com"
-                      value={giftRecipientEmail}
-                      onChange={(e) => setGiftRecipientEmail(e.target.value)}
-                      className="checkout-form-input"
-                    />
-                  </label>
-                  <p className="checkout-gift-subnote">
-                    We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+                {isGift && (
+                  <div className="checkout-gift-form">
+                    <p className="checkout-gift-note">
+                      Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
+                    </p>
+                    <label className="checkout-form-label">
+                      <span>Recipient's Email Address (Optional):</span>
+                      <input
+                        type="email"
+                        placeholder="recipient@example.com"
+                        value={giftRecipientEmail}
+                        onChange={(e) => setGiftRecipientEmail(e.target.value)}
+                        className="checkout-form-input"
+                      />
+                    </label>
+                    <p className="checkout-gift-subnote">
+                      We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
 
           {/* Available Coupons & Offers in Left Column */}
           {availableCoupons.length > 0 && (
@@ -1558,53 +1574,18 @@ function Checkout() {
           {/* Breakdown Rows */}
           <div className="checkout-summary-breakdown">
             <div className="summary-item">
-              <span>Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
+              <span>Items (incl. GST)</span>
               {isPriceLoading ? (
                 <SkeletonShimmer width={72} height={18} />
               ) : (
-                <strong>{formatCurrencyExact(totals.subtotal, displayCurrency)}</strong>
+                <strong>{formatCurrencyExact(totals.itemsInclGst, displayCurrency)}</strong>
               )}
-            </div>
-            <div className="summary-item">
-              <span>
-                {totals.isInternational
-                  ? "GST (Export 0%)"
-                  : `GST (${charges.gstPercent}% Included)`}
-              </span>
-              {isPriceLoading ? (
-                <SkeletonShimmer width={64} height={18} />
-              ) : (
-                <strong>
-                  {totals.isInternational
-                    ? formatCurrencyExact(0, displayCurrency)
-                    : formatCurrencyExact(totals.gstAmount, displayCurrency)}
-                </strong>
-              )}
-            </div>
-            <div className="summary-item">
-              <span>Delivery</span>
-              <span>
-                {isPriceLoading ? (
-                  <SkeletonShimmer width={56} height={18} />
-                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
-                  <strong className="delivery-free-badge">
-                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
-                  </strong>
-                ) : totals.deliveryCharge === 0 ? (
-                  <strong className="delivery-free-badge">FREE</strong>
-                ) : (
-                  <strong>{formatCurrencyExact(totals.deliveryCharge, displayCurrency)}</strong>
-                )}
-              </span>
             </div>
 
             {serverTotals.upgradeCredit > 0 && (
               <div className="summary-item discount-row">
                 <div style={{ flex: 1, paddingRight: "12px" }}>
                   <span>Taken off for items you already own</span>
-                  <div style={{ fontSize: "11px", color: "var(--site-text-soft, #64748b)", marginTop: "2px" }}>
-                    (already included in the prices above)
-                  </div>
                   {(() => {
                     const mergedDetails = getMergedUpgradeOwnedDetails(serverTotals.upgradeCreditItems);
                     if (!mergedDetails.length) return null;
@@ -1631,7 +1612,7 @@ function Checkout() {
             {discount > 0 && (
               <div className="summary-item discount-row">
                 <div className="summary-discount-label">
-                  <span>Coupon Discount ({couponCode})</span>
+                  <span>Coupon discount ({couponCode})</span>
                   <button
                     type="button"
                     className="summary-discount-remove-link"
@@ -1649,15 +1630,34 @@ function Checkout() {
                 )}
               </div>
             )}
+
+            <div className="summary-item">
+              <span>Delivery</span>
+              <span>
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={56} height={18} />
+                ) : deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
+                  <strong className="delivery-free-badge">
+                    {hasExternalDelivery(cartItems) ? "FREE (Digital delivery)" : "FREE (Instant Access)"}
+                  </strong>
+                ) : totals.deliveryCharge === 0 ? (
+                  <strong className="delivery-free-badge">FREE</strong>
+                ) : (
+                  <strong>{formatCurrencyExact(totals.deliveryCharge, displayCurrency)}</strong>
+                )}
+              </span>
+            </div>
           </div>
 
           {deliveryDetails.pricingMode === "digital" || deliveryDetails.isDigitalOnly ? (
             <div className="checkout-digital-note">
               <Zap size={14} />
               <span>
-                {hasExternalDelivery(cartItems)
-                  ? "Digital order: your access link will appear in My Library after payment."
-                  : "Digital order: Instant access granted upon payment completion."}
+                {hasManualAccessItem
+                  ? "Digital order: our team will set up your access within 24–48 hours and email you when it's ready."
+                  : hasExternalDelivery(cartItems)
+                    ? "Digital order: your access link will appear in My Library after payment."
+                    : "Digital order: Instant access granted upon payment completion."}
               </span>
             </div>
           ) : null}
@@ -1675,8 +1675,16 @@ function Checkout() {
           {/* Grand Total Box */}
           <div className="checkout-summary-grand-total">
             <div className="grand-total-left">
-              <span className="grand-total-label">Final Order Total</span>
-              <span className="grand-total-tax-note">(Inclusive of all taxes)</span>
+              <span className="grand-total-label">Order total (inclusive of all taxes)</span>
+              <span className="grand-total-tax-note">
+                {isPriceLoading ? (
+                  <SkeletonShimmer width={110} height={13} />
+                ) : totals.isInternational ? (
+                  "No GST (export)"
+                ) : (
+                  `Includes GST of ${formatCurrencyExact(serverTotals.gstAmount, displayCurrency)}`
+                )}
+              </span>
             </div>
             {isPriceLoading ? (
               <SkeletonShimmer width={95} height={26} borderRadius={8} />
@@ -1728,12 +1736,12 @@ function Checkout() {
               {isPaying
                 ? "Processing..."
                 : isPriceLoading
-                ? "Calculating Total..."
-                : isIntlPhysicalRestricted
-                ? "Physical Products Restricted"
-                : (noGift.blocked && !noGift.giftAllowed) || current.blocked
-                ? "Purchase Blocked - Already Owned"
-                : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
+                  ? "Calculating Total..."
+                  : isIntlPhysicalRestricted
+                    ? "Physical Products Restricted"
+                    : (noGift.blocked && !noGift.giftAllowed) || current.blocked
+                      ? "Purchase Blocked - Already Owned"
+                      : `Pay ${formatCurrencyExact(finalTotal, displayCurrency)}`}
             </span>
             <ArrowRight size={16} />
           </button>

@@ -7,7 +7,9 @@ const hasDigitalAccess = (o) =>
   o.refundStatus !== "Refunded";
 
 const hasItemDigitalAccess = (o, it) =>
-  hasDigitalAccess(o) && it?.returnRequest?.status !== "Refunded";
+  hasDigitalAccess(o) &&
+  it?.returnRequest?.status !== "Refunded" &&
+  (!it?.accessManual || !!it?.accessGrantedAt);
 
 function stripDigitalFields(item) {
   if (!item || typeof item !== "object") return item;
@@ -33,6 +35,23 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
   const isViewerBuyer = viewerUserId && String(plain.user?._id || plain.user) === String(viewerUserId);
   const isRedeemedRecipient = Boolean(plain.isRedeemedGift) || Boolean(viewerUserId && !isViewerBuyer);
 
+  const mapItem = (it, allowed) => {
+    const isGranted = Boolean(it?.accessGrantedAt);
+    const isPending = Boolean(it?.accessManual && !isGranted);
+    const base = allowed
+      ? { ...it, digitalAccess: true }
+      : { ...stripDigitalFields(it), digitalAccess: false };
+
+    base.accessPending = isPending;
+    base.accessGrantedAt = it?.accessGrantedAt || null;
+    if (isGranted) {
+      base.accessNote = String(it?.accessNote || "");
+    } else {
+      delete base.accessNote;
+    }
+    return base;
+  };
+
   if (isRedeemedRecipient) {
     // Recipient should ONLY see the items they redeemed or digital access info, NOT buyer's sensitive billing/shipping info
     delete plain.billing;
@@ -50,17 +69,13 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
       const pId = String(it.product || it._id || it.id || "");
       const isRedeemedByViewer = redeemedSet ? redeemedSet.has(pId) : Boolean(plain.isRedeemedGift);
       const allowed = isRedeemedByViewer && hasItemDigitalAccess(plain, it);
-      return allowed
-        ? { ...it, digitalAccess: true }
-        : { ...stripDigitalFields(it), digitalAccess: false };
+      return mapItem(it, allowed);
     });
   } else {
     plain.items = (plain.items || []).map((it) => {
       // For the buyer, if an item is a gift, digital links are stripped because the gift pass is for the recipient
       const allowed = !(isGiftOrder || it?.giftCode) && hasItemDigitalAccess(plain, it);
-      return allowed
-        ? { ...it, digitalAccess: true }
-        : { ...stripDigitalFields(it), digitalAccess: false };
+      return mapItem(it, allowed);
     });
   }
 

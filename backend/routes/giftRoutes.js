@@ -33,9 +33,20 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       return res.status(400).json({ message: "Please enter a Gift Pass Code." });
     }
 
+    if (req.body?.isGift === true) {
+      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    }
+
     const existingPass = await GiftPass.findOne({ code: rawCode });
     if (!existingPass) {
       return res.status(404).json({ message: "Invalid Gift Pass Code. Please double check the code." });
+    }
+
+    if (existingPass.order) {
+      const parentOrder = await Order.findById(existingPass.order).select("isGift items").lean();
+      if ((parentOrder?.isGift || req.body?.isGift) && (parentOrder?.items || []).some((it) => it.accessManual)) {
+        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+      }
     }
 
     if (existingPass.isRedeemed) {

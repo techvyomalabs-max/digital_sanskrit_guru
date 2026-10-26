@@ -8,6 +8,12 @@ const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit")
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 const { normalizeCountryName } = require("../utils/deliveryPricing");
 const { validateBusinessDetails, normalizeGstin } = require("../utils/gstin");
+const {
+  normalizeDigitalFormatTypes,
+  canSaveProductSettings,
+  DEFAULT_DIGITAL_FORMAT_TYPES,
+  PRODUCT_SETTINGS_KEYS
+} = require("../utils/digitalFormatTypes");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -309,6 +315,13 @@ function normalizeSettings(settings) {
   const VALID_ANIM_INTENSITIES = ["subtle", "medium", "heavy"];
   const rawAnimIntensity = String(settings?.festiveAnimation?.intensity || "subtle");
 
+  let digitalFormatTypes;
+  try {
+    digitalFormatTypes = normalizeDigitalFormatTypes(settings?.digitalFormatTypes || [], { autoAddBuiltIns: true });
+  } catch {
+    digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
+  }
+
   return {
     businessDetails: normalizeBusinessDetails(settings?.businessDetails || {}),
     enableCurrentLocation: settings?.enableCurrentLocation !== false,
@@ -323,6 +336,7 @@ function normalizeSettings(settings) {
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
+    digitalFormatTypes,
     heroBannerImage: heroBanners[0]?.image || "",
     heroBannerProductId: heroBanners[0]?.productId || "",
     heroBanners,
@@ -488,6 +502,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
+  if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
   if (JSON.stringify(previousSettings?.heroBanners || []) !== JSON.stringify(nextSettings?.heroBanners || [])) changes.push("hero banners");
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
@@ -577,7 +592,7 @@ router.put("/", protect, admin, (req, res, next) => {
   if (bodyKeys.length > 0 && bodyKeys.every(k => THEME_KEYS.has(k)) && pages.includes("theme")) {
     return next();
   }
-  if (bodyKeys.length > 0 && bodyKeys.every(k => k === "productCategories") && (pages.includes("products") || pages.includes("add-products"))) {
+  if (canSaveProductSettings(bodyKeys, pages)) {
     return next();
   }
   return res.status(403).json({ message: "Access denied. Insufficient permissions to update settings." });
@@ -590,6 +605,7 @@ router.put("/", protect, admin, (req, res, next) => {
   const hasSiteTheme = Boolean(String(req.body?.siteTheme || "").trim());
   const hasCustomThemes = Array.isArray(req.body?.customThemes);
   const hasProductCategories = Array.isArray(req.body?.productCategories);
+  const hasDigitalFormatTypes = Array.isArray(req.body?.digitalFormatTypes);
   const hasWarehouseLocation = Boolean(req.body?.warehouseLocation && typeof req.body.warehouseLocation === "object");
   const hasDistancePricing = Boolean(req.body?.distancePricing && typeof req.body.distancePricing === "object");
   const hasInternationalDelivery = Boolean(
@@ -658,6 +674,20 @@ router.put("/", protect, admin, (req, res, next) => {
   const productCategories = hasProductCategories
     ? normalizeProductCategories(req.body?.productCategories)
     : normalizeProductCategories(settings.productCategories || []);
+  let digitalFormatTypes;
+  if (hasDigitalFormatTypes) {
+    try {
+      digitalFormatTypes = normalizeDigitalFormatTypes(req.body?.digitalFormatTypes);
+    } catch (err) {
+      return res.status(400).json({ message: err.message });
+    }
+  } else {
+    try {
+      digitalFormatTypes = normalizeDigitalFormatTypes(settings.digitalFormatTypes || [], { autoAddBuiltIns: true });
+    } catch {
+      digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
+    }
+  }
   const hasSponsors = Array.isArray(req.body?.sponsors);
   const sponsors = hasSponsors
     ? normalizeSponsors(req.body?.sponsors)
@@ -778,6 +808,7 @@ router.put("/", protect, admin, (req, res, next) => {
   settings.currencyConversionRates = currencyConversionRates;
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
+  settings.digitalFormatTypes = digitalFormatTypes;
   settings.sponsors = sponsors;
   const nextHeroBanners = hasHeroBanners
     ? normalizeHeroBanners(req.body?.heroBanners || [])
@@ -899,5 +930,7 @@ router.put("/", protect, admin, (req, res, next) => {
   // Settings change may affect pricing/home data — flush all relevant caches
   invalidateProductCache();
 });
+
+router.normalizeSettings = normalizeSettings;
 
 module.exports = router;
