@@ -720,7 +720,24 @@ router.get("/", async (req, res) => {
     };
     const festiveOffersFilterEnabled = settings?.collectionFilterVisibility?.festiveOffers !== false;
 
-    const regularCategories = [...new Set(baseProducts.map((product) => getCategoryLabel(product)))];
+    const configuredCategories = Array.isArray(settings?.productCategories) ? settings.productCategories : [];
+    const configuredCategoryMap = new Map();
+    for (const category of configuredCategories) {
+      const trimmed = String(category || "").trim();
+      const key = trimmed.toLowerCase();
+      if (trimmed && !configuredCategoryMap.has(key)) {
+        configuredCategoryMap.set(key, trimmed);
+      }
+    }
+    const regularCategoryMap = new Map();
+    for (const product of baseProducts) {
+      const label = getCategoryLabel(product);
+      const key = label.toLowerCase();
+      if (!regularCategoryMap.has(key)) {
+        regularCategoryMap.set(key, configuredCategoryMap.get(key) || label);
+      }
+    }
+    const regularCategories = [...regularCategoryMap.values()];
     const categories = [
       "All",
       ...(festiveOffersFilterEnabled && baseProducts.some((product) => isFestiveOfferProduct(product)) ? ["Festive Offer"] : []),
