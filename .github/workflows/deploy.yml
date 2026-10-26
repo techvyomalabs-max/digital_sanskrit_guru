@@ -26,8 +26,9 @@ jobs:
             
             # Pull latest changes from main branch
             echo "📥 Pulling latest changes from git..."
+            git fetch origin main
             git checkout main
-            git pull origin main
+            git reset --hard origin/main
             
             # Install dependencies and build React frontend
             echo "📦 Installing root & frontend dependencies..."
