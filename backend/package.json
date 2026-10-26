@@ -9,6 +9,8 @@
     "test": "node --test \"tests/**/*.test.js\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-presigned-post": "^3.1156.0",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "compression": "^1.7.4",
