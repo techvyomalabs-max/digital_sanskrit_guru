@@ -311,6 +311,18 @@ function isDigitalOnlyBundle(product) {
   });
 }
 
+function isManualAccessProduct(product) {
+  if (!product) return false;
+  if (product.externalAccessManual === true && isExternalDelivery(product)) return true;
+  const bundleItems = Array.isArray(product.bundleItems) ? product.bundleItems : [];
+  return bundleItems.some((bi) => {
+    const bp = bi?.product && typeof bi.product === "object" ? bi.product : null;
+    const manual = bp?.externalAccessManual === true || bi?.externalAccessManual === true;
+    const delivery = bp?.digitalDelivery || bi?.digitalDelivery;
+    return manual && delivery === "external";
+  });
+}
+
 function Product() {
   const { id } = useParams();
   const location = useLocation();
@@ -1293,15 +1305,15 @@ function Product() {
             </p>
             {/* <p className="delivery">Fast Delivery</p> */}
             <p className="buy-box-note">
-              {isExternalDelivery(product)
-                ? (product.externalAccessManual === true
-                  ? "Delivered via another website. After you pay, our team will set up your access and email you when it's ready. You'll then find your link in My Digital Library."
-                  : "Delivered via another website. After purchase, find your link in My Digital Library.")
-                : isKindleBook
-                  ? "Kindle edition: sold and delivered by Amazon Kindle."
-                  : (product.isDigital === true || isDigitalOnlyBundle(product))
-                    ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
-                    : "Delivery available at your selected location."}
+              {isManualAccessProduct(product)
+                ? "After you pay, our team will set up your access and email you when it's ready. You'll then find it in My Digital Library."
+                : isExternalDelivery(product)
+                  ? "Delivered via another website. After purchase, find your link in My Digital Library."
+                  : isKindleBook
+                    ? "Kindle edition: sold and delivered by Amazon Kindle."
+                    : (product.isDigital === true || isDigitalOnlyBundle(product))
+                      ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
+                      : "Delivery available at your selected location."}
             </p>
 
             {isKindleBook ? (
@@ -1414,11 +1426,11 @@ function Product() {
                 ) : isDigitalItem(product) ? (
                   <div className="product-digital-badge-wrap">
                     <p className="product-digital-badge-pill">
-                      {isExternalDelivery(product)
-                        ? (product.externalAccessManual === true
-                          ? "🌐 Access will be provided within 24–48 hours of purchase"
-                          : "🌐 External Digital Access")
-                        : "💻 Web Version – Available for one-time purchase only."}
+                      {isManualAccessProduct(product)
+                        ? "🌐 Access will be provided within 24–48 hours of purchase"
+                        : isExternalDelivery(product)
+                          ? "🌐 External Digital Access"
+                          : "💻 Web Version – Available for one-time purchase only."}
                     </p>
                   </div>
                 ) : (
