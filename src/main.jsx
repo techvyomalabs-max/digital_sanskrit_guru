@@ -25,6 +25,9 @@ import { DialogProvider } from "./context/DialogContext";
 import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
 import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
 import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
+import { captureAttribution } from "./utils/attribution";
+
+captureAttribution();
 
 const target =
   legacyHashToPath(window.location.hash, window.location.search) ||

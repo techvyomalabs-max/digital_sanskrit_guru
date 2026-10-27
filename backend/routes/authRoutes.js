@@ -18,6 +18,7 @@ const { sendPasswordResetEmail } = require("../utils/passwordReset");
 const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 const { parseReportRange, idRangeForDates, summarizeSignupRows } = require("../utils/signupReport");
+const { sanitizeAttribution } = require("../utils/attribution");
 
 const router = express.Router();
 
@@ -407,8 +408,26 @@ router.post("/register", registerLimiter, honeypotMiddleware, turnstileMiddlewar
       return res.status(400).json({ message: "An account with this email already exists." });
     }
 
+    let acquisition = null;
+    try {
+      if (req.body?.attribution) {
+        acquisition = sanitizeAttribution(req.body.attribution);
+      }
+    } catch {
+      // Swallowed - analytics must never block registration
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, password: hashedPassword, phone: cleanPhone || phone });
+    const userData = {
+      name,
+      email,
+      password: hashedPassword,
+      phone: cleanPhone || phone
+    };
+    if (acquisition) {
+      userData.acquisition = acquisition;
+    }
+    const user = await User.create(userData);
 
     const token = jwt.sign(
       { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
@@ -462,6 +481,10 @@ router.post("/login", authLimiter, honeypotMiddleware, turnstileMiddleware, asyn
     }
 
     if (user && await bcrypt.compare(password, user.password)) {
+      User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } }).catch((err) => {
+        console.error("[Auth] Failed to update lastLoginAt on login:", err?.message);
+      });
+
       const token = jwt.sign(
         { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },
         process.env.JWT_SECRET,
@@ -728,7 +751,7 @@ router.get("/admin/security-logs", protect, admin, requireSuperAdmin, async (req
       // 1. Try standard JSON parse
       try {
         return JSON.parse(line);
-      } catch (e) {}
+      } catch (e) { }
 
       // 2. Parse text log format: [ISO_DATE] IP=xxx PATH=xxx THREAT=xxx DETAILS={...}
       const match = line.match(/^\[(.*?)\]\s+IP=(.*?)\s+PATH=(.*?)\s+THREAT=(.*?)\s+DETAILS=(.*)$/);
@@ -1232,7 +1255,7 @@ router.post("/google", async (req, res) => {
 
       const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
       const googleRes = await axios.get(tokenInfoUrl, { timeout: 5000 });
-      
+
       const payload = googleRes.data;
       if (!payload || !payload.email) {
         return res.status(400).json({ message: "Invalid Google token payload." });
@@ -1279,16 +1302,33 @@ router.post("/google", async (req, res) => {
         await user.save();
       }
     } else {
+      let acquisition = null;
+      try {
+        if (req.body?.attribution) {
+          acquisition = sanitizeAttribution(req.body.attribution);
+        }
+      } catch {
+        // Swallowed - analytics must never block Google sign-in
+      }
+
       const randomPassword = crypto.randomBytes(32).toString("hex");
       const hashedPassword = await bcrypt.hash(randomPassword, 12);
-      user = await User.create({
+      const newUserData = {
         name,
         email,
         password: hashedPassword,
         googleSub: googleSub || undefined,
         hasLocalPassword: false
-      });
+      };
+      if (acquisition) {
+        newUserData.acquisition = acquisition;
+      }
+      user = await User.create(newUserData);
     }
+
+    User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } }).catch((err) => {
+      console.error("[Auth] Failed to update lastLoginAt on Google login:", err?.message);
+    });
 
     const token = jwt.sign(
       { id: user._id, tokenVersion: Number(user.tokenVersion || 0) },

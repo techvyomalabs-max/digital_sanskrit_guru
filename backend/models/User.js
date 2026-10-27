@@ -107,6 +107,21 @@ const userSchema = mongoose.Schema({
     type: Date,
     default: null
   },
+  lastLoginAt: {
+    type: Date,
+    default: null
+  },
+  acquisition: {
+    _id: false,
+    source: { type: String, maxlength: 100 },
+    medium: { type: String, maxlength: 100 },
+    campaign: { type: String, maxlength: 150 },
+    term: { type: String, maxlength: 150 },
+    content: { type: String, maxlength: 150 },
+    referrerHost: { type: String, maxlength: 255 },
+    landingPath: { type: String, maxlength: 255 },
+    firstSeenAt: { type: Date }
+  },
   totalTimeSpentSec: {
     type: Number,
     default: 0
