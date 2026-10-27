@@ -47,3 +47,187 @@ background:#e2e8f0;
 border-color:#cbd5e1;
 color:#334155;
 }
+
+body.admin-dark .users-status.active{
+background:rgba(34, 197, 94, 0.2);
+border-color:rgba(34, 197, 94, 0.4);
+color:#86efac;
+}
+
+body.admin-dark .users-status.idle{
+background:rgba(148, 163, 184, 0.15);
+border-color:rgba(148, 163, 184, 0.3);
+color:#cbd5e1;
+}
+
+/* Signups by source section */
+.signups-card {
+  margin-bottom: 24px;
+}
+
+.signups-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.signups-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.signups-title-wrap h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--admin-text);
+}
+
+.signups-totals {
+  font-size: 13.5px;
+  color: var(--admin-muted);
+}
+
+.signups-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.signups-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.signups-preset-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.signups-preset-btn:hover {
+  background: var(--admin-surface-2);
+}
+
+.signups-preset-btn.active {
+  background: var(--admin-primary);
+  color: #ffffff;
+  border-color: var(--admin-primary);
+}
+
+.signups-custom-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--admin-text);
+}
+
+.signups-date-input {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 13px;
+}
+
+.signups-apply-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--admin-primary);
+  background: var(--admin-primary);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.signups-apply-btn:hover {
+  background: var(--admin-primary-2);
+}
+
+.signups-row-not-tracked {
+  color: var(--admin-muted);
+}
+
+.signups-hint {
+  font-size: 11px;
+  color: var(--admin-muted);
+  margin-top: 2px;
+}
+
+.signups-empty {
+  margin: 16px 0;
+  color: var(--admin-muted);
+  font-size: 14px;
+}
+
+/* body.admin-dark overrides */
+body.admin-dark .signups-title-wrap h3 {
+  color: var(--admin-text);
+}
+
+body.admin-dark .signups-totals {
+  color: var(--admin-muted);
+}
+
+body.admin-dark .signups-preset-btn {
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+}
+
+body.admin-dark .signups-preset-btn:hover {
+  background: var(--admin-surface-2);
+}
+
+body.admin-dark .signups-preset-btn.active {
+  background: var(--admin-primary);
+  color: #ffffff;
+  border-color: var(--admin-primary);
+}
+
+body.admin-dark .signups-custom-form {
+  color: var(--admin-text);
+}
+
+body.admin-dark .signups-date-input {
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+}
+
+body.admin-dark .signups-apply-btn {
+  background: var(--admin-primary);
+  border-color: var(--admin-primary);
+  color: #ffffff;
+}
+
+body.admin-dark .signups-apply-btn:hover {
+  background: var(--admin-primary-2);
+}
+
+body.admin-dark .signups-row-not-tracked {
+  color: var(--admin-muted);
+}
+
+body.admin-dark .signups-hint {
+  color: var(--admin-muted);
+}
+
+body.admin-dark .signups-empty {
+  color: var(--admin-muted);
+}
