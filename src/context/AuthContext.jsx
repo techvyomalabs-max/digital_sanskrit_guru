@@ -1,6 +1,7 @@
 import { createContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { getAttribution, clearAttribution } from "../utils/attribution";
+import { trackSignUp } from "../utils/analytics";
 
 const AuthContext = createContext();
 
@@ -244,6 +245,7 @@ export function AuthProvider({ children }) {
     setToken(res.data.token);
     setRememberMe(nextRememberMe);
     persistAuth({ token: res.data.token, user: nextUser, rememberMe: nextRememberMe });
+    trackSignUp("email");
   };
 
   const login = async (email, password, nextRememberMe = false, extra = {}) => {
@@ -275,6 +277,9 @@ export function AuthProvider({ children }) {
     setToken(res.data.token);
     setRememberMe(nextRememberMe);
     persistAuth({ token: res.data.token, user: nextUser, rememberMe: nextRememberMe });
+    if (res.data?.isNewUser === true) {
+      trackSignUp("google");
+    }
   };
 
   const logout = () => {
