@@ -1287,6 +1287,7 @@ router.post("/google", async (req, res) => {
     }
 
     let user = await User.findOne({ email });
+    let isNewUser = false;
     if (user) {
       if (user.isDeleted || user.isBlocked) {
         return res.status(403).json({ message: "This account is deactivated or blocked." });
@@ -1302,6 +1303,7 @@ router.post("/google", async (req, res) => {
         await user.save();
       }
     } else {
+      isNewUser = true;
       let acquisition = null;
       try {
         if (req.body?.attribution) {
@@ -1342,7 +1344,8 @@ router.post("/google", async (req, res) => {
       email: user.email,
       phone: user.phone || "",
       isAdmin: Boolean(user.isAdmin),
-      token
+      token,
+      isNewUser
     });
   } catch (err) {
     console.error("[Auth] Google sign-in validation error:", err?.response?.data || err.message);
