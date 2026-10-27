@@ -28,6 +28,7 @@ import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 import { useToast } from "../../hooks/useToast";
+import { scoreProduct, getSearchSuggestion } from "../../utils/searchText";
 import "./Navbar.css";
 
 const DEFAULT_COLLECTION_CATEGORIES = [
@@ -68,6 +69,11 @@ function Navbar({ bannerActive = false }) {
 
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef(null);
+  const searchContainerRef = useRef(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const hasLoadedCatalog = useRef(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState(null);
@@ -277,8 +283,84 @@ function Navbar({ bannerActive = false }) {
     setSearchQuery("");
   }, []);
 
+  const loadCatalog = useCallback(() => {
+    if (hasLoadedCatalog.current || isAdminRoute) return;
+    hasLoadedCatalog.current = true;
+    axios
+      .get("/api/products")
+      .then((res) => {
+        if (Array.isArray(res.data)) {
+          setCatalogProducts(res.data);
+        }
+      })
+      .catch(() => {});
+  }, [isAdminRoute]);
+
+  const handleSearchFocus = () => {
+    setIsSearchFocused(true);
+    loadCatalog();
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const { liveMatches, totalMatchedCount, liveSuggestion } = useMemo(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
+      return { liveMatches: [], totalMatchedCount: 0, liveSuggestion: null };
+    }
+
+    const scored = [];
+    for (const p of catalogProducts) {
+      const score = scoreProduct(p, trimmed);
+      if (score > 0) {
+        scored.push({ ...p, _score: score });
+      }
+    }
+
+    scored.sort((a, b) => (b._score || 0) - (a._score || 0));
+
+    const suggestion = getSearchSuggestion(trimmed, catalogProducts);
+
+    return {
+      liveMatches: scored.slice(0, 5),
+      totalMatchedCount: scored.length,
+      liveSuggestion: suggestion
+    };
+  }, [searchQuery, catalogProducts]);
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (liveMatches.length > 0) {
+        setActiveSuggestionIndex((prev) => (prev + 1) % liveMatches.length);
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (liveMatches.length > 0) {
+        setActiveSuggestionIndex((prev) => (prev <= 0 ? liveMatches.length - 1 : prev - 1));
+      }
+    } else if (e.key === "Escape") {
+      setIsSearchFocused(false);
+      setActiveSuggestionIndex(-1);
+    }
+  };
+
   const handleSearchSubmit = (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
+    setIsSearchFocused(false);
+    if (activeSuggestionIndex >= 0 && liveMatches[activeSuggestionIndex]) {
+      navigate(`/product/${liveMatches[activeSuggestionIndex]._id}`);
+      setActiveSuggestionIndex(-1);
+      return;
+    }
     const query = searchQuery.trim();
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
@@ -440,39 +522,129 @@ function Navbar({ bannerActive = false }) {
                 </span>
               </button>
 
-              <form className="navbar-search-wrap" onSubmit={handleSearchSubmit}>
-                <input
-                  ref={searchInputRef}
-                  className="navbar-search"
-                  placeholder="Search products, courses, and topics"
-                  aria-label="Search products, courses, and topics"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    className="navbar-search-clear-btn"
-                    aria-label="Clear search"
-                    title="Clear search"
-                    onClick={() => {
-                      setSearchQuery("");
-                      if (location.pathname === "/search") {
-                        navigate("/collection");
-                      } else if (searchInputRef.current) {
-                        searchInputRef.current.focus();
-                      }
+              <div className="navbar-search-outer" ref={searchContainerRef}>
+                <form className="navbar-search-wrap" onSubmit={handleSearchSubmit}>
+                  <input
+                    ref={searchInputRef}
+                    className="navbar-search"
+                    placeholder="Search products, courses, and topics"
+                    aria-label="Search products, courses, and topics"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (!hasLoadedCatalog.current) loadCatalog();
+                      setIsSearchFocused(true);
+                      setActiveSuggestionIndex(-1);
                     }}
-                  >
-                    <X size={16} />
+                    onFocus={handleSearchFocus}
+                    onKeyDown={handleSearchKeyDown}
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      className="navbar-search-clear-btn"
+                      aria-label="Clear search"
+                      title="Clear search"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setIsSearchFocused(false);
+                        if (location.pathname === "/search") {
+                          navigate("/collection");
+                        } else if (searchInputRef.current) {
+                          searchInputRef.current.focus();
+                        }
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  ) : null}
+                  <button type="submit" className="navbar-search-btn" aria-label="Search">
+                    <span className="navbar-search-btn-icon" aria-hidden="true">
+                      {renderIcon("search", storeIcons.search)}
+                    </span>
                   </button>
-                ) : null}
-                <button type="submit" className="navbar-search-btn" aria-label="Search">
-                  <span className="navbar-search-btn-icon" aria-hidden="true">
-                    {renderIcon("search", storeIcons.search)}
-                  </span>
-                </button>
-              </form>
+                </form>
+
+                {isSearchFocused && searchQuery.trim().length >= 2 && (
+                  <div className="navbar-search-dropdown" role="listbox">
+                    {liveSuggestion && (
+                      <div className="navbar-search-dropdown-suggestion">
+                        <span className="navbar-search-suggestion-badge">Did you mean:</span>
+                        <button
+                          type="button"
+                          className="navbar-search-suggestion-btn"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSearchQuery(liveSuggestion);
+                            navigate(`/search?q=${encodeURIComponent(liveSuggestion)}`);
+                            setIsSearchFocused(false);
+                          }}
+                        >
+                          {liveSuggestion}
+                        </button>
+                      </div>
+                    )}
+
+                    {liveMatches.length > 0 ? (
+                      <div className="navbar-search-dropdown-results">
+                        {liveMatches.map((product, idx) => (
+                          <div
+                            key={product._id}
+                            role="option"
+                            aria-selected={activeSuggestionIndex === idx}
+                            className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
+                            onMouseDown={() => {
+                              navigate(`/product/${product._id}`);
+                              setIsSearchFocused(false);
+                            }}
+                          >
+                            <div className="navbar-search-item-thumb">
+                              {product.image ? (
+                                <img src={product.image} alt={product.name} />
+                              ) : (
+                                <span className="navbar-search-item-placeholder" aria-hidden="true">📖</span>
+                              )}
+                            </div>
+                            <div className="navbar-search-item-info">
+                              <span className="navbar-search-item-title">{product.name}</span>
+                              <div className="navbar-search-item-meta">
+                                <span className="navbar-search-item-cat">{product.category || "General"}</span>
+                                {product.price !== undefined && (
+                                  <span className="navbar-search-item-price">₹{product.price}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div
+                          className="navbar-search-dropdown-footer"
+                          onMouseDown={() => {
+                            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                            setIsSearchFocused(false);
+                          }}
+                        >
+                          <span>View all {totalMatchedCount} results for &ldquo;{searchQuery}&rdquo;</span>
+                          <ChevronRight size={14} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="navbar-search-dropdown-empty">
+                        <p>No matching products found</p>
+                        <button
+                          type="button"
+                          className="navbar-search-empty-btn"
+                          onMouseDown={() => {
+                            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                            setIsSearchFocused(false);
+                          }}
+                        >
+                          Search catalog for &ldquo;{searchQuery}&rdquo; &rarr;
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="navbar-right">
                 {user ? (
