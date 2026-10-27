@@ -5,7 +5,7 @@ import ProductCard from "../components/ProductCard";
 import "./Home.css";
 import "./SearchResults.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
-import { scoreProduct } from "../utils/searchText";
+import { scoreProduct, getSearchSuggestion } from "../utils/searchText";
 
 const VALID_SORT_OPTIONS = ["relevance", "latest", "rating", "priceLow", "priceHigh"];
 
@@ -93,6 +93,11 @@ function SearchResults() {
     }
     return results;
   }, [products, query]);
+
+  const suggestion = useMemo(() => {
+    if (!query || isLoadingProducts || products.length === 0) return null;
+    return getSearchSuggestion(query, products);
+  }, [query, products, isLoadingProducts]);
 
   const { categories, categoryCounts, matchedCategories } = useMemo(() => {
     const counts = {};
@@ -200,6 +205,30 @@ function SearchResults() {
             )}
           </div>
         </div>
+
+        {suggestion && (
+          <div className="search-results-suggestion-banner" role="alert">
+            <span className="search-results-suggestion-icon" aria-hidden="true">💡</span>
+            <span className="search-results-suggestion-text">
+              Did you mean:{" "}
+              <button
+                type="button"
+                className="search-results-suggestion-link"
+                onClick={() => {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set("q", suggestion);
+                  setSearchParams(nextParams);
+                }}
+              >
+                {suggestion}
+              </button>
+              ?
+            </span>
+            <span className="search-results-suggestion-note">
+              (Showing matching and typo-tolerant results for &ldquo;{query}&rdquo;)
+            </span>
+          </div>
+        )}
 
         {query && (
           <div className="search-results-layout">
