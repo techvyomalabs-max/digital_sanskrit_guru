@@ -17,6 +17,33 @@ function formatTimeSpent(totalSec) {
   return `${s}s`;
 }
 
+function getISTDateString(d = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(d);
+}
+
+function getPresetRange(preset) {
+  const todayStr = getISTDateString();
+  const todayDate = new Date(`${todayStr}T00:00:00+05:30`);
+  if (preset === "7d") {
+    const fromDate = new Date(todayDate.getTime() - 6 * 24 * 60 * 60 * 1000);
+    return { from: getISTDateString(fromDate), to: todayStr };
+  }
+  if (preset === "30d") {
+    const fromDate = new Date(todayDate.getTime() - 29 * 24 * 60 * 60 * 1000);
+    return { from: getISTDateString(fromDate), to: todayStr };
+  }
+  if (preset === "month") {
+    const ym = todayStr.slice(0, 7);
+    return { from: `${ym}-01`, to: todayStr };
+  }
+  return null;
+}
+
 function AdminUsers() {
   const { token, user } = useAuth();
   const { confirm, alert } = useDialog();
@@ -35,6 +62,69 @@ function AdminUsers() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+
+  const [reportPreset, setReportPreset] = useState("30d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [signupsData, setSignupsData] = useState({
+    from: "",
+    to: "",
+    totalSignups: 0,
+    trackedSignups: 0,
+    rows: []
+  });
+  const [signupsLoading, setSignupsLoading] = useState(true);
+  const [signupsError, setSignupsError] = useState("");
+
+  const fetchSignupsReport = useCallback(async (from, to) => {
+    setSignupsLoading(true);
+    setSignupsError("");
+    try {
+      const params = new URLSearchParams();
+      if (from) params.set("from", from);
+      if (to) params.set("to", to);
+      const res = await axios.get(`/api/auth/admin/signups-by-source?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSignupsData({
+        from: res.data?.from || from || "",
+        to: res.data?.to || to || "",
+        totalSignups: Number(res.data?.totalSignups || 0),
+        trackedSignups: Number(res.data?.trackedSignups || 0),
+        rows: Array.isArray(res.data?.rows) ? res.data.rows : []
+      });
+      if (res.data?.from && res.data?.to) {
+        setCustomFrom(res.data.from);
+        setCustomTo(res.data.to);
+      }
+    } catch (err) {
+      setSignupsError(err.response?.data?.message || "Failed to load signups by source report.");
+    } finally {
+      setSignupsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const preset = getPresetRange("30d");
+    if (preset) {
+      setCustomFrom(preset.from);
+      setCustomTo(preset.to);
+      fetchSignupsReport(preset.from, preset.to);
+    }
+  }, [fetchSignupsReport]);
+
+  const displaySignupRows = useMemo(() => {
+    const tracked = [];
+    const untracked = [];
+    for (const r of signupsData.rows) {
+      if (r.source === "Not tracked") {
+        untracked.push(r);
+      } else {
+        tracked.push(r);
+      }
+    }
+    return [...tracked, ...untracked];
+  }, [signupsData.rows]);
 
   const fetchMetrics = useCallback(async (targetPage = page) => {
     try {
@@ -142,6 +232,156 @@ function AdminUsers() {
           </div>
         </section>
 
+        <section className="card signups-card">
+          <div className="signups-header">
+            <div className="signups-title-wrap">
+              <h3 style={{ margin: 0 }}>Signups by source</h3>
+              <span className="signups-totals">
+                {signupsData.totalSignups} signups, {signupsData.trackedSignups} tracked
+              </span>
+            </div>
+
+            <div className="signups-controls">
+              <div className="signups-presets">
+                <button
+                  type="button"
+                  className={`signups-preset-btn ${reportPreset === "7d" ? "active" : ""}`}
+                  onClick={() => {
+                    setReportPreset("7d");
+                    const r = getPresetRange("7d");
+                    if (r) {
+                      setCustomFrom(r.from);
+                      setCustomTo(r.to);
+                      fetchSignupsReport(r.from, r.to);
+                    }
+                  }}
+                >
+                  Last 7 days
+                </button>
+                <button
+                  type="button"
+                  className={`signups-preset-btn ${reportPreset === "30d" ? "active" : ""}`}
+                  onClick={() => {
+                    setReportPreset("30d");
+                    const r = getPresetRange("30d");
+                    if (r) {
+                      setCustomFrom(r.from);
+                      setCustomTo(r.to);
+                      fetchSignupsReport(r.from, r.to);
+                    }
+                  }}
+                >
+                  Last 30 days
+                </button>
+                <button
+                  type="button"
+                  className={`signups-preset-btn ${reportPreset === "month" ? "active" : ""}`}
+                  onClick={() => {
+                    setReportPreset("month");
+                    const r = getPresetRange("month");
+                    if (r) {
+                      setCustomFrom(r.from);
+                      setCustomTo(r.to);
+                      fetchSignupsReport(r.from, r.to);
+                    }
+                  }}
+                >
+                  This month
+                </button>
+                <button
+                  type="button"
+                  className={`signups-preset-btn ${reportPreset === "custom" ? "active" : ""}`}
+                  onClick={() => setReportPreset("custom")}
+                >
+                  Custom from/to
+                </button>
+              </div>
+
+              {reportPreset === "custom" && (
+                <form
+                  className="signups-custom-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (customFrom && customTo) {
+                      fetchSignupsReport(customFrom, customTo);
+                    }
+                  }}
+                >
+                  <label htmlFor="signups-from-input">From:</label>
+                  <input
+                    id="signups-from-input"
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    className="signups-date-input"
+                  />
+                  <label htmlFor="signups-to-input">To:</label>
+                  <input
+                    id="signups-to-input"
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    className="signups-date-input"
+                  />
+                  <button type="submit" className="signups-apply-btn">
+                    Apply
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {signupsLoading ? (
+            <p>Loading signups by source...</p>
+          ) : signupsError ? (
+            <p className="pricing-message error">{signupsError}</p>
+          ) : displaySignupRows.length === 0 ? (
+            <p className="signups-empty">No signups in this period</p>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Medium</th>
+                    <th>Campaign</th>
+                    <th>Signups</th>
+                    <th>Share</th>
+                    <th>Buyers</th>
+                    <th>Revenue (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displaySignupRows.map((row, idx) => {
+                    const isNotTracked = row.source === "Not tracked";
+                    return (
+                      <tr
+                        key={`${row.source}-${row.medium}-${row.campaign}-${idx}`}
+                        className={isNotTracked ? "signups-row-not-tracked" : ""}
+                      >
+                        <td>
+                          <div>{row.source}</div>
+                          {isNotTracked && (
+                            <div className="signups-hint">
+                              Signed up before tracking started or storage was blocked
+                            </div>
+                          )}
+                        </td>
+                        <td>{row.medium || "—"}</td>
+                        <td>{row.campaign || "—"}</td>
+                        <td>{row.signups}</td>
+                        <td>{row.sharePercent}%</td>
+                        <td>{row.buyers}</td>
+                        <td>₹{row.revenueInInr.toLocaleString("en-IN")}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
         <section className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
             <h3 style={{ margin: 0 }}>Customer User Activity</h3>
@@ -191,6 +431,7 @@ function AdminUsers() {
                   <tr>
                     <th>Customer Name</th>
                     <th>Email Address</th>
+                    <th>Source</th>
                     <th>Status</th>
                     <th>Total Time Spent</th>
                     <th>Last Active Timestamp</th>
@@ -219,6 +460,20 @@ function AdminUsers() {
                         )}
                       </td>
                       <td>{item.email || "-"}</td>
+                      <td>
+                        {item.source ? (
+                          <div>
+                            <div>{item.source}</div>
+                            {item.campaign ? (
+                              <div style={{ fontSize: "11px", color: "var(--admin-muted)" }}>
+                                {item.campaign}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td>
                         <span className={item.isActive ? "users-status active" : "users-status idle"}>
                           {item.isActive ? "Online Now" : "Offline"}
@@ -253,11 +508,11 @@ function AdminUsers() {
                   ))}
                 </tbody>
               </table>
-              {metrics.users.length === 0 && <p style={{ margin: "16px 0", color: "#64748b" }}>No users match your search criteria.</p>}
+              {metrics.users.length === 0 && <p style={{ margin: "16px 0", color: "var(--admin-muted)" }}>No users match your search criteria.</p>}
 
               {/* Pagination Controls */}
               {pagination.total > pagination.limit && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", padding: "12px 0", borderTop: "1px solid var(--border-color, #cbd5e1)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", padding: "12px 0", borderTop: "1px solid var(--admin-border)" }}>
                   <span style={{ fontSize: "13px", color: "var(--admin-muted)" }}>
                     Showing {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total.toLocaleString("en-IN")} users
                   </span>

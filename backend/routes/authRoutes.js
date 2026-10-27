@@ -17,6 +17,7 @@ const { sendEmail } = require("../utils/email");
 const { sendPasswordResetEmail } = require("../utils/passwordReset");
 const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
+const { parseReportRange, idRangeForDates, summarizeSignupRows } = require("../utils/signupReport");
 const { sanitizeAttribution } = require("../utils/attribution");
 
 const router = express.Router();
@@ -750,7 +751,7 @@ router.get("/admin/security-logs", protect, admin, requireSuperAdmin, async (req
       // 1. Try standard JSON parse
       try {
         return JSON.parse(line);
-      } catch (e) {}
+      } catch (e) { }
 
       // 2. Parse text log format: [ISO_DATE] IP=xxx PATH=xxx THREAT=xxx DETAILS={...}
       const match = line.match(/^\[(.*?)\]\s+IP=(.*?)\s+PATH=(.*?)\s+THREAT=(.*?)\s+DETAILS=(.*)$/);
@@ -844,7 +845,7 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
 
     const [rawUsers, totalMatching] = await Promise.all([
       User.find(query)
-        .select("name email isAdmin adminLevel adminRole allowedPages lastActiveAt totalTimeSpentSec")
+        .select("name email isAdmin adminLevel adminRole allowedPages lastActiveAt totalTimeSpentSec acquisition.source acquisition.campaign")
         .sort({ lastActiveAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -866,7 +867,9 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
         allowedPages: Array.isArray(user?.allowedPages) && user.allowedPages.length > 0 ? user.allowedPages : ["dashboard"],
         lastActiveAt: user?.lastActiveAt || null,
         totalTimeSpentSec: Math.max(0, Number(user?.totalTimeSpentSec || 0)),
-        isActive
+        isActive,
+        source: user?.acquisition?.source || "",
+        campaign: user?.acquisition?.campaign || ""
       };
     });
 
@@ -910,6 +913,119 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
   } catch (err) {
     console.error("[Auth] Users-metrics error:", err.message);
     res.status(500).json({ message: "Failed to load user metrics." });
+  }
+});
+
+router.get("/admin/signups-by-source", protect, admin, requireAdminPage("users"), async (req, res) => {
+  try {
+    const rangeResult = parseReportRange(req.query.from, req.query.to);
+    if (rangeResult.error) {
+      return res.status(400).json({ success: false, message: rangeResult.error });
+    }
+
+    const { from, to, startDate, endDate } = rangeResult;
+    const idRange = idRangeForDates(startDate, endDate);
+
+    const userMatch = {
+      _id: idRange,
+      isAdmin: { $ne: true },
+      isDeleted: { $ne: true }
+    };
+
+    const groupedData = await User.aggregate([
+      { $match: userMatch },
+      {
+        $lookup: {
+          from: "orders",
+          let: { userId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$user", "$$userId"] },
+                    { $eq: ["$paymentStatus", "Paid"] },
+                    { $ne: ["$status", "Cancelled"] },
+                    { $ne: ["$refundStatus", "Refunded"] }
+                  ]
+                }
+              }
+            },
+            {
+              $project: {
+                revenue: {
+                  $cond: {
+                    if: {
+                      $and: [
+                        { $ne: [{ $type: "$totalInInr" }, "missing"] },
+                        { $ne: ["$totalInInr", null] }
+                      ]
+                    },
+                    then: "$totalInInr",
+                    else: {
+                      $cond: {
+                        if: {
+                          $in: [
+                            { $toUpper: { $ifNull: ["$currencyDisplay.currency", "INR"] } },
+                            ["INR", ""]
+                          ]
+                        },
+                        then: { $ifNull: ["$total", 0] },
+                        else: 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          as: "validOrders"
+        }
+      },
+      {
+        $project: {
+          source: { $ifNull: ["$acquisition.source", ""] },
+          medium: { $ifNull: ["$acquisition.medium", ""] },
+          campaign: { $ifNull: ["$acquisition.campaign", ""] },
+          isBuyer: {
+            $cond: [{ $gt: [{ $size: "$validOrders" }, 0] }, 1, 0]
+          },
+          userRevenue: {
+            $sum: "$validOrders.revenue"
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            source: "$source",
+            medium: "$medium",
+            campaign: "$campaign"
+          },
+          signups: { $sum: 1 },
+          buyers: { $sum: "$isBuyer" },
+          revenueInInr: { $sum: "$userRevenue" }
+        }
+      }
+    ]);
+
+    const totalSignups = groupedData.reduce((acc, g) => acc + (g.signups || 0), 0);
+    const trackedSignups = groupedData
+      .filter((g) => g._id?.source && String(g._id.source).trim() !== "" && String(g._id.source).trim() !== "Not tracked")
+      .reduce((acc, g) => acc + (g.signups || 0), 0);
+
+    const rows = summarizeSignupRows(groupedData, totalSignups);
+
+    res.json({
+      from,
+      to,
+      totalSignups,
+      trackedSignups,
+      rows
+    });
+  } catch (err) {
+    console.error("[Auth] Admin signups by source error:", err.message);
+    res.status(500).json({ success: false, message: "Failed to generate signups by source report." });
   }
 });
 
@@ -1139,7 +1255,7 @@ router.post("/google", async (req, res) => {
 
       const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
       const googleRes = await axios.get(tokenInfoUrl, { timeout: 5000 });
-      
+
       const payload = googleRes.data;
       if (!payload || !payload.email) {
         return res.status(400).json({ message: "Invalid Google token payload." });
