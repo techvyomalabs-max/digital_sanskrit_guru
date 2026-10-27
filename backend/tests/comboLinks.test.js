@@ -343,8 +343,8 @@ describe("Combo product delivery types and access granting (pure, no DB)", () =>
         accessManual: true,
         accessGrantedAt: null,
         bundleItems: [
-          { name: "Part 1", accessManual: false },
-          { name: "Part 2", accessManual: true }
+          { name: "Part 1", isDigital: true, accessManual: false },
+          { name: "Part 2", isDigital: true, accessManual: true }
         ]
       };
 
@@ -374,7 +374,7 @@ describe("Combo product delivery types and access granting (pure, no DB)", () =>
         isDigital: true,
         accessManual: false,
         bundleItems: [
-          { name: "Part 1", accessManual: false }
+          { name: "Part 1", isDigital: true, accessManual: false }
         ]
       };
       assert.equal(canAutoComplete([autoCombo]), true);
