@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isAccessPending } from "../utils/accessStatus";
+import ComboLibraryCard from "../components/library/ComboLibraryCard";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -230,23 +231,89 @@ function MyLibrary() {
       if (!isPaid || !Array.isArray(order.items)) return;
       const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
-      order.items.forEach((item) => {
+      order.items.forEach((item, itemIdx) => {
+        const isGiftItem = Boolean(order.isGift || item.giftCode);
+        if (isGiftItem && !order.isRedeemedGift) {
+          return;
+        }
+
+        const isCancelledOrRefunded =
+          order.status === "Cancelled" ||
+          order.refundStatus === "Refunded" ||
+          item.returnRequest?.status === "Refunded";
+
+        if (isCancelledOrRefunded) {
+          return;
+        }
+
+        const isItemLegacy = Boolean(isOrderLegacy || item.legacyAccess);
+        const isBundle =
+          String(item.productType || "").toLowerCase() === "bundle" ||
+          (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
+
+        // 1. Non-legacy combo becomes ONE combo entry, checked BEFORE external branch
+        if (isBundle && !isItemLegacy) {
+          const digitalComponents = (item.bundleItems || [])
+            .filter((comp) => {
+              if (!comp) return false;
+              return Boolean(
+                comp.isDigital === true ||
+                  (comp.webReaderLink && String(comp.webReaderLink).trim()) ||
+                  (comp.kindleLink && String(comp.kindleLink).trim()) ||
+                  (comp.externalAccessLink && String(comp.externalAccessLink).trim())
+              );
+            })
+            .map((comp) => ({
+              ...comp,
+              _id: comp.bundleItemId || comp._id || comp.product || null,
+              name: comp.name || "Item",
+              image: comp.image || "",
+              webReaderLink: comp.webReaderLink || "",
+              kindleLink: comp.kindleLink || "",
+              digitalType: comp.digitalType || "",
+              digitalInstructions: comp.digitalInstructions || "",
+              legacyAccess: false,
+              product: comp.product ?? null,
+              bundleItemId: comp.bundleItemId || comp._id || null,
+              digitalDelivery: comp.digitalDelivery || (comp.externalAccessLink ? "external" : "onsite"),
+              externalAccessLink: comp.externalAccessLink || "",
+              externalAccessLabel: comp.externalAccessLabel || "",
+              orderId: order._id,
+              orderDate: order.createdAt
+            }));
+
+          // A combo whose components list is empty after filtering (only physical items) is not shown
+          if (digitalComponents.length === 0) {
+            return;
+          }
+
+          const isPending = isAccessPending(item);
+          const entryKey = `combo_${order._id}_${itemIdx}`;
+
+          const entry = {
+            kind: "combo",
+            key: entryKey,
+            _id: item.product || item._id || entryKey,
+            name: item.name || "Combo",
+            image: item.image || item.product?.image || (digitalComponents[0] && digitalComponents[0].image) || "",
+            orderId: order._id,
+            orderDate: order.createdAt,
+            copies: Number(item.quantity || 1),
+            accessPending: isPending,
+            accessNote: isPending ? "" : (item.accessNote || ""),
+            externalAccessLink: item.externalAccessLink || "",
+            externalAccessLabel: item.externalAccessLabel || "",
+            components: digitalComponents,
+            legacyAccess: false,
+            isWpArchive: false
+          };
+
+          list.push(entry);
+          return;
+        }
+
         const isExternal = isExternalDelivery(item);
         if (isExternal) {
-          const isGiftItem = Boolean(order.isGift || item.giftCode);
-          if (isGiftItem && !order.isRedeemedGift) {
-            return;
-          }
-
-          const isCancelledOrRefunded =
-            order.status === "Cancelled" ||
-            order.refundStatus === "Refunded" ||
-            item.returnRequest?.status === "Refunded";
-
-          if (isCancelledOrRefunded) {
-            return;
-          }
-
           const isItemPending = isAccessPending(item);
           const externalLink = item.externalAccessLink || "";
           const externalLabel = item.externalAccessLabel || "";
@@ -302,22 +369,20 @@ function MyLibrary() {
           return;
         }
 
-        const isBundle = String(item.productType || "").toLowerCase() === "bundle" || (Array.isArray(item.bundleItems) && item.bundleItems.length > 0);
-
         if (isBundle && Array.isArray(item.bundleItems)) {
-          // Iterate over individual bundle items
+          // Legacy WordPress combo branch
           item.bundleItems.forEach((subItem) => {
             const subNameLower = String(subItem.name || "").toLowerCase();
             const isSubLegacy = Boolean(isOrderLegacy || item.legacyAccess || subItem.legacyAccess);
             const isSubDigital = Boolean(
               subItem.isDigital ||
-              subItem.legacyAccess ||
-              subItem.webReaderLink ||
-              subItem.kindleLink ||
-              subNameLower.includes("web") ||
-              subNameLower.includes("flipbook") ||
-              subNameLower.includes("kindle") ||
-              subNameLower.includes("e-book")
+                subItem.legacyAccess ||
+                subItem.webReaderLink ||
+                subItem.kindleLink ||
+                subNameLower.includes("web") ||
+                subNameLower.includes("flipbook") ||
+                subNameLower.includes("kindle") ||
+                subNameLower.includes("e-book")
             );
 
             if (isSubDigital) {
@@ -351,26 +416,20 @@ function MyLibrary() {
           // Handle standard single product
           const nameLower = String(item.name || "").toLowerCase();
           const formatLower = String(item.format || "").toLowerCase();
-          const isItemLegacy = Boolean(isOrderLegacy || item.legacyAccess);
           const isDigital = Boolean(
             item.isDigital ||
-            item.legacyAccess ||
-            item.webReaderLink ||
-            item.kindleLink ||
-            nameLower.includes("web") ||
-            nameLower.includes("flipbook") ||
-            nameLower.includes("kindle") ||
-            nameLower.includes("e-book") ||
-            formatLower.includes("web") ||
-            formatLower.includes("flipbook")
+              item.legacyAccess ||
+              item.webReaderLink ||
+              item.kindleLink ||
+              nameLower.includes("web") ||
+              nameLower.includes("flipbook") ||
+              nameLower.includes("kindle") ||
+              nameLower.includes("e-book") ||
+              formatLower.includes("web") ||
+              formatLower.includes("flipbook")
           );
 
           if (isDigital) {
-            const isGiftItem = Boolean(order.isGift || item.giftCode);
-            if (isGiftItem && !order.isRedeemedGift) {
-              return;
-            }
-
             const key = String((item.product || item._id || item.name) + (isItemLegacy ? "_legacy" : "")).trim();
             if (seenMap.has(key)) {
               const existing = seenMap.get(key);
@@ -402,11 +461,20 @@ function MyLibrary() {
   const filteredBooks = useMemo(() => {
     if (!searchQuery.trim()) return digitalBooks;
     const query = searchQuery.toLowerCase().trim();
-    return digitalBooks.filter((book) =>
-      String(book.name || "").toLowerCase().includes(query) ||
-      String(book.format || "").toLowerCase().includes(query) ||
-      String(book.bundleName || "").toLowerCase().includes(query)
-    );
+    return digitalBooks.filter((book) => {
+      if (book.kind === "combo") {
+        const comboNameMatches = String(book.name || "").toLowerCase().includes(query);
+        const compMatches = Array.isArray(book.components) && book.components.some((c) =>
+          String(c.name || "").toLowerCase().includes(query)
+        );
+        return comboNameMatches || compMatches;
+      }
+      return (
+        String(book.name || "").toLowerCase().includes(query) ||
+        String(book.format || "").toLowerCase().includes(query) ||
+        String(book.bundleName || "").toLowerCase().includes(query)
+      );
+    });
   }, [digitalBooks, searchQuery]);
 
   const nativeBooks = useMemo(
@@ -431,12 +499,33 @@ function MyLibrary() {
             (b.name && targetSearch && b.name.toLowerCase().includes(String(targetSearch).toLowerCase())))
       );
       if (match) {
-        openSecureReader(match);
+        if (match.kind === "combo" && Array.isArray(match.components)) {
+          const compMatch = match.components.find(
+            (c) =>
+              c.webReaderLink === targetUrl ||
+              (targetSearch && c.name?.toLowerCase().includes(String(targetSearch).toLowerCase()))
+          );
+          openSecureReader(compMatch || match.components[0] || match);
+        } else {
+          openSecureReader(match);
+        }
       } else if (targetUrl) {
-        openSecureReader({
-          name: targetSearch || "Digital Content",
-          webReaderLink: targetUrl
-        });
+        let compMatch = null;
+        for (const b of digitalBooks) {
+          if (b.kind === "combo" && Array.isArray(b.components)) {
+            const found = b.components.find((c) => c.webReaderLink === targetUrl);
+            if (found) {
+              compMatch = found;
+              break;
+            }
+          }
+        }
+        openSecureReader(
+          compMatch || {
+            name: targetSearch || "Digital Content",
+            webReaderLink: targetUrl
+          }
+        );
       }
     }
   }, [location.state, digitalBooks, activeReaderItem, openSecureReader]);
@@ -494,6 +583,16 @@ function MyLibrary() {
           {nativeBooks.length > 0 && (
             <div className="my-library-grid">
               {nativeBooks.map((book, idx) => {
+                if (book.kind === "combo") {
+                  return (
+                    <ComboLibraryCard
+                      key={book.key || `combo-${book.orderId}-${idx}`}
+                      combo={book}
+                      onOpenReader={openSecureReader}
+                    />
+                  );
+                }
+
                 const isExternal = Boolean(book.isExternal || isExternalDelivery(book));
                 const isKindle = !isExternal && (String(book.name || "").toLowerCase().includes("kindle") || Boolean(book.kindleLink));
                 const isFlipbook = !isExternal && Boolean(
