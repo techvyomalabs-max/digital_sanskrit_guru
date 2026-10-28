@@ -29,6 +29,7 @@ import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 import { useToast } from "../../hooks/useToast";
 import { scoreProduct, getSearchSuggestion } from "../../utils/searchText";
+import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 
 const DEFAULT_COLLECTION_CATEGORIES = [
@@ -362,6 +363,9 @@ function Navbar({ bannerActive = false }) {
       return;
     }
     const query = searchQuery.trim();
+    if (query) {
+      recordSearchQuery(query);
+    }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
 

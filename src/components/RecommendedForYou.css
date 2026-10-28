@@ -1,0 +1,53 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECOMMENDED FOR YOU — AI Personalized Product Shelf
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.recommended-ai-section {
+  position: relative;
+  margin-top: var(--space-4, 24px);
+  margin-bottom: var(--space-4, 24px);
+}
+
+.recommended-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--site-surface-muted, #f5f3ef);
+  color: var(--site-link, #b45309);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: var(--radius-full, 9999px);
+  border: 1px solid var(--site-border, #e2e8f0);
+  margin-bottom: 6px;
+}
+
+.recommended-ai-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.recommended-ai-reason {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--site-link, #b45309);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.recommended-ai-reason-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
