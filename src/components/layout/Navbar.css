@@ -103,10 +103,10 @@ html.banner-active .navbar {
   background: transparent;
   cursor: pointer;
   flex: 0 0 auto;
-  padding: 0 8px;
-  height: 28px;
+  padding: 0 10px;
+  height: 32px;
   color: #ffffff;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   box-sizing: border-box;
   transition: all 0.15s ease;
@@ -227,15 +227,15 @@ html.banner-active .navbar {
 .navbar-quick-nav-btn {
   display: inline-flex;
   align-items: center;
-  height: 28px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: var(--radius-sm, 6px);
   border: 1px solid transparent;
   background: transparent;
   color: #ffffff;
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -1713,18 +1713,18 @@ html.banner-active .navbar {
   }
 
   .navbar-quick-nav-btn {
-    font-size: 12px;
-    padding: 0 6px;
-    height: 26px;
-    line-height: 26px;
-    font-weight: 500;
+    font-size: 13.5px;
+    padding: 0 7px;
+    height: 28px;
+    line-height: 28px;
+    font-weight: 600;
   }
 
   .navbar-collection-menu-btn {
-    height: 26px;
-    padding: 0 6px;
-    font-size: 12px;
-    line-height: 26px;
+    height: 28px;
+    padding: 0 7px;
+    font-size: 13.5px;
+    line-height: 28px;
   }
 
   .navbar-collection-filter-menu {

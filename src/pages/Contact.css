@@ -1,4 +1,5 @@
 .contact-page {
+  --contact-text-muted: color-mix(in srgb, var(--site-text) 80%, var(--site-surface, #ffffff));
   font-family: inherit;
   color: var(--site-text);
   background: var(--site-bg);
@@ -19,7 +20,7 @@
 }
 
 .contact-hero-subtitle {
-  font-size: 16px;
+  font-size: 18px;
   opacity: 0.9;
   max-width: 600px;
   margin: 0 auto;
@@ -67,13 +68,13 @@
 }
 
 .contact-method-card h3 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   margin-bottom: 8px;
 }
 
 .contact-value {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--site-text);
   margin-bottom: 8px;
@@ -90,16 +91,16 @@
 }
 
 .contact-hours {
-  font-size: 12px;
-  color: var(--site-text-soft);
+  font-size: 14px;
+  color: var(--contact-text-muted);
   font-weight: 500;
   margin-bottom: var(--space-3);
 }
 
 .contact-desc {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--site-text-soft);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--contact-text-muted);
 }
 
 .contact-inquiries-section {
@@ -111,7 +112,7 @@
 }
 
 .contact-inquiries-section h2 {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   margin-bottom: var(--space-6);
   text-align: center;
@@ -126,16 +127,16 @@
 }
 
 .inquiry-card h3 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--site-text);
   margin-bottom: 8px;
 }
 
 .inquiry-card p {
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--site-text-soft);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--contact-text-muted);
 }
 
 .inquiry-card a {
@@ -163,7 +164,7 @@
 }
 
 .office-card h2 {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   margin-bottom: var(--space-4);
   color: var(--site-text);
@@ -173,7 +174,7 @@
 }
 
 .office-card p {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--site-text-soft);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--contact-text-muted);
 }

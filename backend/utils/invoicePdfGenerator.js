@@ -180,7 +180,7 @@ function generateInvoicePdfBuffer(order, user, passedSeller = null) {
 
       const sellerName = sanitizeIastString(seller.legalName || "Vyoma Linguistic Labs Foundation");
       const sellerGstin = String(seller.gstin || "").trim();
-      const sellerSupport = seller.email || "support@digitalsanskritguru.com";
+      const sellerSupport = seller.email || "support@vyomalabs.in";
 
       let sellerTextY = boxY + 23;
       doc.text(sellerName, 320, sellerTextY);

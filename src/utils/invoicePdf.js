@@ -388,9 +388,9 @@ export async function generateInvoicePdf(order, options = {}) {
   const sellerName = sanitizeIastString(seller.legalName || "Digital Sanskrit Guru Store");
   const sellerGstin = String(seller.gstin || "").trim();
   const sellerAddress = sanitizeIastString(
-    seller.address || (seller.state ? `${seller.state}, India` : "Bangalore, Karnataka, India")
+    seller.address || (seller.state ? `${seller.state}, India` : "Bengaluru, Karnataka, India")
   );
-  const sellerEmail = seller.email || "support@digitalsanskritguru.com";
+  const sellerEmail = seller.email || "support@vyomalabs.in";
 
   const wrappedSellerName = doc.splitTextToSize(sellerName, colWidth);
   const wrappedSellerAddress = doc.splitTextToSize(sellerAddress, colWidth);

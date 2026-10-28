@@ -11,6 +11,7 @@ import {
   Info
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
+import { REGISTERED_OFFICE } from "../../utils/companyInfo";
 import "./Footer.css";
 
 function Footer() {
@@ -30,10 +31,10 @@ function Footer() {
             <h3>Registered Office</h3>
           </div>
           <div className="footer-office-address">
-            <p>#155, 2nd floor, 4th Cross,</p>
-            <p>GKW Layout, Vijayanagar,</p>
-            <p>Bengaluru, Karnataka – 560040</p>
-            <p className="footer-country-tag">India</p>
+            {REGISTERED_OFFICE.lines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+            <p className="footer-country-tag">{REGISTERED_OFFICE.country}</p>
           </div>
         </div>
 
@@ -51,8 +52,8 @@ function Footer() {
             </div>
             <div className="contact-item">
               <span className="contact-label">Email Inquiries</span>
-              <a href="mailto:sanskritfromhome@vyomalabs.in" className="contact-link">
-                sanskritfromhome@vyomalabs.in
+              <a href="mailto:support@vyomalabs.in" className="contact-link">
+                support@vyomalabs.in
               </a>
             </div>
           </div>
@@ -95,7 +96,7 @@ function Footer() {
           </div>
           <ul className="footer-nav-list">
             <li>
-              <a href="https://www.vyomalabs.in" target="_blank" rel="noopener noreferrer" className="footer-ext-link">
+              <a href="https://vyoma.org" target="_blank" rel="noopener noreferrer" className="footer-ext-link">
                 <span>Vyoma Labs (India)</span>
                 <ExternalLink size={12} />
               </a>
@@ -122,16 +123,14 @@ function Footer() {
           </div>
           <ul className="footer-nav-list">
             <li>
-              <Link to="/downloads/presentation" className="footer-ext-link">
+              <a
+                href="/downloads/vyoma-product-publication-catalogue.pdf"
+                download="Vyoma Product and Publication Catalogue.pdf"
+                className="footer-ext-link"
+              >
                 <FileText size={13} />
-                <span>Company Presentation</span>
-              </Link>
-            </li>
-            <li>
-              <Link to="/downloads/newsletter" className="footer-ext-link">
-                <FileText size={13} />
-                <span>Vyoma Newsletter</span>
-              </Link>
+                <span>Product & Publication Catalogue</span>
+              </a>
             </li>
           </ul>
         </div>

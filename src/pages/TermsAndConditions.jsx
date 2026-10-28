@@ -166,9 +166,9 @@ function TermsAndConditions() {
             <p>If you have questions regarding institutional licensing, group access, or general terms, our team is happy to assist you.</p>
           </div>
           <div className="contact-links-grid">
-            <a href="mailto:support@digitalsanskritguru.com" className="contact-pill">
+            <a href="mailto:support@vyomalabs.in" className="contact-pill">
               <Mail size={16} />
-              <span>support@digitalsanskritguru.com</span>
+              <span>support@vyomalabs.in</span>
             </a>
             <a href="tel:+919480865623" className="contact-pill">
               <Phone size={16} />
