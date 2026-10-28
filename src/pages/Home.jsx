@@ -4,6 +4,7 @@ import axios from "axios";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Truck, BookOpen, Zap, ShieldCheck } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
+import RecommendedForYou from "../components/RecommendedForYou";
 import { formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, storePricingConfig } from "../utils/productPricing";
 import { isKindleProduct } from "../utils/kindle";
@@ -851,6 +852,10 @@ function Home() {
 
       <DeferredHomeSection isReady={showSecondarySections} skeletonCount={3} label="Loading recently viewed">
         <RecentlyViewed className="home-recently-viewed home-deferred-section" />
+      </DeferredHomeSection>
+
+      <DeferredHomeSection isReady={showSecondarySections} skeletonCount={4} label="Loading AI recommendations">
+        <RecommendedForYou className="home-deferred-section" />
       </DeferredHomeSection>
 
       <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading catalog preview">

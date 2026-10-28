@@ -526,7 +526,7 @@ html.banner-active .navbar {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, rgba(2, 132, 199, 0.08), rgba(245, 158, 11, 0.08));
+  background: var(--site-surface-muted, #f5f3ef);
   border-bottom: 1px solid var(--site-border, #e2e8f0);
   font-size: 13px;
 }
@@ -541,7 +541,7 @@ html.banner-active .navbar {
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--site-link, #0284c7);
+  color: var(--site-link, #b45309);
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -650,7 +650,7 @@ html.banner-active .navbar {
   border-top: 1px solid var(--site-border, #e2e8f0);
   font-size: 13px;
   font-weight: 600;
-  color: var(--site-link, #0284c7);
+  color: var(--site-link, #b45309);
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -684,8 +684,8 @@ html.banner-active .navbar {
 
 .navbar-search-empty-btn:hover {
   background: var(--site-surface, #ffffff);
-  border-color: var(--site-link, #0284c7);
-  color: var(--site-link, #0284c7);
+  border-color: var(--site-link, #b45309);
+  color: var(--site-link, #b45309);
 }
 
 /* ── Right section ──────────────────────────────────────────────────────── */
