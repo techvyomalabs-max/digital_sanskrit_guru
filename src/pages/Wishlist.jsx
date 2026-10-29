@@ -7,6 +7,7 @@ import { useToast } from "../hooks/useToast";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
 import { isKindleProduct } from "../utils/kindle";
+import { isOptionsParent } from "../utils/productOptions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Wishlist.css";
 
@@ -141,7 +142,14 @@ function Wishlist() {
                     {/* Column 4: Action Buttons */}
                     <div className="wishlist-item-cell col-actions" data-label="">
                       <div className="wishlist-action-buttons">
-                        {isKindleProduct(product) ? (
+                        {isOptionsParent(product) ? (
+                          <Link
+                            to={`/product/${product._id}`}
+                            className="wishlist-add-to-cart-btn"
+                          >
+                            Choose format
+                          </Link>
+                        ) : isKindleProduct(product) ? (
                           <a
                             href={product.kindleLink || "https://www.amazon.in/s?k=kindle+digital+sanskrit+guru"}
                             target="_blank"
