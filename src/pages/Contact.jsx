@@ -1,7 +1,22 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { MessageCircle, Phone, Mail, Video, MapPin, Briefcase } from "lucide-react";
+import { ORGANISATION_NAME, REGISTERED_OFFICE, WORKING_OFFICE } from "../utils/companyInfo";
 import "./Contact.css";
+
+function OfficeAddress({ address }) {
+  return (
+    <p>
+      <strong>{ORGANISATION_NAME}</strong>
+      {[...address.lines, address.country].map((line) => (
+        <React.Fragment key={line}>
+          <br />
+          {line}
+        </React.Fragment>
+      ))}
+    </p>
+  );
+}
 
 function Contact() {
   return (
@@ -51,7 +66,7 @@ function Contact() {
             </div>
             <h3>Email Us</h3>
             <p className="contact-value">
-              <a href="mailto:support@digitalsanskritguru.com">support@digitalsanskritguru.com</a>
+              <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>
             </p>
             <p className="contact-hours">Response time: within 3 working days</p>
             <p className="contact-desc">
@@ -81,7 +96,7 @@ function Contact() {
               <h3>For Product Inquiries</h3>
               <p>
                 Browse products in our <Link to="/collection">Master Catalog</Link>, or send an email to{" "}
-                <a href="mailto:support@digitalsanskritguru.com">support@digitalsanskritguru.com</a>.
+                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>.
               </p>
             </div>
 
@@ -89,7 +104,7 @@ function Contact() {
               <h3>Bulk & Gifting Inquiries</h3>
               <p>
                 For bulk purchases or gifting options, email us at{" "}
-                <a href="mailto:support@digitalsanskritguru.com">support@digitalsanskritguru.com</a> or call{" "}
+                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a> or call{" "}
                 <strong>+91 94808 65623</strong>.
               </p>
             </div>
@@ -105,7 +120,7 @@ function Contact() {
               <h3>Press & Media Inquiries</h3>
               <p>
                 Please direct all media and press inquiry emails to{" "}
-                <a href="mailto:support@digitalsanskritguru.com">support@digitalsanskritguru.com</a>.
+                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>.
               </p>
             </div>
           </div>
@@ -116,33 +131,17 @@ function Contact() {
           {/* Registered Office */}
           <article className="office-card">
             <h2>
-              <MapPin size={20} /> Registered Office
+              <MapPin size={20} /> {REGISTERED_OFFICE.title}
             </h2>
-            <p>
-              <strong>Vyoma Linguistic Labs Foundation</strong>
-              <br />
-              # 155, 2nd floor, 4th Cross GKW Layout,
-              <br />
-              Vijayanagar, Bangalore,
-              <br />
-              Karnataka – 560040
-            </p>
+            <OfficeAddress address={REGISTERED_OFFICE} />
           </article>
 
           {/* Working Office */}
           <article className="office-card">
             <h2>
-              <Briefcase size={20} /> Working Office Address
+              <Briefcase size={20} /> {WORKING_OFFICE.title}
             </h2>
-            <p>
-              <strong>Vyoma Linguistic Labs Foundation</strong>
-              <br />
-              # 84, 3rd Cross, N G E F Layout,
-              <br />
-              2nd Block, Opp Fortis Hospital, Nagarabhavi,
-              <br />
-              Bangalore – 560072
-            </p>
+            <OfficeAddress address={WORKING_OFFICE} />
           </article>
         </div>
       </div>

@@ -1429,7 +1429,7 @@ function AdminDashboard() {
                 <input
                   type="email"
                   className="pricing-text-input"
-                  placeholder="e.g. support@digitalsanskritguru.com"
+                  placeholder="e.g. support@vyomalabs.in"
                   maxLength={150}
                   value={pricingSettings.businessDetails?.email || ""}
                   onChange={(e) => updateBusinessDetailsField("email", e.target.value)}

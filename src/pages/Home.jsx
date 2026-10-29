@@ -624,7 +624,7 @@ function Home() {
           <div className="home-highlight-head">
             <div>
               <span className="home-section-kicker">Fresh drop</span>
-              <h3>New Arrivals</h3>
+              <h2>New Arrivals</h2>
             </div>
             <Link to="/collection" className="home-inline-link">See more</Link>
           </div>
@@ -680,7 +680,7 @@ function Home() {
           <div className="home-highlight-head">
             <div>
               <span className="home-section-kicker">Best value</span>
-              <h3>Budget Picks</h3>
+              <h2>Budget Picks</h2>
             </div>
             <Link to="/collection" className="home-inline-link">See more</Link>
           </div>

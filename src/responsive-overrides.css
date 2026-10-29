@@ -393,7 +393,7 @@ img, video, iframe, embed, object {
   }
 
   .home-section-head h2,
-  .home-highlight-head h3 {
+  .home-highlight-head h2 {
     font-size: 17px !important;
   }
 
@@ -456,7 +456,7 @@ img, video, iframe, embed, object {
 
 @media (max-width: 360px) {
   .home-section-head h2,
-  .home-highlight-head h3 {
+  .home-highlight-head h2 {
     font-size: 16px !important;
   }
 
