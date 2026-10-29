@@ -55,7 +55,7 @@ function AdminCoupons() {
 
   const loadProducts = async () => {
     try {
-      const res = await axios.get("/api/products");
+      const res = await axios.get("/api/products", { params: { includeHidden: 1 } });
       setProductsList(Array.isArray(res.data) ? res.data : []);
     } catch {
       console.error("Could not load products.");
