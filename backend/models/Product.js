@@ -99,6 +99,47 @@ const bundleItemSchema = new mongoose.Schema(
     kindleLink: {
       type: String,
       default: ""
+    },
+    digitalType: {
+      type: String,
+      default: ""
+    },
+    digitalDelivery: {
+      type: String,
+      enum: ["onsite", "external"],
+      default: "onsite"
+    },
+    externalAccessLink: {
+      type: String,
+      default: ""
+    },
+    externalAccessLabel: {
+      type: String,
+      default: ""
+    },
+    externalAccessManual: {
+      type: Boolean,
+      default: false
+    },
+    weight: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    length: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    width: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    height: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   { _id: true }

@@ -22,16 +22,38 @@ function computeComboWeightGrams(productDoc) {
     if (!bi) continue;
     const comp = bi.product;
 
-    // Custom entries without a populated component product document add 0
-    if (!comp || typeof comp !== "object" || comp._bsontype === "ObjectId") continue;
+    const isPopulated = comp && typeof comp === "object" && comp._bsontype !== "ObjectId";
 
-    // Skip when the component isDigital === true or the bundle entry isDigital === true
-    if (comp.isDigital === true || bi.isDigital === true) continue;
+    if (isPopulated) {
+      // Existing populated product logic (unchanged)
+      // Skip when the component isDigital === true or the bundle entry isDigital === true
+      if (comp.isDigital === true || bi.isDigital === true) continue;
 
-    const actualWeight = Math.max(0, Number(comp.weight) || 0);
-    const l = Math.max(0, Number(comp.length) || 0);
-    const w = Math.max(0, Number(comp.width) || 0);
-    const h = Math.max(0, Number(comp.height) || 0);
+      const actualWeight = Math.max(0, Number(comp.weight) || 0);
+      const l = Math.max(0, Number(comp.length) || 0);
+      const w = Math.max(0, Number(comp.width) || 0);
+      const h = Math.max(0, Number(comp.height) || 0);
+
+      const volumetricWeightGrams = ((l * w * h) / 5000) * 1000;
+      const chargeable = Math.max(actualWeight, volumetricWeightGrams);
+      const qty = Math.max(1, Number(bi.quantity || 1));
+
+      totalWeightGrams += chargeable * qty;
+      continue;
+    }
+
+    // Unpopulated catalog product ObjectId / ref (unchanged)
+    if (comp && (comp._bsontype === "ObjectId" || (typeof comp === "string" && comp.length === 24))) {
+      continue;
+    }
+
+    // Custom entry (no populated product) that is NOT digital now adds its own chargeable weight
+    if (bi.isDigital === true) continue;
+
+    const actualWeight = Math.max(0, Number(bi.weight) || 0);
+    const l = Math.max(0, Number(bi.length) || 0);
+    const w = Math.max(0, Number(bi.width) || 0);
+    const h = Math.max(0, Number(bi.height) || 0);
 
     const volumetricWeightGrams = ((l * w * h) / 5000) * 1000;
     const chargeable = Math.max(actualWeight, volumetricWeightGrams);

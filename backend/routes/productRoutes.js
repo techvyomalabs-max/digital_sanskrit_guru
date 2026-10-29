@@ -78,6 +78,15 @@ const normalizeFestiveDiscountPercent = (value) => {
   return Math.min(95, Math.max(0, Math.round(parsed)));
 };
 
+class BundleValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BundleValidationError";
+    this.status = 400;
+    this.statusCode = 400;
+  }
+}
+
 const normalizeBundleItems = (rawBundleItems = []) => {
   if (!Array.isArray(rawBundleItems)) {
     return [];
@@ -95,16 +104,78 @@ const normalizeBundleItems = (rawBundleItems = []) => {
 
     if (isCustom) {
       if (!customName) return acc;
+
+      const isDigital = item?.isDigital === true;
+      const idObj = item?._id && mongoose.Types.ObjectId.isValid(String(item._id)) ? { _id: item._id } : {};
+
+      if (!isDigital) {
+        acc.push({
+          ...idObj,
+          itemType: "custom",
+          product: null,
+          name: customName,
+          image: String(item?.image || "").trim(),
+          description: String(item?.description || "").trim(),
+          price: Math.max(0, Number(item?.price || 0)),
+          isDigital: false,
+          digitalType: "",
+          digitalDelivery: "onsite",
+          externalAccessLink: "",
+          externalAccessLabel: "",
+          externalAccessManual: false,
+          webReaderLink: "",
+          kindleLink: "",
+          weight: Math.max(0, Number(item?.weight) || 0),
+          length: Math.max(0, Number(item?.length) || 0),
+          width: Math.max(0, Number(item?.width) || 0),
+          height: Math.max(0, Number(item?.height) || 0),
+          quantity: Math.max(1, Number(item?.quantity || 1))
+        });
+        return acc;
+      }
+
+      // isDigital is true
+      const rawDelivery = item?.digitalDelivery;
+      const rawExtLink = item?.externalAccessLink;
+      const rawExtLabel = item?.externalAccessLabel;
+      const rawExtManual = item?.externalAccessManual;
+
+      const deliveryValidation = validateExternalDelivery({
+        isDigital: true,
+        productType: "single",
+        digitalDelivery: rawDelivery,
+        externalAccessLink: rawExtLink,
+        externalAccessLabel: rawExtLabel,
+        externalAccessManual: rawExtManual
+      });
+
+      if (!deliveryValidation.isValid) {
+        throw new BundleValidationError(`Custom item "${customName}": ${deliveryValidation.error}`);
+      }
+
+      const isExternal = deliveryValidation.digitalDelivery === "external";
+      const digitalType = String(item?.digitalType || "").trim().slice(0, 40);
+
       acc.push({
+        ...idObj,
         itemType: "custom",
         product: null,
         name: customName,
         image: String(item?.image || "").trim(),
         description: String(item?.description || "").trim(),
         price: Math.max(0, Number(item?.price || 0)),
-        isDigital: item?.isDigital === true,
-        webReaderLink: String(item?.webReaderLink || "").trim(),
-        kindleLink: String(item?.kindleLink || "").trim(),
+        isDigital: true,
+        digitalType,
+        digitalDelivery: isExternal ? "external" : "onsite",
+        externalAccessLink: isExternal ? deliveryValidation.externalAccessLink : "",
+        externalAccessLabel: isExternal ? deliveryValidation.externalAccessLabel : "",
+        externalAccessManual: isExternal ? deliveryValidation.externalAccessManual === true : false,
+        webReaderLink: isExternal ? "" : String(item?.webReaderLink || "").trim(),
+        kindleLink: isExternal ? "" : String(item?.kindleLink || "").trim(),
+        weight: 0,
+        length: 0,
+        width: 0,
+        height: 0,
         quantity: Math.max(1, Number(item?.quantity || 1))
       });
       return acc;
@@ -496,6 +567,9 @@ router.post("/", protect, admin, (req, res, next) => {
     // Invalidate cache so next request gets fresh product list
     invalidateProductCache();
   } catch (error) {
+    if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
+      return res.status(400).json({ message: error.message });
+    }
     const client = ["ValidationError", "CastError"].includes(error?.name);
     res.status(client ? 400 : 500).json({ message: "Failed to create product", ...(client ? { error: error.message } : {}) });
   }
@@ -636,6 +710,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     // Invalidate cache after any product update
     invalidateProductCache();
   } catch (error) {
+    if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: "Failed to update product", error: error.message });
   }
 });
@@ -1393,5 +1470,7 @@ router.post("/:id/view", async (req, res) => {
     res.status(500).json({ message: "Failed to log view", error: error.message });
   }
 });
+
+router.normalizeBundleItems = normalizeBundleItems;
 
 module.exports = router;

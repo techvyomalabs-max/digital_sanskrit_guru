@@ -64,7 +64,16 @@ function createEmptyBundleItem() {
     price: "",
     isDigital: false,
     webReaderLink: "",
-    kindleLink: ""
+    kindleLink: "",
+    digitalType: "",
+    digitalDelivery: "onsite",
+    externalAccessLink: "",
+    externalAccessLabel: "",
+    externalAccessManual: false,
+    weight: "",
+    length: "",
+    width: "",
+    height: ""
   };
 }
 
@@ -357,6 +366,7 @@ function AdminAddProducts() {
   const [externalAccessLabel, setExternalAccessLabel] = useState("");
   const [externalAccessManual, setExternalAccessManual] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
+  const [bundleItemErrors, setBundleItemErrors] = useState({});
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
   const [kindleAsin, setKindleAsin] = useState("");
@@ -687,6 +697,7 @@ function AdminAddProducts() {
     setExternalAccessLink("");
     setExternalAccessLabel("");
     setExternalAccessManual(false);
+    setBundleItemErrors({});
     setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
@@ -1511,6 +1522,28 @@ function AdminAddProducts() {
     setExternalLinkError("");
 
 
+    let hasBundleCustomError = false;
+    const nextBundleItemErrors = {};
+    if (productType === "bundle") {
+      bundleItems.forEach((bItem, bIdx) => {
+        const cName = String(bItem.name || "").trim();
+        const rawPId = String(bItem.productId || bItem.product?._id || bItem.product || "").trim();
+        const isCust = bItem.itemType === "custom" || (Boolean(cName) && !rawPId);
+        if (isCust && bItem.isDigital === true && bItem.digitalDelivery === "external") {
+          const trimmedLink = String(bItem.externalAccessLink || "").trim();
+          if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
+            nextBundleItemErrors[bIdx] = "Please enter a valid access link (http:// or https://) without spaces.";
+            hasBundleCustomError = true;
+          }
+        }
+      });
+    }
+    setBundleItemErrors(nextBundleItemErrors);
+    if (hasBundleCustomError) {
+      setFormMessage("Please enter a valid access link (http:// or https://) for external custom items.");
+      return;
+    }
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1520,6 +1553,7 @@ function AdminAddProducts() {
         if (isCustomItem) {
           if (!customName) return null;
           return {
+            ...(/^[a-f0-9]{24}$/i.test(String(item._id || "")) ? { _id: String(item._id) } : {}),
             itemType: "custom",
             product: null,
             name: customName,
@@ -1529,6 +1563,15 @@ function AdminAddProducts() {
             isDigital: item.isDigital === true,
             webReaderLink: String(item.webReaderLink || "").trim(),
             kindleLink: String(item.kindleLink || "").trim(),
+            digitalType: String(item.digitalType || "").trim(),
+            digitalDelivery: item.digitalDelivery === "external" ? "external" : "onsite",
+            externalAccessLink: String(item.externalAccessLink || "").trim(),
+            externalAccessLabel: String(item.externalAccessLabel || "").trim(),
+            externalAccessManual: item.externalAccessManual === true,
+            weight: Math.max(0, Number(item.weight) || 0),
+            length: Math.max(0, Number(item.length) || 0),
+            width: Math.max(0, Number(item.width) || 0),
+            height: Math.max(0, Number(item.height) || 0),
             quantity: Math.max(1, Number(item.quantity || 1))
           };
         }
@@ -1690,6 +1733,7 @@ function AdminAddProducts() {
     setExternalAccessLink(product.externalAccessLink || "");
     setExternalAccessLabel(product.externalAccessLabel || "");
     setExternalAccessManual(product.externalAccessManual === true);
+    setBundleItemErrors({});
     setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
@@ -1699,6 +1743,7 @@ function AdminAddProducts() {
     setBundleItems(
       Array.isArray(product.bundleItems) && product.bundleItems.length > 0
         ? product.bundleItems.map((item) => ({
+            _id: item?._id ? String(item._id) : "",
             itemType: item?.itemType || (item?.product ? "existing" : "custom"),
             productId: String(item?.product?._id || item?.product || ""),
             quantity: String(Math.max(1, Number(item?.quantity || 1))),
@@ -1708,7 +1753,16 @@ function AdminAddProducts() {
             price: String(item?.price || item?.product?.price || ""),
             isDigital: item?.isDigital === true || item?.product?.isDigital === true,
             webReaderLink: String(item?.webReaderLink || item?.product?.webReaderLink || ""),
-            kindleLink: String(item?.kindleLink || item?.product?.kindleLink || "")
+            kindleLink: String(item?.kindleLink || item?.product?.kindleLink || ""),
+            digitalType: String(item?.digitalType || item?.product?.digitalType || ""),
+            digitalDelivery: String(item?.digitalDelivery || item?.product?.digitalDelivery || "onsite"),
+            externalAccessLink: String(item?.externalAccessLink || item?.product?.externalAccessLink || ""),
+            externalAccessLabel: String(item?.externalAccessLabel || item?.product?.externalAccessLabel || ""),
+            externalAccessManual: (item?.externalAccessManual ?? item?.product?.externalAccessManual) === true,
+            weight: item?.weight !== undefined && item?.weight !== null ? String(item.weight) : "",
+            length: item?.length !== undefined && item?.length !== null ? String(item.length) : "",
+            width: item?.width !== undefined && item?.width !== null ? String(item.width) : "",
+            height: item?.height !== undefined && item?.height !== null ? String(item.height) : ""
           }))
         : [createEmptyBundleItem()]
     );
@@ -1930,6 +1984,196 @@ function AdminAddProducts() {
 
   const removeBundleItem = (index) => {
     setBundleItems((current) => (current.length === 1 ? [createEmptyBundleItem()] : current.filter((_, itemIndex) => itemIndex !== index)));
+  };
+
+  const renderCustomBundleItemFields = (item, index) => {
+    const isItemDigital = item.isDigital === true;
+    const isItemKindle = String(item.digitalType || "").toLowerCase().includes("kindle");
+    const isItemExternal = item.digitalDelivery === "external";
+
+    if (isItemDigital) {
+      return (
+        <div className="custom-bundle-digital-details">
+          <div className="custom-bundle-grid custom-bundle-grid-2">
+            <label className="custom-field">
+              <span>Format Type</span>
+              <select
+                value={item.digitalType || ""}
+                onChange={(e) => updateBundleItem(index, "digitalType", e.target.value)}
+              >
+                <option value="">Select format type...</option>
+                {digitalFormatTypeOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {getDigitalFormatTypeLabel(opt)}
+                  </option>
+                ))}
+                {item.digitalType && !digitalFormatTypeOptions.includes(item.digitalType) && (
+                  <option value={item.digitalType}>{item.digitalType}</option>
+                )}
+              </select>
+            </label>
+          </div>
+
+          <div className="custom-bundle-delivery-group">
+            <span className="custom-bundle-subheading">Where do customers access this?</span>
+            <div className="custom-bundle-radio-group">
+              <label className="custom-bundle-radio-label">
+                <input
+                  type="radio"
+                  name={`bundle-delivery-${index}`}
+                  value="onsite"
+                  checked={!isItemExternal}
+                  onChange={() => {
+                    updateBundleItem(index, "digitalDelivery", "onsite");
+                    setBundleItemErrors((prev) => ({ ...prev, [index]: "" }));
+                  }}
+                />
+                <span>On this website</span>
+              </label>
+              <label className="custom-bundle-radio-label">
+                <input
+                  type="radio"
+                  name={`bundle-delivery-${index}`}
+                  value="external"
+                  checked={isItemExternal}
+                  onChange={() => updateBundleItem(index, "digitalDelivery", "external")}
+                />
+                <span>On another website</span>
+              </label>
+            </div>
+          </div>
+
+          {!isItemExternal ? (
+            <div className="custom-bundle-fields-block">
+              <label className="custom-field">
+                <span>Web Reader Link URL</span>
+                <input
+                  type="text"
+                  placeholder="Web Reader Link URL (unlocked in My Library)"
+                  value={item.webReaderLink || ""}
+                  onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
+                />
+              </label>
+              {isItemKindle && (
+                <label className="custom-field">
+                  <span>Kindle Link URL</span>
+                  <input
+                    type="text"
+                    placeholder="Kindle redemption or purchase link"
+                    value={item.kindleLink || ""}
+                    onChange={(e) => updateBundleItem(index, "kindleLink", e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+          ) : (
+            <div className="custom-bundle-fields-block">
+              <div className="custom-bundle-grid custom-bundle-grid-2">
+                <label className="custom-field">
+                  <span>Access link (https://...) <strong style={{ color: "#dc2626" }}>*</strong></span>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    value={item.externalAccessLink || ""}
+                    onChange={(e) => {
+                      updateBundleItem(index, "externalAccessLink", e.target.value);
+                      setBundleItemErrors((prev) => ({ ...prev, [index]: "" }));
+                    }}
+                  />
+                </label>
+                <label className="custom-field">
+                  <span>Button label (optional, default: View)</span>
+                  <input
+                    type="text"
+                    maxLength={40}
+                    placeholder="View"
+                    value={item.externalAccessLabel || ""}
+                    onChange={(e) => updateBundleItem(index, "externalAccessLabel", e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="custom-bundle-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={item.externalAccessManual === true}
+                  onChange={(e) => updateBundleItem(index, "externalAccessManual", e.target.checked)}
+                />
+                <div>
+                  <span>Our team gives access manually</span>
+                  <p className="custom-bundle-hint-text">
+                    Customers will not see the link straight away. The order stays Pending until an admin clicks Grant access on the order. Gift purchases are not allowed for this product.
+                  </p>
+                </div>
+              </label>
+              <p className="custom-bundle-hint-text">
+                {item.externalAccessManual ? (
+                  "Customers see this link only after an admin grants access, in My Digital Library."
+                ) : (
+                  "Customers see this link only after they pay, in My Digital Library. They will not see 'instant access' messages for this product."
+                )}
+              </p>
+              {bundleItemErrors[index] && (
+                <div className="custom-bundle-error">
+                  {bundleItemErrors[index]}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="custom-bundle-physical-fields">
+        <div className="custom-bundle-grid custom-bundle-grid-4">
+          <label className="custom-field">
+            <span>Weight (g)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.weight || ""}
+              onChange={(e) => updateBundleItem(index, "weight", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Length (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.length || ""}
+              onChange={(e) => updateBundleItem(index, "length", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Width (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.width || ""}
+              onChange={(e) => updateBundleItem(index, "width", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Height (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.height || ""}
+              onChange={(e) => updateBundleItem(index, "height", e.target.value)}
+            />
+          </label>
+        </div>
+        {Number(item.weight || 0) <= 0 && (
+          <div className="custom-bundle-weight-hint">
+            Add weight so delivery is charged correctly
+          </div>
+        )}
+      </div>
+    );
   };
 
   const updateRelatedProductItem = (index, value) => {
@@ -2938,15 +3182,7 @@ function AdminAddProducts() {
                                       />
                                       <span>Is Digital Item (Web Reader / Downloadable)</span>
                                     </label>
-                                    {item.isDigital && (
-                                      <input
-                                        type="text"
-                                        placeholder="Web Reader Link URL (unlocked in My Library)"
-                                        value={item.webReaderLink || ""}
-                                        onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
-                                        style={{ marginTop: "6px" }}
-                                      />
-                                    )}
+                                    {renderCustomBundleItemFields(item, index)}
                                   </div>
                                 </div>
                               ) : (
