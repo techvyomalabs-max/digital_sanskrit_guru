@@ -485,9 +485,13 @@ function Product() {
     }
   }, [product, formatParam]);
 
+  // Until the effect above has stored the choice (first render, or right after moving to another
+  // product), fall back to the default option so the page never flashes "currently unavailable".
   const memoBuyProduct = useMemo(
-    () => getBuyProduct(product, selectedOptionId),
-    [product, selectedOptionId]
+    () =>
+      getBuyProduct(product, selectedOptionId) ||
+      (isOptionsParent(product) ? getBuyProduct(product, pickDefaultOptionId(product.publicOptions, formatParam)) : null),
+    [product, selectedOptionId, formatParam]
   );
 
   useEffect(() => {
@@ -502,6 +506,9 @@ function Product() {
         alt: `${memoBuyProduct.name || product.name || "Product"} image 1`,
         thumbnail: optionImage
       });
+    } else {
+      // Option without its own picture: go back to the product's own first image/video.
+      setSelectedMedia(null);
     }
   }, [product, memoBuyProduct]);
 
@@ -1028,7 +1035,7 @@ function Product() {
   // ── Fix #13: Styled not-found page ──────────────────────────────────────────
   if (!product) return <ProductNotFound />;
 
-  const buyProduct = getBuyProduct(product, selectedOptionId);
+  const buyProduct = memoBuyProduct;
   const optionParentId = product?.optionParent
     ? String(product.optionParent?._id || product.optionParent).trim()
     : "";
