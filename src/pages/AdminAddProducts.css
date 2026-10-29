@@ -1076,3 +1076,180 @@ body.admin-dark .custom-bundle-weight-hint {
   font-size: 12px;
 }
 
+/* ---- Add/Edit Product form tidy-up ---- */
+
+/* Section headings stand out from field text */
+.product-composer-panel-head h4 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.product-composer-panel-head p {
+  font-size: 12.5px;
+}
+
+/* One consistent small style for the form's secondary buttons */
+.product-composer-panel button:not(.bundle-type-tab) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--admin-text);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.product-composer-panel button:not(.bundle-type-tab):hover {
+  background: var(--admin-surface-2);
+}
+
+.product-composer-panel button.danger,
+.product-composer-panel button.admin-category-delete-btn {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.product-composer-panel button.danger:hover,
+.product-composer-panel button.admin-category-delete-btn:hover {
+  background: #fef2f2;
+}
+
+body.admin-dark .product-composer-panel button.danger,
+body.admin-dark .product-composer-panel button.admin-category-delete-btn {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+body.admin-dark .product-composer-panel button.danger:hover,
+body.admin-dark .product-composer-panel button.admin-category-delete-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+/* Category: new-category input and its buttons on one line */
+.admin-category-manager-actions .theme-form-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.admin-category-manager-actions .theme-form-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Weight and size in one row */
+.pf-dimensions-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pf-dimensions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .pf-dimensions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Market price row: [market | regular | sale] then [start | end | remove] */
+.admin-bundle-builder-row.pf-market-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-bundle-builder-row.pf-market-row button {
+  justify-self: end;
+}
+
+@media (max-width: 640px) {
+  .admin-bundle-builder-row.pf-market-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-bundle-builder-row.pf-market-row button {
+    justify-self: start;
+  }
+}
+
+.pf-empty-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--admin-muted);
+}
+
+.pf-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--admin-muted);
+}
+
+/* Image uploads as a drop-zone style box */
+.product-composer-panel .hero-banner-admin-upload-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-text);
+  background: var(--admin-surface-2);
+  border: 1.5px dashed var(--admin-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.product-composer-panel .hero-banner-admin-upload-btn:hover,
+.product-composer-panel .hero-banner-admin-upload-btn:focus-within {
+  border-color: var(--site-button-bg, #0284c7);
+}
+
+.product-composer-panel .hero-banner-admin-upload-btn input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Phones: compact modal header so more of the form is visible */
+@media (max-width: 640px) {
+  .pf-modal-header {
+    padding: 10px 14px !important;
+    gap: 8px !important;
+  }
+
+  .pf-modal-header .admin-toast-text-subtitle {
+    display: none;
+  }
+
+  .pf-modal-header .add-product-status-badges {
+    gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .pf-modal-header .status-badge {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
