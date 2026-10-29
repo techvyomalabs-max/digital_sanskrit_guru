@@ -347,8 +347,8 @@ function AdminAddProducts() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [internationalPrice, setInternationalPrice] = useState("");
-  const [internationalCountryPrices, setInternationalCountryPrices] = useState([createEmptyCountryPrice()]);
-  const [marketPrices, setMarketPrices] = useState([createEmptyMarketPrice()]);
+  const [internationalCountryPrices, setInternationalCountryPrices] = useState([]);
+  const [marketPrices, setMarketPrices] = useState([]);
   const [image, setImage] = useState("");
   const [imagesInput, setImagesInput] = useState("");
   const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
@@ -611,16 +611,20 @@ function AdminAddProducts() {
       : Number(price || 0);
     const numericStock = Number(stock ?? 1);
     const primaryImage = image.trim();
+    // A blank price box must not count as ₹0. For a bundle the price comes from its items.
+    const hasPriceInput = effectiveType === "bundle"
+      ? String(calculatedBundlePrice ?? "").trim() !== "" || String(price ?? "").trim() !== ""
+      : String(price ?? "").trim() !== "";
+    const isPriceValid = hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0;
 
     return {
       isNameValid: normalizedName.length > 0,
-      isPriceValid: !Number.isNaN(numericPrice) && numericPrice >= 0,
+      isPriceValid,
       isStockValid: !Number.isNaN(numericStock) && numericStock >= 0,
       hasPrimaryImage: primaryImage.length > 0,
       isValid:
         normalizedName.length > 0 &&
-        !Number.isNaN(numericPrice) &&
-        numericPrice >= 0 &&
+        isPriceValid &&
         !Number.isNaN(numericStock) &&
         numericStock >= 0,
       normalizedName,
@@ -676,8 +680,8 @@ function AdminAddProducts() {
     setName("");
     setPrice("");
     setInternationalPrice("");
-    setInternationalCountryPrices([createEmptyCountryPrice()]);
-    setMarketPrices([createEmptyMarketPrice()]);
+    setInternationalCountryPrices([]);
+    setMarketPrices([]);
     setImage("");
     setImagesInput("");
     setTrailerVideoUrl("");
@@ -1702,7 +1706,7 @@ function AdminAddProducts() {
             country: String(item?.country || ""),
             price: String(item?.price ?? "")
           }))
-        : [createEmptyCountryPrice()]
+        : []
     );
     setMarketPrices(
       Array.isArray(product.marketPrices) && product.marketPrices.length > 0
@@ -1714,7 +1718,7 @@ function AdminAddProducts() {
             startDate: item?.startDate ? String(item.startDate).slice(0, 10) : "",
             endDate: item?.endDate ? String(item.endDate).slice(0, 10) : ""
           }))
-        : [createEmptyMarketPrice()]
+        : []
     );
     setImage(product.image || "");
     setImagesInput(Array.isArray(product.images) && product.images.length > 0 ? product.images.join("\n") : product.image || "");
@@ -2204,7 +2208,7 @@ function AdminAddProducts() {
 
   const removeInternationalCountryPrice = (index) => {
     setInternationalCountryPrices((current) =>
-      current.length === 1 ? [createEmptyCountryPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+      current.filter((_, itemIndex) => itemIndex !== index)
     );
   };
 
@@ -2220,7 +2224,7 @@ function AdminAddProducts() {
 
   const removeMarketPrice = (index) => {
     setMarketPrices((current) =>
-      current.length === 1 ? [createEmptyMarketPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+      current.filter((_, itemIndex) => itemIndex !== index)
     );
   };
 
@@ -2311,6 +2315,7 @@ function AdminAddProducts() {
             >
               {/* Modal Header */}
               <div
+                className="pf-modal-header"
                 style={{
                   padding: "16px 20px",
                   borderBottom: "1px solid var(--site-border, #e2e8f0)",
@@ -2370,19 +2375,19 @@ function AdminAddProducts() {
               {/* Modal Quick Nav Tabs */}
               <div className="admin-modal-nav-tabs">
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-essentials")}>
-                  📌 Essentials
-                </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
-                  💰 Pricing & Markets
+                  Essentials
                 </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-digital")}>
-                  ⚡ Digital Access
+                  Digital
                 </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-dimensions")}>
-                  📦 Specs & Stock
+                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
+                  Pricing
+                </button>
+                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-related")}>
+                  Combo &amp; Related
                 </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-media")}>
-                  🖼️ Media & Preview
+                  Media
                 </button>
               </div>
 
@@ -2463,51 +2468,57 @@ function AdminAddProducts() {
                       onChange={(e) => setStock(e.target.value)}
                     />
                   </label>
-                  <label className="admin-field">
-                    <span>Weight (in Grams)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 450"
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                    />
-                    {productType === "bundle" && (
-                      <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
-                        Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
-                      </small>
-                    )}
-                  </label>
-                  <label className="admin-field">
-                    <span>Length (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 21"
-                      value={length}
-                      onChange={(e) => setLength(e.target.value)}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Width (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 14"
-                      value={width}
-                      onChange={(e) => setWidth(e.target.value)}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Height (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 3"
-                      value={height}
-                      onChange={(e) => setHeight(e.target.value)}
-                    />
-                  </label>
+                  {isDigital === true && productType !== "bundle" ? null : (
+                    <div className="admin-field admin-field-wide pf-dimensions">
+                      <div className="pf-dimensions-grid">
+                        <label className="admin-field">
+                          <span>Weight (in Grams)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 450"
+                            value={weight}
+                            onChange={(e) => setWeight(e.target.value)}
+                          />
+                          {productType === "bundle" && (
+                            <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
+                              Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
+                            </small>
+                          )}
+                        </label>
+                        <label className="admin-field">
+                          <span>Length (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 21"
+                            value={length}
+                            onChange={(e) => setLength(e.target.value)}
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Width (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 14"
+                            value={width}
+                            onChange={(e) => setWidth(e.target.value)}
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Height (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 3"
+                            value={height}
+                            onChange={(e) => setHeight(e.target.value)}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   <label className="admin-field">
                     <span>Discount / Offer Type</span>
                     <select
@@ -2545,6 +2556,9 @@ function AdminAddProducts() {
                     <div className="admin-category-manager">
                       <div className="admin-category-select-row">
                         <select value={category} onChange={(e) => setCategory(e.target.value)} className="admin-category-select-dropdown">
+                          {category && !categoryOptions.includes(category) ? (
+                            <option value={category}>{category}</option>
+                          ) : null}
                           {categoryOptions.map((option) => (
                             <option key={option} value={option}>
                               {option}
@@ -2639,10 +2653,10 @@ function AdminAddProducts() {
                 </div>
               </section>
 
-              <section id="section-pricing" className="product-composer-panel">
+              <section id="section-digital" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
-                    <h4>📖 Digital Content & Kindle Settings</h4>
+                    <h4>Digital Content &amp; Kindle Settings</h4>
                     <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
                   </div>
                 </div>
@@ -2927,16 +2941,19 @@ function AdminAddProducts() {
                     <label className="admin-field admin-field-wide">
                       <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
                       <input
-                        placeholder="https://... (Direct link to course on SFH platform; displays 'View Course' button on product page)"
+                        placeholder="https://…"
                         value={courseLink}
                         onChange={(e) => setCourseLink(e.target.value)}
                       />
+                      <small className="pf-hint">
+                        Direct link to the course on the SFH platform; shows a View Course button on the product page.
+                      </small>
                     </label>
                   </div>
                 </div>
               </section>
 
-              <section id="section-digital" className="product-composer-panel">
+              <section id="section-pricing" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Pricing</h4>
@@ -2964,6 +2981,9 @@ function AdminAddProducts() {
                         </button>
                       </div>
                       <div className="admin-bundle-builder-list">
+                        {internationalCountryPrices.length === 0 ? (
+                          <p className="pf-empty-note">No country overrides yet.</p>
+                        ) : null}
                         {internationalCountryPrices.map((item, index) => (
                           <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
                             <select
@@ -3006,8 +3026,11 @@ function AdminAddProducts() {
                         </button>
                       </div>
                       <div className="admin-bundle-builder-list">
+                        {marketPrices.length === 0 ? (
+                          <p className="pf-empty-note">No market prices yet.</p>
+                        ) : null}
                         {marketPrices.map((item, index) => (
-                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap">
+                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap pf-market-row">
                             <select
                               value={item.market}
                               onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
@@ -3058,7 +3081,7 @@ function AdminAddProducts() {
                 </div>
               </section>
 
-              <section id="section-dimensions" className="product-composer-panel">
+              <section id="section-related" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Relationships</h4>
