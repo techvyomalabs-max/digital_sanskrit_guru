@@ -263,7 +263,7 @@ function AdminThemeSettings() {
     let active = true;
 
     axios
-      .get("/api/products")
+      .get("/api/products", { params: { includeHidden: 1 } })
       .then((res) => {
         if (active && Array.isArray(res.data)) {
           setProducts(res.data);
