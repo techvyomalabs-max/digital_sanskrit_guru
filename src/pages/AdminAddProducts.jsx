@@ -77,6 +77,22 @@ function createEmptyBundleItem() {
   };
 }
 
+function createEmptyOptionRow() {
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    mode: "existing",
+    productId: "",
+    label: "",
+    newName: "",
+    newKind: "physical",
+    newPrice: "",
+    newStock: "1",
+    newWeight: "",
+    newDigitalType: "",
+    newWebReaderLink: ""
+  };
+}
+
 function createEmptyCountryPrice() {
   return { country: "", price: "" };
 }
@@ -358,6 +374,9 @@ function AdminAddProducts() {
   const [festiveOffer, setFestiveOffer] = useState(false);
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
   const [productType, setProductType] = useState("single");
+  const [hasOptions, setHasOptions] = useState(false);
+  const [hideFromListings, setHideFromListings] = useState(false);
+  const [optionRows, setOptionRows] = useState([]);
   const [isDigital, setIsDigital] = useState(false);
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   const [digitalType, setDigitalType] = useState("Web Version");
@@ -603,6 +622,30 @@ function AdminAddProducts() {
     });
   }, [products, searchQuery]);
 
+  const lowestOptionPrice = useMemo(() => {
+    if (!hasOptions || !Array.isArray(optionRows) || optionRows.length === 0) return null;
+    let best = null;
+    for (const row of optionRows) {
+      if (row.mode === "new") {
+        if (hasNumericInput(row.newPrice)) {
+          const p = Number(row.newPrice);
+          if (!Number.isNaN(p) && p >= 0 && (best === null || p < best)) {
+            best = p;
+          }
+        }
+      } else if (row.productId) {
+        const target = products.find((prod) => String(prod?._id || "") === String(row.productId));
+        if (target && target.price !== undefined && target.price !== null) {
+          const p = Number(target.price);
+          if (!Number.isNaN(p) && p >= 0 && (best === null || p < best)) {
+            best = p;
+          }
+        }
+      }
+    }
+    return best;
+  }, [hasOptions, optionRows, products]);
+
   const formSummary = useMemo(() => {
     const normalizedName = name.trim();
     const effectiveType = productType;
@@ -615,23 +658,24 @@ function AdminAddProducts() {
     const hasPriceInput = effectiveType === "bundle"
       ? String(calculatedBundlePrice ?? "").trim() !== "" || String(price ?? "").trim() !== ""
       : String(price ?? "").trim() !== "";
-    const isPriceValid = hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0;
+    const isPriceValid = hasOptions ? true : (hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0);
+    const isStockValid = hasOptions ? true : (!Number.isNaN(numericStock) && numericStock >= 0);
 
     return {
       isNameValid: normalizedName.length > 0,
       isPriceValid,
-      isStockValid: !Number.isNaN(numericStock) && numericStock >= 0,
+      isStockValid,
       hasPrimaryImage: primaryImage.length > 0,
       isValid:
         normalizedName.length > 0 &&
         isPriceValid &&
-        !Number.isNaN(numericStock) &&
-        numericStock >= 0,
+        isStockValid &&
+        (!hasOptions || optionRows.length > 0),
       normalizedName,
       numericPrice,
       numericStock
     };
-  }, [bundleItems, calculatedBundlePrice, image, name, price, productType, stock]);
+  }, [bundleItems, calculatedBundlePrice, hasOptions, image, name, optionRows.length, price, productType, stock]);
 
   const isLikelyDigital = useMemo(() => {
     if (isDigital) return false;
@@ -691,6 +735,9 @@ function AdminAddProducts() {
     setFestiveOffer(false);
     setFestiveDiscountPercent("0");
     setProductType("single");
+    setHasOptions(false);
+    setHideFromListings(false);
+    setOptionRows([]);
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setDigitalType("Web Version");
@@ -739,6 +786,9 @@ function AdminAddProducts() {
       festiveOffer,
       festiveDiscountPercent,
       productType,
+      hasOptions,
+      hideFromListings,
+      optionRows,
       isDigital,
       skipOwnershipRules,
       digitalType,
@@ -1496,6 +1546,8 @@ function AdminAddProducts() {
     if (!formSummary.isValid) {
       if (!formSummary.isNameValid) {
         setFormMessage("Please enter a Product Name.");
+      } else if (hasOptions && optionRows.length === 0) {
+        setFormMessage("Add at least one option.");
       } else if (!formSummary.isPriceValid) {
         setFormMessage("Please enter a valid Product Price.");
       } else {
@@ -1504,7 +1556,52 @@ function AdminAddProducts() {
       return;
     }
 
-    const hasIncompleteMarketPriceRow = marketPrices.some((item) => {
+    if (hasOptions) {
+      if (optionRows.length === 0) {
+        setFormMessage("Add at least one option.");
+        return;
+      }
+      if (optionRows.length > 12) {
+        setFormMessage("At most 12 options.");
+        return;
+      }
+      const seenOptionProductIds = new Set();
+      const selfId = String(editingProduct?._id || "");
+      for (let i = 0; i < optionRows.length; i += 1) {
+        const row = optionRows[i] || {};
+        const n = i + 1;
+        const label = String(row.label || "").trim();
+        if (!label) {
+          setFormMessage(`Option ${n}: add a label (for example Book or Flipbook).`);
+          return;
+        }
+        if (row.mode === "new") {
+          const rawPrice = String(row.newPrice ?? "").trim();
+          const numPrice = Number(rawPrice);
+          if (rawPrice === "" || Number.isNaN(numPrice) || numPrice < 0) {
+            setFormMessage(`Option ${n}: enter a valid price (0 or more).`);
+            return;
+          }
+        } else {
+          const pId = String(row.productId || "").trim();
+          if (!pId) {
+            setFormMessage(`Option ${n}: choose a product.`);
+            return;
+          }
+          if (selfId && pId === selfId) {
+            setFormMessage(`Option ${n}: a product cannot be an option of itself.`);
+            return;
+          }
+          if (seenOptionProductIds.has(pId)) {
+            setFormMessage(`Option ${n}: this product is already an option.`);
+            return;
+          }
+          seenOptionProductIds.add(pId);
+        }
+      }
+    }
+
+    const hasIncompleteMarketPriceRow = !hasOptions && marketPrices.some((item) => {
       if (!hasAnyMarketPriceInput(item)) return false;
       return !String(item?.market || "").trim() || !hasNumericInput(item?.regularPrice);
     });
@@ -1514,7 +1611,7 @@ function AdminAddProducts() {
       return;
     }
 
-    const isEligibleForExternal = isDigital || productType === "bundle";
+    const isEligibleForExternal = !hasOptions && (isDigital || productType === "bundle");
     if (isEligibleForExternal && digitalDelivery === "external") {
       const trimmedLink = externalAccessLink.trim();
       if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
@@ -1657,11 +1754,62 @@ function AdminAddProducts() {
     setFormMessage("");
 
     try {
+      const authConfig = { headers: { Authorization: `Bearer ${token}` } };
+      const resolvedRows = optionRows.map((r) => ({ ...r }));
+      const createdChildIds = [];
+
+      if (hasOptions) {
+        for (let i = 0; i < resolvedRows.length; i += 1) {
+          const row = resolvedRows[i];
+          if (row.mode === "new") {
+            const isChildDigital = row.newKind === "digital";
+            const child = {
+              name: String(row.newName || "").trim() || `${name.trim()} – ${String(row.label || "").trim()}`,
+              price: Number(row.newPrice),
+              productType: "single",
+              category: category.trim() || "General",
+              description: description.trim(),
+              image: image.trim(),
+              images: image.trim() ? [image.trim()] : [],
+              hideFromListings: true,
+              optionParent: editingProduct?._id || null,
+              isDigital: isChildDigital,
+              ...(isChildDigital
+                ? {
+                    digitalType: String(row.newDigitalType || "").trim() || "Web Version",
+                    webReaderLink: String(row.newWebReaderLink || "").trim()
+                  }
+                : {}),
+              stock: isChildDigital ? 1 : Math.max(0, Number(row.newStock || 0)),
+              weight: !isChildDigital ? Math.max(0, Number(row.newWeight || 0)) : 0
+            };
+            const { data: created } = await axios.post("/api/products", child, authConfig);
+            resolvedRows[i] = {
+              ...row,
+              mode: "existing",
+              productId: String(created._id || "")
+            };
+            createdChildIds.push(String(created._id || ""));
+            setOptionRows([...resolvedRows]);
+          }
+        }
+      }
+
+      const finalPayload = {
+        ...payload,
+        hasOptions,
+        hideFromListings,
+        options: hasOptions
+          ? resolvedRows.map((r) => ({
+              product: String(r.productId || "").trim(),
+              label: String(r.label || "").trim()
+            }))
+          : []
+      };
+
       let savedProduct;
       if (editingProduct?._id) {
-        const { data } = await axios.put(`/api/products/${editingProduct._id}`, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const { data } = await axios.put(`/api/products/${editingProduct._id}`, finalPayload, authConfig);
         savedProduct = data;
         setFormMessage(
           `Product updated successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
@@ -1669,10 +1817,17 @@ function AdminAddProducts() {
             : ""}`
         );
       } else {
-        const { data } = await axios.post("/api/products", payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const { data } = await axios.post("/api/products", finalPayload, authConfig);
         savedProduct = data;
+        if (createdChildIds.length > 0 && savedProduct?._id) {
+          for (const childId of createdChildIds) {
+            try {
+              await axios.put(`/api/products/${childId}`, { optionParent: savedProduct._id }, authConfig);
+            } catch {
+              // best-effort: an add-products-only admin may get 403
+            }
+          }
+        }
         setFormMessage(
           `Product added successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
             ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
@@ -1730,6 +1885,18 @@ function AdminAddProducts() {
     setFestiveOffer(resolvedDiscountType !== "none");
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
+    setHasOptions(product.hasOptions === true);
+    setHideFromListings(product.hideFromListings === true);
+    setOptionRows(
+      Array.isArray(product.options) && product.options.length > 0
+        ? product.options.map((o) => ({
+            ...createEmptyOptionRow(),
+            mode: "existing",
+            productId: String(o?.product?._id || o?.product || ""),
+            label: String(o?.label || "")
+          }))
+        : []
+    );
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setDigitalType(product.digitalType || "Web Version");
@@ -2228,6 +2395,49 @@ function AdminAddProducts() {
     );
   };
 
+  const handleToggleHasOptions = async (checked) => {
+    if (!checked) {
+      setHasOptions(false);
+      return;
+    }
+    if (productType === "bundle" || productType === "bulk") {
+      const ok = await confirm({
+        title: "Turn On Options?",
+        message: "Turning on options removes this product's combo/bulk settings. Continue?",
+        confirmText: "Continue"
+      });
+      if (!ok) return;
+      setProductType("single");
+    }
+    setHasOptions(true);
+    setOptionRows((current) => (current.length === 0 ? [createEmptyOptionRow()] : current));
+  };
+
+  const updateOptionRow = (index, field, value) => {
+    setOptionRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const addOptionRow = () => {
+    setOptionRows((current) => (current.length >= 12 ? current : [...current, createEmptyOptionRow()]));
+  };
+
+  const removeOptionRow = (index) => {
+    setOptionRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
+  };
+
+  const moveOptionRow = (index, delta) => {
+    setOptionRows((current) => {
+      const targetIndex = index + delta;
+      if (targetIndex < 0 || targetIndex >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -2377,6 +2587,9 @@ function AdminAddProducts() {
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-essentials")}>
                   Essentials
                 </button>
+                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-options")}>
+                  Options
+                </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-digital")}>
                   Digital
                 </button>
@@ -2443,114 +2656,126 @@ function AdminAddProducts() {
                     <span>Product Type</span>
                     <select value={productType} onChange={(e) => setProductType(e.target.value)}>
                       <option value="single">Single Product</option>
-                      <option value="bundle">Bundle</option>
-                      <option value="bulk">Bulk Product</option>
+                      {!hasOptions && (
+                        <>
+                          <option value="bundle">Bundle</option>
+                          <option value="bulk">Bulk Product</option>
+                        </>
+                      )}
                     </select>
                   </label>
-                  <label className="admin-field">
-                    <span>Price</span>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 999"
-                      value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      readOnly={productType === "bundle"}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Stock</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 25"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                    />
-                  </label>
-                  {isDigital === true && productType !== "bundle" ? null : (
-                    <div className="admin-field admin-field-wide pf-dimensions">
-                      <div className="pf-dimensions-grid">
-                        <label className="admin-field">
-                          <span>Weight (in Grams)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 450"
-                            value={weight}
-                            onChange={(e) => setWeight(e.target.value)}
-                          />
-                          {productType === "bundle" && (
-                            <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
-                              Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
-                            </small>
-                          )}
-                        </label>
-                        <label className="admin-field">
-                          <span>Length (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 21"
-                            value={length}
-                            onChange={(e) => setLength(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Width (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 14"
-                            value={width}
-                            onChange={(e) => setWidth(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Height (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 3"
-                            value={height}
-                            onChange={(e) => setHeight(e.target.value)}
-                          />
-                        </label>
-                      </div>
+                  {hasOptions ? (
+                    <div className="admin-field admin-field-wide">
+                      <p className="pf-empty-note">Price and stock come from the options below.</p>
                     </div>
+                  ) : (
+                    <>
+                      <label className="admin-field">
+                        <span>Price</span>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="e.g. 999"
+                          value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          readOnly={productType === "bundle"}
+                        />
+                      </label>
+                      <label className="admin-field">
+                        <span>Stock</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="e.g. 25"
+                          value={stock}
+                          onChange={(e) => setStock(e.target.value)}
+                        />
+                      </label>
+                      {isDigital === true && productType !== "bundle" ? null : (
+                        <div className="admin-field admin-field-wide pf-dimensions">
+                          <div className="pf-dimensions-grid">
+                            <label className="admin-field">
+                              <span>Weight (in Grams)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 450"
+                                value={weight}
+                                onChange={(e) => setWeight(e.target.value)}
+                              />
+                              {productType === "bundle" && (
+                                <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
+                                  Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
+                                </small>
+                              )}
+                            </label>
+                            <label className="admin-field">
+                              <span>Length (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 21"
+                                value={length}
+                                onChange={(e) => setLength(e.target.value)}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Width (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 14"
+                                value={width}
+                                onChange={(e) => setWidth(e.target.value)}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Height (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 3"
+                                value={height}
+                                onChange={(e) => setHeight(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                      <label className="admin-field">
+                        <span>Discount / Offer Type</span>
+                        <select
+                          value={discountType}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDiscountType(val);
+                            setFestiveOffer(val !== "none");
+                          }}
+                        >
+                          <option value="none">Regular Product (No Special Discount)</option>
+                          <option value="new_launch">New Launch Offer</option>
+                          <option value="weekly">Weekly Discount</option>
+                          <option value="monthly">Monthly Discount</option>
+                          <option value="combo">Combo Discount</option>
+                          <option value="festive">Festive Offer</option>
+                        </select>
+                      </label>
+                      {discountType !== "none" ? (
+                        <label className="admin-field">
+                          <span>Discount %</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="95"
+                            step="1"
+                            placeholder="e.g. 20"
+                            value={festiveDiscountPercent}
+                            onChange={(e) => setFestiveDiscountPercent(e.target.value)}
+                          />
+                        </label>
+                      ) : null}
+                    </>
                   )}
-                  <label className="admin-field">
-                    <span>Discount / Offer Type</span>
-                    <select
-                      value={discountType}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDiscountType(val);
-                        setFestiveOffer(val !== "none");
-                      }}
-                    >
-                      <option value="none">Regular Product (No Special Discount)</option>
-                      <option value="new_launch">New Launch Offer</option>
-                      <option value="weekly">Weekly Discount</option>
-                      <option value="monthly">Monthly Discount</option>
-                      <option value="combo">Combo Discount</option>
-                      <option value="festive">Festive Offer</option>
-                    </select>
-                  </label>
-                  {discountType !== "none" ? (
-                    <label className="admin-field">
-                      <span>Discount %</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="95"
-                        step="1"
-                        placeholder="e.g. 20"
-                        value={festiveDiscountPercent}
-                        onChange={(e) => setFestiveDiscountPercent(e.target.value)}
-                      />
-                    </label>
-                  ) : null}
                   <div className="admin-field admin-field-wide">
                     <span>Select Product Category</span>
                     <div className="admin-category-manager">
@@ -2624,6 +2849,16 @@ function AdminAddProducts() {
                       </div>
                     </div>
                   </div>
+                  <div className="admin-field admin-field-wide">
+                    <label className="admin-digital-toggle-label" style={{ marginBottom: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={hideFromListings}
+                        onChange={(e) => setHideFromListings(e.target.checked)}
+                      />
+                      <span>Hide from store listings (shown only as an option of another product or by direct link)</span>
+                    </label>
+                  </div>
                   <label className="admin-field admin-field-wide">
                     <span>Description</span>
                     <textarea
@@ -2653,6 +2888,243 @@ function AdminAddProducts() {
                 </div>
               </section>
 
+              <section id="section-options" className="product-composer-panel">
+                <div className="product-composer-panel-head">
+                  <div>
+                    <h4>Formats / Options</h4>
+                    <p>Sell this product in different formats. The customer picks one, and that option&apos;s own product goes into the cart.</p>
+                  </div>
+                </div>
+                <div className="product-composer-panel-body">
+                  <label className="admin-digital-toggle-label">
+                    <input
+                      type="checkbox"
+                      checked={hasOptions}
+                      onChange={(e) => handleToggleHasOptions(e.target.checked)}
+                    />
+                    <span>Offer this product in different formats (customer chooses one)</span>
+                  </label>
+
+                  {hasOptions && (
+                    <div className="admin-bundle-builder">
+                      <div className="admin-bundle-builder-list">
+                        {optionRows.map((row, index) => {
+                          const editingId = String(editingProduct?._id || "");
+                          const otherChosenIds = new Set(
+                            optionRows
+                              .filter((_, rIdx) => rIdx !== index)
+                              .map((r) => String(r.productId || ""))
+                              .filter(Boolean)
+                          );
+                          const eligibleOptionProducts = products.filter((p) => {
+                            const pid = String(p?._id || "");
+                            if (!pid || pid === editingId) return false;
+                            if (p?.hasOptions === true) return false;
+                            if (otherChosenIds.has(pid)) return false;
+                            return true;
+                          });
+                          const chosenProduct =
+                            row.mode === "existing" && row.productId
+                              ? products.find((p) => String(p?._id || "") === String(row.productId)) || null
+                              : null;
+
+                          return (
+                            <div key={row.key || `opt-row-${index}`} className="bundle-builder-card">
+                              <div className="bundle-builder-type-bar">
+                                <div className="bundle-type-tabs">
+                                  <button
+                                    type="button"
+                                    className={`bundle-type-tab ${row.mode !== "new" ? "active" : ""}`}
+                                    onClick={() => updateOptionRow(index, "mode", "existing")}
+                                  >
+                                    Existing product
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`bundle-type-tab ${row.mode === "new" ? "active" : ""}`}
+                                    onClick={() => updateOptionRow(index, "mode", "new")}
+                                  >
+                                    New product
+                                  </button>
+                                </div>
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    disabled={index === 0}
+                                    onClick={() => moveOptionRow(index, -1)}
+                                    title="Move up"
+                                  >
+                                    ↑ Up
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={index === optionRows.length - 1}
+                                    onClick={() => moveOptionRow(index, 1)}
+                                    title="Move down"
+                                  >
+                                    ↓ Down
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="danger bundle-remove-btn"
+                                    onClick={() => removeOptionRow(index)}
+                                  >
+                                    ✕ Remove
+                                  </button>
+                                </div>
+                              </div>
+
+                              <label className="custom-field">
+                                <span>Option Label *</span>
+                                <input
+                                  type="text"
+                                  maxLength={40}
+                                  placeholder="e.g. Book, Flipbook, Pendrive"
+                                  value={row.label || ""}
+                                  onChange={(e) => updateOptionRow(index, "label", e.target.value)}
+                                />
+                              </label>
+
+                              {row.mode === "new" ? (
+                                <div className="custom-bundle-fields">
+                                  <div className="custom-bundle-grid custom-bundle-grid-2">
+                                    <label className="custom-field">
+                                      <span>Product Name</span>
+                                      <input
+                                        type="text"
+                                        placeholder={`${name.trim() || "Product"} – ${(row.label || "").trim() || "Option"}`}
+                                        value={row.newName || ""}
+                                        onChange={(e) => updateOptionRow(index, "newName", e.target.value)}
+                                      />
+                                    </label>
+                                    <label className="custom-field">
+                                      <span>Price (₹) *</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="e.g. 299"
+                                        value={row.newPrice ?? ""}
+                                        onChange={(e) => updateOptionRow(index, "newPrice", e.target.value)}
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className="custom-bundle-radio-group">
+                                    <label className="custom-bundle-radio-label">
+                                      <input
+                                        type="radio"
+                                        name={`option-kind-${row.key || index}`}
+                                        value="physical"
+                                        checked={row.newKind !== "digital"}
+                                        onChange={() => updateOptionRow(index, "newKind", "physical")}
+                                      />
+                                      <span>Physical</span>
+                                    </label>
+                                    <label className="custom-bundle-radio-label">
+                                      <input
+                                        type="radio"
+                                        name={`option-kind-${row.key || index}`}
+                                        value="digital"
+                                        checked={row.newKind === "digital"}
+                                        onChange={() => updateOptionRow(index, "newKind", "digital")}
+                                      />
+                                      <span>Digital</span>
+                                    </label>
+                                  </div>
+
+                                  {row.newKind === "digital" ? (
+                                    <div className="custom-bundle-grid custom-bundle-grid-2">
+                                      <label className="custom-field">
+                                        <span>Format</span>
+                                        <select
+                                          value={row.newDigitalType || "Web Version"}
+                                          onChange={(e) => updateOptionRow(index, "newDigitalType", e.target.value)}
+                                        >
+                                          {digitalFormatTypeOptions.map((opt) => (
+                                            <option key={opt} value={opt}>
+                                              {getDigitalFormatTypeLabel(opt)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label className="custom-field">
+                                        <span>Web Reader link (optional)</span>
+                                        <input
+                                          type="text"
+                                          placeholder="https://..."
+                                          value={row.newWebReaderLink || ""}
+                                          onChange={(e) => updateOptionRow(index, "newWebReaderLink", e.target.value)}
+                                        />
+                                      </label>
+                                    </div>
+                                  ) : (
+                                    <div className="custom-bundle-grid custom-bundle-grid-2">
+                                      <label className="custom-field">
+                                        <span>Stock</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="1"
+                                          value={row.newStock ?? "1"}
+                                          onChange={(e) => updateOptionRow(index, "newStock", e.target.value)}
+                                        />
+                                      </label>
+                                      <label className="custom-field">
+                                        <span>Weight in grams</span>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="0"
+                                          value={row.newWeight ?? ""}
+                                          onChange={(e) => updateOptionRow(index, "newWeight", e.target.value)}
+                                        />
+                                      </label>
+                                    </div>
+                                  )}
+
+                                  <p className="custom-bundle-hint-text">
+                                    Saved as its own product, hidden from store listings. For Kindle, external-link or combo formats, create the product first and pick it as an existing product.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <SearchableProductSelect
+                                    products={eligibleOptionProducts}
+                                    value={row.productId}
+                                    onChange={(val) => updateOptionRow(index, "productId", val)}
+                                    placeholder="Search & select option product..."
+                                  />
+                                  {chosenProduct && (
+                                    <p className="custom-bundle-hint-text" style={{ marginTop: "6px" }}>
+                                      ₹{chosenProduct.price ?? 0} • {chosenProduct.isDigital ? "Digital" : `Physical • Stock: ${chosenProduct.stock ?? 0}`}
+                                      {chosenProduct.hideFromListings ? " • Hidden" : ""}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {optionRows.length < 12 && (
+                        <div>
+                          <button type="button" onClick={addOptionRow}>
+                            + Add option
+                          </button>
+                        </div>
+                      )}
+
+                      {lowestOptionPrice !== null && (
+                        <p className="pf-empty-note">
+                          Customers will see: from ₹{lowestOptionPrice}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+
               <section id="section-digital" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
@@ -2660,7 +3132,12 @@ function AdminAddProducts() {
                     <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
                   </div>
                 </div>
-                <div className="product-composer-panel-body">
+                {hasOptions ? (
+                  <div className="product-composer-panel-body">
+                    <p className="pf-empty-note">Set this on each option&apos;s own product.</p>
+                  </div>
+                ) : (
+                  <div className="product-composer-panel-body">
                   <label className="admin-digital-toggle-label">
                     <input
                       type="checkbox"
@@ -2950,7 +3427,8 @@ function AdminAddProducts() {
                       </small>
                     </label>
                   </div>
-                </div>
+                  </div>
+                )}
               </section>
 
               <section id="section-pricing" className="product-composer-panel">
@@ -2960,6 +3438,11 @@ function AdminAddProducts() {
                     <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
                   </div>
                 </div>
+                {hasOptions ? (
+                  <div className="product-composer-panel-body">
+                    <p className="pf-empty-note">Set this on each option&apos;s own product.</p>
+                  </div>
+                ) : (
                 <div className="form-grid">
                   <label className="admin-field">
                     <span>International Price</span>
@@ -3079,6 +3562,7 @@ function AdminAddProducts() {
                     </div>
                   </div>
                 </div>
+                )}
               </section>
 
               <section id="section-related" className="product-composer-panel">
@@ -3089,7 +3573,7 @@ function AdminAddProducts() {
                   </div>
                 </div>
                 <div className="form-grid">
-                  {productType === "bundle" ? (
+                  {productType === "bundle" && !hasOptions ? (
                     <div className="admin-field admin-field-wide">
                             <label className="admin-digital-toggle-label" style={{ marginBottom: "4px" }}>
                               <input
@@ -3358,11 +3842,20 @@ function AdminAddProducts() {
                   }}
                 />
                 <div className="product-composer-price-line">
-                  <strong>Rs {formSummary.numericPrice || 0}</strong>
-                  <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
+                  <strong>{hasOptions ? `From ₹${lowestOptionPrice ?? 0}` : `Rs ${formSummary.numericPrice || 0}`}</strong>
+                  <small>{hasOptions ? "Option pricing" : productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
                 </div>
                 <div className="product-composer-side-list">
-                  <div><span>Type</span><strong>{productType === "bundle" ? "Bundle" : "Single"}</strong></div>
+                  <div>
+                    <span>Type</span>
+                    <strong>
+                      {hasOptions
+                        ? `${optionRows.length} option${optionRows.length === 1 ? "" : "s"}`
+                        : productType === "bundle"
+                          ? "Bundle"
+                          : "Single"}
+                    </strong>
+                  </div>
                   <div><span>Category</span><strong>{category || "General"}</strong></div>
                   <div><span>Stock</span><strong>{formSummary.numericStock || 0}</strong></div>
                 </div>
@@ -3527,7 +4020,17 @@ function AdminAddProducts() {
                         }}
                       />
                       <span>
-                        <strong>{product.name}</strong>
+                        <strong>
+                          {product.name}
+                          {product.hasOptions ? (
+                            <span className="pf-badge pf-badge--options">
+                              Options ({Array.isArray(product.options) ? product.options.length : 0})
+                            </span>
+                          ) : null}
+                          {product.hideFromListings ? (
+                            <span className="pf-badge pf-badge--hidden">Hidden</span>
+                          ) : null}
+                        </strong>
                         <small>{product.category || "General"}</small>
                         {product.lastUpdatedAt ? (
                           <small>

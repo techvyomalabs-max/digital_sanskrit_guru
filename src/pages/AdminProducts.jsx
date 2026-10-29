@@ -30,7 +30,7 @@ function AdminProducts() {
     setIsLoading(true);
     axios
       .get("/api/products", { params: { includeHidden: 1 } })
-      .then((res) => setProducts(res.data))
+      .then((res) => setProducts((Array.isArray(res.data) ? res.data : []).filter((p) => p?.hasOptions !== true)))
       .catch(() => setProducts([]))
       .finally(() => setIsLoading(false));
   }, []);
@@ -38,7 +38,7 @@ function AdminProducts() {
   const loadProducts = async () => {
     try {
       const res = await axios.get("/api/products", { params: { includeHidden: 1 } });
-      setProducts(res.data);
+      setProducts((Array.isArray(res.data) ? res.data : []).filter((p) => p?.hasOptions !== true));
     } catch {
       setProducts([]);
     }

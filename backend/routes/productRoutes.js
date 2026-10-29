@@ -578,6 +578,30 @@ async function resolveOptionsPayload(body = {}, existingProduct = null) {
   };
 }
 
+async function syncSingleOptionParent(parent) {
+  const opts = Array.isArray(parent?.options) ? parent.options : [];
+  const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
+  const targetDocs = ids.length
+    ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
+    : [];
+  const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
+  const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
+  const pricing = pickPricingFromOptions(orderedTargets);
+  const stock = computeOptionsStock(orderedTargets);
+
+  const update = pricing
+    ? {
+        price: pricing.price,
+        internationalPrice: pricing.internationalPrice,
+        internationalCountryPrices: pricing.internationalCountryPrices,
+        marketPrices: pricing.marketPrices,
+        stock
+      }
+    : { stock: 0 };
+
+  await Product.updateOne({ _id: parent._id }, { $set: update });
+}
+
 async function syncOptionParents(productId) {
   try {
     if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) return;
@@ -592,32 +616,33 @@ async function syncOptionParents(productId) {
     if (!Array.isArray(parents) || parents.length === 0) return;
 
     for (const parent of parents) {
-      const opts = Array.isArray(parent.options) ? parent.options : [];
-      const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
-      const targetDocs = ids.length
-        ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
-        : [];
-      const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
-      const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
-      const pricing = pickPricingFromOptions(orderedTargets);
-      const stock = computeOptionsStock(orderedTargets);
-
-      const update = pricing
-        ? {
-            price: pricing.price,
-            internationalPrice: pricing.internationalPrice,
-            internationalCountryPrices: pricing.internationalCountryPrices,
-            marketPrices: pricing.marketPrices,
-            stock
-          }
-        : { stock: 0 };
-
-      await Product.updateOne({ _id: parent._id }, { $set: update });
+      await syncSingleOptionParent(parent);
     }
 
     invalidateProductCache();
   } catch (err) {
     console.error("Failed to sync option parents:", err);
+  }
+}
+
+async function syncAllOptionParents() {
+  try {
+    const parents = await Product.find({
+      hasOptions: true,
+      isDeleted: { $ne: true }
+    })
+      .select("_id options")
+      .lean();
+
+    if (!Array.isArray(parents) || parents.length === 0) return;
+
+    for (const parent of parents) {
+      await syncSingleOptionParent(parent);
+    }
+
+    invalidateProductCache();
+  } catch (err) {
+    console.error("Failed to sync all option parents:", err);
   }
 }
 
@@ -1694,5 +1719,6 @@ router.post("/:id/view", async (req, res) => {
 });
 
 router.normalizeBundleItems = normalizeBundleItems;
+router.syncAllOptionParents = syncAllOptionParents;
 
 module.exports = router;
