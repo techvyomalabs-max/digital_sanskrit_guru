@@ -2481,6 +2481,49 @@ router.get("/my", protect, async (req, res) => {
       }
     }
 
+    const enrichBundleSubItem = (subItem, item, prod, productMapById, productMapByName) => {
+      const subPId = String(subItem.product || "").trim();
+      const isCustom = !subPId;
+
+      if (isCustom) {
+        if (prod && Array.isArray(prod.bundleItems) && subItem.bundleItemId) {
+          const matchedEntry = prod.bundleItems.find(
+            (bi) => String(bi._id || "") === String(subItem.bundleItemId)
+          );
+          if (matchedEntry) {
+            if (matchedEntry.isDigital !== undefined) subItem.isDigital = matchedEntry.isDigital;
+            if (matchedEntry.digitalType !== undefined) subItem.digitalType = matchedEntry.digitalType;
+            if (matchedEntry.digitalDelivery) subItem.digitalDelivery = matchedEntry.digitalDelivery;
+            subItem.digitalDelivery = subItem.digitalDelivery || "onsite";
+            if (matchedEntry.webReaderLink !== undefined) subItem.webReaderLink = matchedEntry.webReaderLink;
+            if (matchedEntry.kindleLink !== undefined) subItem.kindleLink = matchedEntry.kindleLink;
+            if (subItem.digitalDelivery === "external" && !(item.accessManual === true && !item.accessGrantedAt)) {
+              if (matchedEntry.externalAccessLink !== undefined) subItem.externalAccessLink = matchedEntry.externalAccessLink;
+              if (matchedEntry.externalAccessLabel !== undefined) subItem.externalAccessLabel = matchedEntry.externalAccessLabel;
+            }
+          }
+        }
+        return;
+      }
+
+      const subPName = String(subItem.name || "").trim().toLowerCase();
+      const subProd = productMapById.get(subPId) || productMapByName.get(subPName);
+      if (subProd) {
+        if (subProd.isDigital !== undefined) subItem.isDigital = subProd.isDigital;
+        if (subProd.digitalDelivery) subItem.digitalDelivery = subProd.digitalDelivery;
+        subItem.digitalDelivery = subItem.digitalDelivery || "onsite";
+        if (subItem.digitalDelivery === "external" && !(item.accessManual === true && !item.accessGrantedAt)) {
+          if (subProd.externalAccessLink) subItem.externalAccessLink = subProd.externalAccessLink;
+          if (subProd.externalAccessLabel) subItem.externalAccessLabel = subProd.externalAccessLabel;
+        }
+        if (subProd.webReaderLink) subItem.webReaderLink = subProd.webReaderLink;
+        if (subProd.kindleLink) subItem.kindleLink = subProd.kindleLink;
+        if (subProd.kindleAsin) subItem.kindleAsin = subProd.kindleAsin;
+        if (subProd.digitalInstructions) subItem.digitalInstructions = subProd.digitalInstructions;
+        if (subProd.digitalType) subItem.digitalType = subProd.digitalType;
+      }
+    };
+
     const productIds = [];
     const productNames = [];
     orders.forEach((order) => {
@@ -2496,11 +2539,11 @@ router.get("/my", protect, async (req, res) => {
           }
           if (Array.isArray(item.bundleItems)) {
             item.bundleItems.forEach((subItem) => {
-              const subPId = String(subItem.product || subItem._id || subItem.id || "").trim();
-              if (mongoose.Types.ObjectId.isValid(subPId)) {
+              const subPId = String(subItem.product || "").trim();
+              if (subPId && mongoose.Types.ObjectId.isValid(subPId)) {
                 productIds.push(subPId);
               }
-              if (subItem.name) {
+              if (subPId && subItem.name) {
                 productNames.push(String(subItem.name).trim());
               }
             });
@@ -2515,7 +2558,7 @@ router.get("/my", protect, async (req, res) => {
 
     if (queryConditions.length > 0) {
       const products = await Product.find({ $or: queryConditions })
-        .select("name isDigital digitalType digitalDelivery externalAccessManual externalAccessLink externalAccessLabel webReaderLink kindleLink kindleAsin digitalInstructions")
+        .select("name isDigital digitalType digitalDelivery externalAccessManual externalAccessLink externalAccessLabel webReaderLink kindleLink kindleAsin digitalInstructions bundleItems")
         .lean();
 
       const productMapById = new Map();
@@ -2548,7 +2591,11 @@ router.get("/my", protect, async (req, res) => {
 
             if (Array.isArray(item.bundleItems)) {
               item.bundleItems.forEach((subItem) => {
-                const subPId = String(subItem.product || subItem._id || subItem.id || "").trim();
+                const subPId = String(subItem.product || "").trim();
+                if (!subPId) {
+                  enrichBundleSubItem(subItem, item, prod, productMapById, productMapByName);
+                  return;
+                }
                 const subPName = String(subItem.name || "").trim().toLowerCase();
                 const subProd = productMapById.get(subPId) || productMapByName.get(subPName);
                 if (subProd) {
