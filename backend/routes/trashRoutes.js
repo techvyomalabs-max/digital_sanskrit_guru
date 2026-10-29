@@ -100,6 +100,11 @@ router.post("/restore-all", protect, admin, admin.requireSuperAdmin, async (req,
 
     invalidateProductCache();
     res.json({ message: `Restored ${pRes.modifiedCount} products, ${cRes.modifiedCount} coupons, and ${uRes.modifiedCount} users` });
+    try {
+      await require("./productRoutes").syncAllOptionParents();
+    } catch (syncErr) {
+      console.error("Failed to sync option parents after restore-all:", syncErr);
+    }
   } catch (error) {
     res.status(500).json({ message: "Failed to restore all items", error: error.message });
   }
@@ -125,6 +130,11 @@ router.delete("/empty", protect, admin, admin.requireSuperAdmin, async (req, res
 
     invalidateProductCache();
     res.json({ message: `Permanently purged ${pRes.deletedCount} products, ${cRes.deletedCount} coupons, and ${uRes.deletedCount} users` });
+    try {
+      await require("./productRoutes").syncAllOptionParents();
+    } catch (syncErr) {
+      console.error("Failed to sync option parents after empty trash:", syncErr);
+    }
   } catch (error) {
     res.status(500).json({ message: "Failed to empty trash", error: error.message });
   }
