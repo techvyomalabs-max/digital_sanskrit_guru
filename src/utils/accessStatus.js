@@ -11,6 +11,16 @@
  */
 export function isDigitalLikeItem(item) {
   if (!item) return false;
+
+  if (Array.isArray(item.bundleItems) && item.bundleItems.length > 0) {
+    return item.bundleItems.every((comp) => {
+      if (!comp) return false;
+      if (comp.isDigital === true) return true;
+      const hasLink = (link) => (typeof link === "string" ? link.trim().length > 0 : Boolean(link));
+      return hasLink(comp.webReaderLink) || hasLink(comp.kindleLink) || hasLink(comp.externalAccessLink);
+    });
+  }
+
   if (item.isDigital) return true;
   if (item.webReaderLink) return true;
   if (item.externalAccessLink) return true;

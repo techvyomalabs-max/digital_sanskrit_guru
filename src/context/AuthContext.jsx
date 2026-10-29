@@ -1,5 +1,7 @@
 import { createContext, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { getAttribution, clearAttribution } from "../utils/attribution";
+import { trackSignUp } from "../utils/analytics";
 
 const AuthContext = createContext();
 
@@ -222,7 +224,8 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   const register = async (name, email, password, phone = "", nextRememberMe = false, extra = {}) => {
-    const res = await axios.post("/api/auth/register", {
+    const attribution = getAttribution();
+    const reqBody = {
       name,
       email,
       password,
@@ -230,13 +233,19 @@ export function AuthProvider({ children }) {
       rememberMe: nextRememberMe,
       honey_pot_field: extra?.honey_pot_field || "",
       turnstileToken: extra?.turnstileToken || ""
-    });
+    };
+    if (attribution) {
+      reqBody.attribution = attribution;
+    }
+    const res = await axios.post("/api/auth/register", reqBody);
+    clearAttribution();
     const nextUser = normalizeUser(res.data);
 
     setUser(nextUser);
     setToken(res.data.token);
     setRememberMe(nextRememberMe);
     persistAuth({ token: res.data.token, user: nextUser, rememberMe: nextRememberMe });
+    trackSignUp("email");
   };
 
   const login = async (email, password, nextRememberMe = false, extra = {}) => {
@@ -256,12 +265,21 @@ export function AuthProvider({ children }) {
   };
 
   const loginWithGoogle = async (idToken, nextRememberMe = false) => {
-    const res = await axios.post("/api/auth/google", { idToken, rememberMe: nextRememberMe });
+    const attribution = getAttribution();
+    const reqBody = { idToken, rememberMe: nextRememberMe };
+    if (attribution) {
+      reqBody.attribution = attribution;
+    }
+    const res = await axios.post("/api/auth/google", reqBody);
+    clearAttribution();
     const nextUser = normalizeUser(res.data);
     setUser(nextUser);
     setToken(res.data.token);
     setRememberMe(nextRememberMe);
     persistAuth({ token: res.data.token, user: nextUser, rememberMe: nextRememberMe });
+    if (res.data?.isNewUser === true) {
+      trackSignUp("google");
+    }
   };
 
   const logout = () => {

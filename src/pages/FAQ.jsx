@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
+import { ORGANISATION_NAME, WORKING_OFFICE, formatAddressInline } from "../utils/companyInfo";
 import "./FAQ.css";
 
 const FAQ_CATEGORIES = [
@@ -31,7 +32,7 @@ const FAQ_CATEGORIES = [
         id: "q-p1",
         question: "What is the recommended path for learning Sanskrit?",
         answer:
-          "Standard progression recommended by Vyoma scholars:\n1. Alphabets & Pronunciation (Varnamala)\n2. Basic Shlokas & Chanting\n3. Conversational / Spoken Sanskrit\n4. Basic Sanskrit Grammar (Vyakarana)\n5. Advanced Scripture & Literature Study.\n\nFor a personalized roadmap tailored to your goals, write to our academic team at support@digitalsanskritguru.com.",
+          "Standard progression recommended by Vyoma scholars:\n1. Alphabets & Pronunciation (Varnamala)\n2. Basic Shlokas & Chanting\n3. Conversational / Spoken Sanskrit\n4. Basic Sanskrit Grammar (Vyakarana)\n5. Advanced Scripture & Literature Study.\n\nFor a personalized roadmap tailored to your goals, write to our academic team at support@vyomalabs.in.",
         tags: ["Roadmap", "Guidance", "Progression"]
       },
       {
@@ -85,14 +86,14 @@ const FAQ_CATEGORIES = [
         id: "q-p8",
         question: "Do you offer certificates upon course completion?",
         answer:
-          "Yes, we provide structured online assessments and course completion certificates. For evaluation guidelines and certification requests, email support@digitalsanskritguru.com.",
+          "Yes, we provide structured online assessments and course completion certificates. For evaluation guidelines and certification requests, email support@vyomalabs.in.",
         tags: ["Certificates", "Assessment"]
       },
       {
         id: "q-p9",
         question: "Where can I see a live demo of the products before purchasing?",
         answer:
-          "You can request an interactive demo or guided presentation by reaching out to our seva team at support@digitalsanskritguru.com.",
+          "You can request an interactive demo or guided presentation by reaching out to our seva team at support@vyomalabs.in.",
         tags: ["Demo", "Preview", "Trial"]
       }
     ]
@@ -148,7 +149,7 @@ const FAQ_CATEGORIES = [
         id: "q-t5",
         question: "What should I do if my USB is damaged or fails to run?",
         answer:
-          "Contact support@digitalsanskritguru.com with your order details. Our technical seva team will diagnose the issue and either ship a replacement USB or provide complimentary Web Version access.",
+          "Contact support@vyomalabs.in with your order details. Our technical seva team will diagnose the issue and either ship a replacement USB or provide complimentary Web Version access.",
         tags: ["Hardware", "Replacement", "Support"]
       }
     ]
@@ -172,7 +173,7 @@ const FAQ_CATEGORIES = [
         id: "q-pay3",
         question: "I do not have a credit card. How can I complete my order?",
         answer:
-          "You can easily pay via UPI QR code, Net Banking, or Direct Bank Transfer (NEFT/IMPS). You can also send a Cheque or Demand Draft directly to our Bangalore office.",
+          "You can easily pay via UPI QR code, Net Banking, or Direct Bank Transfer (NEFT/IMPS). You can also send a Cheque or Demand Draft directly to our Bengaluru office.",
         tags: ["No Credit Card", "UPI", "Bank Transfer"]
       },
       {
@@ -204,7 +205,7 @@ const FAQ_CATEGORIES = [
         id: "q-pay4",
         question: "Can I buy products in person at a physical store or center?",
         answer:
-          "Yes, you can directly visit our physical center and purchase products:\nVyoma Linguistic Labs Foundation\nNo 84, 3rd Cross, N G E F Layout, 2nd Block, Opp Fortis Hospital, Nagarabhavi, Bengaluru 560072.",
+          `Yes, you can directly visit our physical center and purchase products:\n${ORGANISATION_NAME}\n${formatAddressInline(WORKING_OFFICE)}.`,
         tags: ["Physical Store", "Walk-in", "Bengaluru"],
         actionUrl: "https://maps.google.com/?q=Vyoma+Linguistic+Labs+Foundation+Bengaluru",
         actionLabel: "📍 Google Maps Location"
@@ -457,7 +458,7 @@ export default function FAQ() {
               <p className="faq-cat-desc">{cat.tagline}</p>
               <div className="faq-cat-action">
                 <span className="faq-cat-link-text">
-                  {isActive ? "● Active Category" : "Select Topic &rarr;"}
+                  {isActive ? "● Active Category" : "Select Topic →"}
                 </span>
               </div>
             </button>
@@ -662,11 +663,11 @@ export default function FAQ() {
             </div>
           </a>
 
-          <a href="mailto:support@digitalsanskritguru.com" className="faq-footer-channel-card">
+          <a href="mailto:support@vyomalabs.in" className="faq-footer-channel-card">
             <span className="faq-footer-ch-icon">✉️</span>
             <div>
               <strong>Email Us</strong>
-              <span>support@digitalsanskritguru.com</span>
+              <span>support@vyomalabs.in</span>
             </div>
           </a>
         </div>

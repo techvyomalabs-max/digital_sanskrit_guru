@@ -29,7 +29,7 @@ function AdminProducts() {
   useEffect(() => {
     setIsLoading(true);
     axios
-      .get("/api/products")
+      .get("/api/products", { params: { includeHidden: 1 } })
       .then((res) => setProducts(res.data))
       .catch(() => setProducts([]))
       .finally(() => setIsLoading(false));
@@ -37,7 +37,7 @@ function AdminProducts() {
 
   const loadProducts = async () => {
     try {
-      const res = await axios.get("/api/products");
+      const res = await axios.get("/api/products", { params: { includeHidden: 1 } });
       setProducts(res.data);
     } catch {
       setProducts([]);

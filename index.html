@@ -39,12 +39,12 @@
           var raw = localStorage.getItem("site-theme-settings");
           if (raw) {
             var parsed = JSON.parse(raw);
-            if (parsed && parsed.siteTheme) {
+            if (parsed && parsed.siteTheme && parsed.siteTheme !== "minimalism") {
               document.documentElement.setAttribute("data-site-theme", parsed.siteTheme);
               return;
             }
           }
-          document.documentElement.setAttribute("data-site-theme", "minimalism");
+          document.documentElement.setAttribute("data-site-theme", "sunrise");
           fetch("/api/settings/public")
             .then(function(r) { return r.json(); })
             .then(function(d) {
@@ -60,7 +60,7 @@
             })
             .catch(function() {});
         } catch(e) {
-          document.documentElement.setAttribute("data-site-theme", "minimalism");
+          document.documentElement.setAttribute("data-site-theme", "sunrise");
         }
       })();
     </script>

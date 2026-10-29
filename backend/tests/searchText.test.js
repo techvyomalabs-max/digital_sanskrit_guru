@@ -138,4 +138,82 @@ describe("searchText utility (pure)", async () => {
       assert.equal(scoreProduct(null, ""), 1);
     });
   });
+
+  describe("typo tolerance & spelling mistakes", () => {
+    it("'sansrit' matches 'Sanskrit Primer'", () => {
+      const product = { name: "Sanskrit Primer", category: "Books", description: "Learn Sanskrit" };
+      const score = scoreProduct(product, "sansrit");
+      assert.ok(score > 0, "Expected typo 'sansrit' to match 'Sanskrit Primer'");
+    });
+
+    it("'snskrit' matches 'Learn Basic Sanskrit'", () => {
+      const product = { name: "Learn Basic Sanskrit", category: "Language", description: "Basics" };
+      const score = scoreProduct(product, "snskrit");
+      assert.ok(score > 0, "Expected typo 'snskrit' to match");
+    });
+
+    it("'grammer' matches 'Sanskrit Grammar Guide'", () => {
+      const product = { name: "Sanskrit Grammar Guide", category: "Grammar", description: "Guide" };
+      const score = scoreProduct(product, "grammer");
+      assert.ok(score > 0, "Expected misspelling 'grammer' to match");
+    });
+
+    it("'bagvad' matches 'Bhagavad Gita'", () => {
+      const product = { name: "Bhagavad Gita", category: "Scriptures", description: "Sacred" };
+      const score = scoreProduct(product, "bagvad");
+      assert.ok(score > 0, "Expected typo 'bagvad' to match");
+    });
+
+    it("exact match ranks higher than typo match", () => {
+      const exactProduct = { name: "Sanskrit Primer", category: "Books" };
+      const typoProduct = { name: "Sanskrit Grammar", category: "Books" };
+
+      const exactScore = scoreProduct(exactProduct, "sanskrit primer");
+      const typoScore = scoreProduct(typoProduct, "sansrit primer");
+
+      assert.ok(exactScore > typoScore, `Expected exact score (${exactScore}) > typo score (${typoScore})`);
+    });
+  });
+
+  describe("Sanskrit transliteration equivalence", () => {
+    it("'geeta' matches 'Bhagavad Gita'", () => {
+      const product = { name: "Bhagavad Gita", category: "Scriptures", description: "Sacred text" };
+      const score = scoreProduct(product, "geeta");
+      assert.ok(score > 0, "Expected 'geeta' to match 'Gita'");
+    });
+
+    it("'bhagwad' matches 'Bhagavad Gita'", () => {
+      const product = { name: "Bhagavad Gita", category: "Scriptures", description: "Sacred text" };
+      const score = scoreProduct(product, "bhagwad");
+      assert.ok(score > 0, "Expected 'bhagwad' to match 'Bhagavad'");
+    });
+
+    it("'ashtadhyayi' matches 'Astadhyayi'", () => {
+      const product = { name: "Astadhyayi Sutras", category: "Grammar", description: "Panini" };
+      const score = scoreProduct(product, "ashtadhyayi");
+      assert.ok(score > 0, "Expected 'ashtadhyayi' to match 'Astadhyayi'");
+    });
+  });
+
+  describe("intelligent search suggestions (Did you mean?)", () => {
+    it("suggests 'sanskrit grammar' for 'sansrit grammer'", async () => {
+      const { getSearchSuggestion } = await import("../../src/utils/searchText.js");
+      const products = [
+        { name: "Sanskrit Grammar Essentials", category: "Grammar" },
+        { name: "Bhagavad Gita", category: "Scriptures" }
+      ];
+      const suggestion = getSearchSuggestion("sansrit grammer", products);
+      assert.equal(suggestion, "sanskrit grammar");
+    });
+
+    it("returns null if query has no typos", async () => {
+      const { getSearchSuggestion } = await import("../../src/utils/searchText.js");
+      const products = [
+        { name: "Sanskrit Grammar Essentials", category: "Grammar" }
+      ];
+      const suggestion = getSearchSuggestion("sanskrit grammar", products);
+      assert.equal(suggestion, null);
+    });
+  });
 });
+

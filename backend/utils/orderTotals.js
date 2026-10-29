@@ -76,6 +76,9 @@ async function computeOrderTotals({
     if (p && isKindleProduct(p)) {
       throw new OrderTotalsError(400, "Kindle editions are sold on Amazon.");
     }
+    if (p && p.hasOptions === true) {
+      throw new OrderTotalsError(400, "Please choose a format first.");
+    }
   }
   const cfg = {
     pricingMarkets: settings?.pricingMarkets || [],

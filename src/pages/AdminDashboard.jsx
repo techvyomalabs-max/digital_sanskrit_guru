@@ -370,7 +370,7 @@ function AdminDashboard() {
 
       try {
         const [productRes, orderRes] = await Promise.all([
-          axios.get("/api/products"),
+          axios.get("/api/products", { params: { includeHidden: 1 } }),
           axios.get("/api/orders?limit=all", {
             headers: { Authorization: `Bearer ${token}` }
           })
@@ -1429,7 +1429,7 @@ function AdminDashboard() {
                 <input
                   type="email"
                   className="pricing-text-input"
-                  placeholder="e.g. support@digitalsanskritguru.com"
+                  placeholder="e.g. support@vyomalabs.in"
                   maxLength={150}
                   value={pricingSettings.businessDetails?.email || ""}
                   onChange={(e) => updateBusinessDetailsField("email", e.target.value)}

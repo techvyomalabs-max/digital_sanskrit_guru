@@ -8,7 +8,7 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
-import { isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
 import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
@@ -798,20 +798,10 @@ function MyOrders() {
 
           const isDigitalOnly =
             items.length > 0 &&
-            items.every((item) =>
-              Boolean(
-                item.isDigital ||
-                  isExternalDelivery(item) ||
-                  item.legacyAccess ||
-                  item.webReaderLink ||
-                  item.kindleLink ||
-                  String(item.name || "").toLowerCase().includes("web") ||
-                  String(item.name || "").toLowerCase().includes("kindle") ||
-                  String(item.name || "").toLowerCase().includes("flipbook") ||
-                  String(item.format || "").toLowerCase().includes("web") ||
-                  String(item.format || "").toLowerCase().includes("flipbook")
-              )
-            );
+            items.every((item) => {
+              const isBundle = Array.isArray(item.bundleItems) && item.bundleItems.length > 0;
+              return isDigitalLikeItem(item) || (!isBundle && (Boolean(item.legacyAccess) || isExternalDelivery(item)));
+            });
 
           const canDownloadInvoice =
             isPaid &&

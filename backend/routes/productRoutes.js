@@ -14,6 +14,13 @@ const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = re
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
+const {
+  normalizeOptionsInput,
+  validateOptionTargets,
+  pickPricingFromOptions,
+  computeOptionsStock,
+  summarizeOptionsForPublic
+} = require("../utils/productOptions");
 
 const router = express.Router();
 
@@ -78,6 +85,15 @@ const normalizeFestiveDiscountPercent = (value) => {
   return Math.min(95, Math.max(0, Math.round(parsed)));
 };
 
+class BundleValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BundleValidationError";
+    this.status = 400;
+    this.statusCode = 400;
+  }
+}
+
 const normalizeBundleItems = (rawBundleItems = []) => {
   if (!Array.isArray(rawBundleItems)) {
     return [];
@@ -95,16 +111,78 @@ const normalizeBundleItems = (rawBundleItems = []) => {
 
     if (isCustom) {
       if (!customName) return acc;
+
+      const isDigital = item?.isDigital === true;
+      const idObj = item?._id && mongoose.Types.ObjectId.isValid(String(item._id)) ? { _id: item._id } : {};
+
+      if (!isDigital) {
+        acc.push({
+          ...idObj,
+          itemType: "custom",
+          product: null,
+          name: customName,
+          image: String(item?.image || "").trim(),
+          description: String(item?.description || "").trim(),
+          price: Math.max(0, Number(item?.price || 0)),
+          isDigital: false,
+          digitalType: "",
+          digitalDelivery: "onsite",
+          externalAccessLink: "",
+          externalAccessLabel: "",
+          externalAccessManual: false,
+          webReaderLink: "",
+          kindleLink: "",
+          weight: Math.max(0, Number(item?.weight) || 0),
+          length: Math.max(0, Number(item?.length) || 0),
+          width: Math.max(0, Number(item?.width) || 0),
+          height: Math.max(0, Number(item?.height) || 0),
+          quantity: Math.max(1, Number(item?.quantity || 1))
+        });
+        return acc;
+      }
+
+      // isDigital is true
+      const rawDelivery = item?.digitalDelivery;
+      const rawExtLink = item?.externalAccessLink;
+      const rawExtLabel = item?.externalAccessLabel;
+      const rawExtManual = item?.externalAccessManual;
+
+      const deliveryValidation = validateExternalDelivery({
+        isDigital: true,
+        productType: "single",
+        digitalDelivery: rawDelivery,
+        externalAccessLink: rawExtLink,
+        externalAccessLabel: rawExtLabel,
+        externalAccessManual: rawExtManual
+      });
+
+      if (!deliveryValidation.isValid) {
+        throw new BundleValidationError(`Custom item "${customName}": ${deliveryValidation.error}`);
+      }
+
+      const isExternal = deliveryValidation.digitalDelivery === "external";
+      const digitalType = String(item?.digitalType || "").trim().slice(0, 40);
+
       acc.push({
+        ...idObj,
         itemType: "custom",
         product: null,
         name: customName,
         image: String(item?.image || "").trim(),
         description: String(item?.description || "").trim(),
         price: Math.max(0, Number(item?.price || 0)),
-        isDigital: item?.isDigital === true,
-        webReaderLink: String(item?.webReaderLink || "").trim(),
-        kindleLink: String(item?.kindleLink || "").trim(),
+        isDigital: true,
+        digitalType,
+        digitalDelivery: isExternal ? "external" : "onsite",
+        externalAccessLink: isExternal ? deliveryValidation.externalAccessLink : "",
+        externalAccessLabel: isExternal ? deliveryValidation.externalAccessLabel : "",
+        externalAccessManual: isExternal ? deliveryValidation.externalAccessManual === true : false,
+        webReaderLink: isExternal ? "" : String(item?.webReaderLink || "").trim(),
+        kindleLink: isExternal ? "" : String(item?.kindleLink || "").trim(),
+        weight: 0,
+        length: 0,
+        width: 0,
+        height: 0,
         quantity: Math.max(1, Number(item?.quantity || 1))
       });
       return acc;
@@ -388,6 +466,161 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   return changes;
 };
 
+const OPTION_TARGET_SELECT =
+  "price internationalPrice internationalCountryPrices marketPrices isDeleted hasOptions isDigital stock";
+
+async function resolveOptionsPayload(body = {}, existingProduct = null) {
+  const selfId = existingProduct ? String(existingProduct._id || "") : "";
+  const isUpdate = Boolean(existingProduct);
+
+  let optionParent = existingProduct ? existingProduct.optionParent ?? null : null;
+  if (body.optionParent !== undefined) {
+    if (body.optionParent === null || String(body.optionParent).trim() === "") {
+      optionParent = null;
+    } else {
+      const rawParent = String(body.optionParent?._id ?? body.optionParent).trim();
+      if (!mongoose.Types.ObjectId.isValid(rawParent)) {
+        return { error: "Invalid option parent." };
+      }
+      optionParent = rawParent;
+    }
+  }
+
+  const hideFromListings =
+    body.hideFromListings !== undefined
+      ? body.hideFromListings === true
+      : existingProduct
+        ? existingProduct.hideFromListings === true
+        : false;
+
+  if (isUpdate && body.hasOptions === undefined) {
+    if (existingProduct.hasOptions === true) {
+      const storedOpts = Array.isArray(existingProduct.options) ? existingProduct.options : [];
+      const ids = storedOpts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
+      const targetDocs = ids.length
+        ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
+        : [];
+      const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
+      const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
+      const pricing = pickPricingFromOptions(orderedTargets);
+      const stock = computeOptionsStock(orderedTargets);
+      return {
+        error: "",
+        hasOptions: true,
+        options: storedOpts,
+        hideFromListings,
+        optionParent,
+        pricing,
+        stock
+      };
+    }
+    return {
+      error: "",
+      hasOptions: false,
+      options: [],
+      hideFromListings,
+      optionParent,
+      pricing: null,
+      stock: null
+    };
+  }
+
+  const hasOptions = body.hasOptions === true;
+  if (!hasOptions) {
+    return {
+      error: "",
+      hasOptions: false,
+      options: [],
+      hideFromListings,
+      optionParent,
+      pricing: null,
+      stock: null
+    };
+  }
+
+  const norm = normalizeOptionsInput(body.options, selfId);
+  if (norm.error) {
+    return { error: norm.error };
+  }
+
+  const ids = norm.options.map((o) => o.product);
+  const targetDocs = await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean();
+  const check = validateOptionTargets(norm.options, targetDocs);
+  if (!check.ok) {
+    return { error: check.error };
+  }
+
+  if (isUpdate && selfId) {
+    const usedAsOption = await Product.exists({
+      "options.product": selfId,
+      _id: { $ne: selfId },
+      hasOptions: true,
+      isDeleted: { $ne: true }
+    });
+    if (usedAsOption) {
+      return { error: "This product is used as an option of another product and cannot have options itself." };
+    }
+  }
+
+  const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
+  const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
+  const pricing = pickPricingFromOptions(orderedTargets);
+  const stock = computeOptionsStock(orderedTargets);
+
+  return {
+    error: "",
+    hasOptions: true,
+    options: norm.options,
+    hideFromListings,
+    optionParent,
+    pricing,
+    stock
+  };
+}
+
+async function syncOptionParents(productId) {
+  try {
+    if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) return;
+    const parents = await Product.find({
+      hasOptions: true,
+      "options.product": productId,
+      isDeleted: { $ne: true }
+    })
+      .select("_id options")
+      .lean();
+
+    if (!Array.isArray(parents) || parents.length === 0) return;
+
+    for (const parent of parents) {
+      const opts = Array.isArray(parent.options) ? parent.options : [];
+      const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
+      const targetDocs = ids.length
+        ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
+        : [];
+      const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
+      const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
+      const pricing = pickPricingFromOptions(orderedTargets);
+      const stock = computeOptionsStock(orderedTargets);
+
+      const update = pricing
+        ? {
+            price: pricing.price,
+            internationalPrice: pricing.internationalPrice,
+            internationalCountryPrices: pricing.internationalCountryPrices,
+            marketPrices: pricing.marketPrices,
+            stock
+          }
+        : { stock: 0 };
+
+      await Product.updateOne({ _id: parent._id }, { $set: update });
+    }
+
+    invalidateProductCache();
+  } catch (err) {
+    console.error("Failed to sync option parents:", err);
+  }
+}
+
 // Create product (ADMIN) — 25mb for image URLs
 router.post("/", protect, admin, (req, res, next) => {
   const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
@@ -400,8 +633,13 @@ router.post("/", protect, admin, (req, res, next) => {
     const b = req.body || {};
     const name = String(b.name || "").trim();
     if (!name) return res.status(400).json({ message: "Product name is required." });
-    if (!hasNumericInput(b.price) || !Number.isFinite(Number(b.price)) || Number(b.price) < 0) {
+    if (b.hasOptions !== true && (!hasNumericInput(b.price) || !Number.isFinite(Number(b.price)) || Number(b.price) < 0)) {
       return res.status(400).json({ message: "A valid, non-negative price is required." });
+    }
+
+    const optionsRes = await resolveOptionsPayload(b, null);
+    if (optionsRes.error) {
+      return res.status(400).json({ message: optionsRes.error });
     }
 
     const actor = await getAdminActorSnapshot(req.user);
@@ -417,10 +655,20 @@ router.post("/", protect, admin, (req, res, next) => {
     const rawDiscountType = normalizeDiscountType(b.discountType, b.festiveOffer);
     const festiveOffer = rawDiscountType !== "none" || b.festiveOffer === true;
     const discountType = festiveOffer ? rawDiscountType : "none";
-    const price = normalizeProductPrice(b.price);
-    const internationalPrice = normalizeInternationalPrice(b.internationalPrice, null);
-    const internationalCountryPrices = normalizeInternationalCountryPrices(b.internationalCountryPrices);
-    const marketPrices = normalizeMarketPrices(b.marketPrices);
+    const price = optionsRes.hasOptions && optionsRes.pricing ? optionsRes.pricing.price : normalizeProductPrice(b.price);
+    const internationalPrice =
+      optionsRes.hasOptions && optionsRes.pricing
+        ? optionsRes.pricing.internationalPrice
+        : normalizeInternationalPrice(b.internationalPrice, null);
+    const internationalCountryPrices =
+      optionsRes.hasOptions && optionsRes.pricing
+        ? optionsRes.pricing.internationalCountryPrices
+        : normalizeInternationalCountryPrices(b.internationalCountryPrices);
+    const marketPrices =
+      optionsRes.hasOptions && optionsRes.pricing
+        ? optionsRes.pricing.marketPrices
+        : normalizeMarketPrices(b.marketPrices);
+    const stock = optionsRes.hasOptions ? optionsRes.stock : normalizeNonNegativeNumber(b.stock, 1);
     const relatedProducts = await normalizeRelatedProductIds(b.relatedProducts);
 
     const opt = (k) => (b[k] !== undefined ? { [k]: String(b[k] || "").trim() } : {});
@@ -447,7 +695,7 @@ router.post("/", protect, admin, (req, res, next) => {
       description: String(b.description || "").trim(),
       aboutProduct: normalizeAboutProduct(b.aboutProduct),
       trailerVideoUrl: normalizeTrailerVideoUrl(b.trailerVideoUrl),
-      stock: normalizeNonNegativeNumber(b.stock, 1),
+      stock,
       category: String(b.category || "General").trim() || "General",
       weight: normalizeNonNegativeNumber(b.weight, 0),
       height: normalizeNonNegativeNumber(b.height, 0),
@@ -459,6 +707,10 @@ router.post("/", protect, admin, (req, res, next) => {
       productType,
       bundleItems,
       relatedProducts,
+      hasOptions: optionsRes.hasOptions,
+      options: optionsRes.options,
+      hideFromListings: optionsRes.hideFromListings,
+      optionParent: optionsRes.optionParent,
       isDigital,
       skipOwnershipRules: b.skipOwnershipRules === true,
       digitalDelivery: deliveryValidation.digitalDelivery,
@@ -496,6 +748,9 @@ router.post("/", protect, admin, (req, res, next) => {
     // Invalidate cache so next request gets fresh product list
     invalidateProductCache();
   } catch (error) {
+    if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
+      return res.status(400).json({ message: error.message });
+    }
     const client = ["ValidationError", "CastError"].includes(error?.name);
     res.status(client ? 400 : 500).json({ message: "Failed to create product", ...(client ? { error: error.message } : {}) });
   }
@@ -509,6 +764,11 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
+    }
+
+    const optionsRes = await resolveOptionsPayload(req.body || {}, product);
+    if (optionsRes.error) {
+      return res.status(400).json({ message: optionsRes.error });
     }
 
     const previousFields = getProductAuditFields(product.toObject ? product.toObject() : product);
@@ -606,6 +866,19 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     const nextImages = normalizeImages(req.body.images ?? product.images, nextImageValue);
     product.image = nextImages[0] || String(nextImageValue || "").trim();
     product.images = nextImages;
+    product.hasOptions = optionsRes.hasOptions;
+    product.options = optionsRes.options;
+    product.hideFromListings = optionsRes.hideFromListings;
+    product.optionParent = optionsRes.optionParent;
+    if (optionsRes.hasOptions) {
+      if (optionsRes.pricing) {
+        product.price = optionsRes.pricing.price;
+        product.internationalPrice = optionsRes.pricing.internationalPrice;
+        product.internationalCountryPrices = optionsRes.pricing.internationalCountryPrices;
+        product.marketPrices = optionsRes.pricing.marketPrices;
+      }
+      product.stock = optionsRes.stock;
+    }
     product.lastUpdatedByName = actor.name;
     product.lastUpdatedByEmail = actor.email;
     product.lastUpdatedAt = new Date();
@@ -633,9 +906,13 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     });
 
     res.json(updatedProduct);
+    await syncOptionParents(updatedProduct._id);
     // Invalidate cache after any product update
     invalidateProductCache();
   } catch (error) {
+    if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: "Failed to update product", error: error.message });
   }
 });
@@ -646,7 +923,7 @@ router.get("/home", async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     const data = await cacheAside("home:payload", TTL.PRODUCTS_HOME, async () => {
       const [products, settings] = await Promise.all([
-        Product.find({ isDeleted: { $ne: true } })
+        Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
           .populate("bundleItems.product", HOME_BUNDLE_PRODUCT_SELECT)
           .lean(),
@@ -688,7 +965,11 @@ router.get("/", async (req, res) => {
 
     if (!hasPaginationQuery) {
       // Full product list for public — sanitized
-      const products = await Product.find({ isDeleted: { $ne: true } })
+      const listFilter =
+        req.query.includeHidden === "1"
+          ? { isDeleted: { $ne: true } }
+          : { isDeleted: { $ne: true }, hideFromListings: { $ne: true } };
+      const products = await Product.find(listFilter)
         .select(PUBLIC_PRODUCT_EXCLUDE)
         .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
@@ -706,7 +987,7 @@ router.get("/", async (req, res) => {
     const sortOption = String(req.query.sort || "featured").trim();
     const selectedCategory = String(req.query.category || "All").trim();
 
-    const products = await Product.find({ isDeleted: { $ne: true } })
+    const products = await Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
       .select(PUBLIC_PRODUCT_EXCLUDE)
       .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
       .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
@@ -720,7 +1001,24 @@ router.get("/", async (req, res) => {
     };
     const festiveOffersFilterEnabled = settings?.collectionFilterVisibility?.festiveOffers !== false;
 
-    const regularCategories = [...new Set(baseProducts.map((product) => getCategoryLabel(product)))];
+    const configuredCategories = Array.isArray(settings?.productCategories) ? settings.productCategories : [];
+    const configuredCategoryMap = new Map();
+    for (const category of configuredCategories) {
+      const trimmed = String(category || "").trim();
+      const key = trimmed.toLowerCase();
+      if (trimmed && !configuredCategoryMap.has(key)) {
+        configuredCategoryMap.set(key, trimmed);
+      }
+    }
+    const regularCategoryMap = new Map();
+    for (const product of baseProducts) {
+      const label = getCategoryLabel(product);
+      const key = label.toLowerCase();
+      if (!regularCategoryMap.has(key)) {
+        regularCategoryMap.set(key, configuredCategoryMap.get(key) || label);
+      }
+    }
+    const regularCategories = [...regularCategoryMap.values()];
     const categories = [
       "All",
       ...(festiveOffersFilterEnabled && baseProducts.some((product) => isFestiveOfferProduct(product)) ? ["Festive Offer"] : []),
@@ -919,7 +1217,8 @@ router.get("/recommend/:productId", async (req, res) => {
     if (sortedIds.length > 0) {
       products = await Product.find({
         _id: { $in: sortedIds },
-        isDeleted: { $ne: true }
+        isDeleted: { $ne: true },
+        hideFromListings: { $ne: true }
       });
     }
 
@@ -934,7 +1233,8 @@ router.get("/recommend/:productId", async (req, res) => {
       const categoryFallback = await Product.find({
         category: category,
         _id: { $nin: existingIds },
-        isDeleted: { $ne: true }
+        isDeleted: { $ne: true },
+        hideFromListings: { $ne: true }
       }).limit(4 - products.length);
 
       products = [...products, ...categoryFallback];
@@ -947,7 +1247,8 @@ router.get("/recommend/:productId", async (req, res) => {
 
       const anyFallback = await Product.find({
         _id: { $nin: existingIds },
-        isDeleted: { $ne: true }
+        isDeleted: { $ne: true },
+        hideFromListings: { $ne: true }
       }).sort({ createdAt: -1 }).limit(4 - products.length);
 
       products = [...products, ...anyFallback];
@@ -1059,6 +1360,19 @@ router.get("/:id", async (req, res) => {
     }
 
     const publicProduct = toPublicProduct(product);
+    if (product.hasOptions === true && Array.isArray(product.options) && product.options.length > 0) {
+      const optionIds = product.options
+        .map((o) => String(o?.product?._id ?? o?.product ?? ""))
+        .filter((id) => mongoose.Types.ObjectId.isValid(id));
+      const optionDocs = optionIds.length
+        ? await Product.find({ _id: { $in: optionIds }, isDeleted: { $ne: true } })
+            .select(PUBLIC_PRODUCT_EXCLUDE)
+            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .lean()
+        : [];
+      const byId = new Map(optionDocs.map((d) => [String(d._id), d]));
+      publicProduct.publicOptions = summarizeOptionsForPublic(product, byId);
+    }
     appCache.set(cacheKey, publicProduct, TTL.PRODUCT_SINGLE);
     res.json(publicProduct);
   } catch {
@@ -1200,6 +1514,7 @@ router.delete("/:id", protect, admin, requireAdminPage("products"), async (req, 
     });
 
     res.json({ message: "Product moved to Recycle Bin" });
+    await syncOptionParents(product._id);
     invalidateProductCache();
   } catch (error) {
     res.status(500).json({ message: "Failed to delete product", error: error.message });
@@ -1231,6 +1546,7 @@ router.post("/:id/restore", protect, admin, requireAdminPage("products"), async 
     });
 
     res.json({ message: "Product restored successfully", product });
+    await syncOptionParents(product._id);
     invalidateProductCache();
   } catch (error) {
     res.status(500).json({ message: "Failed to restore product", error: error.message });
@@ -1376,5 +1692,7 @@ router.post("/:id/view", async (req, res) => {
     res.status(500).json({ message: "Failed to log view", error: error.message });
   }
 });
+
+router.normalizeBundleItems = normalizeBundleItems;
 
 module.exports = router;

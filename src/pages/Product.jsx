@@ -339,6 +339,30 @@ function Product() {
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (product?.name) {
+        window.dispatchEvent(
+          new CustomEvent("dsg:breadcrumb", {
+            detail: {
+              name: product.name,
+              category: product.category || ""
+            }
+          })
+        );
+      }
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("dsg:breadcrumb", {
+            detail: { name: "", category: "" }
+          })
+        );
+      }
+    };
+  }, [product?.name, product?.category]);
   const [managedRelatedProducts, setManagedRelatedProducts] = useState([]);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1250,7 +1274,16 @@ function Product() {
             <StarRating rating={product.rating || averageRating || 0} size={18} />
             <span className="product-hero-rating-val">{Number(product.rating || averageRating || 0).toFixed(1)}</span>
             <span className="product-hero-rating-sep">•</span>
-            <a href="#reviews-section" className="product-hero-reviews-link">
+            <a
+              href="#reviews-section"
+              className="product-hero-reviews-link"
+              onClick={(event) => {
+                // Scroll in place instead of following the hash, so the router never treats
+                // "#reviews-section" as a page change (that is what produced "Home / Reviews Section").
+                event.preventDefault();
+                document.getElementById("reviews-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
               {reviewCount} {reviewCount === 1 ? "customer review" : "customer reviews"}
             </a>
           </div>

@@ -152,7 +152,7 @@ function PrivacyPolicy() {
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
-                  <span><strong>Data Deletion Requests:</strong> If you wish to request closure of your account or removal of personal records, write to us at support@digitalsanskritguru.com.</span>
+                  <span><strong>Data Deletion Requests:</strong> If you wish to request closure of your account or removal of personal records, write to us at support@vyomalabs.in.</span>
                 </li>
               </ul>
             </div>
@@ -166,9 +166,9 @@ function PrivacyPolicy() {
             <p>If you have any questions or concerns regarding our privacy practices, our team is happy to assist you.</p>
           </div>
           <div className="contact-links-grid">
-            <a href="mailto:support@digitalsanskritguru.com" className="contact-pill">
+            <a href="mailto:support@vyomalabs.in" className="contact-pill">
               <Mail size={16} />
-              <span>support@digitalsanskritguru.com</span>
+              <span>support@vyomalabs.in</span>
             </a>
             <a href="tel:+919480865623" className="contact-pill">
               <Phone size={16} />

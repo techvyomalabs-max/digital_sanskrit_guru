@@ -3,6 +3,7 @@ import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
+import { uploadImageDataUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatTime } from "../utils/date";
@@ -63,7 +64,16 @@ function createEmptyBundleItem() {
     price: "",
     isDigital: false,
     webReaderLink: "",
-    kindleLink: ""
+    kindleLink: "",
+    digitalType: "",
+    digitalDelivery: "onsite",
+    externalAccessLink: "",
+    externalAccessLabel: "",
+    externalAccessManual: false,
+    weight: "",
+    length: "",
+    width: "",
+    height: ""
   };
 }
 
@@ -276,6 +286,9 @@ function loadImageElement(src) {
 }
 
 async function optimizeImageSource(source, { maxWidth, maxHeight, quality = 0.82 } = {}) {
+  if (!String(source || "").startsWith("data:")) {
+    return source;
+  }
   const image = await loadImageElement(source);
   const safeMaxWidth = Math.max(1, Number(maxWidth || image.width || 1));
   const safeMaxHeight = Math.max(1, Number(maxHeight || image.height || 1));
@@ -334,8 +347,8 @@ function AdminAddProducts() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [internationalPrice, setInternationalPrice] = useState("");
-  const [internationalCountryPrices, setInternationalCountryPrices] = useState([createEmptyCountryPrice()]);
-  const [marketPrices, setMarketPrices] = useState([createEmptyMarketPrice()]);
+  const [internationalCountryPrices, setInternationalCountryPrices] = useState([]);
+  const [marketPrices, setMarketPrices] = useState([]);
   const [image, setImage] = useState("");
   const [imagesInput, setImagesInput] = useState("");
   const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
@@ -353,6 +366,7 @@ function AdminAddProducts() {
   const [externalAccessLabel, setExternalAccessLabel] = useState("");
   const [externalAccessManual, setExternalAccessManual] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
+  const [bundleItemErrors, setBundleItemErrors] = useState({});
   const [webReaderLink, setWebReaderLink] = useState("");
   const [kindleLink, setKindleLink] = useState("");
   const [kindleAsin, setKindleAsin] = useState("");
@@ -597,16 +611,20 @@ function AdminAddProducts() {
       : Number(price || 0);
     const numericStock = Number(stock ?? 1);
     const primaryImage = image.trim();
+    // A blank price box must not count as ₹0. For a bundle the price comes from its items.
+    const hasPriceInput = effectiveType === "bundle"
+      ? String(calculatedBundlePrice ?? "").trim() !== "" || String(price ?? "").trim() !== ""
+      : String(price ?? "").trim() !== "";
+    const isPriceValid = hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0;
 
     return {
       isNameValid: normalizedName.length > 0,
-      isPriceValid: !Number.isNaN(numericPrice) && numericPrice >= 0,
+      isPriceValid,
       isStockValid: !Number.isNaN(numericStock) && numericStock >= 0,
       hasPrimaryImage: primaryImage.length > 0,
       isValid:
         normalizedName.length > 0 &&
-        !Number.isNaN(numericPrice) &&
-        numericPrice >= 0 &&
+        isPriceValid &&
         !Number.isNaN(numericStock) &&
         numericStock >= 0,
       normalizedName,
@@ -662,8 +680,8 @@ function AdminAddProducts() {
     setName("");
     setPrice("");
     setInternationalPrice("");
-    setInternationalCountryPrices([createEmptyCountryPrice()]);
-    setMarketPrices([createEmptyMarketPrice()]);
+    setInternationalCountryPrices([]);
+    setMarketPrices([]);
     setImage("");
     setImagesInput("");
     setTrailerVideoUrl("");
@@ -683,6 +701,7 @@ function AdminAddProducts() {
     setExternalAccessLink("");
     setExternalAccessLabel("");
     setExternalAccessManual(false);
+    setBundleItemErrors({});
     setExternalLinkError("");
     setWebReaderLink("");
     setKindleLink("");
@@ -874,24 +893,25 @@ function AdminAddProducts() {
         return;
       }
 
-      const uploadedBanners = await Promise.all(
-        imageFiles.slice(0, 10).map(async (file) => ({
-          image: await optimizeHeroBannerFile(file),
-          productId: ""
-        }))
-      );
+      let addedCount = 0;
+      for (const file of imageFiles.slice(0, 10)) {
+        const optimized = await optimizeHeroBannerFile(file);
+        const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+        setHeroBanners((current) => {
+          const existingConfigured = current.filter((item) => String(item?.image || "").trim());
+          const next = [...existingConfigured, { image: publicUrl, productId: "" }].slice(0, 10);
+          const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
+          setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
+          return finalList;
+        });
+        addedCount++;
+      }
 
-      setHeroBanners((current) => {
-        const existingConfigured = current.filter((item) => String(item?.image || "").trim());
-        const next = [...existingConfigured, ...uploadedBanners].slice(0, 10);
-        const finalList = next.length > 0 ? next : [createEmptyHeroBanner()];
-        setActiveHeroBannerIndex(Math.max(0, finalList.length - 1));
-        return finalList;
-      });
-
-      setHeroBannerMessage(`${uploadedBanners.length} banner image${uploadedBanners.length === 1 ? "" : "s"} added. Save hero banners to publish them.`);
-    } catch {
-      setHeroBannerMessage("Could not upload banner images.");
+      if (addedCount > 0) {
+        setHeroBannerMessage(`${addedCount} banner image${addedCount === 1 ? "" : "s"} added. Save hero banners to publish them.`);
+      }
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload banner images.");
     } finally {
       setIsUploadingHeroBanners(false);
       event.target.value = "";
@@ -912,10 +932,11 @@ function AdminAddProducts() {
       }
 
       const optimized = await optimizeHeroBannerFile(file);
-      updateHeroBanner(index, "image", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "image", publicUrl);
       setHeroBannerMessage("Desktop banner image attached. Save hero banners to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload desktop banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload desktop banner image.");
     } finally {
       setIsUploadingDesktopHeroBanners(false);
       event.target.value = "";
@@ -940,11 +961,11 @@ function AdminAddProducts() {
         maxHeight: 1200,
         quality: 0.95
       });
-
-      updateHeroBanner(index, "mobileImage", optimized);
+      const publicUrl = await uploadImageDataUrl(optimized, { kind: "banner", token });
+      updateHeroBanner(index, "mobileImage", publicUrl);
       setHeroBannerMessage("Mobile banner image optimized and attached. Save hero banners to publish.");
-    } catch {
-      setHeroBannerMessage("Could not upload mobile banner image.");
+    } catch (err) {
+      setHeroBannerMessage(err?.message || "Could not upload mobile banner image.");
     } finally {
       setIsUploadingMobileHeroBanners(false);
       event.target.value = "";
@@ -969,10 +990,11 @@ function AdminAddProducts() {
         maxHeight: 1200,
         quality: 0.8
       });
-      setImage(optimizedImage);
+      const publicUrl = await uploadImageDataUrl(optimizedImage, { kind: "product", token });
+      setImage(publicUrl);
       setFormMessage("Primary product image optimized and attached.");
-    } catch {
-      setFormMessage("Could not process the primary product image.");
+    } catch (err) {
+      setFormMessage(err?.message || "Could not process the primary product image.");
     } finally {
       setIsUploadingProductImages(false);
       event.target.value = "";
@@ -993,28 +1015,31 @@ function AdminAddProducts() {
         return;
       }
 
-      const optimizedImages = await Promise.all(
-        imageFiles.slice(0, 8).map((file) =>
-          optimizeImageFile(file, {
-            maxWidth: 1200,
-            maxHeight: 1200,
-            quality: 0.78
-          })
-        )
-      );
+      let addedCount = 0;
+      for (const file of imageFiles.slice(0, 8)) {
+        const optimizedImage = await optimizeImageFile(file, {
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.78
+        });
+        const publicUrl = await uploadImageDataUrl(optimizedImage, { kind: "product", token });
+        setImagesInput((current) => {
+          const existing = current
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+          return [...existing, publicUrl].slice(0, 8).join("\n");
+        });
+        addedCount++;
+      }
 
-      setImagesInput((current) => {
-        const existing = current
-          .split(/\r?\n/)
-          .map((item) => item.trim())
-          .filter(Boolean);
-        return [...existing, ...optimizedImages].slice(0, 8).join("\n");
-      });
-      setFormMessage(
-        `${optimizedImages.length} gallery image${optimizedImages.length === 1 ? "" : "s"} optimized and added.`
-      );
-    } catch {
-      setFormMessage("Could not process the gallery images.");
+      if (addedCount > 0) {
+        setFormMessage(
+          `${addedCount} gallery image${addedCount === 1 ? "" : "s"} optimized and added.`
+        );
+      }
+    } catch (err) {
+      setFormMessage(err?.message || "Could not process the gallery images.");
     } finally {
       setIsUploadingProductImages(false);
       event.target.value = "";
@@ -1501,6 +1526,28 @@ function AdminAddProducts() {
     setExternalLinkError("");
 
 
+    let hasBundleCustomError = false;
+    const nextBundleItemErrors = {};
+    if (productType === "bundle") {
+      bundleItems.forEach((bItem, bIdx) => {
+        const cName = String(bItem.name || "").trim();
+        const rawPId = String(bItem.productId || bItem.product?._id || bItem.product || "").trim();
+        const isCust = bItem.itemType === "custom" || (Boolean(cName) && !rawPId);
+        if (isCust && bItem.isDigital === true && bItem.digitalDelivery === "external") {
+          const trimmedLink = String(bItem.externalAccessLink || "").trim();
+          if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
+            nextBundleItemErrors[bIdx] = "Please enter a valid access link (http:// or https://) without spaces.";
+            hasBundleCustomError = true;
+          }
+        }
+      });
+    }
+    setBundleItemErrors(nextBundleItemErrors);
+    if (hasBundleCustomError) {
+      setFormMessage("Please enter a valid access link (http:// or https://) for external custom items.");
+      return;
+    }
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1510,6 +1557,7 @@ function AdminAddProducts() {
         if (isCustomItem) {
           if (!customName) return null;
           return {
+            ...(/^[a-f0-9]{24}$/i.test(String(item._id || "")) ? { _id: String(item._id) } : {}),
             itemType: "custom",
             product: null,
             name: customName,
@@ -1519,6 +1567,15 @@ function AdminAddProducts() {
             isDigital: item.isDigital === true,
             webReaderLink: String(item.webReaderLink || "").trim(),
             kindleLink: String(item.kindleLink || "").trim(),
+            digitalType: String(item.digitalType || "").trim(),
+            digitalDelivery: item.digitalDelivery === "external" ? "external" : "onsite",
+            externalAccessLink: String(item.externalAccessLink || "").trim(),
+            externalAccessLabel: String(item.externalAccessLabel || "").trim(),
+            externalAccessManual: item.externalAccessManual === true,
+            weight: Math.max(0, Number(item.weight) || 0),
+            length: Math.max(0, Number(item.length) || 0),
+            width: Math.max(0, Number(item.width) || 0),
+            height: Math.max(0, Number(item.height) || 0),
             quantity: Math.max(1, Number(item.quantity || 1))
           };
         }
@@ -1649,7 +1706,7 @@ function AdminAddProducts() {
             country: String(item?.country || ""),
             price: String(item?.price ?? "")
           }))
-        : [createEmptyCountryPrice()]
+        : []
     );
     setMarketPrices(
       Array.isArray(product.marketPrices) && product.marketPrices.length > 0
@@ -1661,7 +1718,7 @@ function AdminAddProducts() {
             startDate: item?.startDate ? String(item.startDate).slice(0, 10) : "",
             endDate: item?.endDate ? String(item.endDate).slice(0, 10) : ""
           }))
-        : [createEmptyMarketPrice()]
+        : []
     );
     setImage(product.image || "");
     setImagesInput(Array.isArray(product.images) && product.images.length > 0 ? product.images.join("\n") : product.image || "");
@@ -1680,6 +1737,7 @@ function AdminAddProducts() {
     setExternalAccessLink(product.externalAccessLink || "");
     setExternalAccessLabel(product.externalAccessLabel || "");
     setExternalAccessManual(product.externalAccessManual === true);
+    setBundleItemErrors({});
     setExternalLinkError("");
     setWebReaderLink(product.webReaderLink || "");
     setKindleLink(product.kindleLink || "");
@@ -1689,6 +1747,7 @@ function AdminAddProducts() {
     setBundleItems(
       Array.isArray(product.bundleItems) && product.bundleItems.length > 0
         ? product.bundleItems.map((item) => ({
+            _id: item?._id ? String(item._id) : "",
             itemType: item?.itemType || (item?.product ? "existing" : "custom"),
             productId: String(item?.product?._id || item?.product || ""),
             quantity: String(Math.max(1, Number(item?.quantity || 1))),
@@ -1698,7 +1757,16 @@ function AdminAddProducts() {
             price: String(item?.price || item?.product?.price || ""),
             isDigital: item?.isDigital === true || item?.product?.isDigital === true,
             webReaderLink: String(item?.webReaderLink || item?.product?.webReaderLink || ""),
-            kindleLink: String(item?.kindleLink || item?.product?.kindleLink || "")
+            kindleLink: String(item?.kindleLink || item?.product?.kindleLink || ""),
+            digitalType: String(item?.digitalType || item?.product?.digitalType || ""),
+            digitalDelivery: String(item?.digitalDelivery || item?.product?.digitalDelivery || "onsite"),
+            externalAccessLink: String(item?.externalAccessLink || item?.product?.externalAccessLink || ""),
+            externalAccessLabel: String(item?.externalAccessLabel || item?.product?.externalAccessLabel || ""),
+            externalAccessManual: (item?.externalAccessManual ?? item?.product?.externalAccessManual) === true,
+            weight: item?.weight !== undefined && item?.weight !== null ? String(item.weight) : "",
+            length: item?.length !== undefined && item?.length !== null ? String(item.length) : "",
+            width: item?.width !== undefined && item?.width !== null ? String(item.width) : "",
+            height: item?.height !== undefined && item?.height !== null ? String(item.height) : ""
           }))
         : [createEmptyBundleItem()]
     );
@@ -1922,6 +1990,196 @@ function AdminAddProducts() {
     setBundleItems((current) => (current.length === 1 ? [createEmptyBundleItem()] : current.filter((_, itemIndex) => itemIndex !== index)));
   };
 
+  const renderCustomBundleItemFields = (item, index) => {
+    const isItemDigital = item.isDigital === true;
+    const isItemKindle = String(item.digitalType || "").toLowerCase().includes("kindle");
+    const isItemExternal = item.digitalDelivery === "external";
+
+    if (isItemDigital) {
+      return (
+        <div className="custom-bundle-digital-details">
+          <div className="custom-bundle-grid custom-bundle-grid-2">
+            <label className="custom-field">
+              <span>Format Type</span>
+              <select
+                value={item.digitalType || ""}
+                onChange={(e) => updateBundleItem(index, "digitalType", e.target.value)}
+              >
+                <option value="">Select format type...</option>
+                {digitalFormatTypeOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {getDigitalFormatTypeLabel(opt)}
+                  </option>
+                ))}
+                {item.digitalType && !digitalFormatTypeOptions.includes(item.digitalType) && (
+                  <option value={item.digitalType}>{item.digitalType}</option>
+                )}
+              </select>
+            </label>
+          </div>
+
+          <div className="custom-bundle-delivery-group">
+            <span className="custom-bundle-subheading">Where do customers access this?</span>
+            <div className="custom-bundle-radio-group">
+              <label className="custom-bundle-radio-label">
+                <input
+                  type="radio"
+                  name={`bundle-delivery-${index}`}
+                  value="onsite"
+                  checked={!isItemExternal}
+                  onChange={() => {
+                    updateBundleItem(index, "digitalDelivery", "onsite");
+                    setBundleItemErrors((prev) => ({ ...prev, [index]: "" }));
+                  }}
+                />
+                <span>On this website</span>
+              </label>
+              <label className="custom-bundle-radio-label">
+                <input
+                  type="radio"
+                  name={`bundle-delivery-${index}`}
+                  value="external"
+                  checked={isItemExternal}
+                  onChange={() => updateBundleItem(index, "digitalDelivery", "external")}
+                />
+                <span>On another website</span>
+              </label>
+            </div>
+          </div>
+
+          {!isItemExternal ? (
+            <div className="custom-bundle-fields-block">
+              <label className="custom-field">
+                <span>Web Reader Link URL</span>
+                <input
+                  type="text"
+                  placeholder="Web Reader Link URL (unlocked in My Library)"
+                  value={item.webReaderLink || ""}
+                  onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
+                />
+              </label>
+              {isItemKindle && (
+                <label className="custom-field">
+                  <span>Kindle Link URL</span>
+                  <input
+                    type="text"
+                    placeholder="Kindle redemption or purchase link"
+                    value={item.kindleLink || ""}
+                    onChange={(e) => updateBundleItem(index, "kindleLink", e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+          ) : (
+            <div className="custom-bundle-fields-block">
+              <div className="custom-bundle-grid custom-bundle-grid-2">
+                <label className="custom-field">
+                  <span>Access link (https://...) <strong style={{ color: "#dc2626" }}>*</strong></span>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    value={item.externalAccessLink || ""}
+                    onChange={(e) => {
+                      updateBundleItem(index, "externalAccessLink", e.target.value);
+                      setBundleItemErrors((prev) => ({ ...prev, [index]: "" }));
+                    }}
+                  />
+                </label>
+                <label className="custom-field">
+                  <span>Button label (optional, default: View)</span>
+                  <input
+                    type="text"
+                    maxLength={40}
+                    placeholder="View"
+                    value={item.externalAccessLabel || ""}
+                    onChange={(e) => updateBundleItem(index, "externalAccessLabel", e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="custom-bundle-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={item.externalAccessManual === true}
+                  onChange={(e) => updateBundleItem(index, "externalAccessManual", e.target.checked)}
+                />
+                <div>
+                  <span>Our team gives access manually</span>
+                  <p className="custom-bundle-hint-text">
+                    Customers will not see the link straight away. The order stays Pending until an admin clicks Grant access on the order. Gift purchases are not allowed for this product.
+                  </p>
+                </div>
+              </label>
+              <p className="custom-bundle-hint-text">
+                {item.externalAccessManual ? (
+                  "Customers see this link only after an admin grants access, in My Digital Library."
+                ) : (
+                  "Customers see this link only after they pay, in My Digital Library. They will not see 'instant access' messages for this product."
+                )}
+              </p>
+              {bundleItemErrors[index] && (
+                <div className="custom-bundle-error">
+                  {bundleItemErrors[index]}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="custom-bundle-physical-fields">
+        <div className="custom-bundle-grid custom-bundle-grid-4">
+          <label className="custom-field">
+            <span>Weight (g)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.weight || ""}
+              onChange={(e) => updateBundleItem(index, "weight", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Length (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.length || ""}
+              onChange={(e) => updateBundleItem(index, "length", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Width (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.width || ""}
+              onChange={(e) => updateBundleItem(index, "width", e.target.value)}
+            />
+          </label>
+          <label className="custom-field">
+            <span>Height (cm)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={item.height || ""}
+              onChange={(e) => updateBundleItem(index, "height", e.target.value)}
+            />
+          </label>
+        </div>
+        {Number(item.weight || 0) <= 0 && (
+          <div className="custom-bundle-weight-hint">
+            Add weight so delivery is charged correctly
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const updateRelatedProductItem = (index, value) => {
     setRelatedProductItems((current) =>
       current.map((item, itemIndex) => (itemIndex === index ? { ...item, productId: value } : item))
@@ -1950,7 +2208,7 @@ function AdminAddProducts() {
 
   const removeInternationalCountryPrice = (index) => {
     setInternationalCountryPrices((current) =>
-      current.length === 1 ? [createEmptyCountryPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+      current.filter((_, itemIndex) => itemIndex !== index)
     );
   };
 
@@ -1966,7 +2224,7 @@ function AdminAddProducts() {
 
   const removeMarketPrice = (index) => {
     setMarketPrices((current) =>
-      current.length === 1 ? [createEmptyMarketPrice()] : current.filter((_, itemIndex) => itemIndex !== index)
+      current.filter((_, itemIndex) => itemIndex !== index)
     );
   };
 
@@ -2057,6 +2315,7 @@ function AdminAddProducts() {
             >
               {/* Modal Header */}
               <div
+                className="pf-modal-header"
                 style={{
                   padding: "16px 20px",
                   borderBottom: "1px solid var(--site-border, #e2e8f0)",
@@ -2116,19 +2375,19 @@ function AdminAddProducts() {
               {/* Modal Quick Nav Tabs */}
               <div className="admin-modal-nav-tabs">
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-essentials")}>
-                  📌 Essentials
-                </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
-                  💰 Pricing & Markets
+                  Essentials
                 </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-digital")}>
-                  ⚡ Digital Access
+                  Digital
                 </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-dimensions")}>
-                  📦 Specs & Stock
+                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
+                  Pricing
+                </button>
+                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-related")}>
+                  Combo &amp; Related
                 </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-media")}>
-                  🖼️ Media & Preview
+                  Media
                 </button>
               </div>
 
@@ -2209,51 +2468,57 @@ function AdminAddProducts() {
                       onChange={(e) => setStock(e.target.value)}
                     />
                   </label>
-                  <label className="admin-field">
-                    <span>Weight (in Grams)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 450"
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                    />
-                    {productType === "bundle" && (
-                      <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
-                        Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
-                      </small>
-                    )}
-                  </label>
-                  <label className="admin-field">
-                    <span>Length (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 21"
-                      value={length}
-                      onChange={(e) => setLength(e.target.value)}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Width (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 14"
-                      value={width}
-                      onChange={(e) => setWidth(e.target.value)}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Height (in cm)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 3"
-                      value={height}
-                      onChange={(e) => setHeight(e.target.value)}
-                    />
-                  </label>
+                  {isDigital === true && productType !== "bundle" ? null : (
+                    <div className="admin-field admin-field-wide pf-dimensions">
+                      <div className="pf-dimensions-grid">
+                        <label className="admin-field">
+                          <span>Weight (in Grams)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 450"
+                            value={weight}
+                            onChange={(e) => setWeight(e.target.value)}
+                          />
+                          {productType === "bundle" && (
+                            <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
+                              Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
+                            </small>
+                          )}
+                        </label>
+                        <label className="admin-field">
+                          <span>Length (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 21"
+                            value={length}
+                            onChange={(e) => setLength(e.target.value)}
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Width (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 14"
+                            value={width}
+                            onChange={(e) => setWidth(e.target.value)}
+                          />
+                        </label>
+                        <label className="admin-field">
+                          <span>Height (in cm)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="e.g. 3"
+                            value={height}
+                            onChange={(e) => setHeight(e.target.value)}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   <label className="admin-field">
                     <span>Discount / Offer Type</span>
                     <select
@@ -2291,6 +2556,9 @@ function AdminAddProducts() {
                     <div className="admin-category-manager">
                       <div className="admin-category-select-row">
                         <select value={category} onChange={(e) => setCategory(e.target.value)} className="admin-category-select-dropdown">
+                          {category && !categoryOptions.includes(category) ? (
+                            <option value={category}>{category}</option>
+                          ) : null}
                           {categoryOptions.map((option) => (
                             <option key={option} value={option}>
                               {option}
@@ -2385,10 +2653,10 @@ function AdminAddProducts() {
                 </div>
               </section>
 
-              <section id="section-pricing" className="product-composer-panel">
+              <section id="section-digital" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
-                    <h4>📖 Digital Content & Kindle Settings</h4>
+                    <h4>Digital Content &amp; Kindle Settings</h4>
                     <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
                   </div>
                 </div>
@@ -2673,16 +2941,19 @@ function AdminAddProducts() {
                     <label className="admin-field admin-field-wide">
                       <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
                       <input
-                        placeholder="https://... (Direct link to course on SFH platform; displays 'View Course' button on product page)"
+                        placeholder="https://…"
                         value={courseLink}
                         onChange={(e) => setCourseLink(e.target.value)}
                       />
+                      <small className="pf-hint">
+                        Direct link to the course on the SFH platform; shows a View Course button on the product page.
+                      </small>
                     </label>
                   </div>
                 </div>
               </section>
 
-              <section id="section-digital" className="product-composer-panel">
+              <section id="section-pricing" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Pricing</h4>
@@ -2710,6 +2981,9 @@ function AdminAddProducts() {
                         </button>
                       </div>
                       <div className="admin-bundle-builder-list">
+                        {internationalCountryPrices.length === 0 ? (
+                          <p className="pf-empty-note">No country overrides yet.</p>
+                        ) : null}
                         {internationalCountryPrices.map((item, index) => (
                           <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
                             <select
@@ -2752,8 +3026,11 @@ function AdminAddProducts() {
                         </button>
                       </div>
                       <div className="admin-bundle-builder-list">
+                        {marketPrices.length === 0 ? (
+                          <p className="pf-empty-note">No market prices yet.</p>
+                        ) : null}
                         {marketPrices.map((item, index) => (
-                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap">
+                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap pf-market-row">
                             <select
                               value={item.market}
                               onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
@@ -2804,7 +3081,7 @@ function AdminAddProducts() {
                 </div>
               </section>
 
-              <section id="section-dimensions" className="product-composer-panel">
+              <section id="section-related" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Relationships</h4>
@@ -2928,15 +3205,7 @@ function AdminAddProducts() {
                                       />
                                       <span>Is Digital Item (Web Reader / Downloadable)</span>
                                     </label>
-                                    {item.isDigital && (
-                                      <input
-                                        type="text"
-                                        placeholder="Web Reader Link URL (unlocked in My Library)"
-                                        value={item.webReaderLink || ""}
-                                        onChange={(e) => updateBundleItem(index, "webReaderLink", e.target.value)}
-                                        style={{ marginTop: "6px" }}
-                                      />
-                                    )}
+                                    {renderCustomBundleItemFields(item, index)}
                                   </div>
                                 </div>
                               ) : (

@@ -99,6 +99,47 @@ const bundleItemSchema = new mongoose.Schema(
     kindleLink: {
       type: String,
       default: ""
+    },
+    digitalType: {
+      type: String,
+      default: ""
+    },
+    digitalDelivery: {
+      type: String,
+      enum: ["onsite", "external"],
+      default: "onsite"
+    },
+    externalAccessLink: {
+      type: String,
+      default: ""
+    },
+    externalAccessLabel: {
+      type: String,
+      default: ""
+    },
+    externalAccessManual: {
+      type: Boolean,
+      default: false
+    },
+    weight: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    length: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    width: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    height: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   { _id: true }
@@ -327,6 +368,38 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0
+    },
+    hasOptions: {
+      type: Boolean,
+      default: false
+    },
+    options: {
+      type: [
+        new mongoose.Schema(
+          {
+            product: {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "Product"
+            },
+            label: {
+              type: String,
+              trim: true,
+              maxlength: 40
+            }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
+    },
+    hideFromListings: {
+      type: Boolean,
+      default: false
+    },
+    optionParent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null
     }
   },
   { timestamps: true }

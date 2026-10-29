@@ -175,7 +175,7 @@ function ShippingPolicy() {
               <Mail size={20} className="contact-icon" />
               <div>
                 <span className="contact-label">Email Support</span>
-                <a href="mailto:sanskritfromhome@vyomalabs.in" className="contact-val">sanskritfromhome@vyomalabs.in</a>
+                <a href="mailto:support@vyomalabs.in" className="contact-val">support@vyomalabs.in</a>
               </div>
             </div>
             <div className="contact-item">

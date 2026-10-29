@@ -124,13 +124,17 @@ router.post("/", protect, async (req, res) => {
     return res.status(400).json({ message: "productId is required" });
   }
 
-  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType");
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType hasOptions");
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
 
   if (isKindleProduct(product)) {
     return res.status(400).json({ message: "Kindle editions are sold on Amazon." });
+  }
+
+  if (product.hasOptions === true) {
+    return res.status(400).json({ message: "Please choose a format first." });
   }
 
   const cart = await getOrCreateCart(req.user);

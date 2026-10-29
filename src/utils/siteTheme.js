@@ -1,4 +1,4 @@
-export const DEFAULT_SITE_THEME = "minimalism";
+export const DEFAULT_SITE_THEME = "sunrise";
 const SITE_THEME_STORAGE_KEY = "site-theme-settings";
 
 export const BUILT_IN_THEME_DEFINITIONS = [
