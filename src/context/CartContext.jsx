@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { resolveInitialWishlist } from "../utils/wishlistOwnership";
 import { isKindleProduct } from "../utils/kindle";
+import { isOptionsParent } from "../utils/productOptions";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
@@ -265,6 +266,10 @@ export function CartProvider({ children }) {
   }, [token, loadCart, showToast]);
 
   const addToCart = async (product, qty = 1) => {
+    if (isOptionsParent(product)) {
+      showToast("Please choose a format first.", "error");
+      return false;
+    }
     if (isKindleProduct(product)) {
       showToast("Kindle editions are sold on Amazon.", "error");
       return false;
