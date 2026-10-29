@@ -1293,3 +1293,27 @@ body.admin-dark .pf-badge--hidden {
   border-color: var(--admin-border, #334155);
   color: var(--admin-muted, #94a3b8);
 }
+
+/* Checkbox rows inside the form grid (e.g. "Hide from store listings"): box and text on one line */
+.admin-field .admin-digital-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-field .admin-digital-toggle-label input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* Selects inside option / custom-item rows match the inputs next to them */
+.custom-field select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--admin-border, #cbd5e1);
+  border-radius: 6px;
+  background: var(--admin-surface, #ffffff);
+  color: var(--admin-text);
+}
