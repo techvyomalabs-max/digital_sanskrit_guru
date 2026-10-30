@@ -215,5 +215,88 @@ describe("searchText utility (pure)", async () => {
       assert.equal(suggestion, null);
     });
   });
+
+  describe("Category & Format Search", () => {
+    it("matches 'kindle' to 'E-Book - Kindle' category with product count", async () => {
+      const { searchCategories } = await import("../../src/utils/searchText.js");
+      const products = [
+        { name: "Gita", category: "E-Book - Kindle" },
+        { name: "Ramayana", category: "E-Book - Kindle" },
+        { name: "Sanskrit Grammar", category: "Book - Paperback" }
+      ];
+      const matched = searchCategories("kindle", products);
+      assert.ok(matched.length > 0);
+      assert.equal(matched[0].name, "E-Book - Kindle");
+      assert.equal(matched[0].count, 2);
+    });
+
+    it("matches 'paperback' to 'Book - Paperback' category", async () => {
+      const { searchCategories } = await import("../../src/utils/searchText.js");
+      const products = [
+        { name: "Sanskrit Grammar", category: "Book - Paperback" }
+      ];
+      const matched = searchCategories("paperback", products);
+      assert.ok(matched.length > 0);
+      assert.equal(matched[0].name, "Book - Paperback");
+    });
+  });
+
+  describe("Website Pages & Informational Content Search", () => {
+    it("matches 'shipping' to Shipping & Delivery Policy page", async () => {
+      const { searchPages } = await import("../../src/utils/searchText.js");
+      const matched = searchPages("shipping");
+      assert.ok(matched.length > 0);
+      assert.equal(matched[0].id, "shipping-policy");
+      assert.equal(matched[0].url, "/shipping-policy");
+    });
+
+    it("matches 'library' or 'download' to My Digital Library page", async () => {
+      const { searchPages } = await import("../../src/utils/searchText.js");
+      const matchedLib = searchPages("library");
+      assert.ok(matchedLib.length > 0);
+      assert.equal(matchedLib[0].id, "my-library");
+
+      const matchedDl = searchPages("download");
+      assert.ok(matchedDl.length > 0);
+      assert.equal(matchedDl[0].id, "my-library");
+    });
+
+    it("matches 'contact' or 'whatsapp' to Contact Us page", async () => {
+      const { searchPages } = await import("../../src/utils/searchText.js");
+      const matched = searchPages("whatsapp");
+      assert.ok(matched.length > 0);
+      assert.equal(matched[0].id, "contact");
+    });
+  });
+
+  describe("Aggressive AI Auto-Correction", () => {
+    it("corrects severe slang/typos: 'kndl' -> 'kindle', 'paprback' -> 'paperback', 'bgvad' -> 'bhagavad'", async () => {
+      const { autoCorrectQuery } = await import("../../src/utils/searchText.js");
+      const products = [
+        { name: "Bhagavad Gita", category: "E-Book - Kindle" },
+        { name: "Sanskrit Primer", category: "Book - Paperback" }
+      ];
+      assert.equal(autoCorrectQuery("kndl", products).correctedQuery, "kindle");
+      assert.equal(autoCorrectQuery("paprback", products).correctedQuery, "paperback");
+      assert.equal(autoCorrectQuery("bgvad", products).correctedQuery, "bhagavad");
+      assert.equal(autoCorrectQuery("shippng", products).correctedQuery, "shipping");
+    });
+  });
+
+  describe("Unified searchWebsite Pipeline", () => {
+    it("returns categories, pages, products, and auto-correction in one call", async () => {
+      const { searchWebsite } = await import("../../src/utils/searchText.js");
+      const products = [
+        { _id: "1", name: "Bhagavad Gita (Paperback)", category: "Book - Paperback", price: 350 },
+        { _id: "2", name: "Bhagavad Gita (Kindle Edition)", category: "E-Book - Kindle", price: 150 }
+      ];
+
+      // Typing typo 'bgvad' should seamlessly auto-correct to 'bhagavad' and find products + category
+      const res = searchWebsite("bgvad", { catalogProducts: products });
+      assert.equal(res.isAutoCorrected, true);
+      assert.equal(res.effectiveQuery, "bhagavad");
+      assert.ok(res.matchingProducts.length >= 2);
+    });
+  });
 });
 
