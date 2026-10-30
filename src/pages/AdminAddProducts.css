@@ -1317,3 +1317,155 @@ body.admin-dark .pf-badge--hidden {
   background: var(--admin-surface, #ffffff);
   color: var(--admin-text);
 }
+
+/* Combo formats (bundle builder) */
+.pf-formats-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--admin-border, #cbd5e1);
+  border-radius: 10px;
+  background: var(--admin-surface, #ffffff);
+}
+
+.pf-formats-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pf-formats-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--admin-muted, #64748b);
+}
+
+.pf-formats-table {
+  display: grid;
+  gap: 8px;
+}
+
+.pf-formats-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, 0.7fr) minmax(0, 0.9fr) minmax(0, 0.8fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pf-formats-pack {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--admin-surface-2, #f8fafc);
+  border: 1px dashed var(--admin-border, #e2e8f0);
+}
+
+.pf-formats-pack-title {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--admin-muted, #64748b);
+}
+
+.pf-formats-pack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pf-formats-pack-field span {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--admin-muted, #64748b);
+}
+
+.pf-formats-pack-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .pf-formats-pack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pf-formats-row--head span {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--admin-muted, #64748b);
+}
+
+.pf-formats-row input,
+.pf-formats-row select {
+  width: 100%;
+  min-width: 0;
+}
+
+.pf-formats-total {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--admin-text);
+}
+
+.pf-item-formats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 2px 0 8px;
+  font-size: 12.5px;
+  color: var(--admin-text);
+}
+
+.pf-item-formats > span {
+  font-weight: 700;
+  color: var(--admin-muted, #64748b);
+}
+
+.pf-item-format-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pf-item-format-check input {
+  width: auto;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .pf-formats-head {
+    flex-direction: column;
+  }
+
+  .pf-formats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pf-formats-row--head {
+    display: none;
+  }
+}
+
+/* "Is Digital Item" tick on custom combo items: box and text on one line */
+.custom-bundle-digital-row .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.custom-bundle-digital-row .checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}

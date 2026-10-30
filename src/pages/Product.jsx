@@ -1741,6 +1741,13 @@ function Product() {
                 const includedImage = includedProduct?.image || item?.image || "";
                 const includedPrice = includedProduct ? Number(getProductPriceDetails(includedProduct, selectedAddress?.country).price || 0) : Number(item?.price || 0);
                 const isDigitalItem = item?.isDigital === true || includedProduct?.isDigital === true;
+                // Digital parts show their own format (Web Version, Flipbook, Kindle...). Physical parts
+                // show the medium when the combo format sets one (e.g. "USB" for content shipped on a USB),
+                // otherwise a neutral label (a combo can hold devices and pendrives, not only books).
+                const includedDigitalType = String(includedProduct?.digitalType || item?.digitalType || "").trim();
+                const digitalFormatLabel =
+                  includedDigitalType && includedDigitalType.toLowerCase() !== "other" ? includedDigitalType : "Digital";
+                const physicalFormatLabel = String(item?.digitalType || "").trim() || "Physical item";
                 const qty = Math.max(1, Number(item?.quantity || 1));
                 const itemDescription = item?.description || includedProduct?.description || "";
 
@@ -1760,9 +1767,9 @@ function Product() {
 
                       <div className="bundle-item-meta">
                         {isDigitalItem ? (
-                          <span className="bundle-format-tag bundle-format-tag--digital">💻 Digital Version</span>
+                          <span className="bundle-format-tag bundle-format-tag--digital">💻 {digitalFormatLabel}</span>
                         ) : (
-                          <span className="bundle-format-tag bundle-format-tag--physical">📚 Printed Book</span>
+                          <span className="bundle-format-tag bundle-format-tag--physical">📦 {physicalFormatLabel}</span>
                         )}
                         {includedPrice > 0 ? (
                           <span className="bundle-item-price-val">

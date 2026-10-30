@@ -140,9 +140,55 @@ const bundleItemSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0
+    },
+    // Keys of the bundle formats (see bundleFormats on the product) this item belongs to.
+    formats: {
+      type: [String],
+      default: []
     }
   },
   { _id: true }
+);
+
+// A format of a combo (e.g. "USB", "Web Version"). Customers pick one; the server keeps one hidden
+// product per format (product) holding only the items ticked for it, so cart/checkout/stock work as usual.
+const bundleFormatSchema = new mongoose.Schema(
+  {
+    key: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 40
+    },
+    // "physical" = shipped (e.g. USB), "digital" = online access; "" = follow the items (older saves).
+    type: {
+      type: String,
+      enum: ["", "physical", "digital"],
+      default: ""
+    },
+    // Package size of a shipped format (grams / cm), used for delivery charges. 0 for digital formats.
+    weight: { type: Number, default: 0, min: 0 },
+    length: { type: Number, default: 0, min: 0 },
+    width: { type: Number, default: 0, min: 0 },
+    height: { type: Number, default: 0, min: 0 },
+    // Manual price; null = the total of the format's items.
+    price: {
+      type: Number,
+      default: null,
+      min: 0
+    },
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null
+    }
+  },
+  { _id: false }
 );
 
 const productSchema = new mongoose.Schema(
@@ -400,6 +446,15 @@ const productSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
       default: null
+    },
+    bundleFormats: {
+      type: [bundleFormatSchema],
+      default: []
+    },
+    // Set on the hidden products the server creates for a combo's formats (the format's key).
+    bundleFormatKey: {
+      type: String,
+      default: ""
     }
   },
   { timestamps: true }
