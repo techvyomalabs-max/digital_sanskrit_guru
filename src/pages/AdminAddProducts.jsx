@@ -73,6 +73,24 @@ function createEmptyBundleItem() {
     weight: "",
     length: "",
     width: "",
+    height: "",
+    formats: []
+  };
+}
+
+// A combo format row in the form. rowKey ties items to the row (it is the saved key for
+// formats loaded from the server, a temporary id for new ones).
+function createEmptyBundleFormat() {
+  return {
+    rowKey: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: "",
+    label: "",
+    type: "",
+    price: "",
+    stock: "",
+    weight: "",
+    length: "",
+    width: "",
     height: ""
   };
 }
@@ -373,6 +391,7 @@ function AdminAddProducts() {
   const [digitalInstructions, setDigitalInstructions] = useState("");
   const [courseLink, setCourseLink] = useState("");
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
+  const [bundleFormats, setBundleFormats] = useState([]);
   const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
@@ -534,8 +553,41 @@ function AdminAddProducts() {
   const activeHeroBanner = heroBanners[activeHeroBannerIndex] || createEmptyHeroBanner();
   const availableBundleProducts = useMemo(() => {
     const editingId = String(editingProduct?._id || "");
-    return products.filter((product) => String(product?._id || "") !== editingId);
+    return products.filter(
+      (product) =>
+        String(product?._id || "") !== editingId &&
+        !product?.bundleFormatKey &&
+        product?.hasOptions !== true
+    );
   }, [products, editingProduct]);
+
+  // Combo formats: the value of each format = its ticked items (linked product price or typed value) x qty.
+  const hasBundleFormats = productType === "bundle" && bundleFormats.length > 0;
+  const bundleFormatTotals = useMemo(() => {
+    const totals = {};
+    for (const format of bundleFormats) {
+      let total = 0;
+      for (const item of bundleItems) {
+        if (!Array.isArray(item?.formats) || !item.formats.includes(format.rowKey)) continue;
+        const productId = String(item?.productId || "").trim();
+        const isCustom = item?.itemType === "custom" || (!productId && String(item?.name || "").trim());
+        const linked = !isCustom && productId ? products.find((product) => String(product?._id || "") === productId) : null;
+        if (!isCustom && !linked) continue;
+        const unit = isCustom ? Number(item?.price || 0) : Number(linked?.price || 0);
+        total += Math.max(0, unit) * Math.max(1, Number(item?.quantity || 1));
+      }
+      totals[format.rowKey] = Math.round(total * 100) / 100;
+    }
+    return totals;
+  }, [bundleFormats, bundleItems, products]);
+  const bundleFormatsFromPrice = useMemo(() => {
+    if (!hasBundleFormats) return null;
+    const prices = bundleFormats.map((format) => {
+      const manual = String(format.price ?? "").trim();
+      return manual !== "" && !Number.isNaN(Number(manual)) ? Number(manual) : bundleFormatTotals[format.rowKey] || 0;
+    });
+    return prices.length > 0 ? Math.min(...prices) : null;
+  }, [hasBundleFormats, bundleFormats, bundleFormatTotals]);
 
   const selectedBundleProducts = useMemo(() => {
     return bundleItems
@@ -588,7 +640,10 @@ function AdminAddProducts() {
 
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const base = [...products].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+    // A combo's format products are managed from the combo itself (stock is in the Warehouse).
+    const base = products
+      .filter((product) => !product?.bundleFormatKey)
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
     if (!query) return base;
 
     return base.filter((product) => {
@@ -616,17 +671,17 @@ function AdminAddProducts() {
       ? String(calculatedBundlePrice ?? "").trim() !== "" || String(price ?? "").trim() !== ""
       : String(price ?? "").trim() !== "";
     const isPriceValid = hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0;
+    const isStockValid = !Number.isNaN(numericStock) && numericStock >= 0;
 
     return {
       isNameValid: normalizedName.length > 0,
       isPriceValid,
-      isStockValid: !Number.isNaN(numericStock) && numericStock >= 0,
+      isStockValid,
       hasPrimaryImage: primaryImage.length > 0,
       isValid:
         normalizedName.length > 0 &&
         isPriceValid &&
-        !Number.isNaN(numericStock) &&
-        numericStock >= 0,
+        isStockValid,
       normalizedName,
       numericPrice,
       numericStock
@@ -709,6 +764,7 @@ function AdminAddProducts() {
     setDigitalInstructions("");
     setCourseLink("");
     setBundleItems([createEmptyBundleItem()]);
+    setBundleFormats([]);
     setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
@@ -752,6 +808,7 @@ function AdminAddProducts() {
       digitalInstructions,
       courseLink,
       bundleItems,
+      bundleFormats,
       relatedProductItems,
       category,
       stock,
@@ -1504,6 +1561,64 @@ function AdminAddProducts() {
       return;
     }
 
+    if (productType === "bundle" && bundleFormats.length > 0) {
+      if (bundleFormats.length > 8) {
+        setFormMessage("At most 8 formats.");
+        return;
+      }
+      const seenLabels = new Set();
+      for (let i = 0; i < bundleFormats.length; i += 1) {
+        const format = bundleFormats[i];
+        const n = i + 1;
+        const label = String(format.label || "").trim();
+        if (!label) {
+          setFormMessage(`Format ${n}: add a name (for example USB or Web Version).`);
+          return;
+        }
+        if (seenLabels.has(label.toLowerCase())) {
+          setFormMessage(`Format ${n}: "${label}" is already listed.`);
+          return;
+        }
+        seenLabels.add(label.toLowerCase());
+        if (format.type !== "physical" && format.type !== "digital") {
+          setFormMessage(`Format "${label}": choose its Type (Physical or Digital).`);
+          return;
+        }
+        for (const [field, text] of [
+          ["price", "price"],
+          ["stock", "stock"],
+          ["weight", "weight"],
+          ["length", "length"],
+          ["width", "width"],
+          ["height", "height"]
+        ]) {
+          const raw = String(format[field] ?? "").trim();
+          if (raw !== "" && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
+            setFormMessage(`Format "${label}": ${text} must be 0 or more.`);
+            return;
+          }
+        }
+        const hasItem = bundleItems.some((item) => {
+          const filled = String(item?.productId || "").trim() || String(item?.name || "").trim();
+          return filled && Array.isArray(item?.formats) && item.formats.includes(format.rowKey);
+        });
+        if (!hasItem) {
+          setFormMessage(`Format "${label}": tick at least one item for it.`);
+          return;
+        }
+        // A physical format needs a stock (otherwise it shows "Out of stock").
+        if (format.type === "physical" && String(format.stock ?? "").trim() === "") {
+          setFormMessage(`Format "${label}": enter how many sets you have (Stock).`);
+          return;
+        }
+        // Shipped formats need a package weight, otherwise delivery is charged on a guessed 250 g.
+        if (format.type === "physical" && !(Number(format.weight) > 0)) {
+          setFormMessage(`Format "${label}": enter the package weight in grams, so delivery is charged correctly.`);
+          return;
+        }
+      }
+    }
+
     const hasIncompleteMarketPriceRow = marketPrices.some((item) => {
       if (!hasAnyMarketPriceInput(item)) return false;
       return !String(item?.market || "").trim() || !hasNumericInput(item?.regularPrice);
@@ -1548,6 +1663,15 @@ function AdminAddProducts() {
       return;
     }
 
+    // Item format tags go to the server as the format's saved key, or its name for a new format.
+    const formatTagByRow = new Map(
+      bundleFormats.map((format) => [format.rowKey, format.key || String(format.label || "").trim()])
+    );
+    const formatTagsFor = (item) =>
+      productType === "bundle" && Array.isArray(item?.formats)
+        ? item.formats.map((rowKey) => formatTagByRow.get(rowKey)).filter(Boolean)
+        : [];
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1576,7 +1700,8 @@ function AdminAddProducts() {
             length: Math.max(0, Number(item.length) || 0),
             width: Math.max(0, Number(item.width) || 0),
             height: Math.max(0, Number(item.height) || 0),
-            quantity: Math.max(1, Number(item.quantity || 1))
+            quantity: Math.max(1, Number(item.quantity || 1)),
+            formats: formatTagsFor(item)
           };
         }
 
@@ -1591,7 +1716,8 @@ function AdminAddProducts() {
           image: String(item.image || "").trim(),
           price: Math.max(0, Number(item.price || 0)),
           isDigital: linkedProduct ? linkedProduct.isDigital === true : item.isDigital === true,
-          quantity: Math.max(1, Number(item.quantity || 1))
+          quantity: Math.max(1, Number(item.quantity || 1)),
+          formats: formatTagsFor(item)
         };
       })
       .filter(Boolean);
@@ -1640,6 +1766,23 @@ function AdminAddProducts() {
       digitalInstructions: digitalInstructions.trim(),
       courseLink: courseLink.trim(),
       bundleItems: productType === "bundle" ? processedBundleItems : [],
+      bundleFormats:
+        productType === "bundle"
+          ? bundleFormats.map((format) => ({
+              key: format.key || "",
+              label: String(format.label || "").trim(),
+              type: format.type === "physical" || format.type === "digital" ? format.type : "",
+              price: String(format.price ?? "").trim() === "" ? null : Number(format.price),
+              stock:
+                format.type === "digital" || String(format.stock ?? "").trim() === "" ? null : Number(format.stock),
+              ...Object.fromEntries(
+                ["weight", "length", "width", "height"].map((field) => [
+                  field,
+                  format.type === "physical" ? Math.max(0, Number(format[field]) || 0) : 0
+                ])
+              )
+            }))
+          : [],
       relatedProducts: relatedProductItems
         .map((item) => ({
           productId: String(item.productId || "").trim()
@@ -1657,22 +1800,19 @@ function AdminAddProducts() {
     setFormMessage("");
 
     try {
-      let savedProduct;
+      const authConfig = { headers: { Authorization: `Bearer ${token}` } };
+      // hasOptions / options are not sent: the server keeps them (combo formats set them itself).
+      const finalPayload = payload;
+
       if (editingProduct?._id) {
-        const { data } = await axios.put(`/api/products/${editingProduct._id}`, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        savedProduct = data;
+        const { data } = await axios.put(`/api/products/${editingProduct._id}`, finalPayload, authConfig);
         setFormMessage(
           `Product updated successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
             ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
             : ""}`
         );
       } else {
-        const { data } = await axios.post("/api/products", payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        savedProduct = data;
+        const { data } = await axios.post("/api/products", finalPayload, authConfig);
         setFormMessage(
           `Product added successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
             ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
@@ -1730,6 +1870,25 @@ function AdminAddProducts() {
     setFestiveOffer(resolvedDiscountType !== "none");
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
+    const savedFormats = Array.isArray(product.bundleFormats) ? product.bundleFormats : [];
+    setBundleFormats(
+      savedFormats.map((format) => {
+        const formatProductId = String(format?.product?._id || format?.product || "");
+        const formatProduct = products.find((candidate) => String(candidate?._id || "") === formatProductId);
+        return {
+          rowKey: String(format?.key || ""),
+          key: String(format?.key || ""),
+          label: String(format?.label || ""),
+          type: format?.type === "physical" || format?.type === "digital" ? format.type : "",
+          price: format?.price === null || format?.price === undefined ? "" : String(format.price),
+          stock: formatProduct && formatProduct.isDigital !== true ? String(Number(formatProduct.stock || 0)) : "",
+          weight: Number(format?.weight) > 0 ? String(format.weight) : "",
+          length: Number(format?.length) > 0 ? String(format.length) : "",
+          width: Number(format?.width) > 0 ? String(format.width) : "",
+          height: Number(format?.height) > 0 ? String(format.height) : ""
+        };
+      })
+    );
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setDigitalType(product.digitalType || "Web Version");
@@ -1766,7 +1925,8 @@ function AdminAddProducts() {
             weight: item?.weight !== undefined && item?.weight !== null ? String(item.weight) : "",
             length: item?.length !== undefined && item?.length !== null ? String(item.length) : "",
             width: item?.width !== undefined && item?.width !== null ? String(item.width) : "",
-            height: item?.height !== undefined && item?.height !== null ? String(item.height) : ""
+            height: item?.height !== undefined && item?.height !== null ? String(item.height) : "",
+            formats: Array.isArray(item?.formats) ? item.formats.map(String) : []
           }))
         : [createEmptyBundleItem()]
     );
@@ -1984,6 +2144,39 @@ function AdminAddProducts() {
 
   const addBundleItem = () => {
     setBundleItems((current) => [...current, createEmptyBundleItem()]);
+  };
+
+  const addBundleFormat = () => {
+    setBundleFormats((current) => (current.length >= 8 ? current : [...current, createEmptyBundleFormat()]));
+  };
+
+  const updateBundleFormat = (rowKey, field, value) => {
+    setBundleFormats((current) =>
+      current.map((format) => (format.rowKey === rowKey ? { ...format, [field]: value } : format))
+    );
+  };
+
+  const removeBundleFormat = (rowKey) => {
+    setBundleFormats((current) => current.filter((format) => format.rowKey !== rowKey));
+    setBundleItems((current) =>
+      current.map((item) => ({
+        ...item,
+        formats: (Array.isArray(item.formats) ? item.formats : []).filter((key) => key !== rowKey)
+      }))
+    );
+  };
+
+  const toggleBundleItemFormat = (index, rowKey, checked) => {
+    setBundleItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const tags = Array.isArray(item.formats) ? item.formats : [];
+        return {
+          ...item,
+          formats: checked ? [...new Set([...tags, rowKey])] : tags.filter((key) => key !== rowKey)
+        };
+      })
+    );
   };
 
   const removeBundleItem = (index) => {
@@ -2380,9 +2573,11 @@ function AdminAddProducts() {
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-digital")}>
                   Digital
                 </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
-                  Pricing
-                </button>
+                {hasBundleFormats ? null : (
+                  <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
+                    Pricing
+                  </button>
+                )}
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-related")}>
                   Combo &amp; Related
                 </button>
@@ -2447,110 +2642,124 @@ function AdminAddProducts() {
                       <option value="bulk">Bulk Product</option>
                     </select>
                   </label>
-                  <label className="admin-field">
-                    <span>Price</span>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 999"
-                      value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      readOnly={productType === "bundle"}
-                    />
-                  </label>
-                  <label className="admin-field">
-                    <span>Stock</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 25"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                    />
-                  </label>
-                  {isDigital === true && productType !== "bundle" ? null : (
-                    <div className="admin-field admin-field-wide pf-dimensions">
-                      <div className="pf-dimensions-grid">
+                  <>
+                      {hasBundleFormats ? (
+                        <div className="admin-field admin-field-wide">
+                          <p className="pf-empty-note">
+                            This combo is sold in formats. Each format&apos;s price and stock are set in the
+                            Bundle Products section below; customers see &quot;from&quot; the cheapest one.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <label className="admin-field">
+                            <span>Price</span>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="e.g. 999"
+                              value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
+                              onChange={(e) => setPrice(e.target.value)}
+                              readOnly={productType === "bundle"}
+                            />
+                          </label>
+                          <label className="admin-field">
+                            <span>Stock</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="e.g. 25"
+                              value={stock}
+                              onChange={(e) => setStock(e.target.value)}
+                            />
+                          </label>
+                        </>
+                      )}
+                      {(isDigital === true && productType !== "bundle") || hasBundleFormats ? null : (
+                        <div className="admin-field admin-field-wide pf-dimensions">
+                          <div className="pf-dimensions-grid">
+                            <label className="admin-field">
+                              <span>Weight (in Grams)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 450"
+                                value={weight}
+                                onChange={(e) => setWeight(e.target.value)}
+                              />
+                              {productType === "bundle" && (
+                                <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
+                                  Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
+                                </small>
+                              )}
+                            </label>
+                            <label className="admin-field">
+                              <span>Length (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 21"
+                                value={length}
+                                onChange={(e) => setLength(e.target.value)}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Width (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 14"
+                                value={width}
+                                onChange={(e) => setWidth(e.target.value)}
+                              />
+                            </label>
+                            <label className="admin-field">
+                              <span>Height (in cm)</span>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="e.g. 3"
+                                value={height}
+                                onChange={(e) => setHeight(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                      <label className="admin-field">
+                        <span>Discount / Offer Type</span>
+                        <select
+                          value={discountType}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDiscountType(val);
+                            setFestiveOffer(val !== "none");
+                          }}
+                        >
+                          <option value="none">Regular Product (No Special Discount)</option>
+                          <option value="new_launch">New Launch Offer</option>
+                          <option value="weekly">Weekly Discount</option>
+                          <option value="monthly">Monthly Discount</option>
+                          <option value="combo">Combo Discount</option>
+                          <option value="festive">Festive Offer</option>
+                        </select>
+                      </label>
+                      {discountType !== "none" ? (
                         <label className="admin-field">
-                          <span>Weight (in Grams)</span>
+                          <span>Discount %</span>
                           <input
                             type="number"
                             min="0"
-                            placeholder="e.g. 450"
-                            value={weight}
-                            onChange={(e) => setWeight(e.target.value)}
-                          />
-                          {productType === "bundle" && (
-                            <small style={{ color: "var(--admin-muted, #64748b)", fontSize: "12px", marginTop: "4px" }}>
-                              Leave at 0 to use the combined weight of the physical items inside this combo. Enter a value to override it.
-                            </small>
-                          )}
-                        </label>
-                        <label className="admin-field">
-                          <span>Length (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 21"
-                            value={length}
-                            onChange={(e) => setLength(e.target.value)}
+                            max="95"
+                            step="1"
+                            placeholder="e.g. 20"
+                            value={festiveDiscountPercent}
+                            onChange={(e) => setFestiveDiscountPercent(e.target.value)}
                           />
                         </label>
-                        <label className="admin-field">
-                          <span>Width (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 14"
-                            value={width}
-                            onChange={(e) => setWidth(e.target.value)}
-                          />
-                        </label>
-                        <label className="admin-field">
-                          <span>Height (in cm)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="e.g. 3"
-                            value={height}
-                            onChange={(e) => setHeight(e.target.value)}
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                  <label className="admin-field">
-                    <span>Discount / Offer Type</span>
-                    <select
-                      value={discountType}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDiscountType(val);
-                        setFestiveOffer(val !== "none");
-                      }}
-                    >
-                      <option value="none">Regular Product (No Special Discount)</option>
-                      <option value="new_launch">New Launch Offer</option>
-                      <option value="weekly">Weekly Discount</option>
-                      <option value="monthly">Monthly Discount</option>
-                      <option value="combo">Combo Discount</option>
-                      <option value="festive">Festive Offer</option>
-                    </select>
-                  </label>
-                  {discountType !== "none" ? (
-                    <label className="admin-field">
-                      <span>Discount %</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="95"
-                        step="1"
-                        placeholder="e.g. 20"
-                        value={festiveDiscountPercent}
-                        onChange={(e) => setFestiveDiscountPercent(e.target.value)}
-                      />
-                    </label>
-                  ) : null}
+                      ) : null}
+                    </>
+                  
                   <div className="admin-field admin-field-wide">
                     <span>Select Product Category</span>
                     <div className="admin-category-manager">
@@ -2656,21 +2865,40 @@ function AdminAddProducts() {
               <section id="section-digital" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
-                    <h4>Digital Content &amp; Kindle Settings</h4>
-                    <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
+                    {productType === "bundle" ? (
+                      <>
+                        <h4>Digital Access</h4>
+                        <p>
+                          How customers get the digital items of this combo. Each item&apos;s own reader link is used; set
+                          here only whether access is on this website or given by your team on another website.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h4>Digital Content &amp; Kindle Settings</h4>
+                        <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="product-composer-panel-body">
-                  <label className="admin-digital-toggle-label">
-                    <input
-                      type="checkbox"
-                      checked={isDigital}
-                      onChange={(e) => setIsDigital(e.target.checked)}
-                    />
-                    <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
-                  </label>
+                  {/* A combo with formats gets digital / physical from each format's Type. */}
+                  {hasBundleFormats ? null : (
+                    <label className="admin-digital-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={isDigital}
+                        onChange={(e) => setIsDigital(e.target.checked)}
+                      />
+                      <span>
+                        {productType === "bundle"
+                          ? "💻 Everything in this combo is digital (nothing is shipped)"
+                          : "💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)"}
+                      </span>
+                    </label>
+                  )}
 
-                  {isLikelyDigital && (
+                  {isLikelyDigital && productType !== "bundle" && (
                     <div
                       className="admin-digital-hint"
                       style={{
@@ -2786,7 +3014,7 @@ function AdminAddProducts() {
                     </div>
                   )}
 
-                  {isDigital && (
+                  {isDigital && productType !== "bundle" && (
                     <div className="admin-digital-fields-box">
                       <div className="admin-field admin-field-wide">
                         <span>Digital Format Type</span>
@@ -2937,22 +3165,27 @@ function AdminAddProducts() {
                     </div>
                   )}
 
-                  <div className="admin-course-link-box">
-                    <label className="admin-field admin-field-wide">
-                      <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
-                      <input
-                        placeholder="https://…"
-                        value={courseLink}
-                        onChange={(e) => setCourseLink(e.target.value)}
-                      />
-                      <small className="pf-hint">
-                        Direct link to the course on the SFH platform; shows a View Course button on the product page.
-                      </small>
-                    </label>
+                  {productType !== "bundle" && (
+                    <div className="admin-course-link-box">
+                      <label className="admin-field admin-field-wide">
+                        <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
+                        <input
+                          placeholder="https://…"
+                          value={courseLink}
+                          onChange={(e) => setCourseLink(e.target.value)}
+                        />
+                        <small className="pf-hint">
+                          Direct link to the course on the SFH platform; shows a View Course button on the product page.
+                        </small>
+                      </label>
+                    </div>
+                  )}
                   </div>
-                </div>
+                
               </section>
 
+              {/* Format products are priced in the Formats box; this section is not used for them. */}
+              {hasBundleFormats ? null : (
               <section id="section-pricing" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
@@ -3079,7 +3312,9 @@ function AdminAddProducts() {
                     </div>
                   </div>
                 </div>
+                
               </section>
+              )}
 
               <section id="section-related" className="product-composer-panel">
                 <div className="product-composer-panel-head">
@@ -3117,6 +3352,109 @@ function AdminAddProducts() {
                           </button>
                         </div>
 
+                        <div className="pf-formats-box">
+                          <div className="pf-formats-head">
+                            <div>
+                              <strong>Formats (optional)</strong>
+                              <p>
+                                Sell this combo in formats such as USB or Web Version. Add the formats here, then tick
+                                which items each format includes. Customers pick one format and see only its items and price.
+                              </p>
+                            </div>
+                            {bundleFormats.length < 8 ? (
+                              <button type="button" onClick={addBundleFormat}>＋ Add format</button>
+                            ) : null}
+                          </div>
+                          {bundleFormats.length > 0 ? (
+                            <div className="pf-formats-table">
+                              <div className="pf-formats-row pf-formats-row--head">
+                                <span>Format name</span>
+                                <span>Type</span>
+                                <span>Items total</span>
+                                <span>Price (optional)</span>
+                                <span>Stock</span>
+                                <span />
+                              </div>
+                              {bundleFormats.map((format) => {
+                                const total = bundleFormatTotals[format.rowKey] || 0;
+                                return (
+                                  <div key={format.rowKey} className="pf-formats-row">
+                                    <input
+                                      type="text"
+                                      maxLength={40}
+                                      placeholder="e.g. USB"
+                                      value={format.label}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "label", e.target.value)}
+                                      aria-label="Format name"
+                                    />
+                                    <select
+                                      value={format.type || ""}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "type", e.target.value)}
+                                      aria-label="Format type"
+                                    >
+                                      <option value="" disabled>Choose…</option>
+                                      <option value="physical">Physical</option>
+                                      <option value="digital">Digital</option>
+                                    </select>
+                                    <span className="pf-formats-total">Rs {total}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder={`Auto: ${total}`}
+                                      value={format.price}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "price", e.target.value)}
+                                      aria-label="Format price"
+                                    />
+                                    {format.type === "digital" ? (
+                                      <span className="pf-formats-total" title="Digital formats never run out">Unlimited</span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="e.g. 10"
+                                        value={format.stock}
+                                        onChange={(e) => updateBundleFormat(format.rowKey, "stock", e.target.value)}
+                                        aria-label="Format stock"
+                                      />
+                                    )}
+                                    <button type="button" className="danger" onClick={() => removeBundleFormat(format.rowKey)}>
+                                      Remove
+                                    </button>
+                                    {format.type === "physical" ? (
+                                      <div className="pf-formats-pack">
+                                        <span className="pf-formats-pack-title">📦 {format.label || "This format"} package (for delivery charges)</span>
+                                        {[
+                                          ["weight", "Weight (g)", "e.g. 250"],
+                                          ["length", "Length (cm)", "e.g. 20"],
+                                          ["width", "Width (cm)", "e.g. 15"],
+                                          ["height", "Height (cm)", "e.g. 5"]
+                                        ].map(([field, text, hint]) => (
+                                          <label key={field} className="pf-formats-pack-field">
+                                            <span>{text}</span>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              placeholder={hint}
+                                              value={format[field]}
+                                              onChange={(e) => updateBundleFormat(format.rowKey, field, e.target.value)}
+                                            />
+                                          </label>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                              <p className="pf-hint">
+                                Type: <strong>Physical</strong> (USB, CD, printed set) is delivered to the customer&apos;s
+                                address and never gives online access; <strong>Digital</strong> gives the web/reader access.
+                                Leave Price empty to use the items total. Stock is how many sets of a physical format you can sell;
+                                the package size of a physical format (the box it ships in) sets its delivery charge.
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+
                         <div className="admin-bundle-builder-list">
                           {bundleItems.map((item, index) => (
                             <div key={`bundle-item-${index}`} className="bundle-builder-card">
@@ -3141,6 +3479,22 @@ function AdminAddProducts() {
                                   ✕ Remove
                                 </button>
                               </div>
+
+                              {bundleFormats.length > 0 ? (
+                                <div className="pf-item-formats" role="group" aria-label="Formats this item is in">
+                                  <span>In formats:</span>
+                                  {bundleFormats.map((format) => (
+                                    <label key={format.rowKey} className="pf-item-format-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={Array.isArray(item.formats) && item.formats.includes(format.rowKey)}
+                                        onChange={(e) => toggleBundleItemFormat(index, format.rowKey, e.target.checked)}
+                                      />
+                                      {String(format.label || "").trim() || "(unnamed)"}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : null}
 
                               {item.itemType === "custom" ? (
                                 <div className="custom-bundle-fields">
@@ -3240,7 +3594,20 @@ function AdminAddProducts() {
                                   </li>
                                 ))}
                               </ul>
-                              <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                              {hasBundleFormats ? (
+                                <p>
+                                  <strong>Formats:</strong>{" "}
+                                  {bundleFormats
+                                    .map((format) => {
+                                      const label = String(format.label || "").trim() || "(unnamed)";
+                                      const manual = String(format.price ?? "").trim();
+                                      return `${label} Rs ${manual !== "" ? Number(manual) : bundleFormatTotals[format.rowKey] || 0}`;
+                                    })
+                                    .join(" · ")}
+                                </p>
+                              ) : (
+                                <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                              )}
                             </>
                           ) : (
                             <p>No products selected for this bundle yet.</p>
@@ -3358,11 +3725,28 @@ function AdminAddProducts() {
                   }}
                 />
                 <div className="product-composer-price-line">
-                  <strong>Rs {formSummary.numericPrice || 0}</strong>
-                  <small>{productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
+                  <strong>
+                    {hasBundleFormats
+                        ? `From ₹${bundleFormatsFromPrice ?? 0}`
+                        : `Rs ${formSummary.numericPrice || 0}`}
+                  </strong>
+                  <small>
+                    {hasBundleFormats
+                        ? `${bundleFormats.length} format${bundleFormats.length === 1 ? "" : "s"}`
+                        : productType === "bundle"
+                          ? "Bundle pricing"
+                          : "Base pricing"}
+                  </small>
                 </div>
                 <div className="product-composer-side-list">
-                  <div><span>Type</span><strong>{productType === "bundle" ? "Bundle" : "Single"}</strong></div>
+                  <div>
+                    <span>Type</span>
+                    <strong>
+                      {productType === "bundle"
+                          ? "Bundle"
+                          : "Single"}
+                    </strong>
+                  </div>
                   <div><span>Category</span><strong>{category || "General"}</strong></div>
                   <div><span>Stock</span><strong>{formSummary.numericStock || 0}</strong></div>
                 </div>
@@ -3527,7 +3911,15 @@ function AdminAddProducts() {
                         }}
                       />
                       <span>
-                        <strong>{product.name}</strong>
+                        <strong>
+                          {product.name}
+                          {Array.isArray(product.bundleFormats) && product.bundleFormats.length > 0 ? (
+                            <span className="pf-badge pf-badge--options">Formats ({product.bundleFormats.length})</span>
+                          ) : null}
+                          {product.hideFromListings ? (
+                            <span className="pf-badge pf-badge--hidden">Hidden</span>
+                          ) : null}
+                        </strong>
                         <small>{product.category || "General"}</small>
                         {product.lastUpdatedAt ? (
                           <small>

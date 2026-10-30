@@ -5,10 +5,14 @@ import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails } from "../utils/productPricing";
+import { isOptionsParent, getOptionCount } from "../utils/productOptions";
 import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
 
 function getProductFormat(product) {
+  if (isOptionsParent(product)) {
+    return `${getOptionCount(product)} formats`;
+  }
   const productType = String(product?.productType || "").toLowerCase();
   if (productType === "bundle") {
     return "Combo";
@@ -176,25 +180,27 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         )}
 
         <div className="price-box">
-          <span className="discount-price">{formatResolvedPrice(pricing)}</span>
-          {String(product?.productType || "").toLowerCase() === "bulk" ? (
+          <span className="discount-price">{isOptionsParent(product) ? `From ${formatResolvedPrice(pricing)}` : formatResolvedPrice(pricing)}</span>
+          {!isOptionsParent(product) && String(product?.productType || "").toLowerCase() === "bulk" ? (
             <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b", marginLeft: "2px" }}>
               / copy
             </span>
           ) : null}
-          <span className="original-price">
-            {formatCurrencyExact(listPrice, displayCurrency)}
-          </span>
+          {!isOptionsParent(product) ? (
+            <span className="original-price">
+              {formatCurrencyExact(listPrice, displayCurrency)}
+            </span>
+          ) : null}
         </div>
 
-        {isFestiveOffer && festiveSavings > 0 ? (
+        {!isOptionsParent(product) && isFestiveOffer && festiveSavings > 0 ? (
           <div className="product-festive-savings">
             <span>
               {product?.discountType === "new_launch" ? "Launch deal" : product?.discountType === "weekly" ? "Weekly deal" : product?.discountType === "monthly" ? "Monthly deal" : product?.discountType === "combo" ? "Combo deal" : "Festive deal"}
             </span>
             <strong>Save {formatCurrencyExact(festiveSavings, displayCurrency)}</strong>
           </div>
-        ) : isBundle && bundleOriginalTotal > displayPrice ? (
+        ) : !isOptionsParent(product) && isBundle && bundleOriginalTotal > displayPrice ? (
           <div className="product-bundle-savings">
             <span>Individual total {formatCurrencyExact(bundleOriginalTotal, displayCurrency)}</span>
             <strong>Save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
@@ -216,7 +222,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         {variant !== "wishlist" && (
           <div className="product-actions">
             <Link to={`/product/${product._id}`}>
-              <button className="product-cta">View Product</button>
+              <button className="product-cta">{isOptionsParent(product) ? "Choose format" : "View Product"}</button>
             </Link>
           </div>
         )}

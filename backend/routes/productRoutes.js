@@ -21,6 +21,12 @@ const {
   computeOptionsStock,
   summarizeOptionsForPublic
 } = require("../utils/productOptions");
+const {
+  normalizeBundleFormatsInput,
+  normalizeItemFormats,
+  applyFormatsToItems,
+  buildFormatChildFields
+} = require("../utils/bundleFormats");
 
 const router = express.Router();
 
@@ -136,7 +142,8 @@ const normalizeBundleItems = (rawBundleItems = []) => {
           length: Math.max(0, Number(item?.length) || 0),
           width: Math.max(0, Number(item?.width) || 0),
           height: Math.max(0, Number(item?.height) || 0),
-          quantity: Math.max(1, Number(item?.quantity || 1))
+          quantity: Math.max(1, Number(item?.quantity || 1)),
+          formats: normalizeItemFormats(item?.formats)
         });
         return acc;
       }
@@ -183,7 +190,8 @@ const normalizeBundleItems = (rawBundleItems = []) => {
         length: 0,
         width: 0,
         height: 0,
-        quantity: Math.max(1, Number(item?.quantity || 1))
+        quantity: Math.max(1, Number(item?.quantity || 1)),
+        formats: normalizeItemFormats(item?.formats)
       });
       return acc;
     }
@@ -200,7 +208,8 @@ const normalizeBundleItems = (rawBundleItems = []) => {
       image: String(item?.image || "").trim(),
       price: Math.max(0, Number(item?.price || 0)),
       isDigital: item?.isDigital === true,
-      quantity: Math.max(1, Number(item?.quantity || 1))
+      quantity: Math.max(1, Number(item?.quantity || 1)),
+      formats: normalizeItemFormats(item?.formats)
     });
     return acc;
   }, []);
@@ -578,6 +587,30 @@ async function resolveOptionsPayload(body = {}, existingProduct = null) {
   };
 }
 
+async function syncSingleOptionParent(parent) {
+  const opts = Array.isArray(parent?.options) ? parent.options : [];
+  const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
+  const targetDocs = ids.length
+    ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
+    : [];
+  const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
+  const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
+  const pricing = pickPricingFromOptions(orderedTargets);
+  const stock = computeOptionsStock(orderedTargets);
+
+  const update = pricing
+    ? {
+        price: pricing.price,
+        internationalPrice: pricing.internationalPrice,
+        internationalCountryPrices: pricing.internationalCountryPrices,
+        marketPrices: pricing.marketPrices,
+        stock
+      }
+    : { stock: 0 };
+
+  await Product.updateOne({ _id: parent._id }, { $set: update });
+}
+
 async function syncOptionParents(productId) {
   try {
     if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) return;
@@ -592,33 +625,150 @@ async function syncOptionParents(productId) {
     if (!Array.isArray(parents) || parents.length === 0) return;
 
     for (const parent of parents) {
-      const opts = Array.isArray(parent.options) ? parent.options : [];
-      const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
-      const targetDocs = ids.length
-        ? await Product.find({ _id: { $in: ids } }).select(OPTION_TARGET_SELECT).lean()
-        : [];
-      const byId = new Map(targetDocs.map((d) => [String(d._id), d]));
-      const orderedTargets = ids.map((id) => byId.get(id)).filter(Boolean);
-      const pricing = pickPricingFromOptions(orderedTargets);
-      const stock = computeOptionsStock(orderedTargets);
-
-      const update = pricing
-        ? {
-            price: pricing.price,
-            internationalPrice: pricing.internationalPrice,
-            internationalCountryPrices: pricing.internationalCountryPrices,
-            marketPrices: pricing.marketPrices,
-            stock
-          }
-        : { stock: 0 };
-
-      await Product.updateOne({ _id: parent._id }, { $set: update });
+      await syncSingleOptionParent(parent);
     }
 
     invalidateProductCache();
   } catch (err) {
     console.error("Failed to sync option parents:", err);
   }
+}
+
+async function syncAllOptionParents() {
+  try {
+    const parents = await Product.find({
+      hasOptions: true,
+      isDeleted: { $ne: true }
+    })
+      .select("_id options")
+      .lean();
+
+    if (!Array.isArray(parents) || parents.length === 0) return;
+
+    for (const parent of parents) {
+      await syncSingleOptionParent(parent);
+    }
+
+    invalidateProductCache();
+  } catch (err) {
+    console.error("Failed to sync all option parents:", err);
+  }
+}
+
+// ── Combo formats ("USB", "Web Version", …) ─────────────────────────────────
+// The admin tags each combo item with the formats it belongs to. For every format the server keeps a
+// hidden child combo with just those items (see utils/bundleFormats.js), and the combo itself becomes
+// a product with options pointing at the children, so the existing "Choose format" page, cart,
+// checkout, stock and digital access are reused unchanged.
+
+/**
+ * Check the formats sent with a save. Returns { formats, items, error }.
+ * formats is undefined when the request did not send bundleFormats (formats are then left as they are).
+ */
+function resolveBundleFormatsForSave(rawFormats, productType, items) {
+  if (rawFormats === undefined) return { formats: undefined, items, error: "" };
+  if (productType !== "bundle") return { formats: [], items, error: "" };
+  const norm = normalizeBundleFormatsInput(rawFormats);
+  if (norm.error) return { formats: undefined, items, error: norm.error };
+  const plainItems = (Array.isArray(items) ? items : []).map((item) =>
+    item && typeof item.toObject === "function" ? item.toObject() : item
+  );
+  const applied = applyFormatsToItems(norm.formats, plainItems);
+  if (applied.error) return { formats: undefined, items, error: applied.error };
+  return { formats: norm.formats, items: applied.items, error: "" };
+}
+
+/**
+ * Create / update / hide the hidden child product of each format and point the combo at them.
+ * `parent` is the saved combo document. Returns the refreshed combo (lean).
+ */
+async function reconcileBundleFormats(parent, formats, actor = {}) {
+  const parentId = parent._id;
+  const items = Array.isArray(parent.bundleItems) ? parent.bundleItems.map((i) => (i?.toObject ? i.toObject() : i)) : [];
+
+  const linkedIds = [...new Set(items.map((i) => String(i?.product?._id || i?.product || "")).filter(Boolean))];
+  const linked = linkedIds.length
+    ? await Product.find({ _id: { $in: linkedIds } }).select("name image price isDigital").lean()
+    : [];
+  const priceById = new Map(linked.map((p) => [String(p._id), Number(p.price || 0)]));
+  const digitalById = new Map(linked.map((p) => [String(p._id), p.isDigital === true]));
+  const linkedById = new Map(linked.map((p) => [String(p._id), { name: p.name || "", image: p.image || "" }]));
+
+  const existingChildren = await Product.find({ optionParent: parentId, bundleFormatKey: { $nin: ["", null] } });
+  const childByKey = new Map(existingChildren.map((c) => [c.bundleFormatKey, c]));
+  const parentPlain = parent.toObject ? parent.toObject() : parent;
+  const stamp = { lastUpdatedByName: actor.name || "", lastUpdatedByEmail: actor.email || "", lastUpdatedAt: new Date() };
+
+  const savedChildren = [];
+  for (const format of formats) {
+    // Physical formats are shipped; otherwise digital or not follows the format's own items.
+    const fields = buildFormatChildFields(parentPlain, format, items, priceById, digitalById, linkedById);
+
+    let child = childByKey.get(format.key);
+    if (child) {
+      child.set({ ...fields, ...stamp, deletedBy: { name: "", email: "" } });
+      child = await child.save();
+    } else {
+      child = await Product.create({ ...fields, stock: fields.stock ?? 0, ...stamp });
+    }
+    savedChildren.push({ format, child });
+  }
+
+  const keep = new Set(formats.map((f) => f.key));
+  for (const child of existingChildren) {
+    if (!keep.has(child.bundleFormatKey) && child.isDeleted !== true) {
+      child.isDeleted = true;
+      child.deletedAt = new Date();
+      child.deletedBy = { name: actor.name || "", email: actor.email || "" };
+      await child.save();
+    }
+  }
+
+  const update = {
+    bundleFormats: savedChildren.map(({ format, child }) => ({
+      key: format.key,
+      label: format.label,
+      type: format.type || "",
+      price: format.price,
+      weight: Number(format.weight) || 0,
+      length: Number(format.length) || 0,
+      width: Number(format.width) || 0,
+      height: Number(format.height) || 0,
+      product: child._id
+    }))
+  };
+  if (savedChildren.length > 0) {
+    const childDocs = savedChildren.map(({ child }) => child.toObject());
+    update.hasOptions = true;
+    update.options = savedChildren.map(({ format, child }) => ({ product: child._id, label: format.label }));
+    const pricing = pickPricingFromOptions(childDocs);
+    if (pricing) {
+      update.price = pricing.price;
+      update.internationalPrice = pricing.internationalPrice;
+      update.internationalCountryPrices = pricing.internationalCountryPrices;
+      update.marketPrices = pricing.marketPrices;
+    }
+    update.stock = computeOptionsStock(childDocs);
+  } else if (Array.isArray(parentPlain.bundleFormats) && parentPlain.bundleFormats.length > 0) {
+    // All formats removed: the combo is sold as one set again.
+    update.hasOptions = false;
+    update.options = [];
+  }
+
+  await Product.updateOne({ _id: parentId }, { $set: update });
+  return Product.findById(parentId).lean();
+}
+
+/** Hide (or bring back) a combo's format products together with the combo. */
+async function setFormatChildrenDeleted(parent, deleted, actor = {}) {
+  const keys = (Array.isArray(parent?.bundleFormats) ? parent.bundleFormats : []).map((f) => f.key).filter(Boolean);
+  if (keys.length === 0) return;
+  await Product.updateMany(
+    { optionParent: parent._id, bundleFormatKey: { $in: keys } },
+    deleted
+      ? { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: { name: actor.name || "", email: actor.email || "" } } }
+      : { $set: { isDeleted: false, deletedAt: null, deletedBy: { name: "", email: "" } } }
+  );
 }
 
 // Create product (ADMIN) — 25mb for image URLs
@@ -647,10 +797,15 @@ router.post("/", protect, admin, (req, res, next) => {
     const rawBundleItems = normalizeBundleItems(b.bundleItems);
     const typeCandidate = String(b.productType || "single").trim().toLowerCase();
     const productType = typeCandidate === "bundle" ? "bundle" : (["single", "bulk"].includes(typeCandidate) ? typeCandidate : "single");
-    const bundleItems = productType === "bundle" ? rawBundleItems : [];
+    let bundleItems = productType === "bundle" ? rawBundleItems : [];
     if (productType === "bundle" && bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
+    const formatsRes = resolveBundleFormatsForSave(b.bundleFormats, productType, bundleItems);
+    if (formatsRes.error) {
+      return res.status(400).json({ message: formatsRes.error });
+    }
+    bundleItems = formatsRes.items;
 
     const rawDiscountType = normalizeDiscountType(b.discountType, b.festiveOffer);
     const festiveOffer = rawDiscountType !== "none" || b.festiveOffer === true;
@@ -744,7 +899,12 @@ router.post("/", protect, admin, (req, res, next) => {
       }
     });
 
-    res.json(product);
+    let savedProduct = product;
+    if (Array.isArray(formatsRes.formats) && formatsRes.formats.length > 0) {
+      savedProduct = await reconcileBundleFormats(product, formatsRes.formats, actor);
+    }
+
+    res.json(savedProduct);
     // Invalidate cache so next request gets fresh product list
     invalidateProductCache();
   } catch (error) {
@@ -862,6 +1022,13 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     if (product.productType === "bundle" && product.bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
+    const formatsRes = resolveBundleFormatsForSave(req.body.bundleFormats, product.productType, product.bundleItems);
+    if (formatsRes.error) {
+      return res.status(400).json({ message: formatsRes.error });
+    }
+    if (formatsRes.formats !== undefined) {
+      product.bundleItems = formatsRes.items;
+    }
     const nextImageValue = req.body.image ?? product.image;
     const nextImages = normalizeImages(req.body.images ?? product.images, nextImageValue);
     product.image = nextImages[0] || String(nextImageValue || "").trim();
@@ -883,7 +1050,10 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     product.lastUpdatedByEmail = actor.email;
     product.lastUpdatedAt = new Date();
 
-    const updatedProduct = await product.save();
+    let updatedProduct = await product.save();
+    if (formatsRes.formats !== undefined) {
+      updatedProduct = await reconcileBundleFormats(updatedProduct, formatsRes.formats, actor);
+    }
 
     const changedFields = summarizeProductChanges(
       previousFields,
@@ -1514,6 +1684,11 @@ router.delete("/:id", protect, admin, requireAdminPage("products"), async (req, 
     });
 
     res.json({ message: "Product moved to Recycle Bin" });
+    try {
+      await setFormatChildrenDeleted(product, true, actor);
+    } catch (err) {
+      console.error("Failed to hide combo formats:", err);
+    }
     await syncOptionParents(product._id);
     invalidateProductCache();
   } catch (error) {
@@ -1546,6 +1721,11 @@ router.post("/:id/restore", protect, admin, requireAdminPage("products"), async 
     });
 
     res.json({ message: "Product restored successfully", product });
+    try {
+      await setFormatChildrenDeleted(product, false);
+    } catch (err) {
+      console.error("Failed to restore combo formats:", err);
+    }
     await syncOptionParents(product._id);
     invalidateProductCache();
   } catch (error) {
@@ -1694,5 +1874,9 @@ router.post("/:id/view", async (req, res) => {
 });
 
 router.normalizeBundleItems = normalizeBundleItems;
+router.syncAllOptionParents = syncAllOptionParents;
+router.resolveBundleFormatsForSave = resolveBundleFormatsForSave;
+router.reconcileBundleFormats = reconcileBundleFormats;
+router.setFormatChildrenDeleted = setFormatChildrenDeleted;
 
 module.exports = router;
