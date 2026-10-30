@@ -1342,7 +1342,6 @@ function Product() {
               </Link>
             </p>
           ) : null}
-          {isBundle ? <p className="product-bundle-pill">Combo</p> : null}
           {isFestiveOffer ? (
             <p className={`product-bundle-pill product-festive-pill ${buyProduct?.discountType === "new_launch" ? "pill-new-launch" : buyProduct?.discountType === "combo" ? "pill-combo" : buyProduct?.discountType === "monthly" ? "pill-monthly" : ""}`}>
               {buyProduct?.discountType === "new_launch"
