@@ -73,23 +73,25 @@ function createEmptyBundleItem() {
     weight: "",
     length: "",
     width: "",
-    height: ""
+    height: "",
+    formats: []
   };
 }
 
-function createEmptyOptionRow() {
+// A combo format row in the form. rowKey ties items to the row (it is the saved key for
+// formats loaded from the server, a temporary id for new ones).
+function createEmptyBundleFormat() {
   return {
-    key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    mode: "existing",
-    productId: "",
+    rowKey: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: "",
     label: "",
-    newName: "",
-    newKind: "physical",
-    newPrice: "",
-    newStock: "1",
-    newWeight: "",
-    newDigitalType: "",
-    newWebReaderLink: ""
+    type: "",
+    price: "",
+    stock: "",
+    weight: "",
+    length: "",
+    width: "",
+    height: ""
   };
 }
 
@@ -374,9 +376,6 @@ function AdminAddProducts() {
   const [festiveOffer, setFestiveOffer] = useState(false);
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
   const [productType, setProductType] = useState("single");
-  const [hasOptions, setHasOptions] = useState(false);
-  const [hideFromListings, setHideFromListings] = useState(false);
-  const [optionRows, setOptionRows] = useState([]);
   const [isDigital, setIsDigital] = useState(false);
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   const [digitalType, setDigitalType] = useState("Web Version");
@@ -392,6 +391,7 @@ function AdminAddProducts() {
   const [digitalInstructions, setDigitalInstructions] = useState("");
   const [courseLink, setCourseLink] = useState("");
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
+  const [bundleFormats, setBundleFormats] = useState([]);
   const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
@@ -553,8 +553,41 @@ function AdminAddProducts() {
   const activeHeroBanner = heroBanners[activeHeroBannerIndex] || createEmptyHeroBanner();
   const availableBundleProducts = useMemo(() => {
     const editingId = String(editingProduct?._id || "");
-    return products.filter((product) => String(product?._id || "") !== editingId);
+    return products.filter(
+      (product) =>
+        String(product?._id || "") !== editingId &&
+        !product?.bundleFormatKey &&
+        product?.hasOptions !== true
+    );
   }, [products, editingProduct]);
+
+  // Combo formats: the value of each format = its ticked items (linked product price or typed value) x qty.
+  const hasBundleFormats = productType === "bundle" && bundleFormats.length > 0;
+  const bundleFormatTotals = useMemo(() => {
+    const totals = {};
+    for (const format of bundleFormats) {
+      let total = 0;
+      for (const item of bundleItems) {
+        if (!Array.isArray(item?.formats) || !item.formats.includes(format.rowKey)) continue;
+        const productId = String(item?.productId || "").trim();
+        const isCustom = item?.itemType === "custom" || (!productId && String(item?.name || "").trim());
+        const linked = !isCustom && productId ? products.find((product) => String(product?._id || "") === productId) : null;
+        if (!isCustom && !linked) continue;
+        const unit = isCustom ? Number(item?.price || 0) : Number(linked?.price || 0);
+        total += Math.max(0, unit) * Math.max(1, Number(item?.quantity || 1));
+      }
+      totals[format.rowKey] = Math.round(total * 100) / 100;
+    }
+    return totals;
+  }, [bundleFormats, bundleItems, products]);
+  const bundleFormatsFromPrice = useMemo(() => {
+    if (!hasBundleFormats) return null;
+    const prices = bundleFormats.map((format) => {
+      const manual = String(format.price ?? "").trim();
+      return manual !== "" && !Number.isNaN(Number(manual)) ? Number(manual) : bundleFormatTotals[format.rowKey] || 0;
+    });
+    return prices.length > 0 ? Math.min(...prices) : null;
+  }, [hasBundleFormats, bundleFormats, bundleFormatTotals]);
 
   const selectedBundleProducts = useMemo(() => {
     return bundleItems
@@ -607,7 +640,10 @@ function AdminAddProducts() {
 
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const base = [...products].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+    // A combo's format products are managed from the combo itself (stock is in the Warehouse).
+    const base = products
+      .filter((product) => !product?.bundleFormatKey)
+      .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
     if (!query) return base;
 
     return base.filter((product) => {
@@ -622,30 +658,6 @@ function AdminAddProducts() {
     });
   }, [products, searchQuery]);
 
-  const lowestOptionPrice = useMemo(() => {
-    if (!hasOptions || !Array.isArray(optionRows) || optionRows.length === 0) return null;
-    let best = null;
-    for (const row of optionRows) {
-      if (row.mode === "new") {
-        if (hasNumericInput(row.newPrice)) {
-          const p = Number(row.newPrice);
-          if (!Number.isNaN(p) && p >= 0 && (best === null || p < best)) {
-            best = p;
-          }
-        }
-      } else if (row.productId) {
-        const target = products.find((prod) => String(prod?._id || "") === String(row.productId));
-        if (target && target.price !== undefined && target.price !== null) {
-          const p = Number(target.price);
-          if (!Number.isNaN(p) && p >= 0 && (best === null || p < best)) {
-            best = p;
-          }
-        }
-      }
-    }
-    return best;
-  }, [hasOptions, optionRows, products]);
-
   const formSummary = useMemo(() => {
     const normalizedName = name.trim();
     const effectiveType = productType;
@@ -658,8 +670,8 @@ function AdminAddProducts() {
     const hasPriceInput = effectiveType === "bundle"
       ? String(calculatedBundlePrice ?? "").trim() !== "" || String(price ?? "").trim() !== ""
       : String(price ?? "").trim() !== "";
-    const isPriceValid = hasOptions ? true : (hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0);
-    const isStockValid = hasOptions ? true : (!Number.isNaN(numericStock) && numericStock >= 0);
+    const isPriceValid = hasPriceInput && !Number.isNaN(numericPrice) && numericPrice >= 0;
+    const isStockValid = !Number.isNaN(numericStock) && numericStock >= 0;
 
     return {
       isNameValid: normalizedName.length > 0,
@@ -669,13 +681,12 @@ function AdminAddProducts() {
       isValid:
         normalizedName.length > 0 &&
         isPriceValid &&
-        isStockValid &&
-        (!hasOptions || optionRows.length > 0),
+        isStockValid,
       normalizedName,
       numericPrice,
       numericStock
     };
-  }, [bundleItems, calculatedBundlePrice, hasOptions, image, name, optionRows.length, price, productType, stock]);
+  }, [bundleItems, calculatedBundlePrice, image, name, price, productType, stock]);
 
   const isLikelyDigital = useMemo(() => {
     if (isDigital) return false;
@@ -735,9 +746,6 @@ function AdminAddProducts() {
     setFestiveOffer(false);
     setFestiveDiscountPercent("0");
     setProductType("single");
-    setHasOptions(false);
-    setHideFromListings(false);
-    setOptionRows([]);
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setDigitalType("Web Version");
@@ -756,6 +764,7 @@ function AdminAddProducts() {
     setDigitalInstructions("");
     setCourseLink("");
     setBundleItems([createEmptyBundleItem()]);
+    setBundleFormats([]);
     setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
@@ -786,9 +795,6 @@ function AdminAddProducts() {
       festiveOffer,
       festiveDiscountPercent,
       productType,
-      hasOptions,
-      hideFromListings,
-      optionRows,
       isDigital,
       skipOwnershipRules,
       digitalType,
@@ -802,6 +808,7 @@ function AdminAddProducts() {
       digitalInstructions,
       courseLink,
       bundleItems,
+      bundleFormats,
       relatedProductItems,
       category,
       stock,
@@ -1546,8 +1553,6 @@ function AdminAddProducts() {
     if (!formSummary.isValid) {
       if (!formSummary.isNameValid) {
         setFormMessage("Please enter a Product Name.");
-      } else if (hasOptions && optionRows.length === 0) {
-        setFormMessage("Add at least one option.");
       } else if (!formSummary.isPriceValid) {
         setFormMessage("Please enter a valid Product Price.");
       } else {
@@ -1556,52 +1561,65 @@ function AdminAddProducts() {
       return;
     }
 
-    if (hasOptions) {
-      if (optionRows.length === 0) {
-        setFormMessage("Add at least one option.");
+    if (productType === "bundle" && bundleFormats.length > 0) {
+      if (bundleFormats.length > 8) {
+        setFormMessage("At most 8 formats.");
         return;
       }
-      if (optionRows.length > 12) {
-        setFormMessage("At most 12 options.");
-        return;
-      }
-      const seenOptionProductIds = new Set();
-      const selfId = String(editingProduct?._id || "");
-      for (let i = 0; i < optionRows.length; i += 1) {
-        const row = optionRows[i] || {};
+      const seenLabels = new Set();
+      for (let i = 0; i < bundleFormats.length; i += 1) {
+        const format = bundleFormats[i];
         const n = i + 1;
-        const label = String(row.label || "").trim();
+        const label = String(format.label || "").trim();
         if (!label) {
-          setFormMessage(`Option ${n}: add a label (for example Book or Flipbook).`);
+          setFormMessage(`Format ${n}: add a name (for example USB or Web Version).`);
           return;
         }
-        if (row.mode === "new") {
-          const rawPrice = String(row.newPrice ?? "").trim();
-          const numPrice = Number(rawPrice);
-          if (rawPrice === "" || Number.isNaN(numPrice) || numPrice < 0) {
-            setFormMessage(`Option ${n}: enter a valid price (0 or more).`);
+        if (seenLabels.has(label.toLowerCase())) {
+          setFormMessage(`Format ${n}: "${label}" is already listed.`);
+          return;
+        }
+        seenLabels.add(label.toLowerCase());
+        if (format.type !== "physical" && format.type !== "digital") {
+          setFormMessage(`Format "${label}": choose its Type (Physical or Digital).`);
+          return;
+        }
+        for (const [field, text] of [
+          ["price", "price"],
+          ["stock", "stock"],
+          ["weight", "weight"],
+          ["length", "length"],
+          ["width", "width"],
+          ["height", "height"]
+        ]) {
+          const raw = String(format[field] ?? "").trim();
+          if (raw !== "" && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
+            setFormMessage(`Format "${label}": ${text} must be 0 or more.`);
             return;
           }
-        } else {
-          const pId = String(row.productId || "").trim();
-          if (!pId) {
-            setFormMessage(`Option ${n}: choose a product.`);
-            return;
-          }
-          if (selfId && pId === selfId) {
-            setFormMessage(`Option ${n}: a product cannot be an option of itself.`);
-            return;
-          }
-          if (seenOptionProductIds.has(pId)) {
-            setFormMessage(`Option ${n}: this product is already an option.`);
-            return;
-          }
-          seenOptionProductIds.add(pId);
+        }
+        const hasItem = bundleItems.some((item) => {
+          const filled = String(item?.productId || "").trim() || String(item?.name || "").trim();
+          return filled && Array.isArray(item?.formats) && item.formats.includes(format.rowKey);
+        });
+        if (!hasItem) {
+          setFormMessage(`Format "${label}": tick at least one item for it.`);
+          return;
+        }
+        // A physical format needs a stock (otherwise it shows "Out of stock").
+        if (format.type === "physical" && String(format.stock ?? "").trim() === "") {
+          setFormMessage(`Format "${label}": enter how many sets you have (Stock).`);
+          return;
+        }
+        // Shipped formats need a package weight, otherwise delivery is charged on a guessed 250 g.
+        if (format.type === "physical" && !(Number(format.weight) > 0)) {
+          setFormMessage(`Format "${label}": enter the package weight in grams, so delivery is charged correctly.`);
+          return;
         }
       }
     }
 
-    const hasIncompleteMarketPriceRow = !hasOptions && marketPrices.some((item) => {
+    const hasIncompleteMarketPriceRow = marketPrices.some((item) => {
       if (!hasAnyMarketPriceInput(item)) return false;
       return !String(item?.market || "").trim() || !hasNumericInput(item?.regularPrice);
     });
@@ -1611,7 +1629,7 @@ function AdminAddProducts() {
       return;
     }
 
-    const isEligibleForExternal = !hasOptions && (isDigital || productType === "bundle");
+    const isEligibleForExternal = isDigital || productType === "bundle";
     if (isEligibleForExternal && digitalDelivery === "external") {
       const trimmedLink = externalAccessLink.trim();
       if (!trimmedLink || !isValidHttpUrl(trimmedLink)) {
@@ -1645,6 +1663,15 @@ function AdminAddProducts() {
       return;
     }
 
+    // Item format tags go to the server as the format's saved key, or its name for a new format.
+    const formatTagByRow = new Map(
+      bundleFormats.map((format) => [format.rowKey, format.key || String(format.label || "").trim()])
+    );
+    const formatTagsFor = (item) =>
+      productType === "bundle" && Array.isArray(item?.formats)
+        ? item.formats.map((rowKey) => formatTagByRow.get(rowKey)).filter(Boolean)
+        : [];
+
     const processedBundleItems = bundleItems
       .map((item) => {
         const customName = String(item.name || "").trim();
@@ -1673,7 +1700,8 @@ function AdminAddProducts() {
             length: Math.max(0, Number(item.length) || 0),
             width: Math.max(0, Number(item.width) || 0),
             height: Math.max(0, Number(item.height) || 0),
-            quantity: Math.max(1, Number(item.quantity || 1))
+            quantity: Math.max(1, Number(item.quantity || 1)),
+            formats: formatTagsFor(item)
           };
         }
 
@@ -1688,7 +1716,8 @@ function AdminAddProducts() {
           image: String(item.image || "").trim(),
           price: Math.max(0, Number(item.price || 0)),
           isDigital: linkedProduct ? linkedProduct.isDigital === true : item.isDigital === true,
-          quantity: Math.max(1, Number(item.quantity || 1))
+          quantity: Math.max(1, Number(item.quantity || 1)),
+          formats: formatTagsFor(item)
         };
       })
       .filter(Boolean);
@@ -1737,6 +1766,23 @@ function AdminAddProducts() {
       digitalInstructions: digitalInstructions.trim(),
       courseLink: courseLink.trim(),
       bundleItems: productType === "bundle" ? processedBundleItems : [],
+      bundleFormats:
+        productType === "bundle"
+          ? bundleFormats.map((format) => ({
+              key: format.key || "",
+              label: String(format.label || "").trim(),
+              type: format.type === "physical" || format.type === "digital" ? format.type : "",
+              price: String(format.price ?? "").trim() === "" ? null : Number(format.price),
+              stock:
+                format.type === "digital" || String(format.stock ?? "").trim() === "" ? null : Number(format.stock),
+              ...Object.fromEntries(
+                ["weight", "length", "width", "height"].map((field) => [
+                  field,
+                  format.type === "physical" ? Math.max(0, Number(format[field]) || 0) : 0
+                ])
+              )
+            }))
+          : [],
       relatedProducts: relatedProductItems
         .map((item) => ({
           productId: String(item.productId || "").trim()
@@ -1755,62 +1801,11 @@ function AdminAddProducts() {
 
     try {
       const authConfig = { headers: { Authorization: `Bearer ${token}` } };
-      const resolvedRows = optionRows.map((r) => ({ ...r }));
-      const createdChildIds = [];
+      // hasOptions / options are not sent: the server keeps them (combo formats set them itself).
+      const finalPayload = payload;
 
-      if (hasOptions) {
-        for (let i = 0; i < resolvedRows.length; i += 1) {
-          const row = resolvedRows[i];
-          if (row.mode === "new") {
-            const isChildDigital = row.newKind === "digital";
-            const child = {
-              name: String(row.newName || "").trim() || `${name.trim()} – ${String(row.label || "").trim()}`,
-              price: Number(row.newPrice),
-              productType: "single",
-              category: category.trim() || "General",
-              description: description.trim(),
-              image: image.trim(),
-              images: image.trim() ? [image.trim()] : [],
-              hideFromListings: true,
-              optionParent: editingProduct?._id || null,
-              isDigital: isChildDigital,
-              ...(isChildDigital
-                ? {
-                    digitalType: String(row.newDigitalType || "").trim() || "Web Version",
-                    webReaderLink: String(row.newWebReaderLink || "").trim()
-                  }
-                : {}),
-              stock: isChildDigital ? 1 : Math.max(0, Number(row.newStock || 0)),
-              weight: !isChildDigital ? Math.max(0, Number(row.newWeight || 0)) : 0
-            };
-            const { data: created } = await axios.post("/api/products", child, authConfig);
-            resolvedRows[i] = {
-              ...row,
-              mode: "existing",
-              productId: String(created._id || "")
-            };
-            createdChildIds.push(String(created._id || ""));
-            setOptionRows([...resolvedRows]);
-          }
-        }
-      }
-
-      const finalPayload = {
-        ...payload,
-        hasOptions,
-        hideFromListings,
-        options: hasOptions
-          ? resolvedRows.map((r) => ({
-              product: String(r.productId || "").trim(),
-              label: String(r.label || "").trim()
-            }))
-          : []
-      };
-
-      let savedProduct;
       if (editingProduct?._id) {
         const { data } = await axios.put(`/api/products/${editingProduct._id}`, finalPayload, authConfig);
-        savedProduct = data;
         setFormMessage(
           `Product updated successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
             ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
@@ -1818,16 +1813,6 @@ function AdminAddProducts() {
         );
       } else {
         const { data } = await axios.post("/api/products", finalPayload, authConfig);
-        savedProduct = data;
-        if (createdChildIds.length > 0 && savedProduct?._id) {
-          for (const childId of createdChildIds) {
-            try {
-              await axios.put(`/api/products/${childId}`, { optionParent: savedProduct._id }, authConfig);
-            } catch {
-              // best-effort: an add-products-only admin may get 403
-            }
-          }
-        }
         setFormMessage(
           `Product added successfully.${Array.isArray(data?.internationalCountryPrices) && data.internationalCountryPrices.length > 0
             ? ` Saved ${data.internationalCountryPrices.length} country override${data.internationalCountryPrices.length === 1 ? "" : "s"}.`
@@ -1885,17 +1870,24 @@ function AdminAddProducts() {
     setFestiveOffer(resolvedDiscountType !== "none");
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
-    setHasOptions(product.hasOptions === true);
-    setHideFromListings(product.hideFromListings === true);
-    setOptionRows(
-      Array.isArray(product.options) && product.options.length > 0
-        ? product.options.map((o) => ({
-            ...createEmptyOptionRow(),
-            mode: "existing",
-            productId: String(o?.product?._id || o?.product || ""),
-            label: String(o?.label || "")
-          }))
-        : []
+    const savedFormats = Array.isArray(product.bundleFormats) ? product.bundleFormats : [];
+    setBundleFormats(
+      savedFormats.map((format) => {
+        const formatProductId = String(format?.product?._id || format?.product || "");
+        const formatProduct = products.find((candidate) => String(candidate?._id || "") === formatProductId);
+        return {
+          rowKey: String(format?.key || ""),
+          key: String(format?.key || ""),
+          label: String(format?.label || ""),
+          type: format?.type === "physical" || format?.type === "digital" ? format.type : "",
+          price: format?.price === null || format?.price === undefined ? "" : String(format.price),
+          stock: formatProduct && formatProduct.isDigital !== true ? String(Number(formatProduct.stock || 0)) : "",
+          weight: Number(format?.weight) > 0 ? String(format.weight) : "",
+          length: Number(format?.length) > 0 ? String(format.length) : "",
+          width: Number(format?.width) > 0 ? String(format.width) : "",
+          height: Number(format?.height) > 0 ? String(format.height) : ""
+        };
+      })
     );
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
@@ -1933,7 +1925,8 @@ function AdminAddProducts() {
             weight: item?.weight !== undefined && item?.weight !== null ? String(item.weight) : "",
             length: item?.length !== undefined && item?.length !== null ? String(item.length) : "",
             width: item?.width !== undefined && item?.width !== null ? String(item.width) : "",
-            height: item?.height !== undefined && item?.height !== null ? String(item.height) : ""
+            height: item?.height !== undefined && item?.height !== null ? String(item.height) : "",
+            formats: Array.isArray(item?.formats) ? item.formats.map(String) : []
           }))
         : [createEmptyBundleItem()]
     );
@@ -2151,6 +2144,39 @@ function AdminAddProducts() {
 
   const addBundleItem = () => {
     setBundleItems((current) => [...current, createEmptyBundleItem()]);
+  };
+
+  const addBundleFormat = () => {
+    setBundleFormats((current) => (current.length >= 8 ? current : [...current, createEmptyBundleFormat()]));
+  };
+
+  const updateBundleFormat = (rowKey, field, value) => {
+    setBundleFormats((current) =>
+      current.map((format) => (format.rowKey === rowKey ? { ...format, [field]: value } : format))
+    );
+  };
+
+  const removeBundleFormat = (rowKey) => {
+    setBundleFormats((current) => current.filter((format) => format.rowKey !== rowKey));
+    setBundleItems((current) =>
+      current.map((item) => ({
+        ...item,
+        formats: (Array.isArray(item.formats) ? item.formats : []).filter((key) => key !== rowKey)
+      }))
+    );
+  };
+
+  const toggleBundleItemFormat = (index, rowKey, checked) => {
+    setBundleItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const tags = Array.isArray(item.formats) ? item.formats : [];
+        return {
+          ...item,
+          formats: checked ? [...new Set([...tags, rowKey])] : tags.filter((key) => key !== rowKey)
+        };
+      })
+    );
   };
 
   const removeBundleItem = (index) => {
@@ -2395,49 +2421,6 @@ function AdminAddProducts() {
     );
   };
 
-  const handleToggleHasOptions = async (checked) => {
-    if (!checked) {
-      setHasOptions(false);
-      return;
-    }
-    if (productType === "bundle" || productType === "bulk") {
-      const ok = await confirm({
-        title: "Turn On Options?",
-        message: "Turning on options removes this product's combo/bulk settings. Continue?",
-        confirmText: "Continue"
-      });
-      if (!ok) return;
-      setProductType("single");
-    }
-    setHasOptions(true);
-    setOptionRows((current) => (current.length === 0 ? [createEmptyOptionRow()] : current));
-  };
-
-  const updateOptionRow = (index, field, value) => {
-    setOptionRows((current) =>
-      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row))
-    );
-  };
-
-  const addOptionRow = () => {
-    setOptionRows((current) => (current.length >= 12 ? current : [...current, createEmptyOptionRow()]));
-  };
-
-  const removeOptionRow = (index) => {
-    setOptionRows((current) => current.filter((_, rowIndex) => rowIndex !== index));
-  };
-
-  const moveOptionRow = (index, delta) => {
-    setOptionRows((current) => {
-      const targetIndex = index + delta;
-      if (targetIndex < 0 || targetIndex >= current.length) return current;
-      const next = [...current];
-      const [moved] = next.splice(index, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
-    });
-  };
-
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -2587,15 +2570,14 @@ function AdminAddProducts() {
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-essentials")}>
                   Essentials
                 </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-options")}>
-                  Options
-                </button>
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-digital")}>
                   Digital
                 </button>
-                <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
-                  Pricing
-                </button>
+                {hasBundleFormats ? null : (
+                  <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-pricing")}>
+                    Pricing
+                  </button>
+                )}
                 <button type="button" className="admin-modal-tab-btn" onClick={() => scrollToSection("section-related")}>
                   Combo &amp; Related
                 </button>
@@ -2656,42 +2638,44 @@ function AdminAddProducts() {
                     <span>Product Type</span>
                     <select value={productType} onChange={(e) => setProductType(e.target.value)}>
                       <option value="single">Single Product</option>
-                      {!hasOptions && (
-                        <>
-                          <option value="bundle">Bundle</option>
-                          <option value="bulk">Bulk Product</option>
-                        </>
-                      )}
+                      <option value="bundle">Bundle</option>
+                      <option value="bulk">Bulk Product</option>
                     </select>
                   </label>
-                  {hasOptions ? (
-                    <div className="admin-field admin-field-wide">
-                      <p className="pf-empty-note">Price and stock come from the options below.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="admin-field">
-                        <span>Price</span>
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="e.g. 999"
-                          value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
-                          onChange={(e) => setPrice(e.target.value)}
-                          readOnly={productType === "bundle"}
-                        />
-                      </label>
-                      <label className="admin-field">
-                        <span>Stock</span>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="e.g. 25"
-                          value={stock}
-                          onChange={(e) => setStock(e.target.value)}
-                        />
-                      </label>
-                      {isDigital === true && productType !== "bundle" ? null : (
+                  <>
+                      {hasBundleFormats ? (
+                        <div className="admin-field admin-field-wide">
+                          <p className="pf-empty-note">
+                            This combo is sold in formats. Each format&apos;s price and stock are set in the
+                            Bundle Products section below; customers see &quot;from&quot; the cheapest one.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <label className="admin-field">
+                            <span>Price</span>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="e.g. 999"
+                              value={productType === "bundle" ? String(calculatedBundlePrice || "") : price}
+                              onChange={(e) => setPrice(e.target.value)}
+                              readOnly={productType === "bundle"}
+                            />
+                          </label>
+                          <label className="admin-field">
+                            <span>Stock</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="e.g. 25"
+                              value={stock}
+                              onChange={(e) => setStock(e.target.value)}
+                            />
+                          </label>
+                        </>
+                      )}
+                      {(isDigital === true && productType !== "bundle") || hasBundleFormats ? null : (
                         <div className="admin-field admin-field-wide pf-dimensions">
                           <div className="pf-dimensions-grid">
                             <label className="admin-field">
@@ -2775,7 +2759,7 @@ function AdminAddProducts() {
                         </label>
                       ) : null}
                     </>
-                  )}
+                  
                   <div className="admin-field admin-field-wide">
                     <span>Select Product Category</span>
                     <div className="admin-category-manager">
@@ -2849,16 +2833,6 @@ function AdminAddProducts() {
                       </div>
                     </div>
                   </div>
-                  <div className="admin-field admin-field-wide">
-                    <label className="admin-digital-toggle-label" style={{ marginBottom: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={hideFromListings}
-                        onChange={(e) => setHideFromListings(e.target.checked)}
-                      />
-                      <span>Hide from store listings (shown only as an option of another product or by direct link)</span>
-                    </label>
-                  </div>
                   <label className="admin-field admin-field-wide">
                     <span>Description</span>
                     <textarea
@@ -2888,266 +2862,43 @@ function AdminAddProducts() {
                 </div>
               </section>
 
-              <section id="section-options" className="product-composer-panel">
-                <div className="product-composer-panel-head">
-                  <div>
-                    <h4>Formats / Options</h4>
-                    <p>Sell this product in different formats. The customer picks one, and that option&apos;s own product goes into the cart.</p>
-                  </div>
-                </div>
-                <div className="product-composer-panel-body">
-                  <label className="admin-digital-toggle-label">
-                    <input
-                      type="checkbox"
-                      checked={hasOptions}
-                      onChange={(e) => handleToggleHasOptions(e.target.checked)}
-                    />
-                    <span>Offer this product in different formats (customer chooses one)</span>
-                  </label>
-
-                  {hasOptions && (
-                    <div className="admin-bundle-builder">
-                      <div className="admin-bundle-builder-list">
-                        {optionRows.map((row, index) => {
-                          const editingId = String(editingProduct?._id || "");
-                          const otherChosenIds = new Set(
-                            optionRows
-                              .filter((_, rIdx) => rIdx !== index)
-                              .map((r) => String(r.productId || ""))
-                              .filter(Boolean)
-                          );
-                          const eligibleOptionProducts = products.filter((p) => {
-                            const pid = String(p?._id || "");
-                            if (!pid || pid === editingId) return false;
-                            if (p?.hasOptions === true) return false;
-                            if (otherChosenIds.has(pid)) return false;
-                            return true;
-                          });
-                          const chosenProduct =
-                            row.mode === "existing" && row.productId
-                              ? products.find((p) => String(p?._id || "") === String(row.productId)) || null
-                              : null;
-
-                          return (
-                            <div key={row.key || `opt-row-${index}`} className="bundle-builder-card">
-                              <div className="bundle-builder-type-bar">
-                                <div className="bundle-type-tabs">
-                                  <button
-                                    type="button"
-                                    className={`bundle-type-tab ${row.mode !== "new" ? "active" : ""}`}
-                                    onClick={() => updateOptionRow(index, "mode", "existing")}
-                                  >
-                                    Existing product
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`bundle-type-tab ${row.mode === "new" ? "active" : ""}`}
-                                    onClick={() => updateOptionRow(index, "mode", "new")}
-                                  >
-                                    New product
-                                  </button>
-                                </div>
-                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                                  <button
-                                    type="button"
-                                    disabled={index === 0}
-                                    onClick={() => moveOptionRow(index, -1)}
-                                    title="Move up"
-                                  >
-                                    ↑ Up
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={index === optionRows.length - 1}
-                                    onClick={() => moveOptionRow(index, 1)}
-                                    title="Move down"
-                                  >
-                                    ↓ Down
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="danger bundle-remove-btn"
-                                    onClick={() => removeOptionRow(index)}
-                                  >
-                                    ✕ Remove
-                                  </button>
-                                </div>
-                              </div>
-
-                              <label className="custom-field">
-                                <span>Option Label *</span>
-                                <input
-                                  type="text"
-                                  maxLength={40}
-                                  placeholder="e.g. Book, Flipbook, Pendrive"
-                                  value={row.label || ""}
-                                  onChange={(e) => updateOptionRow(index, "label", e.target.value)}
-                                />
-                              </label>
-
-                              {row.mode === "new" ? (
-                                <div className="custom-bundle-fields">
-                                  <div className="custom-bundle-grid custom-bundle-grid-2">
-                                    <label className="custom-field">
-                                      <span>Product Name</span>
-                                      <input
-                                        type="text"
-                                        placeholder={`${name.trim() || "Product"} – ${(row.label || "").trim() || "Option"}`}
-                                        value={row.newName || ""}
-                                        onChange={(e) => updateOptionRow(index, "newName", e.target.value)}
-                                      />
-                                    </label>
-                                    <label className="custom-field">
-                                      <span>Price (₹) *</span>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="e.g. 299"
-                                        value={row.newPrice ?? ""}
-                                        onChange={(e) => updateOptionRow(index, "newPrice", e.target.value)}
-                                      />
-                                    </label>
-                                  </div>
-
-                                  <div className="custom-bundle-radio-group">
-                                    <label className="custom-bundle-radio-label">
-                                      <input
-                                        type="radio"
-                                        name={`option-kind-${row.key || index}`}
-                                        value="physical"
-                                        checked={row.newKind !== "digital"}
-                                        onChange={() => updateOptionRow(index, "newKind", "physical")}
-                                      />
-                                      <span>Physical</span>
-                                    </label>
-                                    <label className="custom-bundle-radio-label">
-                                      <input
-                                        type="radio"
-                                        name={`option-kind-${row.key || index}`}
-                                        value="digital"
-                                        checked={row.newKind === "digital"}
-                                        onChange={() => updateOptionRow(index, "newKind", "digital")}
-                                      />
-                                      <span>Digital</span>
-                                    </label>
-                                  </div>
-
-                                  {row.newKind === "digital" ? (
-                                    <div className="custom-bundle-grid custom-bundle-grid-2">
-                                      <label className="custom-field">
-                                        <span>Format</span>
-                                        <select
-                                          value={row.newDigitalType || "Web Version"}
-                                          onChange={(e) => updateOptionRow(index, "newDigitalType", e.target.value)}
-                                        >
-                                          {digitalFormatTypeOptions.map((opt) => (
-                                            <option key={opt} value={opt}>
-                                              {getDigitalFormatTypeLabel(opt)}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label className="custom-field">
-                                        <span>Web Reader link (optional)</span>
-                                        <input
-                                          type="text"
-                                          placeholder="https://..."
-                                          value={row.newWebReaderLink || ""}
-                                          onChange={(e) => updateOptionRow(index, "newWebReaderLink", e.target.value)}
-                                        />
-                                      </label>
-                                    </div>
-                                  ) : (
-                                    <div className="custom-bundle-grid custom-bundle-grid-2">
-                                      <label className="custom-field">
-                                        <span>Stock</span>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          placeholder="1"
-                                          value={row.newStock ?? "1"}
-                                          onChange={(e) => updateOptionRow(index, "newStock", e.target.value)}
-                                        />
-                                      </label>
-                                      <label className="custom-field">
-                                        <span>Weight in grams</span>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          placeholder="0"
-                                          value={row.newWeight ?? ""}
-                                          onChange={(e) => updateOptionRow(index, "newWeight", e.target.value)}
-                                        />
-                                      </label>
-                                    </div>
-                                  )}
-
-                                  <p className="custom-bundle-hint-text">
-                                    Saved as its own product, hidden from store listings. For Kindle, external-link or combo formats, create the product first and pick it as an existing product.
-                                  </p>
-                                </div>
-                              ) : (
-                                <div>
-                                  <SearchableProductSelect
-                                    products={eligibleOptionProducts}
-                                    value={row.productId}
-                                    onChange={(val) => updateOptionRow(index, "productId", val)}
-                                    placeholder="Search & select option product..."
-                                  />
-                                  {chosenProduct && (
-                                    <p className="custom-bundle-hint-text" style={{ marginTop: "6px" }}>
-                                      ₹{chosenProduct.price ?? 0} • {chosenProduct.isDigital ? "Digital" : `Physical • Stock: ${chosenProduct.stock ?? 0}`}
-                                      {chosenProduct.hideFromListings ? " • Hidden" : ""}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {optionRows.length < 12 && (
-                        <div>
-                          <button type="button" onClick={addOptionRow}>
-                            + Add option
-                          </button>
-                        </div>
-                      )}
-
-                      {lowestOptionPrice !== null && (
-                        <p className="pf-empty-note">
-                          Customers will see: from ₹{lowestOptionPrice}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </section>
-
               <section id="section-digital" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
-                    <h4>Digital Content &amp; Kindle Settings</h4>
-                    <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
+                    {productType === "bundle" ? (
+                      <>
+                        <h4>Digital Access</h4>
+                        <p>
+                          How customers get the digital items of this combo. Each item&apos;s own reader link is used; set
+                          here only whether access is on this website or given by your team on another website.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h4>Digital Content &amp; Kindle Settings</h4>
+                        <p>Configure Web Reader links, Amazon Kindle redemption URLs, and access instructions for digital buyers.</p>
+                      </>
+                    )}
                   </div>
                 </div>
-                {hasOptions ? (
-                  <div className="product-composer-panel-body">
-                    <p className="pf-empty-note">Set this on each option&apos;s own product.</p>
-                  </div>
-                ) : (
-                  <div className="product-composer-panel-body">
-                  <label className="admin-digital-toggle-label">
-                    <input
-                      type="checkbox"
-                      checked={isDigital}
-                      onChange={(e) => setIsDigital(e.target.checked)}
-                    />
-                    <span>💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)</span>
-                  </label>
+                <div className="product-composer-panel-body">
+                  {/* A combo with formats gets digital / physical from each format's Type. */}
+                  {hasBundleFormats ? null : (
+                    <label className="admin-digital-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={isDigital}
+                        onChange={(e) => setIsDigital(e.target.checked)}
+                      />
+                      <span>
+                        {productType === "bundle"
+                          ? "💻 Everything in this combo is digital (nothing is shipped)"
+                          : "💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)"}
+                      </span>
+                    </label>
+                  )}
 
-                  {isLikelyDigital && (
+                  {isLikelyDigital && productType !== "bundle" && (
                     <div
                       className="admin-digital-hint"
                       style={{
@@ -3263,7 +3014,7 @@ function AdminAddProducts() {
                     </div>
                   )}
 
-                  {isDigital && (
+                  {isDigital && productType !== "bundle" && (
                     <div className="admin-digital-fields-box">
                       <div className="admin-field admin-field-wide">
                         <span>Digital Format Type</span>
@@ -3414,23 +3165,27 @@ function AdminAddProducts() {
                     </div>
                   )}
 
-                  <div className="admin-course-link-box">
-                    <label className="admin-field admin-field-wide">
-                      <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
-                      <input
-                        placeholder="https://…"
-                        value={courseLink}
-                        onChange={(e) => setCourseLink(e.target.value)}
-                      />
-                      <small className="pf-hint">
-                        Direct link to the course on the SFH platform; shows a View Course button on the product page.
-                      </small>
-                    </label>
+                  {productType !== "bundle" && (
+                    <div className="admin-course-link-box">
+                      <label className="admin-field admin-field-wide">
+                        <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
+                        <input
+                          placeholder="https://…"
+                          value={courseLink}
+                          onChange={(e) => setCourseLink(e.target.value)}
+                        />
+                        <small className="pf-hint">
+                          Direct link to the course on the SFH platform; shows a View Course button on the product page.
+                        </small>
+                      </label>
+                    </div>
+                  )}
                   </div>
-                  </div>
-                )}
+                
               </section>
 
+              {/* Format products are priced in the Formats box; this section is not used for them. */}
+              {hasBundleFormats ? null : (
               <section id="section-pricing" className="product-composer-panel">
                 <div className="product-composer-panel-head">
                   <div>
@@ -3438,11 +3193,6 @@ function AdminAddProducts() {
                     <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
                   </div>
                 </div>
-                {hasOptions ? (
-                  <div className="product-composer-panel-body">
-                    <p className="pf-empty-note">Set this on each option&apos;s own product.</p>
-                  </div>
-                ) : (
                 <div className="form-grid">
                   <label className="admin-field">
                     <span>International Price</span>
@@ -3562,8 +3312,9 @@ function AdminAddProducts() {
                     </div>
                   </div>
                 </div>
-                )}
+                
               </section>
+              )}
 
               <section id="section-related" className="product-composer-panel">
                 <div className="product-composer-panel-head">
@@ -3573,7 +3324,7 @@ function AdminAddProducts() {
                   </div>
                 </div>
                 <div className="form-grid">
-                  {productType === "bundle" && !hasOptions ? (
+                  {productType === "bundle" ? (
                     <div className="admin-field admin-field-wide">
                             <label className="admin-digital-toggle-label" style={{ marginBottom: "4px" }}>
                               <input
@@ -3601,6 +3352,109 @@ function AdminAddProducts() {
                           </button>
                         </div>
 
+                        <div className="pf-formats-box">
+                          <div className="pf-formats-head">
+                            <div>
+                              <strong>Formats (optional)</strong>
+                              <p>
+                                Sell this combo in formats such as USB or Web Version. Add the formats here, then tick
+                                which items each format includes. Customers pick one format and see only its items and price.
+                              </p>
+                            </div>
+                            {bundleFormats.length < 8 ? (
+                              <button type="button" onClick={addBundleFormat}>＋ Add format</button>
+                            ) : null}
+                          </div>
+                          {bundleFormats.length > 0 ? (
+                            <div className="pf-formats-table">
+                              <div className="pf-formats-row pf-formats-row--head">
+                                <span>Format name</span>
+                                <span>Type</span>
+                                <span>Items total</span>
+                                <span>Price (optional)</span>
+                                <span>Stock</span>
+                                <span />
+                              </div>
+                              {bundleFormats.map((format) => {
+                                const total = bundleFormatTotals[format.rowKey] || 0;
+                                return (
+                                  <div key={format.rowKey} className="pf-formats-row">
+                                    <input
+                                      type="text"
+                                      maxLength={40}
+                                      placeholder="e.g. USB"
+                                      value={format.label}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "label", e.target.value)}
+                                      aria-label="Format name"
+                                    />
+                                    <select
+                                      value={format.type || ""}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "type", e.target.value)}
+                                      aria-label="Format type"
+                                    >
+                                      <option value="" disabled>Choose…</option>
+                                      <option value="physical">Physical</option>
+                                      <option value="digital">Digital</option>
+                                    </select>
+                                    <span className="pf-formats-total">Rs {total}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder={`Auto: ${total}`}
+                                      value={format.price}
+                                      onChange={(e) => updateBundleFormat(format.rowKey, "price", e.target.value)}
+                                      aria-label="Format price"
+                                    />
+                                    {format.type === "digital" ? (
+                                      <span className="pf-formats-total" title="Digital formats never run out">Unlimited</span>
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        placeholder="e.g. 10"
+                                        value={format.stock}
+                                        onChange={(e) => updateBundleFormat(format.rowKey, "stock", e.target.value)}
+                                        aria-label="Format stock"
+                                      />
+                                    )}
+                                    <button type="button" className="danger" onClick={() => removeBundleFormat(format.rowKey)}>
+                                      Remove
+                                    </button>
+                                    {format.type === "physical" ? (
+                                      <div className="pf-formats-pack">
+                                        <span className="pf-formats-pack-title">📦 {format.label || "This format"} package (for delivery charges)</span>
+                                        {[
+                                          ["weight", "Weight (g)", "e.g. 250"],
+                                          ["length", "Length (cm)", "e.g. 20"],
+                                          ["width", "Width (cm)", "e.g. 15"],
+                                          ["height", "Height (cm)", "e.g. 5"]
+                                        ].map(([field, text, hint]) => (
+                                          <label key={field} className="pf-formats-pack-field">
+                                            <span>{text}</span>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              placeholder={hint}
+                                              value={format[field]}
+                                              onChange={(e) => updateBundleFormat(format.rowKey, field, e.target.value)}
+                                            />
+                                          </label>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                              <p className="pf-hint">
+                                Type: <strong>Physical</strong> (USB, CD, printed set) is delivered to the customer&apos;s
+                                address and never gives online access; <strong>Digital</strong> gives the web/reader access.
+                                Leave Price empty to use the items total. Stock is how many sets of a physical format you can sell;
+                                the package size of a physical format (the box it ships in) sets its delivery charge.
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+
                         <div className="admin-bundle-builder-list">
                           {bundleItems.map((item, index) => (
                             <div key={`bundle-item-${index}`} className="bundle-builder-card">
@@ -3625,6 +3479,22 @@ function AdminAddProducts() {
                                   ✕ Remove
                                 </button>
                               </div>
+
+                              {bundleFormats.length > 0 ? (
+                                <div className="pf-item-formats" role="group" aria-label="Formats this item is in">
+                                  <span>In formats:</span>
+                                  {bundleFormats.map((format) => (
+                                    <label key={format.rowKey} className="pf-item-format-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={Array.isArray(item.formats) && item.formats.includes(format.rowKey)}
+                                        onChange={(e) => toggleBundleItemFormat(index, format.rowKey, e.target.checked)}
+                                      />
+                                      {String(format.label || "").trim() || "(unnamed)"}
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : null}
 
                               {item.itemType === "custom" ? (
                                 <div className="custom-bundle-fields">
@@ -3724,7 +3594,20 @@ function AdminAddProducts() {
                                   </li>
                                 ))}
                               </ul>
-                              <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                              {hasBundleFormats ? (
+                                <p>
+                                  <strong>Formats:</strong>{" "}
+                                  {bundleFormats
+                                    .map((format) => {
+                                      const label = String(format.label || "").trim() || "(unnamed)";
+                                      const manual = String(format.price ?? "").trim();
+                                      return `${label} Rs ${manual !== "" ? Number(manual) : bundleFormatTotals[format.rowKey] || 0}`;
+                                    })
+                                    .join(" · ")}
+                                </p>
+                              ) : (
+                                <p><strong>Calculated bundle price:</strong> Rs {calculatedBundlePrice}</p>
+                              )}
                             </>
                           ) : (
                             <p>No products selected for this bundle yet.</p>
@@ -3842,16 +3725,24 @@ function AdminAddProducts() {
                   }}
                 />
                 <div className="product-composer-price-line">
-                  <strong>{hasOptions ? `From ₹${lowestOptionPrice ?? 0}` : `Rs ${formSummary.numericPrice || 0}`}</strong>
-                  <small>{hasOptions ? "Option pricing" : productType === "bundle" ? "Bundle pricing" : "Base pricing"}</small>
+                  <strong>
+                    {hasBundleFormats
+                        ? `From ₹${bundleFormatsFromPrice ?? 0}`
+                        : `Rs ${formSummary.numericPrice || 0}`}
+                  </strong>
+                  <small>
+                    {hasBundleFormats
+                        ? `${bundleFormats.length} format${bundleFormats.length === 1 ? "" : "s"}`
+                        : productType === "bundle"
+                          ? "Bundle pricing"
+                          : "Base pricing"}
+                  </small>
                 </div>
                 <div className="product-composer-side-list">
                   <div>
                     <span>Type</span>
                     <strong>
-                      {hasOptions
-                        ? `${optionRows.length} option${optionRows.length === 1 ? "" : "s"}`
-                        : productType === "bundle"
+                      {productType === "bundle"
                           ? "Bundle"
                           : "Single"}
                     </strong>
@@ -4022,10 +3913,8 @@ function AdminAddProducts() {
                       <span>
                         <strong>
                           {product.name}
-                          {product.hasOptions ? (
-                            <span className="pf-badge pf-badge--options">
-                              Options ({Array.isArray(product.options) ? product.options.length : 0})
-                            </span>
+                          {Array.isArray(product.bundleFormats) && product.bundleFormats.length > 0 ? (
+                            <span className="pf-badge pf-badge--options">Formats ({product.bundleFormats.length})</span>
                           ) : null}
                           {product.hideFromListings ? (
                             <span className="pf-badge pf-badge--hidden">Hidden</span>
