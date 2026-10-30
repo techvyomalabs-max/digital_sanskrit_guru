@@ -1331,7 +1331,14 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title product-detail-title">{product.name}</h1>
-          {isBundle ? <p className="product-bundle-pill">Combo</p> : null}
+          {String(product.category || "").trim() && String(product.category).trim().toLowerCase() !== "general" ? (
+            <p className="product-category-line">
+              Category:{" "}
+              <Link to={`/collection?category=${encodeURIComponent(String(product.category).trim())}`}>
+                {String(product.category).trim()}
+              </Link>
+            </p>
+          ) : null}
           {isFestiveOffer ? (
             <p className={`product-bundle-pill product-festive-pill ${buyProduct?.discountType === "new_launch" ? "pill-new-launch" : buyProduct?.discountType === "combo" ? "pill-combo" : buyProduct?.discountType === "monthly" ? "pill-monthly" : ""}`}>
               {buyProduct?.discountType === "new_launch"

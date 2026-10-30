@@ -414,6 +414,23 @@
   font-size: 14px;
 }
 
+.product-category-line {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--site-text-soft);
+}
+
+.product-category-line a {
+  color: var(--site-link);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.product-category-line a:hover {
+  color: var(--site-link-hover);
+  text-decoration: underline;
+}
+
 .product-bundle-pill {
   margin: 8px 0 0;
   display: inline-flex;
