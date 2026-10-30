@@ -1311,19 +1311,31 @@ function Product() {
                   </a>
                 )
               ) : (
-                <img
-                  src={activeMedia?.src || galleryImages[0] || product.image || "/no-image.webp"}
-                  alt={product.name}
-                  className="product-main-image"
-                  width="800"
-                  height="800"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  onClick={() => setShowLightbox(true)}
-                  title="Click to view full screen"
-                  style={{ cursor: "zoom-in" }}
-                />
+                <>
+                  {/* Soft blurred copy of the picture behind it, like the product cards on the home page. */}
+                  {activeMedia?.src || galleryImages[0] || product.image ? (
+                    <div
+                      className="product-main-ambient-bg"
+                      style={{
+                        backgroundImage: `url("${String(activeMedia?.src || galleryImages[0] || product.image).replace(/"/g, "%22")}")`
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <img
+                    src={activeMedia?.src || galleryImages[0] || product.image || "/no-image.webp"}
+                    alt={product.name}
+                    className="product-main-image"
+                    width="800"
+                    height="800"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                    onClick={() => setShowLightbox(true)}
+                    title="Click to view full screen"
+                    style={{ cursor: "zoom-in" }}
+                  />
+                </>
               )}
             </div>
           </div>
