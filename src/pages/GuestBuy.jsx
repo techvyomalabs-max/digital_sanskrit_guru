@@ -8,6 +8,7 @@ import { getProductPriceDetails, isInternationalCountry } from "../utils/product
 import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import { isKindleProduct } from "../utils/kindle";
+import { getAttribution, clearAttribution } from "../utils/attribution";
 import "./Checkout.css";
 
 function GuestBuy() {
@@ -332,6 +333,8 @@ function GuestBuy() {
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
+              // Where this visitor came from (UTM / referrer), saved on the account if one is created now
+              attribution: getAttribution() || undefined,
               currencyDisplay: {
                 currency: displayCurrency,
                 amount: grandTotal,
@@ -341,6 +344,7 @@ function GuestBuy() {
 
             setOrderSuccess(orderRes.data?.order);
             setCredentialsSent(orderRes.data?.accountCreated);
+            if (orderRes.data?.accountCreated) clearAttribution();
           } catch (err) {
             setCheckoutMessage(err.response?.data?.message || "Failed to finalize order on server.");
           } finally {
