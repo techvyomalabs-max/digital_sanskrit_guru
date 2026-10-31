@@ -76,7 +76,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const { paymentWebhookHandler } = require("./routes/paymentWebhook");
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
-  const { globalApiLimiter } = require("./utils/spamFilter");
+  const { createApiRateLimiter } = require("./utils/apiRateLimit");
   const { buildRedirectMap, createRedirectMiddleware } = require("./utils/legacyRedirects");
   const legacyRedirectsConfig = require("./config/legacyRedirects.json");
   const legacyRedirectMap = buildRedirectMap(legacyRedirectsConfig);
@@ -164,7 +164,8 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   });
 
   app.use(vulnerabilityGuard);
-  app.use("/api", globalApiLimiter);
+  // Public browsing per IP (high limit), signed-in users per account, other visitors per IP
+  app.use("/api", createApiRateLimiter());
 
   // ── Health check ────────────────────────────────────────────────────────────
   app.get("/api/health", (req, res) => {
