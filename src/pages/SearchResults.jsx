@@ -2,11 +2,28 @@ import { useEffect, useMemo, useState } from "react";
 import { Lightbulb } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
+import {
+  Sparkles,
+  Truck,
+  BookOpen,
+  HelpCircle,
+  Mail,
+  Package,
+  User,
+  Heart,
+  ShoppingCart,
+  Gift,
+  Info,
+  Shield,
+  FileText,
+  Grid
+} from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import "./Home.css";
 import "./SearchResults.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
-import { scoreProduct, getSearchSuggestion } from "../utils/searchText";
+import { scoreProduct, getSearchSuggestion, searchWebsite } from "../utils/searchText";
+import { CategoryIcon } from "../utils/categoryIcons";
 
 const VALID_SORT_OPTIONS = ["relevance", "latest", "rating", "priceLow", "priceHigh"];
 
@@ -44,6 +61,7 @@ function SearchResults() {
   const navigate = useNavigate();
 
   const query = (searchParams.get("q") || searchParams.get("search") || "").trim();
+  const noCorrect = searchParams.get("no_correct") === "1";
   const defaultSort = "relevance";
 
   const rawCategory = searchParams.get("cat");
@@ -84,21 +102,32 @@ function SearchResults() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const searchMatchedProducts = useMemo(() => {
-    const results = [];
-    for (const product of products) {
-      const score = scoreProduct(product, query);
-      if (score > 0) {
-        results.push({ ...product, _score: score });
-      }
+  const websiteSearch = useMemo(() => {
+    if (!query || isLoadingProducts || products.length === 0) {
+      return {
+        query,
+        effectiveQuery: query,
+        isAutoCorrected: false,
+        autoCorrection: null,
+        matchingCategories: [],
+        matchingPages: [],
+        matchingProducts: [],
+        totalProductsCount: 0,
+        totalResultsCount: 0
+      };
     }
-    return results;
-  }, [products, query]);
 
-  const suggestion = useMemo(() => {
-    if (!query || isLoadingProducts || products.length === 0) return null;
-    return getSearchSuggestion(query, products);
-  }, [query, products, isLoadingProducts]);
+    return searchWebsite(query, {
+      catalogProducts: products,
+      enableAutoCorrection: !noCorrect
+    });
+  }, [query, products, isLoadingProducts, noCorrect]);
+
+  const searchMatchedProducts = websiteSearch.matchingProducts;
+  const isAutoCorrected = websiteSearch.isAutoCorrected;
+  const effectiveQuery = websiteSearch.effectiveQuery;
+  const matchingCategories = websiteSearch.matchingCategories;
+  const matchingPages = websiteSearch.matchingPages;
 
   const { categories, categoryCounts, matchedCategories } = useMemo(() => {
     const counts = {};
@@ -207,27 +236,86 @@ function SearchResults() {
           </div>
         </div>
 
-        {suggestion && (
-          <div className="search-results-suggestion-banner" role="alert">
-            <span className="search-results-suggestion-icon" aria-hidden="true"><Lightbulb size={15} /></span>
-            <span className="search-results-suggestion-text">
-              Did you mean:{" "}
+        {isAutoCorrected && (
+          <div className="search-results-autocorrect-banner" role="alert">
+            <div className="search-results-autocorrect-content">
+              <span className="search-results-autocorrect-badge">
+                <Sparkles size={14} /> AI Auto-Corrected
+              </span>
+              <span className="search-results-autocorrect-title">
+                Showing results for <strong>&ldquo;{effectiveQuery}&rdquo;</strong>
+              </span>
+            </div>
+            <div className="search-results-autocorrect-actions">
+              <span>Searched for &ldquo;{query}&rdquo; &bull; </span>
               <button
                 type="button"
-                className="search-results-suggestion-link"
+                className="search-results-autocorrect-link"
                 onClick={() => {
                   const nextParams = new URLSearchParams(searchParams);
-                  nextParams.set("q", suggestion);
+                  nextParams.set("q", query);
+                  nextParams.set("no_correct", "1");
                   setSearchParams(nextParams);
                 }}
               >
-                {suggestion}
+                Search for original &ldquo;{query}&rdquo; instead
               </button>
-              ?
+            </div>
+          </div>
+        )}
+
+        {/* Matching Categories & Formats */}
+        {matchingCategories.length > 0 && (
+          <div className="search-results-categories-section">
+            <span className="search-results-categories-title">
+              <Grid size={14} /> Matching Categories:
             </span>
-            <span className="search-results-suggestion-note">
-              (Showing matching and typo-tolerant results for &ldquo;{query}&rdquo;)
-            </span>
+            <div className="search-results-category-chips">
+              {matchingCategories.map((cat) => (
+                <Link key={cat.name} to={cat.url} className="search-results-category-chip">
+                  <span className="search-results-chip-icon"><CategoryIcon category={cat.name} size={15} aria-hidden="true" /></span>
+                  <span className="search-results-chip-name">{cat.name}</span>
+                  {cat.count > 0 && <span className="search-results-chip-count">({cat.count})</span>}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Matching Website Content & Pages */}
+        {matchingPages.length > 0 && (
+          <div className="search-results-pages-section">
+            <div className="search-results-pages-header">
+              <BookOpen size={14} />
+              <span>Related Website Pages & Help ({matchingPages.length})</span>
+            </div>
+            <div className="search-results-pages-grid">
+              {matchingPages.map((page) => (
+                <Link key={page.id} to={page.url} className="search-results-page-card">
+                  <div className="search-results-page-card-icon">
+                    {page.icon === "Truck" && <Truck size={18} />}
+                    {page.icon === "BookOpen" && <BookOpen size={18} />}
+                    {page.icon === "HelpCircle" && <HelpCircle size={18} />}
+                    {page.icon === "Mail" && <Mail size={18} />}
+                    {page.icon === "Package" && <Package size={18} />}
+                    {page.icon === "User" && <User size={18} />}
+                    {page.icon === "Heart" && <Heart size={18} />}
+                    {page.icon === "ShoppingCart" && <ShoppingCart size={18} />}
+                    {page.icon === "Gift" && <Gift size={18} />}
+                    {page.icon === "Info" && <Info size={18} />}
+                    {page.icon === "Shield" && <Shield size={18} />}
+                    {page.icon === "FileText" && <FileText size={18} />}
+                  </div>
+                  <div className="search-results-page-card-content">
+                    <div className="search-results-page-card-title-row">
+                      <h4>{page.title}</h4>
+                      {page.badge && <span className="search-results-page-card-badge">{page.badge}</span>}
+                    </div>
+                    <p>{page.description}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 

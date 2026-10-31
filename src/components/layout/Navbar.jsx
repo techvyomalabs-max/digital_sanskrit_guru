@@ -30,49 +30,23 @@ import {
   Settings,
   Trash2,
   Globe,
-  Tablet,
-  Usb,
-  BookOpenText,
-  Route,
-  GraduationCap,
-  Headphones,
-  Boxes,
   Sparkles,
-  CalendarDays,
-  Tag,
   LayoutGrid,
-  ArrowRight
+  ArrowRight,
+  Truck,
+  Gift,
+  FileText,
+  Shield
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 import { useToast } from "../../hooks/useToast";
-import { scoreProduct, getSearchSuggestion } from "../../utils/searchText";
+import { CategoryIcon, getCategoryIcon } from "../../utils/categoryIcons";
+import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
-
-// Icon for a category in the "Browse by category" menu, picked from its name
-// because categories are typed freely by admins
-const CATEGORY_ICON_RULES = [
-  [/kindle/i, Tablet],
-  [/flipbook/i, BookOpenText],
-  [/web/i, Globe],
-  [/usb|pen ?drive/i, Usb],
-  [/audio|device/i, Headphones],
-  [/learning path|path/i, Route],
-  [/course/i, GraduationCap],
-  [/bulk/i, Boxes],
-  [/festiv|festival|offer/i, Sparkles],
-  [/calendar/i, CalendarDays],
-  [/bundle|combo|pack/i, Package],
-  [/book|paperback/i, BookOpen]
-];
-
-function getCategoryIcon(category) {
-  const match = CATEGORY_ICON_RULES.find(([pattern]) => pattern.test(String(category || "")));
-  return match ? match[1] : Tag;
-}
 
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
@@ -357,41 +331,49 @@ function Navbar({ bannerActive = false }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const { liveMatches, totalMatchedCount, liveSuggestion } = useMemo(() => {
+  const searchResults = useMemo(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
-      return { liveMatches: [], totalMatchedCount: 0, liveSuggestion: null };
+      return {
+        query: trimmed,
+        effectiveQuery: trimmed,
+        isAutoCorrected: false,
+        autoCorrection: null,
+        matchingCategories: [],
+        matchingPages: [],
+        matchingProducts: [],
+        totalProductsCount: 0,
+        totalResultsCount: 0
+      };
     }
 
-    const scored = [];
-    for (const p of catalogProducts) {
-      const score = scoreProduct(p, trimmed);
-      if (score > 0) {
-        scored.push({ ...p, _score: score });
-      }
-    }
-
-    scored.sort((a, b) => (b._score || 0) - (a._score || 0));
-
-    const suggestion = getSearchSuggestion(trimmed, catalogProducts);
-
-    return {
-      liveMatches: scored.slice(0, 5),
-      totalMatchedCount: scored.length,
-      liveSuggestion: suggestion
-    };
+    return searchWebsite(trimmed, { catalogProducts, enableAutoCorrection: true });
   }, [searchQuery, catalogProducts]);
+
+  const navigableItems = useMemo(() => {
+    const items = [];
+    (searchResults.matchingCategories || []).slice(0, 3).forEach((cat) => {
+      items.push({ type: "category", data: cat, url: cat.url });
+    });
+    (searchResults.matchingPages || []).slice(0, 2).forEach((page) => {
+      items.push({ type: "page", data: page, url: page.url });
+    });
+    (searchResults.matchingProducts || []).slice(0, 5).forEach((product) => {
+      items.push({ type: "product", data: product, url: `/product/${product._id}` });
+    });
+    return items;
+  }, [searchResults]);
 
   const handleSearchKeyDown = (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (liveMatches.length > 0) {
-        setActiveSuggestionIndex((prev) => (prev + 1) % liveMatches.length);
+      if (navigableItems.length > 0) {
+        setActiveSuggestionIndex((prev) => (prev + 1) % navigableItems.length);
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (liveMatches.length > 0) {
-        setActiveSuggestionIndex((prev) => (prev <= 0 ? liveMatches.length - 1 : prev - 1));
+      if (navigableItems.length > 0) {
+        setActiveSuggestionIndex((prev) => (prev <= 0 ? navigableItems.length - 1 : prev - 1));
       }
     } else if (e.key === "Escape") {
       setIsSearchFocused(false);
@@ -402,12 +384,12 @@ function Navbar({ bannerActive = false }) {
   const handleSearchSubmit = (e) => {
     e?.preventDefault?.();
     setIsSearchFocused(false);
-    if (activeSuggestionIndex >= 0 && liveMatches[activeSuggestionIndex]) {
-      navigate(`/product/${liveMatches[activeSuggestionIndex]._id}`);
+    if (activeSuggestionIndex >= 0 && navigableItems[activeSuggestionIndex]) {
+      navigate(navigableItems[activeSuggestionIndex].url);
       setActiveSuggestionIndex(-1);
       return;
     }
-    const query = searchQuery.trim();
+    const query = (searchResults.effectiveQuery || searchQuery).trim();
     if (query) {
       recordSearchQuery(query);
     }
@@ -646,80 +628,177 @@ function Navbar({ bannerActive = false }) {
 
                 {isSearchFocused && searchQuery.trim().length >= 2 && (
                   <div className="navbar-search-dropdown" role="listbox">
-                    {liveSuggestion && (
-                      <div className="navbar-search-dropdown-suggestion">
-                        <span className="navbar-search-suggestion-badge">Did you mean:</span>
+                    {/* Auto-Correction Notice Banner */}
+                    {searchResults.isAutoCorrected && searchResults.autoCorrection && (
+                      <div className="navbar-search-autocorrect-banner">
+                        <div className="navbar-search-autocorrect-text">
+                          <Sparkles size={14} className="navbar-search-autocorrect-icon" />
+                          <span>
+                            Showing results for <strong>{searchResults.effectiveQuery}</strong>
+                            <span className="navbar-search-original-note">
+                              {" "}(corrected from &ldquo;{searchResults.query}&rdquo;)
+                            </span>
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          className="navbar-search-suggestion-btn"
+                          className="navbar-search-original-btn"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            setSearchQuery(liveSuggestion);
-                            navigate(`/search?q=${encodeURIComponent(liveSuggestion)}`);
+                            navigate(`/search?q=${encodeURIComponent(searchResults.query)}&no_correct=1`);
                             setIsSearchFocused(false);
                           }}
                         >
-                          {liveSuggestion}
+                          Search &ldquo;{searchResults.query}&rdquo; instead
                         </button>
                       </div>
                     )}
 
-                    {liveMatches.length > 0 ? (
-                      <div className="navbar-search-dropdown-results">
-                        {liveMatches.map((product, idx) => (
-                          <div
-                            key={product._id}
-                            role="option"
-                            aria-selected={activeSuggestionIndex === idx}
-                            className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
-                            onMouseDown={() => {
-                              navigate(`/product/${product._id}`);
-                              setIsSearchFocused(false);
-                            }}
-                          >
-                            <div className="navbar-search-item-thumb">
-                              {product.image ? (
-                                <img src={product.image} alt={product.name} />
-                              ) : (
-                                <span className="navbar-search-item-placeholder" aria-hidden="true"><BookOpen size={18} /></span>
+                    {/* Section 1: Matching Categories & Formats */}
+                    {searchResults.matchingCategories.length > 0 && (
+                      <div className="navbar-search-section">
+                        <div className="navbar-search-section-header">
+                          <Grid size={13} />
+                          <span>Categories & Formats</span>
+                        </div>
+                        <div className="navbar-search-category-chips">
+                          {searchResults.matchingCategories.slice(0, 3).map((cat) => (
+                            <button
+                              key={cat.name}
+                              type="button"
+                              className="navbar-search-category-chip"
+                              onMouseDown={() => {
+                                navigate(cat.url);
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <span className="navbar-search-cat-icon"><CategoryIcon category={cat.name} size={14} aria-hidden="true" /></span>
+                              <span className="navbar-search-cat-name">{cat.name}</span>
+                              {cat.count > 0 && (
+                                <span className="navbar-search-cat-count">({cat.count})</span>
                               )}
-                            </div>
-                            <div className="navbar-search-item-info">
-                              <span className="navbar-search-item-title">{product.name}</span>
-                              <div className="navbar-search-item-meta">
-                                <span className="navbar-search-item-cat">{product.category || "General"}</span>
-                                {product.price !== undefined && (
-                                  <span className="navbar-search-item-price">₹{product.price}</span>
-                                )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 2: Website Pages, FAQ & Help */}
+                    {searchResults.matchingPages.length > 0 && (
+                      <div className="navbar-search-section">
+                        <div className="navbar-search-section-header">
+                          <BookOpen size={13} />
+                          <span>Website Pages & Help</span>
+                        </div>
+                        <div className="navbar-search-pages-list">
+                          {searchResults.matchingPages.slice(0, 2).map((page) => (
+                            <div
+                              key={page.id}
+                              className="navbar-search-page-item"
+                              onMouseDown={() => {
+                                navigate(page.url);
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="navbar-search-page-icon-wrap">
+                                {page.icon === "Truck" && <Truck size={15} />}
+                                {page.icon === "BookOpen" && <BookOpen size={15} />}
+                                {page.icon === "HelpCircle" && <HelpCircle size={15} />}
+                                {page.icon === "Mail" && <Mail size={15} />}
+                                {page.icon === "Package" && <Package size={15} />}
+                                {page.icon === "User" && <User size={15} />}
+                                {page.icon === "Heart" && <Heart size={15} />}
+                                {page.icon === "ShoppingCart" && <ShoppingCart size={15} />}
+                                {page.icon === "Gift" && <Gift size={15} />}
+                                {page.icon === "Info" && <Info size={15} />}
+                                {page.icon === "Shield" && <Shield size={15} />}
+                                {page.icon === "FileText" && <FileText size={15} />}
+                              </div>
+                              <div className="navbar-search-page-info">
+                                <div className="navbar-search-page-title-row">
+                                  <span className="navbar-search-page-title">{page.title}</span>
+                                  {page.badge && (
+                                    <span className="navbar-search-page-badge">{page.badge}</span>
+                                  )}
+                                </div>
+                                <p className="navbar-search-page-desc">{page.description}</p>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 3: Matching Products */}
+                    {searchResults.matchingProducts.length > 0 ? (
+                      <div className="navbar-search-section">
+                        <div className="navbar-search-section-header">
+                          <Package size={13} />
+                          <span>Products ({searchResults.totalProductsCount})</span>
+                        </div>
+                        <div className="navbar-search-dropdown-results">
+                          {searchResults.matchingProducts.slice(0, 5).map((product, idx) => (
+                            <div
+                              key={product._id}
+                              role="option"
+                              aria-selected={activeSuggestionIndex === idx}
+                              className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
+                              onMouseDown={() => {
+                                navigate(`/product/${product._id}`);
+                                setIsSearchFocused(false);
+                              }}
+                            >
+                              <div className="navbar-search-item-thumb">
+                                {product.image ? (
+                                  <img src={product.image} alt={product.name} />
+                                ) : (
+                                  <span className="navbar-search-item-placeholder" aria-hidden="true"><BookOpen size={18} /></span>
+                                )}
+                              </div>
+                              <div className="navbar-search-item-info">
+                                <span className="navbar-search-item-title">{product.name}</span>
+                                <div className="navbar-search-item-meta">
+                                  <span className="navbar-search-item-cat">{product.category || "General"}</span>
+                                  {product._matchReason && (
+                                    <span className="navbar-search-item-reason">{product._matchReason}</span>
+                                  )}
+                                  {product.price !== undefined && (
+                                    <span className="navbar-search-item-price">₹{product.price}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                         <div
                           className="navbar-search-dropdown-footer"
                           onMouseDown={() => {
-                            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                            navigate(`/search?q=${encodeURIComponent(searchResults.effectiveQuery)}`);
                             setIsSearchFocused(false);
                           }}
                         >
-                          <span>View all {totalMatchedCount} results for &ldquo;{searchQuery}&rdquo;</span>
+                          <span>
+                            View all {searchResults.totalResultsCount} results for &ldquo;{searchResults.effectiveQuery}&rdquo;
+                          </span>
                           <ChevronRight size={14} />
                         </div>
                       </div>
                     ) : (
-                      <div className="navbar-search-dropdown-empty">
-                        <p>No matching products found</p>
-                        <button
-                          type="button"
-                          className="navbar-search-empty-btn"
-                          onMouseDown={() => {
-                            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-                            setIsSearchFocused(false);
-                          }}
-                        >
-                          Search catalog for &ldquo;{searchQuery}&rdquo; &rarr;
-                        </button>
-                      </div>
+                      searchResults.matchingCategories.length === 0 && searchResults.matchingPages.length === 0 && (
+                        <div className="navbar-search-dropdown-empty">
+                          <p>No matching catalog products or website pages found for &ldquo;{searchQuery}&rdquo;</p>
+                          <button
+                            type="button"
+                            className="navbar-search-empty-btn"
+                            onMouseDown={() => {
+                              navigate(`/collection`);
+                              setIsSearchFocused(false);
+                            }}
+                          >
+                            Browse All Categories &rarr;
+                          </button>
+                        </div>
+                      )
                     )}
                   </div>
                 )}
