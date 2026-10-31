@@ -7,6 +7,7 @@ import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminUsers.css";
+import { startVisiblePolling } from "../utils/visiblePolling";
 
 function formatTimeSpent(totalSec) {
   const sec = Math.max(0, Math.floor(Number(totalSec) || 0));
@@ -191,8 +192,7 @@ function AdminUsers() {
 
   useEffect(() => {
     fetchMetrics(page);
-    const interval = setInterval(() => fetchMetrics(page), 15000);
-    return () => clearInterval(interval);
+    return startVisiblePolling(() => fetchMetrics(page), 60000);
   }, [fetchMetrics, page]);
 
   const avgTimePerUser = useMemo(() => {

@@ -57,6 +57,7 @@ import {
 } from "../utils/gstin";
 import "./AdminShared.css";
 import "./AdminDashboard.css";
+import { startVisiblePolling } from "../utils/visiblePolling";
 
 const LOW_STOCK_THRESHOLD = 5;
 const NON_DISMISSIBLE_NOTIFICATION_IDS = [
@@ -431,13 +432,12 @@ function AdminDashboard() {
     };
 
     loadDashboard();
-    const pollId = setInterval(() => {
-      loadDashboard(true);
-    }, 15000);
+    // Every 60 s, and only while this tab is visible (each refresh loads all orders and products)
+    const stopPolling = startVisiblePolling(() => loadDashboard(true), 60000);
 
     return () => {
       active = false;
-      clearInterval(pollId);
+      stopPolling();
     };
   }, [token, canAccessOrders]);
 
