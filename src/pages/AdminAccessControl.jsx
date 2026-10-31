@@ -9,6 +9,7 @@ import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminDashboard.css";
 import "./AdminUsers.css";
+import { startVisiblePolling } from "../utils/visiblePolling";
 
 const ALL_PAGES = [
   { key: "dashboard", icon: LayoutDashboard, label: "Dashboard", desc: "Overview & metrics" },
@@ -69,8 +70,7 @@ function AdminAccessControl() {
 
   useEffect(() => {
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 15000);
-    return () => clearInterval(interval);
+    return startVisiblePolling(fetchMetrics, 60000);
   }, [token]);
 
   useEffect(() => {
