@@ -14,7 +14,9 @@ import {
   Minus,
   Megaphone,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import axios from "axios";
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from "chart.js";
@@ -44,6 +46,7 @@ const LIST_FILTERS = [
   { id: "Admin", label: "Admins" },
   { id: "All", label: "Everyone" }
 ];
+const SOURCE_PREVIEW = 10;
 const SORTS = [
   { id: "recent", label: "Recently active" },
   { id: "newest", label: "Newest sign-ups" },
@@ -188,6 +191,7 @@ function AdminUsers() {
   const [listFilter, setListFilter] = useState("Customer");
   const [sort, setSort] = useState("recent");
   const [page, setPage] = useState(1);
+  const [showAllSources, setShowAllSources] = useState(false);
 
   useEffect(() => {
     const next = searchInput.trim();
@@ -214,6 +218,13 @@ function AdminUsers() {
     return [...rows.filter((r) => r.source !== "Not tracked"), ...rows.filter((r) => r.source === "Not tracked")];
   }, [sources.data]);
   const maxSourceSignups = Math.max(1, ...sourceRows.map((r) => Number(r.signups) || 0));
+  // Top 10 sources by sign-ups; "Not tracked" always stays visible as the last row.
+  const trackedSourceCount = sourceRows.filter((r) => r.source !== "Not tracked").length;
+  const hasMoreSources = trackedSourceCount > SOURCE_PREVIEW;
+  const visibleSourceRows =
+    showAllSources || !hasMoreSources
+      ? sourceRows
+      : [...sourceRows.slice(0, SOURCE_PREVIEW), ...sourceRows.filter((r) => r.source === "Not tracked")];
 
   const trendChart = useMemo(() => {
     const trend = Array.isArray(overview.data?.trend) ? overview.data.trend : [];
@@ -440,7 +451,7 @@ function AdminUsers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sourceRows.map((row, idx) => {
+                  {visibleSourceRows.map((row, idx) => {
                     const notTracked = row.source === "Not tracked";
                     return (
                       <tr key={`${row.source}-${row.medium}-${row.campaign}-${idx}`} className={notTracked ? "is-muted" : ""}>
@@ -467,6 +478,15 @@ function AdminUsers() {
                   })}
                 </tbody>
               </table>
+              {hasMoreSources ? (
+                <button type="button" className="ua-more" onClick={() => setShowAllSources((v) => !v)} aria-expanded={showAllSources}>
+                  {showAllSources ? (
+                    <>Show top {SOURCE_PREVIEW} <ChevronUp size={15} aria-hidden="true" /></>
+                  ) : (
+                    <>Show all {num(trackedSourceCount)} sources <ChevronDown size={15} aria-hidden="true" /></>
+                  )}
+                </button>
+              ) : null}
             </div>
           )}
         </section>
