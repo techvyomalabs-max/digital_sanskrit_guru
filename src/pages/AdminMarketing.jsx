@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BarChart3, Mail, Bell, Users, AlertTriangle, FileText, Handshake, CheckCircle2, XCircle, Hourglass, Palette, Save, Rocket, Smartphone, Building2, Gift, Heart, Lightbulb } from "lucide-react";
 import axios from "axios";
 import { apiBaseUrl } from "../lib/api";
 import AdminSidebar from "../components/admin/AdminSidebar";
@@ -8,13 +9,13 @@ import "./AdminMarketing.css";
 import "./AdminShared.css";
 
 const TABS = [
-  { label: "Overview", icon: "📊" },
-  { label: "Email Campaign", icon: "✉️" },
-  { label: "Push Notification", icon: "🔔" },
-  { label: "Customer Segments", icon: "👥" },
-  { label: "Low-Stock Alerts", icon: "⚠️" },
-  { label: "Order Email Draft", icon: "📝" },
-  { label: "Sponsors", icon: "🤝" }
+  { label: "Overview", icon: BarChart3 },
+  { label: "Email Campaign", icon: Mail },
+  { label: "Push Notification", icon: Bell },
+  { label: "Customer Segments", icon: Users },
+  { label: "Low-Stock Alerts", icon: AlertTriangle },
+  { label: "Order Email Draft", icon: FileText },
+  { label: "Sponsors", icon: Handshake }
 ];
 
 function AdminMarketing() {
@@ -679,7 +680,7 @@ function AdminMarketing() {
               className={`mkt-tab ${activeTab === i ? "active" : ""}`}
               onClick={() => setActiveTab(i)}
             >
-              <span className="mkt-tab-icon">{tab.icon}</span>
+              <span className="mkt-tab-icon"><tab.icon size={16} aria-hidden="true" /></span>
               <span>{tab.label}</span>
               {i === 4 && stats?.lowStockCount > 0 && (
                 <span className="mkt-badge">{stats.lowStockCount}</span>
@@ -697,21 +698,21 @@ function AdminMarketing() {
               <>
                 <div className="mkt-stat-grid">
                   <div className="mkt-stat-card">
-                    <span className="mkt-stat-icon">🔔</span>
+                    <span className="mkt-stat-icon"><Bell size={22} aria-hidden="true" /></span>
                     <div>
                       <p className="mkt-stat-label">Push Subscribers</p>
                       <p className="mkt-stat-value">{stats.pushSubscribers}</p>
                     </div>
                   </div>
                   <div className="mkt-stat-card">
-                    <span className="mkt-stat-icon">✉️</span>
+                    <span className="mkt-stat-icon"><Mail size={22} aria-hidden="true" /></span>
                     <div>
                       <p className="mkt-stat-label">Email Recipients</p>
                       <p className="mkt-stat-value">{stats.emailSubscribers}</p>
                     </div>
                   </div>
                   <div className={`mkt-stat-card ${stats.lowStockCount > 0 ? "mkt-stat-warn" : ""}`}>
-                    <span className="mkt-stat-icon">⚠️</span>
+                    <span className="mkt-stat-icon"><AlertTriangle size={22} aria-hidden="true" /></span>
                     <div>
                       <p className="mkt-stat-label">Low-Stock Products</p>
                       <p className="mkt-stat-value">{stats.lowStockCount}</p>
@@ -729,7 +730,15 @@ function AdminMarketing() {
 
                 <div className="mkt-push-banner">
                   <p className="mkt-push-label">Your browser push status:&nbsp;
-                    <strong>{pushPermission === "granted" ? "✅ Subscribed" : pushPermission === "denied" ? "❌ Blocked" : "⏳ Not enabled"}</strong>
+                    <strong>
+                      {pushPermission === "granted" ? (
+                        <><CheckCircle2 size={14} className="ui-inline-icon" aria-hidden="true" />Subscribed</>
+                      ) : pushPermission === "denied" ? (
+                        <><XCircle size={14} className="ui-inline-icon" aria-hidden="true" />Blocked</>
+                      ) : (
+                        <><Hourglass size={14} className="ui-inline-icon" aria-hidden="true" />Not enabled</>
+                      )}
+                    </strong>
                   </p>
                   {pushPermission !== "granted" && pushPermission !== "denied" && (
                     <button className="primary-btn" onClick={requestPushPermission}>
@@ -754,7 +763,7 @@ function AdminMarketing() {
             <div className="card mkt-card">
               <div className="mkt-stock-header">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>🎨 Email Branding & Company Logo</h3>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}><Palette size={17} className="ui-inline-icon" aria-hidden="true" />Email Branding & Company Logo</h3>
                   <p className="mkt-hint" style={{ margin: "4px 0 0" }}>Customize your company logo, header branding color, and footer notice for campaign broadcasts.</p>
                 </div>
                 <button
@@ -763,7 +772,7 @@ function AdminMarketing() {
                   onClick={saveCampaignBrandingSettings}
                   disabled={isSavingCampaignBranding}
                 >
-                  {isSavingCampaignBranding ? "Saving..." : "💾 Save Branding Defaults"}
+                  {isSavingCampaignBranding ? "Saving..." : <><Save size={14} className="ui-inline-icon" aria-hidden="true" />Save Branding Defaults</>}
                 </button>
               </div>
 
@@ -942,7 +951,7 @@ function AdminMarketing() {
 
                 <div className="mkt-actions">
                   <button className="primary-btn" onClick={sendEmailCampaign} disabled={isSendingEmail}>
-                    {isSendingEmail ? "Sending..." : `🚀 Send Broadcast (${isLoadingPreview ? "..." : recipientCount} recipients)`}
+                    {isSendingEmail ? "Sending..." : <><Rocket size={14} className="ui-inline-icon" aria-hidden="true" />{`Send Broadcast (${isLoadingPreview ? "..." : recipientCount} recipients)`}</>}
                   </button>
                 </div>
               </div>
@@ -950,7 +959,7 @@ function AdminMarketing() {
               {/* Right Column: Live Email Inbox Preview Stage */}
               <div className="card mkt-card mkt-live-email-card">
                 <div className="mkt-live-header">
-                  <span className="mkt-live-title">📱 Live Inbox Preview</span>
+                  <span className="mkt-live-title"><Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />Live Inbox Preview</span>
                   <span className="mkt-live-tag">HTML Preview</span>
                 </div>
 
@@ -959,7 +968,7 @@ function AdminMarketing() {
                     {campaignLogoUrl.trim() ? (
                       <img src={campaignLogoUrl.trim()} alt="Company Logo" className="mkt-email-logo-img" />
                     ) : (
-                      <div className="mkt-email-logo-placeholder">🏢 Company Logo</div>
+                      <div className="mkt-email-logo-placeholder"><Building2 size={14} className="ui-inline-icon" aria-hidden="true" />Company Logo</div>
                     )}
                     <h4>{campaignHeaderText || "Digital Sanskrit Guru"}</h4>
                   </div>
@@ -1004,7 +1013,7 @@ function AdminMarketing() {
             </div>
 
             <div className="card mkt-card">
-              <h3>🎁 Automated Abandoned Wishlist Reminders</h3>
+              <h3><Gift size={18} className="ui-inline-icon" aria-hidden="true" />Automated Abandoned Wishlist Reminders</h3>
               <p className="mkt-hint">
                 Automatically sends personalized HTML reminder emails to registered users who saved products to their Wishlist but haven't purchased after 24 hours. Includes direct <strong>Buy Now</strong> buttons & product thumbnails.
               </p>
@@ -1017,10 +1026,10 @@ function AdminMarketing() {
                   style={{ flex: 1, minWidth: "220px" }}
                 />
                 <button className="secondary-btn" onClick={handleSendTestWishlistEmail} disabled={isSendingWishlistTest}>
-                  {isSendingWishlistTest ? "Sending Test..." : "✉️ Send Test Wishlist Email"}
+                  {isSendingWishlistTest ? "Sending Test..." : <><Mail size={14} className="ui-inline-icon" aria-hidden="true" />Send Test Wishlist Email</>}
                 </button>
                 <button className="primary-btn" onClick={handleTriggerWishlistNudges} disabled={isTriggeringWishlistNudges}>
-                  {isTriggeringWishlistNudges ? "Running..." : "🚀 Run Wishlist Nudges Now"}
+                  {isTriggeringWishlistNudges ? "Running..." : <><Rocket size={14} className="ui-inline-icon" aria-hidden="true" />Run Wishlist Nudges Now</>}
                 </button>
               </div>
               {wishlistTestMsg && (
@@ -1072,7 +1081,15 @@ function AdminMarketing() {
           <div className="mkt-section">
             <div className="mkt-push-banner">
               <p className="mkt-push-label">Browser push status:&nbsp;
-                <strong>{pushPermission === "granted" ? "✅ Granted" : pushPermission === "denied" ? "❌ Blocked" : "⏳ Not requested"}</strong>
+                <strong>
+                  {pushPermission === "granted" ? (
+                    <><CheckCircle2 size={14} className="ui-inline-icon" aria-hidden="true" />Granted</>
+                  ) : pushPermission === "denied" ? (
+                    <><XCircle size={14} className="ui-inline-icon" aria-hidden="true" />Blocked</>
+                  ) : (
+                    <><Hourglass size={14} className="ui-inline-icon" aria-hidden="true" />Not requested</>
+                  )}
+                </strong>
               </p>
               {pushPermission !== "granted" && pushPermission !== "denied" && (
                 <button className="primary-btn" onClick={requestPushPermission}>
@@ -1293,7 +1310,7 @@ function AdminMarketing() {
               {isLoadingStock ? (
                 <p className="mkt-empty">Loading...</p>
               ) : lowStockProducts.length === 0 ? (
-                <p className="mkt-empty">✅ No products are below the threshold of {threshold} units.</p>
+                <p className="mkt-empty"><CheckCircle2 size={15} className="ui-inline-icon" aria-hidden="true" />No products are below the threshold of {threshold} units.</p>
               ) : (
                 <div className="mkt-table-wrap">
                   <table className="mkt-table">
@@ -1312,7 +1329,7 @@ function AdminMarketing() {
                           </td>
                           <td>
                             {p.wishlistCount > 0 ? (
-                              <span className="mkt-wishlist-count">❤️ {p.wishlistCount} user(s)</span>
+                              <span className="mkt-wishlist-count"><Heart size={13} className="ui-inline-icon" aria-hidden="true" />{p.wishlistCount} user(s)</span>
                             ) : "—"}
                           </td>
                         </tr>
@@ -1435,12 +1452,12 @@ function AdminMarketing() {
                   rows={12}
                   value={orderEmailBody}
                   onChange={(e) => setOrderEmailBody(e.target.value)}
-                  placeholder="<h2>Thank you for your order! 🎉</h2>..."
+                  placeholder="<h2>Thank you for your order!</h2>..."
                 />
               </div>
 
               <div className="mkt-template-docs">
-                <h4>💡 Supported Placeholders</h4>
+                <h4><Lightbulb size={15} className="ui-inline-icon" aria-hidden="true" />Supported Placeholders</h4>
                 <p>Use these tags inside the Subject or Body to insert order details dynamically:</p>
                 <ul>
                   <li><code>{"{{USER_NAME}}"}</code>: Customer's display name</li>

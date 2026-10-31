@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Lightbulb } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -22,6 +23,7 @@ import "./Home.css";
 import "./SearchResults.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { scoreProduct, getSearchSuggestion, searchWebsite } from "../utils/searchText";
+import { CategoryIcon } from "../utils/categoryIcons";
 
 const VALID_SORT_OPTIONS = ["relevance", "latest", "rating", "priceLow", "priceHigh"];
 
@@ -271,7 +273,7 @@ function SearchResults() {
             <div className="search-results-category-chips">
               {matchingCategories.map((cat) => (
                 <Link key={cat.name} to={cat.url} className="search-results-category-chip">
-                  <span className="search-results-chip-icon">{cat.icon}</span>
+                  <span className="search-results-chip-icon"><CategoryIcon category={cat.name} size={15} aria-hidden="true" /></span>
                   <span className="search-results-chip-name">{cat.name}</span>
                   {cat.count > 0 && <span className="search-results-chip-count">({cat.count})</span>}
                 </Link>

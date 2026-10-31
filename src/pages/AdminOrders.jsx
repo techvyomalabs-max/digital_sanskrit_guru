@@ -7,7 +7,17 @@ import {
   CalendarDays,
   RotateCcw,
   ArrowUpDown,
-  X
+  X,
+  AlertTriangle,
+  Zap,
+  Package,
+  Check,
+  Truck,
+  ExternalLink,
+  CheckCircle2,
+  Hourglass,
+  XCircle,
+  Inbox
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -1246,7 +1256,7 @@ function AdminOrders() {
                               className="admin-order-stock-issue"
                               title={(order.stockIssueDetails || []).join("\n") || "Paid but stock could not be reserved"}
                             >
-                              ⚠ Stock issue
+                              <AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />Stock issue
                             </span>
                           )}
                         </div>
@@ -1275,7 +1285,11 @@ function AdminOrders() {
                               {/* Header: Type Badge & Current Status */}
                               <div className="fulfillment-card-header">
                                 <span className={`fulfillment-type-badge ${isDigitalOnly ? "digital" : "physical"}`}>
-                                  {isDigitalOnly ? "⚡ Digital Order" : "📦 Physical Parcel"}
+                                  {isDigitalOnly ? (
+                                  <><Zap size={13} className="ui-inline-icon" aria-hidden="true" />Digital Order</>
+                                ) : (
+                                  <><Package size={13} className="ui-inline-icon" aria-hidden="true" />Physical Parcel</>
+                                )}
                                 </span>
                                 <span className={`admin-order-status status-${statusKey}`}>
                                   {displayStatus}
@@ -1286,7 +1300,7 @@ function AdminOrders() {
                               {!isCancelled ? (
                                 isDigitalOnly ? (
                                   <div className="fulfillment-digital-status">
-                                    <span className="digital-status-dot">✓</span>
+                                    <span className="digital-status-dot"><Check size={12} aria-hidden="true" /></span>
                                     <span>
                                       {hasExternalDelivery(order.items)
                                         ? "Digital item (external link)"
@@ -1307,7 +1321,7 @@ function AdminOrders() {
                                           className={`pipeline-step ${isPassed ? "completed" : ""} ${isCurrent ? "current" : ""} ${isUpcoming ? "upcoming" : ""}`}
                                         >
                                           <div className="pipeline-dot">
-                                            {isPassed || (isCurrent && stepName === "Delivered") ? "✓" : sIdx + 1}
+                                            {isPassed || (isCurrent && stepName === "Delivered") ? <Check size={13} strokeWidth={3} aria-label="Done" /> : sIdx + 1}
                                           </div>
                                           <span className="pipeline-label">{stepName}</span>
                                           {sIdx < 2 && <div className="pipeline-connector" />}
@@ -1318,7 +1332,7 @@ function AdminOrders() {
                                 )
                               ) : (
                                 <div className="fulfillment-cancelled-banner">
-                                  <span>✕ Order Cancelled</span>
+                                  <span><X size={13} className="ui-inline-icon" aria-hidden="true" />Order Cancelled</span>
                                 </div>
                               )}
 
@@ -1333,10 +1347,10 @@ function AdminOrders() {
                                     title="Open Courier Live Tracking"
                                   >
                                     <span className="tracking-courier-name">
-                                      🚚 {order.courierPartner || "Courier"}:
+                                      <Truck size={13} className="ui-inline-icon" aria-hidden="true" />{order.courierPartner || "Courier"}:
                                     </span>
                                     <span className="tracking-number-code">#{order.trackingId}</span>
-                                    <span className="tracking-external-icon">↗</span>
+                                    <span className="tracking-external-icon"><ExternalLink size={12} aria-hidden="true" /></span>
                                   </a>
                                 </div>
                               ) : null}
@@ -1363,7 +1377,7 @@ function AdminOrders() {
                                       disabled={updatingOrderId === order._id}
                                       onClick={() => updateStatus(order._id, "Shipped")}
                                     >
-                                      {updatingOrderId === order._id ? "Updating..." : "🚚 Mark Shipped"}
+                                      {updatingOrderId === order._id ? "Updating..." : <><Truck size={13} className="ui-inline-icon" aria-hidden="true" />Mark Shipped</>}
                                     </button>
                                   )}
                                   {displayStatus === "Shipped" && canProgressStatus && (
@@ -1373,7 +1387,7 @@ function AdminOrders() {
                                       disabled={updatingOrderId === order._id}
                                       onClick={() => updateStatus(order._id, "Delivered")}
                                     >
-                                      {updatingOrderId === order._id ? "Updating..." : "📦 Mark Delivered"}
+                                      {updatingOrderId === order._id ? "Updating..." : <><Package size={13} className="ui-inline-icon" aria-hidden="true" />Mark Delivered</>}
                                     </button>
                                   )}
                                   {["On Hold", "Pending"].includes(displayStatus) && (
@@ -1383,7 +1397,7 @@ function AdminOrders() {
                                       disabled={updatingOrderId === order._id}
                                       onClick={() => updateStatus(order._id, "Cancelled")}
                                     >
-                                      {updatingOrderId === order._id ? "Updating..." : "✕ Cancel"}
+                                      {updatingOrderId === order._id ? "Updating..." : <><X size={13} className="ui-inline-icon" aria-hidden="true" />Cancel</>}
                                     </button>
                                   )}
                                   {Number(user?.adminLevel) === 1 &&
@@ -1398,7 +1412,7 @@ function AdminOrders() {
                                       onClick={() => handleManualMarkPaid(order._id)}
                                       title="Mark Paid with mandatory reason"
                                     >
-                                      {updatingOrderId === order._id ? "Updating..." : "✓ Mark Paid"}
+                                      {updatingOrderId === order._id ? "Updating..." : <><Check size={13} className="ui-inline-icon" aria-hidden="true" />Mark Paid</>}
                                     </button>
                                   )}
                                 </div>
@@ -1419,13 +1433,13 @@ function AdminOrders() {
                                     </small>
                                   ) : order?.paymentMeta?.razorpayRefundId ? (
                                     <small style={{ display: "block", fontSize: "10px", color: "#6366f1", fontFamily: "monospace", margin: "2px 0 4px" }}>
-                                      ⚡ RZP: {order.paymentMeta.razorpayRefundId}
+                                      <Zap size={12} className="ui-inline-icon" aria-hidden="true" />RZP: {order.paymentMeta.razorpayRefundId}
                                     </small>
                                   ) : null}
                                   {canUpdateOrders ? (
                                     order?.refundStatus === "Refunded" ? (
                                       <div style={{ fontSize: "11px", fontWeight: 700, color: "#166534", marginTop: "4px" }}>
-                                        ✓ Refund Completed
+                                        <CheckCircle2 size={13} className="ui-inline-icon" aria-hidden="true" />Refund Completed
                                       </div>
                                     ) : (
                                       <div className="admin-refund-actions">
@@ -1562,7 +1576,7 @@ function AdminOrders() {
                                         {returnStatus === "Approved" ? (
                                           <div style={{ marginTop: "4px" }}>
                                             <p className="admin-status-note" style={{ color: "#d97706", fontWeight: 600 }}>
-                                              ⏳ Awaiting return
+                                              <Hourglass size={13} className="ui-inline-icon" aria-hidden="true" />Awaiting return
                                             </p>
                                             {item?.returnRequest?.shipment?.courier && (
                                               <p className="admin-status-note">
@@ -1725,10 +1739,10 @@ function AdminOrders() {
             >
               <div className="admin-action-modal-header">
                 <h3>
-                  {actionModal.type === "shipped" && "📦"}
-                  {actionModal.type === "cancelled" && "❌"}
-                  {actionModal.type === "rejectReturn" && "⚠️"}
-                  {actionModal.type === "markReceived" && "📥"}
+                  {actionModal.type === "shipped" && <Package size={18} className="ui-inline-icon" aria-hidden="true" />}
+                  {actionModal.type === "cancelled" && <XCircle size={18} className="ui-inline-icon" aria-hidden="true" />}
+                  {actionModal.type === "rejectReturn" && <AlertTriangle size={18} className="ui-inline-icon" aria-hidden="true" />}
+                  {actionModal.type === "markReceived" && <Inbox size={18} className="ui-inline-icon" aria-hidden="true" />}
                   {actionModal.title} {actionModal.orderNumber ? `#${actionModal.orderNumber}` : ""}
                 </h3>
                 <button
@@ -1737,14 +1751,14 @@ function AdminOrders() {
                   onClick={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
                   aria-label="Close"
                 >
-                  ✕
+                  <X size={16} aria-hidden="true" />
                 </button>
               </div>
 
               <form onSubmit={handleModalSubmit}>
                 <div className="admin-action-modal-body">
                   {actionModal.error && (
-                    <p className="admin-action-modal-error">⚠️ {actionModal.error}</p>
+                    <p className="admin-action-modal-error"><AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />{actionModal.error}</p>
                   )}
 
                   {actionModal.type === "shipped" && (

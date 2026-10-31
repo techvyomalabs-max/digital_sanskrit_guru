@@ -39,7 +39,12 @@ import {
   Compass,
   Grid,
   Heart,
-  Sparkles
+  Sparkles,
+  Hourglass,
+  Smartphone,
+  Lightbulb,
+  Ticket,
+  Link2
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
@@ -1135,7 +1140,7 @@ function MyOrders() {
                                             )}
                                             {shipmentInputs[itemId]?.error && (
                                               <span style={{ color: "#dc2626", fontSize: "11.5px", width: "100%", display: "block" }}>
-                                                ⚠️ {shipmentInputs[itemId].error}
+                                                <AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{shipmentInputs[itemId].error}
                                               </span>
                                             )}
                                           </div>
@@ -1201,9 +1206,9 @@ function MyOrders() {
                                       <div className="my-order-digital-head">
                                         {isExternalOrCombo
                                           ? (isAccessPending(item)
-                                              ? "⏳ Access being set up"
+                                              ? <><Hourglass size={14} className="ui-inline-icon" aria-hidden="true" />Access being set up</>
                                               : "Digital item, available in My Digital Library")
-                                          : "⚡ Digital Reader Access Granted"}
+                                          : <><Zap size={14} className="ui-inline-icon" aria-hidden="true" />Digital Reader Access Granted</>}
                                       </div>
                                       <div className="my-order-digital-btns">
                                         {isExternalOrCombo ? (
@@ -1278,8 +1283,8 @@ function MyOrders() {
                                                 String(item.digitalType || item.product?.digitalType || "")
                                                   .toLowerCase()
                                                   .includes("flipbook")
-                                                  ? "📖 Read Flipbook"
-                                                  : "📖 Read Web Version"}
+                                                  ? <><BookOpen size={15} className="ui-inline-icon" aria-hidden="true" />Read Flipbook</>
+                                                  : <><BookOpen size={15} className="ui-inline-icon" aria-hidden="true" />Read Web Version</>}
                                               </button>
                                             )}
                                             {(item.kindleLink || String(item.name || "").toLowerCase().includes("kindle")) && (
@@ -1289,7 +1294,7 @@ function MyOrders() {
                                                 rel="noopener noreferrer"
                                                 className="my-order-digital-btn-kindle"
                                               >
-                                                📱 View Kindle Edition ↗
+                                                <Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />View Kindle Edition <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                                               </a>
                                             )}
                                             <button
@@ -1297,7 +1302,7 @@ function MyOrders() {
                                               className="my-order-digital-btn-guide"
                                               onClick={() => setActiveKindleGuideItem(item)}
                                             >
-                                              💡 How to Access
+                                              <Lightbulb size={14} className="ui-inline-icon" aria-hidden="true" />How to Access
                                             </button>
                                           </>
                                         )}
@@ -1311,7 +1316,7 @@ function MyOrders() {
                                 <div className="my-order-gift-box">
                                   <div className="my-order-gift-inner">
                                     <div>
-                                      <span className="my-order-gift-title">🎟️ 1-Time Gift Pass Code</span>
+                                      <span className="my-order-gift-title"><Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code</span>
                                       <code className="my-order-gift-code">
                                         {item.giftCode ||
                                           (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||
@@ -1331,7 +1336,7 @@ function MyOrders() {
                                         }
                                       }}
                                     >
-                                      📋 Copy Code
+                                      <Copy size={14} className="ui-inline-icon" aria-hidden="true" />Copy Code
                                     </button>
                                   </div>
                                 </div>
@@ -1356,7 +1361,7 @@ function MyOrders() {
                                   rel="noopener noreferrer"
                                   className="my-order-reorder-btn my-order-reorder-kindle-btn"
                                 >
-                                  Buy on Amazon ↗
+                                  Buy on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                                 </a>
                               ) : (
                                 <button
@@ -1583,7 +1588,7 @@ function MyOrders() {
                               rel="noopener noreferrer"
                               className="my-order-track-website-link"
                             >
-                              🔗 Track on {activeTracking[order._id].courier || "Delhivery"} Website ↗
+                              <Link2 size={14} className="ui-inline-icon" aria-hidden="true" />Track on {activeTracking[order._id].courier || "Delhivery"} Website <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                             </a>
                           </div>
                         )}
@@ -1823,7 +1828,7 @@ function MyOrders() {
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: "500px", textAlign: "left" }}
           >
-            <h3 style={{ margin: "0 0 6px", color: "var(--site-text)" }}>📱 Access Digital Content</h3>
+            <h3 style={{ margin: "0 0 6px", color: "var(--site-text)" }}><Smartphone size={18} className="ui-inline-icon" aria-hidden="true" />Access Digital Content</h3>
             <p style={{ margin: "0 0 14px", fontSize: "13px", color: "var(--site-text-soft)" }}>
               Instructions for reading <strong>{activeKindleGuideItem.name}</strong>.
             </p>
@@ -1837,7 +1842,7 @@ function MyOrders() {
                   backgroundColor: "var(--site-surface-muted)"
                 }}
               >
-                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}>📖 Web Reader</h4>
+                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}><BookOpen size={14} className="ui-inline-icon" aria-hidden="true" />Web Reader</h4>
                 <p style={{ margin: 0, fontSize: "12px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
                   Click <strong>"Read Web Version"</strong> on the order item to read directly in your browser.
                 </p>
@@ -1851,7 +1856,7 @@ function MyOrders() {
                   backgroundColor: "var(--site-surface-muted)"
                 }}
               >
-                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}>📱 Kindle / Amazon</h4>
+                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px" }}><Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />Kindle / Amazon</h4>
                 <p style={{ margin: 0, fontSize: "12px", color: "var(--site-text-soft)", lineHeight: 1.4 }}>
                   Open your Kindle app and use your Send-to-Kindle email to read.
                 </p>

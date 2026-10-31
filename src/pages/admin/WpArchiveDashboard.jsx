@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Package, Phone, Mail } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../../hooks/useAuth";
 import AdminSidebar from "../../components/admin/AdminSidebar";
@@ -100,7 +101,7 @@ function WpArchiveDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
           <div>
             <h1 style={{ fontSize: "24px", fontWeight: "800", color: "var(--site-text, #0f172a)", margin: 0 }}>
-              📦 WordPress Archive Dashboard
+              <Package size={22} className="ui-inline-icon" aria-hidden="true" />WordPress Archive Dashboard
             </h1>
             <p style={{ color: "var(--site-text-soft, #64748b)", fontSize: "14px", marginTop: "4px" }}>
               Search, filter, and audit historical WooCommerce orders with exact WP Order IDs
@@ -389,8 +390,8 @@ function WpArchiveDashboard() {
                     {selectedOrder.billing?.address}<br />
                     {selectedOrder.billing?.city}, {selectedOrder.billing?.state} {selectedOrder.billing?.pincode}<br />
                     {selectedOrder.billing?.country}<br />
-                    📞 {selectedOrder.billing?.phone || "N/A"}<br />
-                    ✉️ {selectedOrder.billingEmail}
+                    <Phone size={13} className="ui-inline-icon" aria-hidden="true" />{selectedOrder.billing?.phone || "N/A"}<br />
+                    <Mail size={13} className="ui-inline-icon" aria-hidden="true" />{selectedOrder.billingEmail}
                   </div>
                 </div>
 

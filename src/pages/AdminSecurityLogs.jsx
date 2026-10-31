@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ShieldCheck, Check, Copy } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
@@ -49,12 +50,12 @@ function AdminSecurityLogs() {
       } catch {}
       setTurnstileMessage(
         nextState
-          ? "✅ Cloudflare Turnstile is now ACTIVE across all forms."
-          : "⚠️ Cloudflare Turnstile is now DISABLED (forms will submit directly)."
+          ? "Cloudflare Turnstile is now ACTIVE across all forms."
+          : "Cloudflare Turnstile is now DISABLED (forms will submit directly)."
       );
       setTimeout(() => setTurnstileMessage(""), 5000);
     } catch (err) {
-      setTurnstileMessage("❌ Failed to update Turnstile setting.");
+      setTurnstileMessage("Failed to update Turnstile setting.");
     } finally {
       setSavingTurnstile(false);
     }
@@ -128,7 +129,7 @@ function AdminSecurityLogs() {
         <div className="card" style={{ marginBottom: "24px", padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px", border: turnstileEnabled ? "1px solid #10b981" : "1px solid #f59e0b" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px" }}>🛡️ Cloudflare Turnstile Bot Protection</h3>
+              <h3 style={{ margin: 0, fontSize: "18px" }}><ShieldCheck size={18} className="ui-inline-icon" aria-hidden="true" />Cloudflare Turnstile Bot Protection</h3>
               <span style={{ 
                 padding: "3px 10px", 
                 borderRadius: "20px", 
@@ -401,7 +402,11 @@ function AdminSecurityLogs() {
                         transition: "all 0.2s"
                       }}
                     >
-                      {copiedPayload ? "✓ Copied!" : "📋 Copy Payload"}
+                      {copiedPayload ? (
+                  <><Check size={14} className="ui-inline-icon" aria-hidden="true" />Copied!</>
+                ) : (
+                  <><Copy size={14} className="ui-inline-icon" aria-hidden="true" />Copy Payload</>
+                )}
                     </button>
                   </div>
                   <div style={{

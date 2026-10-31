@@ -1031,7 +1031,7 @@ router.get("/admin/signups-by-source", protect, admin, requireAdminPage("users")
 
 router.get("/me", protect, async (req, res) => {
   try {
-    const user = await User.findById(req.user).select("_id name email phone isAdmin adminLevel adminRole allowedPages addresses");
+    const user = await User.findById(req.user).select("_id name email phone isAdmin adminLevel adminRole allowedPages addresses hasLocalPassword googleSub");
     if (!user) return res.status(404).json({ message: "User not found" });
     const adminLevel = Number(user.adminLevel || 1);
     res.json({
@@ -1039,6 +1039,8 @@ router.get("/me", protect, async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone || "",
+      hasLocalPassword: user.hasLocalPassword !== false,
+      googleLinked: Boolean(user.googleSub),
       isAdmin: Boolean(user.isAdmin),
       adminLevel,
       adminRole: user.adminRole || (adminLevel === 1 ? "Super Admin" : "Page Level Sub-Admin"),
@@ -1122,6 +1124,7 @@ router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnsti
 
     const hashedPassword = await bcrypt.hash(password, 12);
     user.password = hashedPassword;
+    user.hasLocalPassword = true;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     user.tokenVersion = Number(user.tokenVersion || 0) + 1; // Invalidate previous active sessions
@@ -1131,6 +1134,24 @@ router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnsti
   } catch (err) {
     console.error("[Auth] Reset password error:", err.message);
     res.status(500).json({ message: "Failed to reset password. Please try again." });
+  }
+});
+
+// Emails the signed-in user a link to set a password (Google sign-in accounts)
+router.post("/set-password-link", protect, passwordResetLimiter, async (req, res) => {
+  try {
+    const user = await User.findById(req.user);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (user.hasLocalPassword !== false) {
+      return res.status(400).json({ message: "Your account already has a password. Use the form to change it." });
+    }
+    await sendPasswordResetEmail(user);
+    res.json({ message: `We've emailed a link to ${user.email}. It is valid for 1 hour.` });
+  } catch (err) {
+    console.error("[Auth] Set password link error:", err.message);
+    res.status(500).json({ message: "Failed to send the link. Please try again." });
   }
 });
 
@@ -1187,15 +1208,20 @@ router.put("/profile", protect, async (req, res) => {
     }
 
     if (password) {
-      if (user.hasLocalPassword !== false) {
-        const currentPassword = req.body.currentPassword;
-        if (!currentPassword) {
-          return res.status(400).json({ message: "Current password is required to set a new password." });
-        }
-        const isMatch = await bcrypt.compare(currentPassword, user.password);
-        if (!isMatch) {
-          return res.status(400).json({ message: "Current password is incorrect." });
-        }
+      // Google sign-in accounts have no password to confirm, so a logged-in session
+      // alone must not be enough to add one; they set it through an emailed link.
+      if (user.hasLocalPassword === false) {
+        return res.status(403).json({
+          message: "This account signs in with Google. Use \"Set a password\" to get a secure link by email."
+        });
+      }
+      const currentPassword = req.body.currentPassword;
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Current password is required to set a new password." });
+      }
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ message: "Current password is incorrect." });
       }
       const passwordValidation = validatePassword(password);
       if (!passwordValidation.isValid) {

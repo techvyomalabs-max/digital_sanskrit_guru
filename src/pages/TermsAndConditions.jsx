@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, ShieldCheck, Scale, AlertCircle, Globe, Phone, Mail, CheckCircle2, ExternalLink } from "lucide-react";
+import { BookOpen, ShieldCheck, Scale, AlertCircle, Globe, Phone, Mail, CheckCircle2, ExternalLink, ScrollText } from "lucide-react";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import "./TermsAndConditions.css";
 
@@ -29,7 +29,7 @@ function TermsAndConditions() {
 
         {/* Official Reference Banner */}
         <div className="policy-alert-banner terms-source-banner">
-          <div className="alert-icon">📜</div>
+          <div className="alert-icon"><ScrollText size={28} aria-hidden="true" /></div>
           <div className="alert-text">
             <strong>Official Organization Terms:</strong> Digital Sanskrit Guru is an educational portal by <strong>Vyoma Linguistic Labs Foundation</strong> (Section 8 Non-Profit Organization). This portal adheres to the official organization terms and conditions available at{" "}
             <a

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { AlignLeft, AlignCenter, AlignRight, Sliders, Type, Layout, Sparkles } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, Sliders, Type, Layout, Sparkles, Flame, Palette, Snowflake, PartyPopper, Image, Film, Camera, Link2, X, Upload, Eye, Monitor, Smartphone, ExternalLink, FolderOpen, Lightbulb, Blend, AppWindow, Zap, Save, Pencil, RotateCcw, Plus, Globe } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { uploadImageDataUrl, isUploadedImageUrl } from "../utils/mediaUpload";
@@ -27,11 +27,11 @@ const EMPTY_THEME_FORM = {
 };
 
 const ANIMATION_TYPES = [
-  { value: "diwali",    emoji: "🪔", label: "Diwali",    desc: "Gold & orange sparks" },
-  { value: "holi",      emoji: "🎨", label: "Holi",      desc: "Colourful powder puffs" },
-  { value: "christmas", emoji: "❄️", label: "Christmas",  desc: "Drifting snowflakes" },
-  { value: "newyear",   emoji: "🎆", label: "New Year",   desc: "Rising fireworks" },
-  { value: "confetti",  emoji: "🎉", label: "Confetti",  desc: "Rainbow confetti" }
+  { value: "diwali",    icon: Flame, label: "Diwali",    desc: "Gold & orange sparks" },
+  { value: "holi",      icon: Palette, label: "Holi",      desc: "Colourful powder puffs" },
+  { value: "christmas", icon: Snowflake, label: "Christmas",  desc: "Drifting snowflakes" },
+  { value: "newyear",   icon: Sparkles, label: "New Year",   desc: "Rising fireworks" },
+  { value: "confetti",  icon: PartyPopper, label: "Confetti",  desc: "Rainbow confetti" }
 ];
 
 const INTENSITIES = [
@@ -225,7 +225,7 @@ function AdminThemeSettings() {
 
   // Festive banner state
   const [bannerEnabled,   setBannerEnabled]   = useState(false);
-  const [bannerText,      setBannerText]      = useState("🎉 Festive Sale is Live!");
+  const [bannerText,      setBannerText]      = useState("Festive Sale is Live!");
   const [bannerBgFrom,    setBannerBgFrom]    = useState("#FF6B00");
   const [bannerBgTo,      setBannerBgTo]      = useState("#FFD700");
   const [bannerTextColor, setBannerTextColor] = useState("#ffffff");
@@ -321,7 +321,7 @@ function AdminThemeSettings() {
       // Load festive banner settings
       if (res.data?.festiveBanner) {
         setBannerEnabled(Boolean(res.data.festiveBanner.enabled));
-        setBannerText(String(res.data.festiveBanner.text      || "🎉 Festive Sale is Live!"));
+        setBannerText(String(res.data.festiveBanner.text      || "Festive Sale is Live!"));
         setBannerBgFrom(String(res.data.festiveBanner.bgFrom  || "#FF6B00"));
         setBannerBgTo(String(res.data.festiveBanner.bgTo      || "#FFD700"));
         setBannerTextColor(String(res.data.festiveBanner.textColor || "#ffffff"));
@@ -841,7 +841,11 @@ function AdminThemeSettings() {
                   color: activeHeroBanner.title?.trim() ? "#d97706" : "var(--admin-muted)",
                   border: `1px solid ${activeHeroBanner.title?.trim() ? "rgba(245, 158, 11, 0.4)" : "var(--admin-border)"}`
                 }}>
-                  {activeHeroBanner.title?.trim() ? "✨ Spotlight Mode" : "🖼️ Classic Graphic Mode"}
+                  {activeHeroBanner.title?.trim() ? (
+                    <><Sparkles size={13} className="ui-inline-icon" aria-hidden="true" />Spotlight Mode</>
+                  ) : (
+                    <><Image size={13} className="ui-inline-icon" aria-hidden="true" />Classic Graphic Mode</>
+                  )}
                 </span>
               </div>
               <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
@@ -850,13 +854,13 @@ function AdminThemeSettings() {
             </div>
             <div className="add-product-status-badges" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <span className={heroBanners.length > 1 ? "status-badge valid" : "status-badge"}>
-                🎞️ {heroBanners.length} Slide{heroBanners.length === 1 ? "" : "s"}
+                <Film size={13} className="ui-inline-icon" aria-hidden="true" />{heroBanners.length} Slide{heroBanners.length === 1 ? "" : "s"}
               </span>
               <span className={heroBanners.some((item) => item.image.trim()) ? "status-badge valid" : "status-badge"}>
-                📸 {heroBanners.filter((item) => item.image.trim()).length} Configured
+                <Camera size={13} className="ui-inline-icon" aria-hidden="true" />{heroBanners.filter((item) => item.image.trim()).length} Configured
               </span>
               <span className={heroBanners.some((item) => item.productId) ? "status-badge valid" : "status-badge"}>
-                🔗 Linked
+                <Link2 size={13} className="ui-inline-icon" aria-hidden="true" />Linked
               </span>
             </div>
           </div>
@@ -883,7 +887,7 @@ function AdminThemeSettings() {
                           onError={(e) => { e.currentTarget.style.display = "none"; }}
                         />
                       ) : (
-                        <span className="slide-card-empty-thumb">🖼️</span>
+                        <span className="slide-card-empty-thumb"><Image size={22} aria-hidden="true" /></span>
                       )}
                       <span className="slide-card-index">#{index + 1}</span>
                     </div>
@@ -893,7 +897,13 @@ function AdminThemeSettings() {
                         {banner.title?.trim() ? banner.title : `Slide ${index + 1}`}
                       </strong>
                       <span className="slide-card-mode-tag">
-                        {isSpotlight ? "✨ Spotlight" : isConfigured ? "🖼️ Graphic" : "⚪ Empty"}
+                        {isSpotlight ? (
+                          <><Sparkles size={11} className="ui-inline-icon" aria-hidden="true" />Spotlight</>
+                        ) : isConfigured ? (
+                          <><Image size={11} className="ui-inline-icon" aria-hidden="true" />Graphic</>
+                        ) : (
+                          "Empty"
+                        )}
                       </span>
                     </div>
 
@@ -923,9 +933,10 @@ function AdminThemeSettings() {
                           type="button"
                           className="slide-delete-btn"
                           title="Delete slide"
+                          aria-label="Delete slide"
                           onClick={() => removeHeroBanner(index)}
                         >
-                          ✕
+                          <X size={13} aria-hidden="true" />
                         </button>
                       )}
                     </div>
@@ -938,7 +949,7 @@ function AdminThemeSettings() {
                   ＋ Add Slide
                 </button>
                 <label className="hero-banner-admin-upload-btn">
-                  {isUploadingHeroBanners ? "Uploading..." : "📤 Batch Upload"}
+                  {isUploadingHeroBanners ? "Uploading..." : <><Upload size={14} className="ui-inline-icon" aria-hidden="true" />Batch Upload</>}
                   <input
                     type="file"
                     accept="image/*"
@@ -961,7 +972,7 @@ function AdminThemeSettings() {
           <div className="hero-banner-studio-preview-card" style={{ marginBottom: "24px" }}>
             <div className="studio-preview-topbar">
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span className="studio-preview-title">👁️ Live Interactive Preview</span>
+                <span className="studio-preview-title"><Eye size={15} className="ui-inline-icon" aria-hidden="true" />Live Interactive Preview</span>
                 <span className="studio-preview-badge">Slide #{activeHeroBannerIndex + 1}</span>
                 <span style={{ fontSize: "11px", color: "var(--admin-muted)" }}>• 100% Uncropped Scale</span>
               </div>
@@ -972,14 +983,14 @@ function AdminThemeSettings() {
                     className={`preview-switch-btn ${heroBannerPreviewMode === "desktop" ? "active" : ""}`}
                     onClick={() => setHeroBannerPreviewMode("desktop")}
                   >
-                    🖥️ Desktop View
+                    <Monitor size={14} className="ui-inline-icon" aria-hidden="true" />Desktop View
                   </button>
                   <button
                     type="button"
                     className={`preview-switch-btn ${heroBannerPreviewMode === "mobile" ? "active" : ""}`}
                     onClick={() => setHeroBannerPreviewMode("mobile")}
                   >
-                    📱 Mobile View
+                    <Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />Mobile View
                   </button>
                 </div>
                 <a
@@ -989,7 +1000,7 @@ function AdminThemeSettings() {
                   className="studio-preview-storefront-btn"
                   title="Open live storefront homepage in new tab"
                 >
-                  View on Storefront ↗
+                  View on Storefront <ExternalLink size={13} className="ui-inline-icon-end" aria-hidden="true" />
                 </a>
               </div>
             </div>
@@ -1042,7 +1053,7 @@ function AdminThemeSettings() {
                   </div>
                 ) : (
                   <div className="hero-banner-admin-empty">
-                    <span style={{ fontSize: "28px", marginBottom: "8px" }}>🖼️</span>
+                    <Image size={28} style={{ marginBottom: "8px" }} aria-hidden="true" />
                     <strong>No Desktop Banner Uploaded for Slide #{activeHeroBannerIndex + 1}</strong>
                     <span>Upload an image or paste a URL below to see the live studio preview</span>
                   </div>
@@ -1086,7 +1097,7 @@ function AdminThemeSettings() {
                       </div>
                     ) : (
                       <div className="hero-banner-admin-empty" style={{ padding: "30px 16px" }}>
-                        <span style={{ fontSize: "24px" }}>📱</span>
+                        <Smartphone size={24} aria-hidden="true" />
                         <strong>No Image Uploaded</strong>
                       </div>
                     )}
@@ -1101,7 +1112,7 @@ function AdminThemeSettings() {
             {/* Card 1: Artwork & Media Files */}
             <div className="hero-banner-config-card">
               <div className="config-card-header">
-                <span className="config-card-icon">🎨</span>
+                <span className="config-card-icon"><Palette size={20} aria-hidden="true" /></span>
                 <div>
                   <h4 className="config-card-title">Banner Artwork & Media</h4>
                   <p className="config-card-desc">Upload or link high-resolution graphics for desktop & mobile.</p>
@@ -1114,7 +1125,7 @@ function AdminThemeSettings() {
                   <label className="field-title">Desktop Banner Image <span className="required-tag">*</span></label>
                   <div className="field-action-btns">
                     <label className="hero-banner-btn-upload">
-                      {isUploadingDesktopHeroBanners ? "Uploading..." : "📁 Upload Image"}
+                      {isUploadingDesktopHeroBanners ? "Uploading..." : <><FolderOpen size={14} className="ui-inline-icon" aria-hidden="true" />Upload Image</>}
                       <input
                         type="file"
                         accept="image/*"
@@ -1136,7 +1147,7 @@ function AdminThemeSettings() {
 
                 {activeHeroBanner.image.startsWith("data:image/") || isUploadedImageUrl(activeHeroBanner.image) ? (
                   <div className="hero-banner-base64-badge-row">
-                    <span className="hero-banner-base64-badge">🖼️ Image File Uploaded</span>
+                    <span className="hero-banner-base64-badge"><Image size={12} className="ui-inline-icon" aria-hidden="true" />Image File Uploaded</span>
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
@@ -1173,7 +1184,7 @@ function AdminThemeSettings() {
                   <label className="field-title">Mobile Banner Image <span className="optional-tag">(Optional)</span></label>
                   <div className="field-action-btns">
                     <label className="hero-banner-btn-upload">
-                      {isUploadingMobileHeroBanners ? "Uploading..." : "📱 Upload Mobile Image"}
+                      {isUploadingMobileHeroBanners ? "Uploading..." : <><Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />Upload Mobile Image</>}
                       <input
                         type="file"
                         accept="image/*"
@@ -1195,7 +1206,7 @@ function AdminThemeSettings() {
 
                 {activeHeroBanner.mobileImage?.startsWith("data:image/") || isUploadedImageUrl(activeHeroBanner.mobileImage) ? (
                   <div className="hero-banner-base64-badge-row">
-                    <span className="hero-banner-base64-badge">📱 Mobile Image Uploaded</span>
+                    <span className="hero-banner-base64-badge"><Smartphone size={12} className="ui-inline-icon" aria-hidden="true" />Mobile Image Uploaded</span>
                     <button
                       type="button"
                       className="hero-banner-text-link-btn"
@@ -1230,7 +1241,7 @@ function AdminThemeSettings() {
             {/* Card 2: Spotlight Typography, Layout & Call-To-Actions */}
             <div className="hero-banner-config-card">
               <div className="config-card-header">
-                <span className="config-card-icon">✨</span>
+                <span className="config-card-icon"><Sparkles size={20} aria-hidden="true" /></span>
                 <div>
                   <h4 className="config-card-title">Spotlight Overlay & Styling</h4>
                   <p className="config-card-desc">Customize typography, positioning, alignment, and backdrop style.</p>
@@ -1239,7 +1250,7 @@ function AdminThemeSettings() {
 
               {/* Mode Helper Callout */}
               <div className="spotlight-mode-callout">
-                <span className="callout-icon">💡</span>
+                <span className="callout-icon"><Lightbulb size={18} aria-hidden="true" /></span>
                 <span className="callout-text">
                   <strong>Spotlight Mode:</strong> Entering a <em>Banner Headline</em> displays the live text overlay with buttons. Leave headline empty for full-bleed graphic mode.
                 </span>
@@ -1419,21 +1430,21 @@ function AdminThemeSettings() {
                       {[
                         {
                           type: "feathered",
-                          icon: "🌫️",
+                          icon: <Blend size={16} />,
                           label: "Feathered Fade",
                           desc: "Directional smooth dark gradient",
                           previewClass: "overlay-swatch-feathered"
                         },
                         {
                           type: "glass",
-                          icon: "🪟",
+                          icon: <AppWindow size={16} />,
                           label: "Glassmorphic Card",
                           desc: "Translucent frosted blur box",
                           previewClass: "overlay-swatch-glass"
                         },
                         {
                           type: "minimal",
-                          icon: "✨",
+                          icon: <Sparkles size={16} />,
                           label: "Minimal Shadow",
                           desc: "Unobstructed with text drop-glow",
                           previewClass: "overlay-swatch-minimal"
@@ -1535,7 +1546,7 @@ function AdminThemeSettings() {
                 onClick={handleOptimizeStoredImages}
                 disabled={isOptimizingStoredImages}
               >
-                {isOptimizingStoredImages ? "⚡ Optimizing..." : "⚡ Optimize Stored Images"}
+                {isOptimizingStoredImages ? <><Zap size={14} className="ui-inline-icon" aria-hidden="true" />Optimizing...</> : <><Zap size={14} className="ui-inline-icon" aria-hidden="true" />Optimize Stored Images</>}
               </button>
               <button
                 type="button"
@@ -1544,7 +1555,7 @@ function AdminThemeSettings() {
                 disabled={isSavingHeroBanner}
                 style={{ padding: "10px 24px", fontSize: "14px" }}
               >
-                {isSavingHeroBanner ? "Saving Banners..." : "💾 Save Hero Banners"}
+                {isSavingHeroBanner ? "Saving Banners..." : <><Save size={14} className="ui-inline-icon" aria-hidden="true" />Save Hero Banners</>}
               </button>
             </div>
           </div>
@@ -1633,8 +1644,9 @@ function AdminThemeSettings() {
                         }
                       }}
                       title="Edit theme colors"
+                      aria-label="Edit theme colors"
                     >
-                      ✏️
+                      <Pencil size={14} aria-hidden="true" />
                     </button>
                     {(option.isCustom || BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value && customThemes.some(ct => ct.id === t.value))) && (
                       <button
@@ -1650,7 +1662,7 @@ function AdminThemeSettings() {
                         }}
                         title={BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value) ? "Reset to default colors" : "Delete custom theme"}
                       >
-                        {BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value) ? "🔄" : "✕"}
+                        {BUILT_IN_THEME_DEFINITIONS.some(t => t.value === option.value) ? <RotateCcw size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
                       </button>
                     )}
                   </div>
@@ -1692,7 +1704,7 @@ function AdminThemeSettings() {
                     setThemeForm(EMPTY_THEME_FORM);
                   }}
                 >
-                  ➕ Create New Theme
+                  <Plus size={15} className="ui-inline-icon" aria-hidden="true" />Create New Theme
                 </button>
               )}
               <span className="pricing-badge">{editingThemeId ? "Editing" : "Custom"}</span>
@@ -1872,7 +1884,7 @@ function AdminThemeSettings() {
               <p>Display a festive particle animation across the entire storefront for celebrations.</p>
             </div>
             <span className={`pricing-badge${festiveEnabled ? " pricing-badge-active" : ""}`}>
-              {festiveEnabled ? "🎉 Active" : "Off"}
+              {festiveEnabled ? <><PartyPopper size={13} className="ui-inline-icon" aria-hidden="true" />Active</> : "Off"}
             </span>
           </div>
 
@@ -1905,7 +1917,7 @@ function AdminThemeSettings() {
                 className={`festive-type-card${festiveType === opt.value ? " active" : ""}`}
                 onClick={() => setFestiveType(opt.value)}
               >
-                <span className="festive-type-emoji">{opt.emoji}</span>
+                <span className="festive-type-emoji"><opt.icon size={24} aria-hidden="true" /></span>
                 <strong>{opt.label}</strong>
                 <small>{opt.desc}</small>
               </button>
@@ -1921,7 +1933,7 @@ function AdminThemeSettings() {
                   className="festive-type-card-select"
                   onClick={() => setFestiveType(anim.id)}
                 >
-                  <span className="festive-type-emoji">🌐</span>
+                  <span className="festive-type-emoji"><Globe size={24} aria-hidden="true" /></span>
                   <strong>{anim.name}</strong>
                   <small>Lottie</small>
                 </button>
@@ -1930,7 +1942,8 @@ function AdminThemeSettings() {
                   className="festive-custom-anim-delete"
                   onClick={() => handleDeleteCustomAnim(anim.id)}
                   title={`Delete ${anim.name}`}
-                >✕</button>
+                  aria-label={`Delete ${anim.name}`}
+                ><X size={13} aria-hidden="true" /></button>
               </div>
             ))}
           </div>
@@ -2058,7 +2071,8 @@ function AdminThemeSettings() {
                         setFestiveCustomColors(next);
                       }}
                       title="Clear"
-                    >✕</button>
+                      aria-label="Clear"
+                    ><X size={12} aria-hidden="true" /></button>
                   )}
                 </div>
               </label>
@@ -2097,7 +2111,7 @@ function AdminThemeSettings() {
               <p>A fixed bar at the top of every page. Customers can dismiss it. Changes are live immediately after saving.</p>
             </div>
             <span className={`pricing-badge${bannerEnabled ? " pricing-badge-active" : ""}`}>
-              {bannerEnabled ? "🎉 Live" : "Off"}
+              {bannerEnabled ? <><PartyPopper size={13} className="ui-inline-icon" aria-hidden="true" />Live</> : "Off"}
             </span>
           </div>
 
@@ -2144,7 +2158,7 @@ function AdminThemeSettings() {
                 type="text"
                 value={bannerText}
                 onChange={e => setBannerText(e.target.value)}
-                placeholder="e.g. 🎉 Diwali Sale is Live!"
+                placeholder="e.g. Diwali Sale is Live!"
                 maxLength={120}
               />
             </label>

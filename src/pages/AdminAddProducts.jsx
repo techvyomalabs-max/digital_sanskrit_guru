@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, FileText, Link2 } from "lucide-react";
 import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
@@ -9,6 +10,7 @@ import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
+import { categoryKey } from "../utils/categoryKey";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -194,7 +196,7 @@ function SearchableProductSelect({ products = [], value = "", onChange, placehol
               </div>
             </div>
           ) : (
-            <span className="searchable-select-placeholder">🔍 {placeholder}</span>
+            <span className="searchable-select-placeholder"><Search size={14} className="ui-inline-icon" aria-hidden="true" />{placeholder}</span>
           )}
         </div>
         <div className="searchable-select-actions">
@@ -203,23 +205,24 @@ function SearchableProductSelect({ products = [], value = "", onChange, placehol
               type="button"
               className="searchable-select-clear-btn"
               title="Clear selection"
+              aria-label="Clear selection"
               onClick={(e) => {
                 e.stopPropagation();
                 onChange("");
                 setSearchTerm("");
               }}
             >
-              ✕
+              <X size={14} aria-hidden="true" />
             </button>
           )}
-          <span className="searchable-select-arrow">{isOpen ? "▲" : "▼"}</span>
+          <span className="searchable-select-arrow">{isOpen ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}</span>
         </div>
       </div>
 
       {isOpen && (
         <div className="searchable-select-dropdown">
           <div className="searchable-select-search-header">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><Search size={15} aria-hidden="true" /></span>
             <input
               type="text"
               className="searchable-select-input"
@@ -237,8 +240,9 @@ function SearchableProductSelect({ products = [], value = "", onChange, placehol
                   e.stopPropagation();
                   setSearchTerm("");
                 }}
+                aria-label="Clear search"
               >
-                ✕
+                <X size={14} aria-hidden="true" />
               </button>
             )}
           </div>
@@ -275,7 +279,7 @@ function SearchableProductSelect({ products = [], value = "", onChange, placehol
                         {p.category || "General"} • ₹{p.price}
                       </span>
                     </div>
-                    {isSelected && <span className="searchable-select-checkmark">✓</span>}
+                    {isSelected && <span className="searchable-select-checkmark"><Check size={14} strokeWidth={3} aria-hidden="true" /></span>}
                   </div>
                 );
               })
@@ -1228,11 +1232,12 @@ function AdminAddProducts() {
       return;
     }
 
-    const exists = categoryOptions.some(
-      (option) => option.toLowerCase() === value.toLowerCase() && option.toLowerCase() !== editingCategoryName.toLowerCase()
+    // Spacing and capital letters don't make a new category ("Book-Paperback" = "Book - Paperback")
+    const existing = categoryOptions.find(
+      (option) => categoryKey(option) === categoryKey(value) && categoryKey(option) !== categoryKey(editingCategoryName)
     );
-    if (exists) {
-      setCategoryMessage("That category already exists.");
+    if (existing) {
+      setCategoryMessage(`That category already exists as "${existing}".`);
       return;
     }
 
@@ -2464,7 +2469,7 @@ function AdminAddProducts() {
               transition: "all 0.2s ease"
             }}
           >
-            {isFormOpen && !editingProduct ? "✕ Close Form" : "+ Add New Product"}
+            {isFormOpen && !editingProduct ? <><X size={14} className="ui-inline-icon" aria-hidden="true" />Close Form</> : "+ Add New Product"}
           </button>
         </div>
 
@@ -2559,8 +2564,9 @@ function AdminAddProducts() {
                       flexShrink: 0
                     }}
                     title="Close Pop-up"
+                    aria-label="Close"
                   >
-                    ✕
+                    <X size={18} aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -2601,7 +2607,7 @@ function AdminAddProducts() {
                 {formMessage && formMessage.includes("successfully") && (
                   <div className="admin-toast-banner">
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "18px" }}>✅</span>
+                      <CheckCircle2 size={18} aria-hidden="true" />
                       <span>{formMessage}</span>
                     </div>
                     <span style={{ fontSize: "11.5px", opacity: 0.85, fontWeight: 500 }}>Closing pop-up...</span>
@@ -2812,7 +2818,7 @@ function AdminAddProducts() {
                                 onClick={handleDeleteCategory}
                                 title={`Delete "${editingCategoryName}" category`}
                               >
-                                🗑 Delete
+                                <Trash2 size={13} className="ui-inline-icon" aria-hidden="true" />Delete
                               </button>
                             </>
                           ) : null}
@@ -2892,8 +2898,8 @@ function AdminAddProducts() {
                       />
                       <span>
                         {productType === "bundle"
-                          ? "💻 Everything in this combo is digital (nothing is shipped)"
-                          : "💻 Digital / Online Product (E-book, Flipbook, Course, Kindle)"}
+                          ? <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Everything in this combo is digital (nothing is shipped)</>
+                          : <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Digital / Online Product (E-book, Flipbook, Course, Kindle)</>}
                       </span>
                     </label>
                   )}
@@ -3031,7 +3037,7 @@ function AdminAddProducts() {
                                 );
                                 return (
                                   <option key={option} value={option}>
-                                    {isBuiltIn ? "🔒 " : ""}{getDigitalFormatTypeLabel(option)}
+                                    {getDigitalFormatTypeLabel(option)}{isBuiltIn ? " (built-in)" : ""}
                                   </option>
                                 );
                               })}
@@ -3052,7 +3058,7 @@ function AdminAddProducts() {
                                   fontWeight: 500
                                 }}
                               >
-                                🔒 Built-in
+                                <Lock size={12} className="ui-inline-icon" aria-hidden="true" />Built-in
                               </span>
                             ) : (
                               <button
@@ -3095,7 +3101,7 @@ function AdminAddProducts() {
                                     onClick={handleDeleteDigitalType}
                                     title={`Delete "${editingDigitalTypeName}" format type`}
                                   >
-                                    🗑 Delete
+                                    <Trash2 size={13} className="ui-inline-icon" aria-hidden="true" />Delete
                                   </button>
                                 </>
                               ) : null}
@@ -3168,7 +3174,7 @@ function AdminAddProducts() {
                   {productType !== "bundle" && (
                     <div className="admin-course-link-box">
                       <label className="admin-field admin-field-wide">
-                        <span style={{ fontWeight: 600 }}>🎓 SFH Sanskrit Platform Course Link</span>
+                        <span style={{ fontWeight: 600 }}><GraduationCap size={15} className="ui-inline-icon" aria-hidden="true" />SFH Sanskrit Platform Course Link</span>
                         <input
                           placeholder="https://…"
                           value={courseLink}
@@ -3422,7 +3428,7 @@ function AdminAddProducts() {
                                     </button>
                                     {format.type === "physical" ? (
                                       <div className="pf-formats-pack">
-                                        <span className="pf-formats-pack-title">📦 {format.label || "This format"} package (for delivery charges)</span>
+                                        <span className="pf-formats-pack-title"><Package size={14} className="ui-inline-icon" aria-hidden="true" />{format.label || "This format"} package (for delivery charges)</span>
                                         {[
                                           ["weight", "Weight (g)", "e.g. 250"],
                                           ["length", "Length (cm)", "e.g. 20"],
@@ -3465,18 +3471,18 @@ function AdminAddProducts() {
                                     className={`bundle-type-tab ${item.itemType !== "custom" ? "active" : ""}`}
                                     onClick={() => updateBundleItem(index, "itemType", "existing")}
                                   >
-                                    📦 Store Catalog Product
+                                    <Package size={14} className="ui-inline-icon" aria-hidden="true" />Store Catalog Product
                                   </button>
                                   <button
                                     type="button"
                                     className={`bundle-type-tab ${item.itemType === "custom" ? "active" : ""}`}
                                     onClick={() => updateBundleItem(index, "itemType", "custom")}
                                   >
-                                    ✍️ Create Custom Item
+                                    <PenLine size={14} className="ui-inline-icon" aria-hidden="true" />Create Custom Item
                                   </button>
                                 </div>
                                 <button type="button" className="danger bundle-remove-btn" onClick={() => removeBundleItem(index)}>
-                                  ✕ Remove
+                                  <X size={13} className="ui-inline-icon" aria-hidden="true" />Remove
                                 </button>
                               </div>
 
@@ -3846,7 +3852,7 @@ function AdminAddProducts() {
           <div className="admin-upload-compact-row">
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div className="admin-upload-icon-wrap">
-                📤
+                <Upload size={20} aria-hidden="true" />
               </div>
               <div>
                 <h4 className="admin-upload-text-title">Bulk Import Products</h4>
@@ -3858,7 +3864,7 @@ function AdminAddProducts() {
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <label className="admin-upload-template-btn">
-                <span>{uploading ? "Uploading..." : "📄 Choose CSV / JSON File"}</span>
+                <span>{uploading ? "Uploading..." : <><FileText size={14} className="ui-inline-icon" aria-hidden="true" />Choose CSV / JSON File</>}</span>
                 <input
                   type="file"
                   accept=".csv,.json,application/json,text/csv"
@@ -3976,7 +3982,7 @@ function AdminAddProducts() {
                         style={{ background: "var(--admin-primary, #d97706)", color: "#fff", border: "none" }}
                         onClick={() => copyBuyLink(product._id)}
                       >
-                        {copiedProductId === product._id ? "Copied!" : "🔗 Link"}
+                        {copiedProductId === product._id ? "Copied!" : <><Link2 size={13} className="ui-inline-icon" aria-hidden="true" />Link</>}
                       </button>
                       <button className="danger" onClick={() => deleteProduct(product._id)}>
                         Delete

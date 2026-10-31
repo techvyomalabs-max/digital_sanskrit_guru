@@ -33,7 +33,10 @@ import {
   CreditCard,
   CheckCircle2,
   Minus,
-  Plus
+  Plus,
+  ExternalLink,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 import "./Cart.css";
 
@@ -711,7 +714,7 @@ function Cart() {
                                 rel="noopener noreferrer"
                                 className="cart-item-kindle-link"
                               >
-                                Buy on Amazon ↗
+                                Buy on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                               </a>
                             </div>
                           )}
@@ -877,7 +880,7 @@ function Cart() {
                 gap: "8px"
               }}
             >
-              <span style={{ fontSize: "14px", flexShrink: 0 }}>⚠️</span>
+              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: "1px" }} aria-hidden="true" />
               <span>{totalsError}</span>
             </div>
           )}
@@ -1011,7 +1014,7 @@ function Cart() {
               }}
             >
               <div>
-                <span>ℹ️</span> {digitalOwnership.message}
+                <Info size={15} className="ui-inline-icon" aria-hidden="true" />{digitalOwnership.message}
               </div>
               {digitalOwnership.upgradeCredit > 0 && (
                 <div style={{ marginTop: "6px", color: "#1e3a8a", fontSize: "12.5px", fontWeight: "500" }}>
@@ -1035,7 +1038,7 @@ function Cart() {
                 lineHeight: "1.4"
               }}
             >
-              <span>⚠️</span> You already own {digitalOwnership.ownedItems?.length > 0 ? digitalOwnership.ownedItems.join(", ") : "digital items in your cart"}. At checkout this can only be bought as a gift for someone else.
+              <AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />You already own {digitalOwnership.ownedItems?.length > 0 ? digitalOwnership.ownedItems.join(", ") : "digital items in your cart"}. At checkout this can only be bought as a gift for someone else.
             </div>
           )}
 
@@ -1053,13 +1056,13 @@ function Cart() {
                 lineHeight: "1.4"
               }}
             >
-              <span>⚠️</span> {digitalOwnership.message || "You already own items in this purchase."}
+              <AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />{digitalOwnership.message || "You already own items in this purchase."}
             </div>
           )}
 
           {isIntlPhysicalRestricted && (
             <div className="cart-intl-warning">
-              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to{" "}
+              <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />International Shipping Notice:</strong> Physical product delivery to{" "}
               {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products
               (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items to proceed.
             </div>

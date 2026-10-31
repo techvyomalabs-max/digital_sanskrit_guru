@@ -55,7 +55,11 @@ import {
   LayoutDashboard,
   ChevronRight,
   ChevronDown,
-  Copy
+  Copy,
+  Building2,
+  House,
+  Plus,
+  AlertTriangle
 } from "lucide-react";
 
 function getPasswordStrength(pwd) {
@@ -173,7 +177,7 @@ function PushSubscribeSection({ token }) {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
-      setStatus("✅ Subscribed! You'll receive notifications for orders and stock alerts.");
+      setStatus("Subscribed! You'll receive notifications for orders and stock alerts.");
     } catch (err) {
       setStatus(err?.message || "Failed to subscribe.");
     } finally {
@@ -215,7 +219,7 @@ function PushSubscribeSection({ token }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (res.data?.success) {
-        setStatus("🔔 Test notification sent! Check your device notifications.");
+        setStatus("Test notification sent! Check your device notifications.");
       } else {
         setStatus(res.data?.message || "Failed to send test notification.");
       }
@@ -312,7 +316,7 @@ function PushSubscribeSection({ token }) {
 
         {permission === "denied" && (
           <p className="my-account-push-hint my-account-push-hint-text">
-            🔒 To re-enable, click the lock icon in your browser address bar → Notifications → Allow.
+            <Lock size={14} className="ui-inline-icon" aria-hidden="true" />To re-enable, click the lock icon in your browser address bar → Notifications → Allow.
           </p>
         )}
       </div>
@@ -885,6 +889,8 @@ function MyAccount() {
   const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
 
   const pwdStrength = useMemo(() => getPasswordStrength(profilePassword), [profilePassword]);
+  // Only an explicit false from /api/auth/me means "signed up with Google, no password"
+  const isGoogleOnlyAccount = user?.hasLocalPassword === false;
 
   const userInitials = useMemo(() => {
     if (user?.name && user.name.trim()) {
@@ -1079,6 +1085,27 @@ function MyAccount() {
     } catch (err) {
       console.error(err);
       setProfileError(err.response?.data?.message || "Failed to update security settings.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Google sign-in accounts set their first password through an emailed link,
+  // never directly from a logged-in session.
+  const handleSendSetPasswordLink = async () => {
+    setProfileMessage("");
+    setProfileError("");
+    setIsSavingProfile(true);
+    try {
+      const res = await axios.post(
+        "/api/auth/set-password-link",
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setProfileMessage(res.data?.message || "We've emailed you a link to set your password.");
+      setEditingSection(null);
+    } catch (err) {
+      setProfileError(err.response?.data?.message || "Failed to send the link. Please try again.");
     } finally {
       setIsSavingProfile(false);
     }
@@ -1826,7 +1853,44 @@ function MyAccount() {
               )}
             </div>
 
-            {editingSection === "security" ? (
+            {editingSection === "security" && isGoogleOnlyAccount ? (
+              <div className="my-account-card-edit-form">
+                <div className="my-account-google-signin-note">
+                  <strong>You signed up with Google</strong>
+                  <p>
+                    Your account doesn't have a password, and you sign in with the
+                    &ldquo;Sign in with Google&rdquo; button. If you'd also like to sign in
+                    with your email address, we'll email a secure link to{" "}
+                    <strong>{user?.email}</strong> where you can set a password.
+                  </p>
+                </div>
+
+                {profileError && (
+                  <div className="my-account-form-error-alert">
+                    <AlertCircle size={15} />
+                    <span>{profileError}</span>
+                  </div>
+                )}
+
+                <div className="my-account-card-form-actions">
+                  <button
+                    type="button"
+                    className="primary my-account-save-btn"
+                    disabled={isSavingProfile}
+                    onClick={handleSendSetPasswordLink}
+                  >
+                    {isSavingProfile ? "Sending..." : "Email me a link to set a password"}
+                  </button>
+                  <button
+                    type="button"
+                    className="my-account-cancel-btn"
+                    onClick={resetProfileForms}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : editingSection === "security" ? (
               <form onSubmit={handleSecuritySave} className="my-account-card-edit-form">
                 <div className="my-account-form-fields-stack">
                   <div className="my-account-form-field">
@@ -1845,7 +1909,7 @@ function MyAccount() {
                       />
                     </div>
                     <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
-                      🔒 Registered email is permanent and cannot be modified.
+                      <Lock size={12} className="ui-inline-icon" aria-hidden="true" />Registered email is permanent and cannot be modified.
                     </span>
                   </div>
 
@@ -1871,9 +1935,6 @@ function MyAccount() {
                         {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                    <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
-                      Leave blank if you only sign in with Google.
-                    </span>
                   </label>
 
                   <label className="my-account-form-field">
@@ -2038,7 +2099,11 @@ function MyAccount() {
                 <div className="my-account-card-row">
                   <span className="my-account-card-field-label">Password</span>
                   <div className="my-account-card-field-val-wrap">
-                    <span className="my-account-password-dots">••••••••••••</span>
+                    {isGoogleOnlyAccount ? (
+                      <span className="my-account-card-field-val">Not set (signed up with Google)</span>
+                    ) : (
+                      <span className="my-account-password-dots">••••••••••••</span>
+                    )}
                   </div>
                 </div>
 
@@ -2060,7 +2125,11 @@ function MyAccount() {
                   <div className="my-account-card-field-val-wrap">
                     <span className="my-account-security-status-tag">
                       <Lock size={12} />
-                      {isOtpRequired ? "WhatsApp 2-Step OTP Protected" : "Password Protected"}
+                      {isOtpRequired
+                        ? "WhatsApp 2-Step OTP Protected"
+                        : isGoogleOnlyAccount
+                          ? "Google Sign-In"
+                          : "Password Protected"}
                     </span>
                   </div>
                 </div>
@@ -2136,11 +2205,13 @@ function MyAccount() {
                           item.label || "Home"
                         ).toLowerCase()}`}
                       >
-                        {item.label === "Work"
-                          ? "🏢 Work"
-                          : item.label === "Other"
-                          ? "📍 Other"
-                          : "🏠 Home"}
+                        {item.label === "Work" ? (
+                          <><Building2 size={13} className="ui-inline-icon" aria-hidden="true" />Work</>
+                        ) : item.label === "Other" ? (
+                          <><MapPin size={13} className="ui-inline-icon" aria-hidden="true" />Other</>
+                        ) : (
+                          <><House size={13} className="ui-inline-icon" aria-hidden="true" />Home</>
+                        )}
                       </span>
                       <strong className="my-account-addr-recipient">
                         {item.name || "Recipient"}
@@ -2250,7 +2321,7 @@ function MyAccount() {
               className="primary my-account-empty-add-btn"
               onClick={openNewAddressForm}
             >
-              ➕ Add Delivery Address
+              <Plus size={16} className="ui-inline-icon" aria-hidden="true" />Add Delivery Address
             </button>
           </div>
         )}
@@ -2311,9 +2382,9 @@ function MyAccount() {
               <span className="my-account-field-heading">Address Type</span>
               <div className="my-account-type-chips">
                 {[
-                  { key: "Home", icon: "🏠", label: "Home", desc: "All day delivery" },
-                  { key: "Work", icon: "🏢", label: "Work / Office", desc: "10 AM - 6 PM" },
-                  { key: "Other", icon: "📍", label: "Other", desc: "Specific timing" }
+                  { key: "Home", icon: House, label: "Home", desc: "All day delivery" },
+                  { key: "Work", icon: Building2, label: "Work / Office", desc: "10 AM - 6 PM" },
+                  { key: "Other", icon: MapPin, label: "Other", desc: "Specific timing" }
                 ].map((item) => (
                   <button
                     key={item.key}
@@ -2323,7 +2394,7 @@ function MyAccount() {
                     }`}
                     onClick={() => setAddressLabel(item.key)}
                   >
-                    <span className="my-account-chip-icon">{item.icon}</span>
+                    <span className="my-account-chip-icon"><item.icon size={18} aria-hidden="true" /></span>
                     <div className="my-account-chip-copy">
                       <strong>{item.label}</strong>
                       <small>{item.desc}</small>
@@ -2361,7 +2432,7 @@ function MyAccount() {
                       />
                     </div>
                     {fieldErrors.name && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.name}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.name}</span>
                     )}
                   </label>
 
@@ -2413,7 +2484,7 @@ function MyAccount() {
                       />
                     </div>
                     {fieldErrors.phone && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.phone}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.phone}</span>
                     )}
                   </label>
                 </div>
@@ -2447,7 +2518,7 @@ function MyAccount() {
                       />
                     </div>
                     {fieldErrors.address && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.address}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.address}</span>
                     )}
                   </label>
 
@@ -2498,7 +2569,7 @@ function MyAccount() {
                       </span>
                     )}
                     {fieldErrors.pincode && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.pincode}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.pincode}</span>
                     )}
                   </label>
 
@@ -2522,7 +2593,7 @@ function MyAccount() {
                       </select>
                     </div>
                     {fieldErrors.country && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.country}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.country}</span>
                     )}
                   </label>
 
@@ -2557,7 +2628,7 @@ function MyAccount() {
                       )}
                     </div>
                     {fieldErrors.state && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.state}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.state}</span>
                     )}
                   </label>
 
@@ -2592,7 +2663,7 @@ function MyAccount() {
                       )}
                     </div>
                     {fieldErrors.city && (
-                      <span className="my-account-inline-error">⚠️ {fieldErrors.city}</span>
+                      <span className="my-account-inline-error"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />{fieldErrors.city}</span>
                     )}
                   </label>
                 </div>
@@ -2654,7 +2725,7 @@ function MyAccount() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="address-delete-modal-icon-wrap">
-                  <span>🗑️</span>
+                  <Trash2 size={26} aria-hidden="true" />
                 </div>
                 <h3 id="address-delete-modal-title" className="address-delete-modal-title">
                   Delete Address?

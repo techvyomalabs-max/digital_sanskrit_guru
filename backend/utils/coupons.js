@@ -3,6 +3,8 @@ const Coupon = require("../models/Coupon");
 const Order = require("../models/Order");
 const User = require("../models/User");
 const { convertCurrencyAmount } = require("./currency");
+const { couponNotExpiredFilter } = require("./couponExpiry");
+const { usageLeftFilter } = require("./couponRules");
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const fail = (m, s = 400) => Object.assign(new Error(m), { status: s });
@@ -12,16 +14,8 @@ const liveCouponFilter = (code, now = new Date()) => ({
   isDeleted: { $ne: true },
   isActive: { $ne: false },
   $and: [
-    {
-      $or: [{ expiresAt: null }, { expiresAt: { $gte: now } }]
-    },
-    {
-      $or: [
-        { usageLimit: null },
-        { usageLimit: 0 },
-        { $expr: { $lt: ["$usageCount", "$usageLimit"] } }
-      ]
-    }
+    couponNotExpiredFilter(now),
+    usageLeftFilter()
   ]
 });
 

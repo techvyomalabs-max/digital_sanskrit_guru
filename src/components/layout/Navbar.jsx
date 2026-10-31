@@ -22,7 +22,17 @@ import {
   X,
   MapPin,
   ChevronRight,
+  LocateFixed,
+  Check,
+  Building2,
+  Pin,
+  Phone,
+  Settings,
+  Trash2,
+  Globe,
   Sparkles,
+  LayoutGrid,
+  ArrowRight,
   Truck,
   Gift,
   FileText,
@@ -33,13 +43,13 @@ import { useCart } from "../../hooks/useCart";
 import { useWishlist } from "../../hooks/useWishlist";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
 import { useToast } from "../../hooks/useToast";
+import { CategoryIcon, getCategoryIcon } from "../../utils/categoryIcons";
 import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
-  "Bundle",
   "Web Version",
   "E-Book - Kindle",
   "Book - Paperback",
@@ -86,6 +96,7 @@ function Navbar({ bannerActive = false }) {
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [isCollectionFilterMenuOpen, setIsCollectionFilterMenuOpen] = useState(false);
   const [collectionCategories, setCollectionCategories] = useState(DEFAULT_COLLECTION_CATEGORIES);
+  const [collectionCategoryCounts, setCollectionCategoryCounts] = useState({});
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
   const isAdminRoute = location.pathname.startsWith("/admin");
@@ -259,6 +270,9 @@ function Navbar({ bannerActive = false }) {
         if (Array.isArray(res.data?.categories) && res.data.categories.length > 0) {
           setCollectionCategories(res.data.categories);
         }
+        if (res.data?.categoryCounts && typeof res.data.categoryCounts === "object") {
+          setCollectionCategoryCounts(res.data.categoryCounts);
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -381,6 +395,36 @@ function Navbar({ bannerActive = false }) {
     }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
+
+  const activeCollectionCategory =
+    location.pathname === "/collection"
+      ? String(new URLSearchParams(location.search).get("category") || "").trim()
+      : "";
+
+  const openCollectionCategory = (category) => {
+    setIsCollectionFilterMenuOpen(false);
+    setSearchQuery("");
+    navigate(
+      category === "All"
+        ? "/collection"
+        : `/collection?category=${encodeURIComponent(category)}`
+    );
+  };
+
+  // Escape closes the "Browse by category" menu
+  useEffect(() => {
+    if (!isCollectionFilterMenuOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setIsCollectionFilterMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    // Lets CSS hide the floating chat/WhatsApp buttons over the menu on phones
+    document.body.classList.add("category-menu-open");
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      document.body.classList.remove("category-menu-open");
+    };
+  }, [isCollectionFilterMenuOpen]);
 
   const handleSectionNav = (sectionKey) => {
     setSearchQuery("");
@@ -628,7 +672,7 @@ function Navbar({ bannerActive = false }) {
                                 setIsSearchFocused(false);
                               }}
                             >
-                              <span className="navbar-search-cat-icon">{cat.icon}</span>
+                              <span className="navbar-search-cat-icon"><CategoryIcon category={cat.name} size={14} aria-hidden="true" /></span>
                               <span className="navbar-search-cat-name">{cat.name}</span>
                               {cat.count > 0 && (
                                 <span className="navbar-search-cat-count">({cat.count})</span>
@@ -708,7 +752,7 @@ function Navbar({ bannerActive = false }) {
                                 {product.image ? (
                                   <img src={product.image} alt={product.name} />
                                 ) : (
-                                  <span className="navbar-search-item-placeholder" aria-hidden="true">📖</span>
+                                  <span className="navbar-search-item-placeholder" aria-hidden="true"><BookOpen size={18} /></span>
                                 )}
                               </div>
                               <div className="navbar-search-item-info">
@@ -930,27 +974,51 @@ function Navbar({ bannerActive = false }) {
             </div>
           </div>
           {!isAdminRoute && isCollectionFilterMenuOpen ? (
-            <div className="navbar-collection-filter-menu">
-              <strong className="navbar-collection-filter-title">Browse by category</strong>
+            <div className="navbar-collection-filter-menu" role="dialog" aria-label="Browse by category">
+              <div className="navbar-collection-filter-head">
+                <strong className="navbar-collection-filter-title">
+                  <LayoutGrid size={17} aria-hidden="true" />
+                  Browse by category
+                </strong>
+                <button
+                  type="button"
+                  className="navbar-collection-filter-all"
+                  onClick={() => openCollectionCategory("All")}
+                >
+                  View all
+                  {collectionCategoryCounts.All ? ` (${collectionCategoryCounts.All})` : ""}
+                  <ArrowRight size={15} aria-hidden="true" />
+                </button>
+              </div>
               <div className="navbar-collection-filter-list">
-                {collectionCategories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    className="navbar-collection-filter-item"
-                    onClick={() => {
-                      setIsCollectionFilterMenuOpen(false);
-                      setSearchQuery("");
-                      navigate(
-                        category === "All"
-                          ? "/collection"
-                          : `/collection?category=${encodeURIComponent(category)}`
-                      );
-                    }}
-                  >
-                    {category}
-                  </button>
-                ))}
+                {collectionCategories
+                  .filter((category) => category !== "All")
+                  .map((category) => {
+                    const CategoryIcon = getCategoryIcon(category);
+                    const count = Number(collectionCategoryCounts[category] || 0);
+                    const isCurrent = activeCollectionCategory === category;
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`navbar-collection-filter-item${isCurrent ? " is-current" : ""}`}
+                        aria-current={isCurrent ? "page" : undefined}
+                        onClick={() => openCollectionCategory(category)}
+                      >
+                        <span className="navbar-collection-filter-icon" aria-hidden="true">
+                          <CategoryIcon size={18} />
+                        </span>
+                        <span className="navbar-collection-filter-text">
+                          <span className="navbar-collection-filter-name">{category}</span>
+                          {count > 0 && (
+                            <span className="navbar-collection-filter-count">
+                              {count} {count === 1 ? "item" : "items"}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           ) : null}
@@ -984,7 +1052,7 @@ function Navbar({ bannerActive = false }) {
                 <div>
                   <h3 id="navbar-address-modal-title">
                     <span className="navbar-address-modal-head-icon" aria-hidden="true">
-                      📍
+                      <MapPin size={20} />
                     </span>
                     Select Delivery Address
                   </h3>
@@ -998,7 +1066,7 @@ function Navbar({ bannerActive = false }) {
                   onClick={() => setIsAddressModalOpen(false)}
                   aria-label="Close"
                 >
-                  ✕
+                  <X size={18} aria-hidden="true" />
                 </button>
               </div>
 
@@ -1009,7 +1077,7 @@ function Navbar({ bannerActive = false }) {
                     className="navbar-address-current-location-btn"
                     onClick={handleUseCurrentLocationRedirect}
                   >
-                    <span className="navbar-location-gps-icon">🎯</span>
+                    <span className="navbar-location-gps-icon"><LocateFixed size={20} aria-hidden="true" /></span>
                     <div className="navbar-location-btn-text">
                       <strong>Use Current Location</strong>
                       <span>Detect automatically using device GPS</span>
@@ -1037,7 +1105,7 @@ function Navbar({ bannerActive = false }) {
                               className={`navbar-address-custom-radio ${isSelected ? "checked" : ""
                                 }`}
                             >
-                              {isSelected ? "✓" : ""}
+                              {isSelected ? <Check size={14} strokeWidth={3} aria-hidden="true" /> : ""}
                             </span>
                             <strong className="navbar-address-user-name">
                               {item.name || "Address"}
@@ -1049,17 +1117,17 @@ function Navbar({ bannerActive = false }) {
                             ) : null}
                             <span className="navbar-address-badge label">
                               {item.label === "Work"
-                                ? "🏢 Work"
+                                ? <><Building2 size={12} className="ui-inline-icon" aria-hidden="true" />Work</>
                                 : item.label === "Other"
-                                  ? "📌 Other"
-                                  : "🏠 Home"}
+                                  ? <><Pin size={12} className="ui-inline-icon" aria-hidden="true" />Other</>
+                                  : <><House size={12} className="ui-inline-icon" aria-hidden="true" />Home</>}
                             </span>
                           </div>
                         </div>
 
                         {item.phone ? (
                           <div className="navbar-address-phone">
-                            <span>📞 {item.phone}</span>
+                            <span><Phone size={12} className="ui-inline-icon" aria-hidden="true" />{item.phone}</span>
                           </div>
                         ) : null}
 
@@ -1075,7 +1143,7 @@ function Navbar({ bannerActive = false }) {
                           <div className="navbar-address-select-status">
                             {isSelected ? (
                               <span className="navbar-address-selected-badge">
-                                ✓ Delivering to this address
+                                <Check size={13} className="ui-inline-icon" aria-hidden="true" />Delivering to this address
                               </span>
                             ) : (
                               <button
@@ -1125,7 +1193,7 @@ function Navbar({ bannerActive = false }) {
                 </div>
               ) : (
                 <div className="navbar-address-empty">
-                  <div className="navbar-address-empty-icon">📍</div>
+                  <div className="navbar-address-empty-icon"><MapPin size={36} aria-hidden="true" /></div>
                   <p>No saved addresses yet.</p>
                   <span>Add a delivery address to enable quick location selection.</span>
                 </div>
@@ -1144,7 +1212,7 @@ function Navbar({ bannerActive = false }) {
                   className="navbar-address-manage-btn"
                   onClick={handleManageAddressesRedirect}
                 >
-                  <span>⚙️</span> Manage Addresses
+                  <Settings size={15} className="ui-inline-icon" aria-hidden="true" />Manage Addresses
                 </button>
               </div>
             </div>
@@ -1168,7 +1236,7 @@ function Navbar({ bannerActive = false }) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="address-delete-modal-icon-wrap">
-                  <span>🗑️</span>
+                  <Trash2 size={24} aria-hidden="true" />
                 </div>
                 <h3 id="navbar-delete-address-modal-title" className="address-delete-modal-title">Delete Address?</h3>
                 <p className="address-delete-modal-desc">
@@ -1350,7 +1418,7 @@ function Navbar({ bannerActive = false }) {
               onClick={() => setIsMenuOpen(false)}
               aria-label="Close menu"
             >
-              ✕
+              <X size={20} aria-hidden="true" />
             </button>
           </div>
 

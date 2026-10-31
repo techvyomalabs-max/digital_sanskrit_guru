@@ -1,5 +1,6 @@
 const express = require("express");
 const Coupon = require("../models/Coupon");
+const Product = require("../models/Product");
 const StoreSettings = require("../models/StoreSettings");
 const User = require("../models/User");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
@@ -8,6 +9,13 @@ const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage, requireSuperAdmin } = require("../middleware/adminMiddleware");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
+const {
+  parseFutureCouponExpiry,
+  effectiveCouponExpiry,
+  isCouponExpired,
+  couponNotExpiredFilter
+} = require("../utils/couponExpiry");
+const { hasUsageLeft, usageLeftFilter, parseCouponValue, parseUsageLimit } = require("../utils/couponRules");
 
 const router = express.Router();
 
@@ -16,9 +24,10 @@ router.post("/", protect, admin, requireAdminPage("coupons"), async (req, res) =
     const actor = await getAdminActorSnapshot(req.user);
     const code = String(req.body?.code || "").trim().toUpperCase();
     const type = req.body?.type;
-    const value = Number(req.body?.value || 0);
-    const minOrder = Math.max(0, Number(req.body?.minOrder || 0));
-    const expiresAt = req.body?.expiresAt ? new Date(req.body.expiresAt) : undefined;
+    const { value, error: valueError } = parseCouponValue(type, req.body?.value);
+    const minOrder = roundMoney(Math.max(0, Number(req.body?.minOrder || 0)));
+    const { expiresAt, error: expiryError } = parseFutureCouponExpiry(req.body?.expiresAt);
+    const { usageLimit, error: usageLimitError } = parseUsageLimit(req.body?.usageLimit);
     const assignedUserEmail = req.body?.assignedUserEmail ? String(req.body.assignedUserEmail).trim().toLowerCase() : null;
     const applicableProducts = Array.isArray(req.body?.applicableProducts) ? req.body.applicableProducts : [];
 
@@ -28,11 +37,17 @@ router.post("/", protect, admin, requireAdminPage("coupons"), async (req, res) =
     if (!["percentage", "fixed"].includes(type)) {
       return res.status(400).json({ message: "Invalid coupon type" });
     }
-    if (Number.isNaN(value) || value <= 0) {
-      return res.status(400).json({ message: "Discount value must be greater than 0" });
+    if (valueError) {
+      return res.status(400).json({ message: valueError });
     }
-    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
-      return res.status(400).json({ message: "Invalid expiry date" });
+    if (!Number.isFinite(minOrder)) {
+      return res.status(400).json({ message: "Invalid minimum order" });
+    }
+    if (expiryError) {
+      return res.status(400).json({ message: expiryError });
+    }
+    if (usageLimitError) {
+      return res.status(400).json({ message: usageLimitError });
     }
     if (assignedUserEmail) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -52,7 +67,8 @@ router.post("/", protect, admin, requireAdminPage("coupons"), async (req, res) =
       type,
       value,
       minOrder,
-      expiresAt,
+      expiresAt: expiresAt || undefined,
+      usageLimit,
       assignedUserEmail,
       applicableProducts,
       lastUpdatedByName: actor.name,
@@ -71,6 +87,8 @@ router.post("/", protect, admin, requireAdminPage("coupons"), async (req, res) =
         type: coupon.type,
         value: Number(coupon.value || 0),
         minOrder: Number(coupon.minOrder || 0),
+        usageLimit,
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
         assignedUserEmail,
         applicableProductsCount: applicableProducts.length
       }
@@ -102,15 +120,20 @@ router.get("/", async (_req, res) => {
               { assignedUserEmail: { $exists: false } }
             ]
           },
-          {
-            $or: [
-              { expiresAt: null },
-              { expiresAt: { $exists: false } },
-              { expiresAt: { $gte: now } }
-            ]
-          }
+          couponNotExpiredFilter(now),
+          usageLeftFilter()
         ]
-      }).sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 }).lean();
+
+      // Product-specific coupons carry their product ids (and names for labels), so the shop
+      // only offers them for those products. Ids are kept even if a product was removed,
+      // so a restricted coupon never turns into a storewide-looking one.
+      const productIds = [...new Set(coupons.flatMap((c) => (c.applicableProducts || []).map(String)))];
+      const names = productIds.length
+        ? new Map(
+            (await Product.find({ _id: { $in: productIds } }).select("name").lean()).map((p) => [String(p._id), p.name || ""])
+          )
+        : new Map();
 
       return coupons.map((c) => ({
         _id: c._id,
@@ -118,7 +141,11 @@ router.get("/", async (_req, res) => {
         type: c.type,
         value: c.value,
         minOrder: c.minOrder || 0,
-        expiresAt: c.expiresAt || null
+        expiresAt: effectiveCouponExpiry(c.expiresAt),
+        applicableProducts: (c.applicableProducts || []).map((id) => ({
+          _id: String(id),
+          name: names.get(String(id)) || ""
+        }))
       }));
     });
     res.json(publicCoupons);
@@ -132,10 +159,105 @@ router.get("/admin/all", protect, admin, requireAdminPage("coupons"), async (_re
   try {
     const coupons = await Coupon.find({ isDeleted: { $ne: true } })
       .populate("applicableProducts", "name")
-      .sort({ createdAt: -1 });
-    res.json(coupons);
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(coupons.map((c) => ({ ...c, expiresAt: effectiveCouponExpiry(c.expiresAt) })));
   } catch {
     res.status(500).json({ message: "Failed to load coupons" });
+  }
+});
+
+// Renew a coupon: new expiry, optional new usage limit, optionally let past customers use it again.
+// Code, type, discount, minimum order and restrictions never change here, and past orders keep
+// the discount they were charged.
+router.patch("/:id/renew", protect, admin, requireAdminPage("coupons"), async (req, res) => {
+  try {
+    if (!require("mongoose").Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: "Coupon not found" });
+    }
+    const { expiresAt, error } = parseFutureCouponExpiry(req.body?.expiresAt);
+    if (error) {
+      return res.status(400).json({ message: error });
+    }
+
+    const coupon = await Coupon.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).lean();
+    if (!coupon) {
+      return res.status(404).json({ message: "Coupon not found" });
+    }
+
+    const changeLimit = Object.prototype.hasOwnProperty.call(req.body || {}, "usageLimit");
+    const usageCount = Number(coupon.usageCount || 0);
+    const { usageLimit, error: usageLimitError } = changeLimit
+      ? parseUsageLimit(req.body.usageLimit, usageCount)
+      : { usageLimit: coupon.usageLimit ?? null };
+    if (usageLimitError) {
+      return res.status(400).json({ message: usageLimitError });
+    }
+    const resetCustomerUses = req.body?.resetCustomerUses === true;
+
+    const actor = await getAdminActorSnapshot(req.user);
+    const now = new Date();
+    const set = {
+      expiresAt,
+      usageLimit,
+      isActive: true,
+      lastUpdatedByName: { $literal: actor.name || "" },
+      lastUpdatedByEmail: { $literal: actor.email || "" },
+      lastUpdatedAt: now
+    };
+    if (resetCustomerUses) {
+      // Move the current customer list into history in the same write, so a checkout
+      // claiming the coupon at this moment can't be lost.
+      set.usedByResets = {
+        $concatArrays: [
+          { $ifNull: ["$usedByResets", []] },
+          [{
+            at: now,
+            byName: { $literal: actor.name || "" },
+            byEmail: { $literal: actor.email || "" },
+            users: { $ifNull: ["$usedBy", []] }
+          }]
+        ]
+      };
+      set.usedBy = { $literal: [] };
+    }
+
+    const filter = { _id: coupon._id, isDeleted: { $ne: true } };
+    if (usageLimit) {
+      filter.usageCount = { $lt: usageLimit };
+    }
+    const updated = await Coupon.findOneAndUpdate(filter, [{ $set: set }], {
+      returnDocument: "after",
+      updatePipeline: true
+    }).lean();
+    if (!updated) {
+      return res.status(409).json({ message: "Coupon was used again while saving. Refresh and try again." });
+    }
+
+    const previousExpiry = effectiveCouponExpiry(coupon.expiresAt);
+    const customersReset = resetCustomerUses ? (coupon.usedBy || []).length : 0;
+    await logAdminAction({
+      req,
+      action: "coupon-renewed",
+      entityType: "coupon",
+      entityId: String(updated._id || ""),
+      entityLabel: updated.code,
+      summary: `Renewed coupon ${updated.code} until ${expiresAt ? expiresAt.toISOString() : "no expiry"}`,
+      details: {
+        previousExpiresAt: previousExpiry ? previousExpiry.toISOString() : null,
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        previousUsageLimit: coupon.usageLimit ?? null,
+        usageLimit,
+        usageCount,
+        reactivated: coupon.isActive === false,
+        customersAllowedAgain: customersReset
+      }
+    });
+
+    invalidateProductCache();
+    return res.json({ ...updated, expiresAt: effectiveCouponExpiry(updated.expiresAt) });
+  } catch {
+    return res.status(500).json({ message: "Failed to renew coupon" });
   }
 });
 
@@ -238,12 +360,12 @@ router.post("/apply", protect, async (req, res) => {
     return res.status(400).json({ message: "Invalid order total" });
   }
 
-  const coupon = await Coupon.findOne({ code });
+  const coupon = await Coupon.findOne({ code, isDeleted: { $ne: true } });
   if (!coupon) {
     return res.status(400).json({ message: "Invalid coupon code" });
   }
 
-  if (coupon.expiresAt && new Date() > coupon.expiresAt) {
+  if (isCouponExpired(coupon.expiresAt)) {
     return res.status(400).json({ message: "Coupon expired" });
   }
 
@@ -253,7 +375,7 @@ router.post("/apply", protect, async (req, res) => {
   }
 
   // Check usage limit
-  if (coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.usageCount >= coupon.usageLimit) {
+  if (!hasUsageLeft(coupon)) {
     return res.status(400).json({ message: "Coupon usage limit has been reached" });
   }
 
