@@ -174,7 +174,8 @@ function Home() {
             response = await axios.get("/api/products/home");
             break;
           } catch (error) {
-            if (attempt === HOME_REQUEST_RETRY_DELAYS.length) {
+            // Never retry when the server says "too many requests": retrying only keeps the block going.
+            if (attempt === HOME_REQUEST_RETRY_DELAYS.length || error?.response?.status === 429) {
               throw error;
             }
 
