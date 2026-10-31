@@ -1258,7 +1258,7 @@ function AdminDashboard() {
             <p className="admin-header-subtitle">
               {isRefreshing
                 ? <><RefreshCw size={12} className="admin-spin" /> Refreshing live data...</>
-                : <><Clock size={12} /> Live updates every 15s{lastUpdatedAt ? ` · Updated ${formatTime(lastUpdatedAt)}` : ""}</>
+                : <><Clock size={12} /> Live updates every 60s{lastUpdatedAt ? ` · Updated ${formatTime(lastUpdatedAt)}` : ""}</>
               }
             </p>
           </div>
