@@ -19,6 +19,8 @@ const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 const { parseReportRange, idRangeForDates, summarizeSignupRows } = require("../utils/signupReport");
 const { sanitizeAttribution } = require("../utils/attribution");
+const { ACTIVE_WINDOWS_MS, computeUserOverview, userListSort } = require("../utils/userInsights");
+const Order = require("../models/Order");
 
 const router = express.Router();
 
@@ -681,14 +683,14 @@ router.post("/activity", protect, async (req, res) => {
     const raw = Number(req.body?.timeSpentSec || 0);
     const safeTimeSpentSec = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(600, raw));
 
-    const user = await User.findById(req.user);
-    if (!user) {
+    // One atomic update: two open tabs sending at the same moment both get counted.
+    const result = await User.updateOne(
+      { _id: req.user },
+      { $set: { lastActiveAt: new Date() }, $inc: { totalTimeSpentSec: Math.round(safeTimeSpentSec) } }
+    );
+    if (!result.matchedCount) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    user.lastActiveAt = new Date();
-    user.totalTimeSpentSec = Math.max(0, Number(user.totalTimeSpentSec || 0) + safeTimeSpentSec);
-    await user.save();
 
     res.json({ ok: true });
   } catch (err) {
@@ -846,12 +848,35 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
     const [rawUsers, totalMatching] = await Promise.all([
       User.find(query)
         .select("name email isAdmin adminLevel adminRole allowedPages lastActiveAt totalTimeSpentSec acquisition.source acquisition.campaign")
-        .sort({ lastActiveAt: -1, createdAt: -1 })
+        .sort(userListSort(String(req.query.sort || "")))
         .skip(skip)
         .limit(limit)
         .lean(),
       User.countDocuments(query)
     ]);
+
+    // Paid orders and net spend (after refunds, in INR) for just the users on this page.
+    const orderStats = new Map();
+    if (rawUsers.length) {
+      const grouped = await Order.aggregate([
+        { $match: { user: { $in: rawUsers.map((u) => u._id) }, paymentStatus: "Paid" } },
+        {
+          $group: {
+            _id: "$user",
+            orders: { $sum: 1 },
+            spentInr: {
+              $sum: {
+                $subtract: [
+                  { $ifNull: ["$totalInInr", { $ifNull: ["$total", 0] }] },
+                  { $ifNull: ["$refundedAmountInInr", 0] }
+                ]
+              }
+            }
+          }
+        }
+      ]);
+      for (const row of grouped) orderStats.set(String(row._id), row);
+    }
 
     const mappedUsers = rawUsers.map((user) => {
       const lastActiveTs = user?.lastActiveAt ? new Date(user.lastActiveAt).getTime() : NaN;
@@ -869,7 +894,10 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
         totalTimeSpentSec: Math.max(0, Number(user?.totalTimeSpentSec || 0)),
         isActive,
         source: user?.acquisition?.source || "",
-        campaign: user?.acquisition?.campaign || ""
+        campaign: user?.acquisition?.campaign || "",
+        joinedAt: user?._id?.getTimestamp ? user._id.getTimestamp() : null,
+        orders: orderStats.get(String(user?._id))?.orders || 0,
+        spentInr: Math.max(0, Math.round((orderStats.get(String(user?._id))?.spentInr || 0) * 100) / 100)
       };
     });
 
@@ -913,6 +941,71 @@ router.get("/admin/users-metrics", protect, admin, requireAdminPage("users"), as
   } catch (err) {
     console.error("[Auth] Users-metrics error:", err.message);
     res.status(500).json({ message: "Failed to load user metrics." });
+  }
+});
+
+router.get("/admin/users-overview", protect, admin, requireAdminPage("users"), async (req, res) => {
+  try {
+    const range = parseReportRange(req.query.from, req.query.to);
+    if (range.error) {
+      return res.status(400).json({ success: false, message: range.error });
+    }
+    const { startDate, endDate } = range;
+    const length = endDate.getTime() - startDate.getTime();
+    const previousStart = new Date(startDate.getTime() - length - 1);
+    const previousEnd = new Date(startDate.getTime() - 1);
+
+    const customer = { isAdmin: { $ne: true }, isDeleted: { $ne: true } };
+    const now = Date.now();
+    const activeSince = (ms) => User.countDocuments({ ...customer, lastActiveAt: { $gte: new Date(now - ms) } });
+
+    const [customers, onlineNow, active24h, active7d, active30d, timeAgg, periodSignups, previousSignups] =
+      await Promise.all([
+        User.countDocuments(customer),
+        activeSince(ACTIVE_WINDOWS_MS.onlineNow),
+        activeSince(ACTIVE_WINDOWS_MS.active24h),
+        activeSince(ACTIVE_WINDOWS_MS.active7d),
+        activeSince(ACTIVE_WINDOWS_MS.active30d),
+        User.aggregate([
+          { $match: customer },
+          {
+            $group: {
+              _id: null,
+              totalSec: { $sum: { $ifNull: ["$totalTimeSpentSec", 0] } },
+              engaged: { $sum: { $cond: [{ $gt: ["$totalTimeSpentSec", 0] }, 1, 0] } }
+            }
+          }
+        ]),
+        User.find({ ...customer, _id: idRangeForDates(startDate, endDate) }).select("_id").lean(),
+        User.countDocuments({ ...customer, _id: idRangeForDates(previousStart, previousEnd) })
+      ]);
+
+    const signupIds = periodSignups.map((u) => u._id);
+    const buyers = signupIds.length
+      ? await Order.distinct("user", { user: { $in: signupIds }, paymentStatus: "Paid" })
+      : [];
+
+    const overview = computeUserOverview({
+      counts: {
+        customers,
+        onlineNow,
+        active24h,
+        active7d,
+        active30d,
+        engagedCustomers: timeAgg[0]?.engaged || 0,
+        totalTimeSec: timeAgg[0]?.totalSec || 0
+      },
+      signupDates: signupIds.map((id) => id.getTimestamp()),
+      previousSignups,
+      newBuyers: buyers.length,
+      startDate,
+      endDate
+    });
+
+    res.json({ success: true, ...overview });
+  } catch (err) {
+    console.error("[Auth] Admin users overview error:", err.message);
+    res.status(500).json({ success: false, message: "Failed to load the user overview." });
   }
 });
 
