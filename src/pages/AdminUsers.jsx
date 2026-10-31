@@ -208,7 +208,7 @@ function AdminUsers() {
         <div className="admin-header">
           <h1><Users size={24} className="ui-inline-icon" aria-hidden="true" />User Activity & Insights</h1>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
-            Live customer engagement, active online users, and time spent on site (updated every 15s).
+            Live customer engagement, active online users, and time spent on site (updated every 60s).
           </p>
         </div>
 
