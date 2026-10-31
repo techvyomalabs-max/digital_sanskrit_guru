@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Smartphone, ExternalLink, PartyPopper, KeyRound, Laptop, BookOpen, MapPin } from "lucide-react";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
@@ -390,7 +391,7 @@ function GuestBuy() {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "40px 16px", minHeight: "80vh", backgroundColor: "var(--site-bg, #fafafa)" }}>
         <div style={{ maxWidth: "550px", width: "100%", backgroundColor: "var(--site-surface, #ffffff)", padding: "32px", borderRadius: "12px", border: "1px solid var(--site-border, #e2e8f0)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)", textAlign: "center" }}>
-          <div style={{ fontSize: "40px", marginBottom: "12px" }}>📱</div>
+          <div style={{ marginBottom: "12px", color: "var(--site-link, #0f62b3)" }}><Smartphone size={40} aria-hidden="true" /></div>
           <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--site-text, #1e293b)", marginBottom: "8px" }}>
             {product.name}
           </h2>
@@ -415,7 +416,7 @@ function GuestBuy() {
               boxSizing: "border-box"
             }}
           >
-            Buy on Amazon ↗
+            Buy on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
           </a>
           <button
             type="button"
@@ -442,7 +443,7 @@ function GuestBuy() {
       <div style={{ display: "flex", justifyContent: "center", padding: "40px 16px", minHeight: "100vh", backgroundColor: "var(--site-bg, #fafafa)" }}>
         <div style={{ maxWidth: "600px", width: "100%", backgroundColor: "#ffffff", padding: "32px", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)" }}>
           <div style={{ textAlign: "center", marginBottom: "24px" }}>
-            <span style={{ fontSize: "48px" }}>🎉</span>
+            <PartyPopper size={48} color="#22c55e" aria-hidden="true" />
             <h2 style={{ fontSize: "24px", color: "#22c55e", fontWeight: "700", marginTop: "12px" }}>Order Placed Successfully!</h2>
             <p style={{ color: "#64748b", marginTop: "8px" }}>Order Number: #{orderSuccess.orderNumber || orderSuccess._id}</p>
           </div>
@@ -456,7 +457,7 @@ function GuestBuy() {
           </div>
 
           <div style={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", padding: "16px", borderRadius: "8px", marginBottom: "24px" }}>
-            <h4 style={{ fontWeight: "700", color: "#1e293b", marginBottom: "8px" }}>🔑 Account Provisioning</h4>
+            <h4 style={{ fontWeight: "700", color: "#1e293b", marginBottom: "8px" }}><KeyRound size={16} className="ui-inline-icon" aria-hidden="true" />Account Provisioning</h4>
             {credentialsSent ? (
               <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.5" }}>
                 Welcome to the platform! Since you are a new user, we have automatically created a student account for you. Your <strong>temporary password</strong> has been sent to <strong>{email}</strong>.
@@ -648,7 +649,11 @@ function GuestBuy() {
                         marginTop: "8px"
                       }}
                     >
-                      {isDigital ? "💻 Digital Course" : "📚 Physical Format"}
+                      {isDigital ? (
+                <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Digital Course</>
+              ) : (
+                <><BookOpen size={14} className="ui-inline-icon" aria-hidden="true" />Physical Format</>
+              )}
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: "12px", alignItems: "baseline", marginTop: "8px" }}>
@@ -764,7 +769,7 @@ function GuestBuy() {
                           gap: "4px"
                         }}
                       >
-                        📍 {isDetectingLocation ? "Detecting..." : "Use Current Location"}
+                        <MapPin size={14} className="ui-inline-icon" aria-hidden="true" />{isDetectingLocation ? "Detecting..." : "Use Current Location"}
                       </button>
                     )}
                   </div>

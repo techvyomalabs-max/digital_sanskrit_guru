@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Ticket, Lightbulb, PartyPopper, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -74,7 +75,7 @@ function RedeemGift() {
     <div className="redeem-container">
       <div className="redeem-card">
         <div className="redeem-header">
-          <div className="redeem-icon">🎟️</div>
+          <div className="redeem-icon"><Ticket size={40} aria-hidden="true" /></div>
           <h2>Redeem Your Gift Pass</h2>
           <p>Enter the 1-Time Gift Code you received to unlock your digital book or flipbook.</p>
         </div>
@@ -105,14 +106,14 @@ function RedeemGift() {
         </form>
 
         <div className="redeem-footer-note">
-          <p>💡 <strong>Note:</strong> Once redeemed, your gift will be permanently saved under <strong>Your Account -&gt; My Orders</strong>.</p>
+          <p><Lightbulb size={15} className="ui-inline-icon" aria-hidden="true" /><strong>Note:</strong> Once redeemed, your gift will be permanently saved under <strong>Your Account -&gt; My Orders</strong>.</p>
         </div>
       </div>
 
       {redeemedProduct && (
         <div className="review-redirect-modal-backdrop" onClick={() => setRedeemedProduct(null)}>
           <div className="review-redirect-modal redeem-success-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="redeem-success-icon">🎉</div>
+            <div className="redeem-success-icon"><PartyPopper size={44} aria-hidden="true" /></div>
             <h3 className="redeem-success-title">Gift Unlocked Successfully!</h3>
             <p className="redeem-success-desc">
               You now have full access to <strong>{redeemedProduct.name}</strong>.
@@ -127,7 +128,7 @@ function RedeemGift() {
                   navigate("/my-orders");
                 }}
               >
-                Go to My Orders & Read 📖
+                Go to My Orders & Read <BookOpen size={16} className="ui-inline-icon-end" aria-hidden="true" />
               </button>
             </div>
           </div>

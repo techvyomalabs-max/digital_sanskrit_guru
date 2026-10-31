@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LayoutDashboard, TrendingUp, Wallet, Users, ShieldCheck, Package, Warehouse, PencilLine, Tag, Megaphone, Palette, Crown, Lock } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
@@ -10,17 +11,17 @@ import "./AdminDashboard.css";
 import "./AdminUsers.css";
 
 const ALL_PAGES = [
-  { key: "dashboard", label: "📊 Dashboard", desc: "Overview & metrics" },
-  { key: "sales-dashboard", label: "📈 Sales Analytics", desc: "Interactive sales & format metrics" },
-  { key: "financial-dashboard", label: "💰 Finance & Taxes", desc: "Interactive revenue & taxation metrics" },
-  { key: "users", label: "👥 User Insights", desc: "User activity metrics" },
-  { key: "admin-access", label: "🛡️ Admin Roles", desc: "Admin access control" },
-  { key: "orders", label: "📦 Orders & Shipping", desc: "View & fulfill orders" },
-  { key: "products", label: "🏬 Warehouse Products", desc: "View inventory" },
-  { key: "add-products", label: "✏️ Add & Edit Products", desc: "Create/edit items" },
-  { key: "coupons", label: "🏷️ Discount Coupons", desc: "Manage coupons" },
-  { key: "marketing", label: "📢 Marketing Offers", desc: "Festive & push alerts" },
-  { key: "theme", label: "🎨 Theme & Site", desc: "Branding & banners" }
+  { key: "dashboard", icon: LayoutDashboard, label: "Dashboard", desc: "Overview & metrics" },
+  { key: "sales-dashboard", icon: TrendingUp, label: "Sales Analytics", desc: "Interactive sales & format metrics" },
+  { key: "financial-dashboard", icon: Wallet, label: "Finance & Taxes", desc: "Interactive revenue & taxation metrics" },
+  { key: "users", icon: Users, label: "User Insights", desc: "User activity metrics" },
+  { key: "admin-access", icon: ShieldCheck, label: "Admin Roles", desc: "Admin access control" },
+  { key: "orders", icon: Package, label: "Orders & Shipping", desc: "View & fulfill orders" },
+  { key: "products", icon: Warehouse, label: "Warehouse Products", desc: "View inventory" },
+  { key: "add-products", icon: PencilLine, label: "Add & Edit Products", desc: "Create/edit items" },
+  { key: "coupons", icon: Tag, label: "Discount Coupons", desc: "Manage coupons" },
+  { key: "marketing", icon: Megaphone, label: "Marketing Offers", desc: "Festive & push alerts" },
+  { key: "theme", icon: Palette, label: "Theme & Site", desc: "Branding & banners" }
 ];
 
 function AdminAccessControl() {
@@ -212,7 +213,7 @@ function AdminAccessControl() {
 
       <main className="admin-main">
         <div className="admin-header">
-          <h1>🛡️ Admin Roles & Access Control</h1><br></br>
+          <h1><ShieldCheck size={24} className="ui-inline-icon" aria-hidden="true" />Admin Roles & Access Control</h1><br></br>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
             Grant admin access, configure 1st & 2nd Level Admin roles, select particular page permissions, and review audit logs.
           </p>
@@ -224,7 +225,7 @@ function AdminAccessControl() {
           <section className="card make-admin-card">
             <div className="make-admin-header">
               <h3>
-                <span>🛡️</span> Grant & Configure Admin Access
+                <ShieldCheck size={18} className="ui-inline-icon" aria-hidden="true" />Grant & Configure Admin Access
               </h3>
               <p>Promote an existing account to admin and select exact page permissions.</p>
             </div>
@@ -241,7 +242,7 @@ function AdminAccessControl() {
                     setNewAdminRole("Super Admin");
                   }}
                 />
-                👑 1st Level Admin (Super Admin - All Pages)
+                <Crown size={15} className="ui-inline-icon" aria-hidden="true" />1st Level Admin (Super Admin - All Pages)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "14px", color: "var(--admin-text)" }}>
                 <input
@@ -254,7 +255,7 @@ function AdminAccessControl() {
                     setNewAdminRole("Custom Sub-Admin");
                   }}
                 />
-                🛡️ 2nd Level Admin (Particular Page Access)
+                <ShieldCheck size={15} className="ui-inline-icon" aria-hidden="true" />2nd Level Admin (Particular Page Access)
               </label>
             </div>
 
@@ -283,7 +284,7 @@ function AdminAccessControl() {
               </div>
 
               <button className="make-admin-btn" onClick={makeUserAdmin} disabled={isMakingAdmin}>
-                <span>🔒</span> {isMakingAdmin ? "Assigning..." : "Assign Access"}
+                <Lock size={15} className="ui-inline-icon" aria-hidden="true" />{isMakingAdmin ? "Assigning..." : "Assign Access"}
               </button>
             </div>
 
@@ -317,7 +318,7 @@ function AdminAccessControl() {
                           style={{ marginTop: "3px" }}
                         />
                         <div>
-                          <strong style={{ display: "block", color: "var(--admin-text)" }}>{pageItem.label}</strong>
+                          <strong style={{ display: "block", color: "var(--admin-text)" }}><pageItem.icon size={14} className="ui-inline-icon" aria-hidden="true" />{pageItem.label}</strong>
                           <span style={{ fontSize: "11px", color: "var(--admin-muted)" }}>{pageItem.desc}</span>
                         </div>
                       </label>
@@ -330,9 +331,9 @@ function AdminAccessControl() {
             <div className="role-preview-badge" style={{ marginTop: "16px" }}>
               <strong>Access Scope:</strong>
               {adminLevelSelect === 1 ? (
-                "👑 1st Level Super Admin: Full unrestricted access to all pages, site settings, and user access management."
+                "1st Level Super Admin: Full unrestricted access to all pages, site settings, and user access management."
               ) : (
-                `🛡️ 2nd Level Sub-Admin (${newAdminRole}): Restricted access to ${allowedPagesSelect.length} selected pages (${allowedPagesSelect.join(", ")}).`
+                `2nd Level Sub-Admin (${newAdminRole}): Restricted access to ${allowedPagesSelect.length} selected pages (${allowedPagesSelect.join(", ")}).`
               )}
             </div>
 
@@ -398,7 +399,7 @@ function AdminAccessControl() {
                         <td>
                           {adminLevel === 1 ? (
                             <span style={{ fontSize: "12px", color: "#10b981", fontWeight: 600 }}>
-                              👑 All Pages (Unrestricted)
+                              <Crown size={13} className="ui-inline-icon" aria-hidden="true" />All Pages (Unrestricted)
                             </span>
                           ) : (
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", maxWidth: "280px" }}>
@@ -488,7 +489,7 @@ function AdminAccessControl() {
               {editingAdmin && (
                 <div style={{ marginTop: "20px", padding: "20px", borderRadius: "12px", border: "1px solid #3b82f6", backgroundColor: "var(--admin-surface, #fff)" }}>
                   <h4 style={{ margin: "0 0 8px", color: "var(--admin-text)" }}>
-                    🛡️ Edit Page Permissions for {editingAdmin.email}
+                    <ShieldCheck size={16} className="ui-inline-icon" aria-hidden="true" />Edit Page Permissions for {editingAdmin.email}
                   </h4>
                   <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--admin-muted)" }}>
                     Select admin level and check particular pages to grant access.
@@ -502,7 +503,7 @@ function AdminAccessControl() {
                         checked={editingAdmin.adminLevel === 1}
                         onChange={() => setEditingAdmin((prev) => ({ ...prev, adminLevel: 1, adminRole: "Super Admin" }))}
                       />
-                      👑 Level 1 (Super Admin - All Pages)
+                      <Crown size={14} className="ui-inline-icon" aria-hidden="true" />Level 1 (Super Admin - All Pages)
                     </label>
                     <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
                       <input
@@ -511,7 +512,7 @@ function AdminAccessControl() {
                         checked={editingAdmin.adminLevel === 2}
                         onChange={() => setEditingAdmin((prev) => ({ ...prev, adminLevel: 2, adminRole: "Custom Sub-Admin" }))}
                       />
-                      🛡️ Level 2 (Sub-Admin - Particular Pages)
+                      <ShieldCheck size={14} className="ui-inline-icon" aria-hidden="true" />Level 2 (Sub-Admin - Particular Pages)
                     </label>
                   </div>
 
@@ -551,7 +552,7 @@ function AdminAccessControl() {
                                   });
                                 }}
                               />
-                              <span>{pageItem.label}</span>
+                              <span><pageItem.icon size={14} className="ui-inline-icon" aria-hidden="true" />{pageItem.label}</span>
                             </label>
                           );
                         })}

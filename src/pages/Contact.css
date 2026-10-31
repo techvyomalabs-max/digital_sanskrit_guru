@@ -1,5 +1,5 @@
 .contact-page {
-  --contact-text-muted: color-mix(in srgb, var(--site-text) 80%, var(--site-surface, #ffffff));
+  --contact-text-muted: color-mix(in srgb, var(--site-text) 92%, var(--site-surface, #ffffff));
   font-family: inherit;
   color: var(--site-text);
   background: var(--site-bg);
@@ -7,21 +7,26 @@
 }
 
 .contact-hero {
-  background: linear-gradient(135deg, var(--site-header-bg, #0f172a), var(--site-button-bg, #3b82f6));
+  /* Dark-to-darker brand gradient keeps white text readable across the whole banner */
+  background: linear-gradient(
+    135deg,
+    var(--site-header-bg, #0f172a),
+    color-mix(in srgb, var(--site-header-bg, #0f172a) 65%, #000000)
+  );
   color: var(--site-header-text, #ffffff);
   text-align: center;
   padding: var(--space-10) var(--space-6);
 }
 
 .contact-hero h1 {
-  font-size: 36px;
+  color: inherit;
+  font-size: 38px;
   font-weight: 800;
   margin-bottom: var(--space-2);
 }
 
 .contact-hero-subtitle {
-  font-size: 18px;
-  opacity: 0.9;
+  font-size: 19px;
   max-width: 600px;
   margin: 0 auto;
 }
@@ -74,7 +79,7 @@
 }
 
 .contact-value {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--site-text);
   margin-bottom: 8px;
@@ -91,15 +96,15 @@
 }
 
 .contact-hours {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--contact-text-muted);
   font-weight: 500;
   margin-bottom: var(--space-3);
 }
 
 .contact-desc {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 16.5px;
+  line-height: 1.65;
   color: var(--contact-text-muted);
 }
 
@@ -134,7 +139,7 @@
 }
 
 .inquiry-card p {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.65;
   color: var(--contact-text-muted);
 }
@@ -174,7 +179,29 @@
 }
 
 .office-card p {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.7;
   color: var(--contact-text-muted);
+}
+
+@media (max-width: 600px) {
+  .contact-hero {
+    padding: var(--space-8) var(--space-4);
+  }
+
+  .contact-hero h1 {
+    font-size: 30px;
+  }
+
+  .contact-hero-subtitle {
+    font-size: 17px;
+  }
+
+  .contact-container {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .contact-offices-section {
+    grid-template-columns: 1fr;
+  }
 }

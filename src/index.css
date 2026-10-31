@@ -465,3 +465,18 @@ html.banner-active body {
   }
 }
 
+
+/* Lucide icon placed inline with text (replaces the emoji icons used before) */
+.ui-inline-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+  margin-inline-end: 0.35em;
+}
+
+.ui-inline-icon-end {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.1em;
+  margin-inline-start: 0.3em;
+}

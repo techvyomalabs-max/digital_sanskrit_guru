@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { CreditCard, X, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import { useDialog } from "../../hooks/useDialog";
 import { useAuth } from "../../hooks/useAuth";
@@ -211,7 +212,7 @@ export default function AdminRefundModal({
       >
         <div className="admin-action-modal-header">
           <h3>
-            💳 Refund Order {order.orderNumber ? `#${order.orderNumber}` : `#${String(order._id).slice(-6)}`}
+            <CreditCard size={18} className="ui-inline-icon" aria-hidden="true" />Refund Order {order.orderNumber ? `#${order.orderNumber}` : `#${String(order._id).slice(-6)}`}
           </h3>
           <button
             type="button"
@@ -219,7 +220,7 @@ export default function AdminRefundModal({
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -229,10 +230,10 @@ export default function AdminRefundModal({
         >
           <div className="admin-action-modal-body" style={{ overflowY: "auto", padding: "16px 20px" }}>
             {submitError && (
-              <p className="admin-action-modal-error">⚠️ {submitError}</p>
+              <p className="admin-action-modal-error"><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />{submitError}</p>
             )}
             {quoteError && (
-              <p className="admin-action-modal-error">⚠️ {quoteError}</p>
+              <p className="admin-action-modal-error"><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />{quoteError}</p>
             )}
 
             {/* Receipt blocked notice & Super Admin waiver */}
@@ -248,7 +249,7 @@ export default function AdminRefundModal({
                   fontSize: "13px"
                 }}
               >
-                <strong>⚠️ Not received yet: refund blocked</strong>
+                <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />Not received yet: refund blocked</strong>
                 <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#b91c1c" }}>
                   The following physical item(s) have not been marked as received yet:{" "}
                   {unreceivedPhysicalItems.map((it) => it.name || "Item").join(", ")}.
@@ -482,7 +483,7 @@ export default function AdminRefundModal({
                 <div style={{ background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", padding: "10px 12px" }}>
                   {quote.feeUnknown && (
                     <div style={{ background: "#fffbeb", border: "1px solid #fef3c7", color: "#92400e", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", marginBottom: "8px", fontWeight: 600 }}>
-                      ⚠️ Gateway fee unavailable; no fee deducted.
+                      <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />Gateway fee unavailable; no fee deducted.
                     </div>
                   )}
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>

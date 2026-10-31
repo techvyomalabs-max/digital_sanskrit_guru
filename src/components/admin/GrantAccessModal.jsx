@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { KeyRound, X, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import { useToast } from "../../hooks/useToast";
 import { pendingAccessItems } from "../../utils/accessStatus";
@@ -147,7 +148,7 @@ export default function GrantAccessModal({
       >
         <div className="admin-action-modal-header">
           <h3 id="grant-access-title">
-            🔑 Grant Access
+            <KeyRound size={18} className="ui-inline-icon" aria-hidden="true" />Grant Access
           </h3>
           <button
             type="button"
@@ -155,7 +156,7 @@ export default function GrantAccessModal({
             onClick={onClose}
             aria-label="Close modal"
           >
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -163,7 +164,7 @@ export default function GrantAccessModal({
           <div className="admin-action-modal-body">
             {submitError && (
               <div className="admin-action-modal-error">
-                ⚠️ {submitError}
+                <AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />{submitError}
               </div>
             )}
 

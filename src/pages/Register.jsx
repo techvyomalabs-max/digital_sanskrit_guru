@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, CheckCircle2, MessageCircle, ChevronDown } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, MessageCircle, ChevronDown, AlertTriangle } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import TurnstileWidget from "../components/common/TurnstileWidget";
 import { validatePhoneNumber } from "../utils/phoneValidation";
@@ -288,7 +288,7 @@ function Register() {
                   display: "block"
                 }}
               >
-                ⚠️ {phoneError}
+                <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />{phoneError}
               </span>
             )}
 
@@ -328,7 +328,7 @@ function Register() {
                   display: "block"
                 }}
               >
-                ⚠️ {passwordError}
+                <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />{passwordError}
               </span>
             )}
 

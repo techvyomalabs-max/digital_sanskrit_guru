@@ -6,6 +6,7 @@ import Navbar from "./components/layout/Navbar";
 import Breadcrumb from "./components/layout/Breadcrumb";
 import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
+import ChatWidget from "./components/layout/ChatWidget";
 import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CartPopup from "./components/ui/CartPopup";
@@ -519,6 +520,7 @@ function App() {
 
       <Footer />
       <WhatsAppButton />
+      <ChatWidget />
       <CookieConsent />
       <CartPopup />
     </BrowserRouter>

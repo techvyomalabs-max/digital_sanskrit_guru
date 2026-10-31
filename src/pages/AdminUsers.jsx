@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { Users, Trash2 } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -205,7 +206,7 @@ function AdminUsers() {
 
       <main className="admin-main">
         <div className="admin-header">
-          <h1>👥 User Activity & Insights</h1>
+          <h1><Users size={24} className="ui-inline-icon" aria-hidden="true" />User Activity & Insights</h1>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
             Live customer engagement, active online users, and time spent on site (updated every 15s).
           </p>
@@ -388,7 +389,7 @@ function AdminUsers() {
             <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
               <input
                 type="text"
-                placeholder="🔍 Search user by name or email..."
+                placeholder="Search user by name or email..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 style={{
@@ -501,7 +502,7 @@ function AdminUsers() {
                             cursor: item._id === user?._id ? "not-allowed" : "pointer"
                           }}
                         >
-                          🗑️ Soft Delete
+                          <Trash2 size={14} className="ui-inline-icon" aria-hidden="true" />Soft Delete
                         </button>
                       </td>
                     </tr>

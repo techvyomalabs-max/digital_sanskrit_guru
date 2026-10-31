@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { CalendarDays, Download, ClipboardList, AlertTriangle, FileText, TrendingUp, Undo2, Wallet, Tag, MapPin, Globe, Truck, Landmark, BarChart3, BookOpen, Search, X, Timer, Files } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -449,7 +450,7 @@ function AdminFinancialDashboard() {
             {data?.period && (
               <div className="fin-period-indicator">
                 <span className="fin-indicator-badge">
-                  📅 Selected Period: <strong>{formatISTDate(data.period.from)}</strong> – <strong>{formatISTDate(data.period.to)}</strong>
+                  <CalendarDays size={14} className="ui-inline-icon" aria-hidden="true" />Selected Period: <strong>{formatISTDate(data.period.from)}</strong> – <strong>{formatISTDate(data.period.to)}</strong>
                 </span>
                 <span className="fin-indicator-state">
                   State of Operation: <strong>{data.businessState || "Karnataka"}</strong>
@@ -517,7 +518,7 @@ function AdminFinancialDashboard() {
                   disabled={isLoading || !data?.invoices?.length}
                   title="Export invoices as GSTR-1 CSV"
                 >
-                  <span>📥</span> Export invoices (CSV)
+                  <Download size={15} className="ui-inline-icon" aria-hidden="true" />Export invoices (CSV)
                 </button>
                 <button
                   type="button"
@@ -526,7 +527,7 @@ function AdminFinancialDashboard() {
                   disabled={isLoading || !data?.creditNotes?.length}
                   title="Export credit notes / refunds as CSV"
                 >
-                  <span>📋</span> Export credit notes (CSV)
+                  <ClipboardList size={15} className="ui-inline-icon" aria-hidden="true" />Export credit notes (CSV)
                 </button>
               </div>
               <div className="fin-draft-disclaimer">
@@ -542,7 +543,7 @@ function AdminFinancialDashboard() {
         {hasWarnings && (
           <div className="fin-warning-banner">
             <div className="fin-warning-banner-title">
-              <span>⚠️</span>
+              <AlertTriangle size={17} aria-hidden="true" />
               <strong>Audit & Compliance Warnings for Period</strong>
             </div>
             <ul className="fin-warning-list">
@@ -587,7 +588,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-invoices">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Invoices</span>
-                  <div className="fin-kpi-icon-wrap">📄</div>
+                  <div className="fin-kpi-icon-wrap"><FileText size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-amount">{data?.summary?.invoiceCount || 0}</span>
@@ -600,7 +601,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-revenue">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Gross Invoiced (INR)</span>
-                  <div className="fin-kpi-icon-wrap">📈</div>
+                  <div className="fin-kpi-icon-wrap"><TrendingUp size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -614,7 +615,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-refunds highlight-red">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Refunds (INR)</span>
-                  <div className="fin-kpi-icon-wrap red">↩️</div>
+                  <div className="fin-kpi-icon-wrap red"><Undo2 size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -628,7 +629,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-earnings highlight-green">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Net Received (INR)</span>
-                  <div className="fin-kpi-icon-wrap green">💰</div>
+                  <div className="fin-kpi-icon-wrap green"><Wallet size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -642,7 +643,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-taxable">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Taxable Value (INR)</span>
-                  <div className="fin-kpi-icon-wrap amber">🏷️</div>
+                  <div className="fin-kpi-icon-wrap amber"><Tag size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -656,7 +657,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-intra">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">CGST (INR)</span>
-                  <div className="fin-kpi-icon-wrap sky">📍</div>
+                  <div className="fin-kpi-icon-wrap sky"><MapPin size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -670,7 +671,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-intra">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">SGST (INR)</span>
-                  <div className="fin-kpi-icon-wrap sky">📍</div>
+                  <div className="fin-kpi-icon-wrap sky"><MapPin size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -684,7 +685,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-inter">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">IGST (INR)</span>
-                  <div className="fin-kpi-icon-wrap indigo">🌐</div>
+                  <div className="fin-kpi-icon-wrap indigo"><Globe size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -698,7 +699,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-delivery">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Delivery charges</span>
-                  <div className="fin-kpi-icon-wrap amber">🚚</div>
+                  <div className="fin-kpi-icon-wrap amber"><Truck size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -712,7 +713,7 @@ function AdminFinancialDashboard() {
               <div className="fin-kpi-card fin-kpi-tax highlight-purple">
                 <div className="fin-kpi-top">
                   <span className="fin-kpi-label">Net Tax after CN (INR)</span>
-                  <div className="fin-kpi-icon-wrap purple">🏛️</div>
+                  <div className="fin-kpi-icon-wrap purple"><Landmark size={22} aria-hidden="true" /></div>
                 </div>
                 <div className="fin-kpi-value-row">
                   <span className="fin-kpi-currency">₹</span>
@@ -727,14 +728,14 @@ function AdminFinancialDashboard() {
             {/* Charts Row */}
             <div className="fin-charts-grid">
               <div className="fin-chart-card">
-                <h3>📈 12-Month Revenue & Net Earnings Trend</h3>
+                <h3><TrendingUp size={18} className="ui-inline-icon" aria-hidden="true" />12-Month Revenue & Net Earnings Trend</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
               <div className="fin-chart-card">
-                <h3>📊 12-Month GST Tax & Refunds</h3>
+                <h3><BarChart3 size={18} className="ui-inline-icon" aria-hidden="true" />12-Month GST Tax & Refunds</h3>
                 <div className="chart-container">
                   <Bar data={monthlyTaxRefundData} options={barOptions} />
                 </div>
@@ -745,7 +746,7 @@ function AdminFinancialDashboard() {
             <div className="fin-ledger-card">
               <div className="fin-ledger-header">
                 <div className="fin-ledger-title-wrap">
-                  <h3>📒 Invoices Tax Ledger</h3>
+                  <h3><BookOpen size={18} className="ui-inline-icon" aria-hidden="true" />Invoices Tax Ledger</h3>
                   <span className="fin-ledger-count-badge">
                     {filteredInvoices.length} of {data?.invoices?.length || 0} invoices
                   </span>
@@ -753,7 +754,7 @@ function AdminFinancialDashboard() {
 
                 <div className="fin-ledger-controls">
                   <div className="fin-search-box">
-                    <span className="fin-search-icon">🔍</span>
+                    <span className="fin-search-icon"><Search size={16} aria-hidden="true" /></span>
                     <input
                       type="text"
                       placeholder="Search invoice, customer, state..."
@@ -777,9 +778,9 @@ function AdminFinancialDashboard() {
                       className="pos-filter-select"
                       title="Filter by GST Place of Supply"
                     >
-                      <option value="all">🌐 All States</option>
-                      <option value="intra">📍 Intra-state (CGST+SGST)</option>
-                      <option value="inter">✈️ Inter-state (IGST)</option>
+                      <option value="all">All States</option>
+                      <option value="intra">Intra-state (CGST+SGST)</option>
+                      <option value="inter">Inter-state (IGST)</option>
                     </select>
                   </div>
 
@@ -794,7 +795,7 @@ function AdminFinancialDashboard() {
                       }}
                       title="Reset filters"
                     >
-                      ✕ Reset
+                      <X size={14} className="ui-inline-icon" aria-hidden="true" />Reset
                     </button>
                   )}
                 </div>
@@ -839,7 +840,7 @@ function AdminFinancialDashboard() {
                                     className="fin-warning-marker"
                                     title={formatWarningTooltip(inv.warnings)}
                                   >
-                                    ⚠️
+                                    <AlertTriangle size={14} aria-label="Warnings" />
                                   </span>
                                 )}
                               </div>
@@ -910,7 +911,7 @@ function AdminFinancialDashboard() {
                     ) : (
                       <tr>
                         <td colSpan="13" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
-                          <div style={{ fontSize: "28px", marginBottom: "8px" }}>📑</div>
+                          <div style={{ marginBottom: "8px", color: "var(--admin-muted)" }}><Files size={28} aria-hidden="true" /></div>
                           <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching invoices found</p>
                           <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the period.</small>
                         </td>
@@ -955,7 +956,7 @@ function AdminFinancialDashboard() {
             <div className="fin-ledger-card" style={{ marginTop: "24px" }}>
               <div className="fin-ledger-header">
                 <div className="fin-ledger-title-wrap">
-                  <h3>📋 Credit Notes (Refunds Register)</h3>
+                  <h3><ClipboardList size={18} className="ui-inline-icon" aria-hidden="true" />Credit Notes (Refunds Register)</h3>
                   <span className="fin-ledger-count-badge">
                     {data?.creditNotes?.length || 0} credit notes in period
                   </span>
@@ -991,7 +992,7 @@ function AdminFinancialDashboard() {
                               </span>
                               {cn.warnings?.includes("refund_date_approximate") && (
                                 <span className="fin-warning-marker" title="Approximate refund date">
-                                  ⏱
+                                  <Timer size={14} aria-label="Approximate refund date" />
                                 </span>
                               )}
                             </div>

@@ -9,6 +9,7 @@ import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getDeliveryPricingDetails, isDigitalItem } from "../utils/deliveryPricing";
 import { hasExternalDelivery } from "../utils/digitalDelivery";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
+import { couponEligibleItems, couponEligibleTotal, isProductCoupon } from "../utils/couponMatching";
 import { getProductPriceDetails, isInternationalCountry, storePricingConfig } from "../utils/productPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import {
@@ -35,7 +36,9 @@ import {
   ShoppingBag,
   ExternalLink,
   FileText,
-  X
+  X,
+  Info,
+  AlertTriangle
 } from "lucide-react";
 import "./Checkout.css";
 
@@ -597,9 +600,15 @@ function Checkout() {
       const minOrder = Number(coupon?.minOrder || 0);
       const expiresAt = coupon?.expiresAt ? new Date(coupon.expiresAt).getTime() : null;
       if (expiresAt && !Number.isNaN(expiresAt) && expiresAt < now) return false;
+      // Product coupons: only when one of their products is in the cart, and the minimum
+      // order counts those products only (as the server does).
+      if (isProductCoupon(coupon)) {
+        if (couponEligibleItems(coupon, cartItems).length === 0) return false;
+        return couponEligibleTotal(coupon, cartItems) >= minOrder;
+      }
       return totals.grandTotal >= minOrder;
     });
-  }, [coupons, totals.grandTotal]);
+  }, [coupons, cartItems, totals.grandTotal]);
 
   const getOrderHeaders = () => ({
     headers: {
@@ -892,9 +901,6 @@ function Checkout() {
           <span className="checkout-heading-count">
             {itemCount} {itemCount === 1 ? "item" : "items"}
           </span>
-          <span className="checkout-ssl-pill">
-            <Lock size={12} /> 256-Bit SSL Encrypted
-          </span>
         </div>
         <div className="checkout-heading-right">
           <Link to="/cart" className="checkout-back-link">
@@ -928,7 +934,7 @@ function Checkout() {
             gap: "8px"
           }}
         >
-          <span>ℹ️</span>
+          <Info size={16} style={{ flexShrink: 0 }} aria-hidden="true" />
           <span>{noGift.message}</span>
         </div>
       )}
@@ -1421,6 +1427,9 @@ function Checkout() {
                       ? `${Number(coupon.value || 0)}% OFF`
                       : `${formatCurrencyExact(Number(coupon.value || 0), displayCurrency)} OFF`;
                   const minOrder = Number(coupon.minOrder || 0);
+                  const forProducts = isProductCoupon(coupon)
+                    ? couponEligibleItems(coupon, cartItems).map((item) => item?.name).filter(Boolean)
+                    : [];
 
                   return (
                     <div
@@ -1434,6 +1443,11 @@ function Checkout() {
                         </div>
                         <div className="coupon-voucher-meta">
                           <span className="coupon-voucher-benefit">{discountLabel}</span>
+                          {forProducts.length > 0 && (
+                            <span className="coupon-voucher-min coupon-voucher-product" title={forProducts.join(", ")}>
+                              On {forProducts.join(", ")}
+                            </span>
+                          )}
                           {minOrder > 0 && (
                             <span className="coupon-voucher-min">
                               On orders above {formatCurrencyExact(minOrder, displayCurrency)}
@@ -1695,7 +1709,7 @@ function Checkout() {
 
           {isIntlPhysicalRestricted && (
             <div className="checkout-intl-warning">
-              <strong>⚠️ International Shipping Notice:</strong> Physical product delivery to{" "}
+              <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />International Shipping Notice:</strong> Physical product delivery to{" "}
               {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products
               (E-books, Flipbooks & Web versions) can be ordered internationally. Please remove physical items from your cart to proceed.
             </div>
@@ -1715,7 +1729,7 @@ function Checkout() {
                 lineHeight: "1.4"
               }}
             >
-              <strong>⚠️ Purchase Blocked:</strong> {noGift.message || "You already own items in this order."}
+              <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />Purchase Blocked:</strong> {noGift.message || "You already own items in this order."}
             </div>
           )}
 

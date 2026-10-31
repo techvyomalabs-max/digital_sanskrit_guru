@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ShieldCheck, Lock, Eye, FileText, Globe, Phone, Mail, CheckCircle2, ExternalLink } from "lucide-react";
+import { ShieldCheck, Lock, Eye, FileText, Globe, Phone, Mail, CheckCircle2, ExternalLink, Landmark } from "lucide-react";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import "./PrivacyPolicy.css";
 
@@ -29,7 +29,7 @@ function PrivacyPolicy() {
 
         {/* Official Reference Banner */}
         <div className="policy-alert-banner privacy-source-banner">
-          <div className="alert-icon">🏛️</div>
+          <div className="alert-icon"><Landmark size={28} aria-hidden="true" /></div>
           <div className="alert-text">
             <strong>Official Organization Policy:</strong> Digital Sanskrit Guru is operated by <strong>Vyoma Linguistic Labs Foundation</strong> (a registered non-profit organization). This policy aligns with the official organization privacy governance available at{" "}
             <a

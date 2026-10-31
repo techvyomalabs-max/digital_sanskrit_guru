@@ -41,6 +41,16 @@ const couponSchema = new mongoose.Schema(
         ref: "User"
       }
     ],
+    // Customers who used the coupon before an admin let everyone use it again.
+    // Kept for records; only `usedBy` blocks a repeat use.
+    usedByResets: [
+      {
+        at: { type: Date, default: Date.now },
+        byName: { type: String, default: "" },
+        byEmail: { type: String, default: "" },
+        users: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
+      }
+    ],
     usageLimit: {
       type: Number,
       default: null

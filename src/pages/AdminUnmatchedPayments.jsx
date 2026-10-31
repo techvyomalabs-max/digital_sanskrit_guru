@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
-import { CreditCard, RotateCcw, CheckCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import { CreditCard, RotateCcw, CheckCircle, AlertTriangle, RefreshCw, Check, Hourglass } from "lucide-react";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -106,13 +106,13 @@ export default function AdminUnmatchedPayments() {
   const getStatusBadge = (status) => {
     switch (status) {
       case "orphan":
-        return <span className="admin-order-status status-refund-pending">⚠️ Orphan</span>;
+        return <span className="admin-order-status status-refund-pending"><AlertTriangle size={13} className="ui-inline-icon" aria-hidden="true" />Orphan</span>;
       case "refunded":
-        return <span className="admin-order-status status-refund-refunded">✓ Refunded</span>;
+        return <span className="admin-order-status status-refund-refunded"><Check size={13} className="ui-inline-icon" aria-hidden="true" />Refunded</span>;
       case "resolved":
-        return <span className="admin-order-status status-completed">✓ Resolved</span>;
+        return <span className="admin-order-status status-completed"><Check size={13} className="ui-inline-icon" aria-hidden="true" />Resolved</span>;
       case "refunding":
-        return <span className="admin-order-status status-refund-processing">⏳ Refunding...</span>;
+        return <span className="admin-order-status status-refund-processing"><Hourglass size={13} className="ui-inline-icon" aria-hidden="true" />Refunding...</span>;
       case "linked":
         return <span className="admin-order-status status-delivered">Linked</span>;
       default:
