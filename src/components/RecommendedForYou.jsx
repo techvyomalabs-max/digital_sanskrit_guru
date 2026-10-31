@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Lightbulb } from "lucide-react";
 import axios from "axios";
 import ProductCard from "./ProductCard";
 import { getAIRecommendations, getRecentSearchQueries } from "../utils/recommendationEngine";
@@ -109,7 +109,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
             <div key={p._id || p.id} className="home-spotlight-item recommended-ai-item">
               {p._recommendationReason && (
                 <div className="recommended-ai-reason" title={p._recommendationReason}>
-                  <span className="recommended-ai-reason-icon" aria-hidden="true">💡</span>
+                  <span className="recommended-ai-reason-icon" aria-hidden="true"><Lightbulb size={15} /></span>
                   <span>{p._recommendationReason}</span>
                 </div>
               )}

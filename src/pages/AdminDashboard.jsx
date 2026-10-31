@@ -42,7 +42,11 @@ import {
   Phone,
   Slash,
   X,
-  Building2
+  Building2,
+  LockOpen,
+  Ban,
+  CheckCheck,
+  Smartphone
 } from "lucide-react";
 import {
   GST_STATE_CODES,
@@ -1307,7 +1311,11 @@ function AdminDashboard() {
           <div className="pricing-lock-toolbar">
             <div className="pricing-lock-status-group">
               <span className={`pricing-lock-pill ${isPricingUnlocked ? "pricing-lock-pill--unlocked" : "pricing-lock-pill--locked"}`}>
-                {isPricingUnlocked ? "🔓 Editing" : "🔒 Locked"}
+                {isPricingUnlocked ? (
+                  <><LockOpen size={14} className="ui-inline-icon" aria-hidden="true" />Editing</>
+                ) : (
+                  <><Lock size={14} className="ui-inline-icon" aria-hidden="true" />Locked</>
+                )}
               </span>
               {!isSuperAdmin && (
                 <span className="pricing-lock-notice">Only super admins can change these settings.</span>
@@ -1765,10 +1773,10 @@ function AdminDashboard() {
                 <span className={`wa-status-pill ${pricingSettings.whatsappSettings?.mode || "free"}`}>
                   <span className={`wa-status-dot ${(pricingSettings.whatsappSettings?.mode === "api") ? "blue" : (pricingSettings.whatsappSettings?.mode === "free") ? "green" : "gray"}`} />
                   {pricingSettings.whatsappSettings?.mode === "api"
-                    ? "⚡ Automated API Mode"
+                    ? <><Zap size={14} className="ui-inline-icon" aria-hidden="true" />Automated API Mode</>
                     : pricingSettings.whatsappSettings?.mode === "disabled"
-                    ? "🚫 Disabled"
-                    : "💬 Free Mode (Click-to-Chat)"}
+                    ? <><Ban size={14} className="ui-inline-icon" aria-hidden="true" />Disabled</>
+                    : <><MessageCircle size={14} className="ui-inline-icon" aria-hidden="true" />Free Mode (Click-to-Chat)</>}
                 </span>
               </div>
             </div>
@@ -1875,7 +1883,7 @@ function AdminDashboard() {
                     Free Mode Settings
                   </h5>
                   <span style={{ fontSize: "12px", color: "#059669", fontWeight: "600" }}>
-                    ✅ Instant 1-Click WhatsApp Chat
+                    <CheckCircle2 size={13} className="ui-inline-icon" aria-hidden="true" />Instant 1-Click WhatsApp Chat
                   </span>
                 </div>
 
@@ -1891,7 +1899,7 @@ function AdminDashboard() {
                         color: "#059669",
                         pointerEvents: "none"
                       }}>
-                        🇮🇳 +
+                        +
                       </span>
                       <input
                         type="text"
@@ -1942,7 +1950,7 @@ function AdminDashboard() {
                       {pricingSettings.whatsappSettings?.welcomeMessage || "Hello! I am interested in learning more about your products on Digital Sanskrit Guru."}
                     </p>
                     <div className="wa-preview-meta">
-                      <span>Just now • Sent from store widget ✓✓</span>
+                      <span>Just now • Sent from store widget <CheckCheck size={14} className="ui-inline-icon-end" aria-hidden="true" /></span>
                     </div>
                   </div>
                 </div>
@@ -2119,7 +2127,7 @@ function AdminDashboard() {
                         }
                       />
                       <div className="wa-toggle-copy">
-                        <strong>📦 Automated Order Receipts</strong>
+                        <strong><Package size={15} className="ui-inline-icon" aria-hidden="true" />Automated Order Receipts</strong>
                         <span>Automatically dispatch WhatsApp order confirmation receipts to customers immediately upon successful checkout.</span>
                       </div>
                     </label>
@@ -2140,7 +2148,7 @@ function AdminDashboard() {
                         }
                       />
                       <div className="wa-toggle-copy">
-                        <strong>📲 WhatsApp OTP Verification</strong>
+                        <strong><Smartphone size={15} className="ui-inline-icon" aria-hidden="true" />WhatsApp OTP Verification</strong>
                         <span>Send 6-digit WhatsApp OTP verification codes to authenticate customer mobile numbers during registration and account updates.</span>
                       </div>
                     </label>

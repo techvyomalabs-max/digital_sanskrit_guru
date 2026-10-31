@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trash2, RotateCcw, XCircle, Check, AlertTriangle, RefreshCw, PartyPopper } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -156,7 +157,7 @@ function AdminTrash() {
       <main className="admin-main">
         <div className="admin-header">
           <div>
-            <h1>🗑️ Admin Recycle Bin</h1>
+            <h1><Trash2 size={24} className="ui-inline-icon" aria-hidden="true" />Admin Recycle Bin</h1>
             <p className="admin-header-subtitle">
               Soft-deleted products, coupons, and users can be restored or permanently purged from here
             </p>
@@ -168,7 +169,7 @@ function AdminTrash() {
               className="action-btn"
               style={{ padding: "8px 16px", borderRadius: "6px", backgroundColor: "#059669", color: "#fff" }}
             >
-              🔄 Restore All
+              <RotateCcw size={15} className="ui-inline-icon" aria-hidden="true" />Restore All
             </button>
             <button
               onClick={handleEmptyTrash}
@@ -176,7 +177,7 @@ function AdminTrash() {
               className="action-btn"
               style={{ padding: "8px 16px", borderRadius: "6px", backgroundColor: "#dc2626", color: "#fff" }}
             >
-              ❌ Empty Trash
+              <XCircle size={15} className="ui-inline-icon" aria-hidden="true" />Empty Trash
             </button>
           </div>
         </div>
@@ -184,12 +185,12 @@ function AdminTrash() {
         {/* Status Messages */}
         {message && (
           <div style={{ margin: "0 0 16px", padding: "12px 16px", borderRadius: "8px", backgroundColor: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", fontWeight: 500 }}>
-            ✓ {message}
+            <Check size={15} className="ui-inline-icon" aria-hidden="true" />{message}
           </div>
         )}
         {error && (
           <div style={{ margin: "0 0 16px", padding: "12px 16px", borderRadius: "8px", backgroundColor: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", fontWeight: 500 }}>
-            ⚠️ {error}
+            <AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />{error}
           </div>
         )}
 
@@ -255,7 +256,7 @@ function AdminTrash() {
               className="action-btn"
               style={{ padding: "10px 16px", borderRadius: "8px" }}
             >
-              🔄 Refresh
+              <RefreshCw size={15} className="ui-inline-icon" aria-hidden="true" />Refresh
             </button>
           </div>
 
@@ -265,7 +266,7 @@ function AdminTrash() {
             </div>
           ) : filteredTrash.length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              {trashItems.length === 0 ? "🎉 Recycle Bin is clean! No deleted items found." : "No matching items found."}
+              {trashItems.length === 0 ? "Recycle Bin is clean! No deleted items found." : "No matching items found."}
             </div>
           ) : (
             <div className="admin-table-wrap">
@@ -334,7 +335,7 @@ function AdminTrash() {
                               cursor: "pointer"
                             }}
                           >
-                            🔄 Restore
+                            <RotateCcw size={14} className="ui-inline-icon" aria-hidden="true" />Restore
                           </button>
                           <button
                             type="button"
@@ -351,7 +352,7 @@ function AdminTrash() {
                               cursor: "pointer"
                             }}
                           >
-                            ❌ Purge
+                            <XCircle size={14} className="ui-inline-icon" aria-hidden="true" />Purge
                           </button>
                         </div>
                       </td>

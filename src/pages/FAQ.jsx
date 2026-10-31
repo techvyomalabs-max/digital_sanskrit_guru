@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { BookOpen, Disc3, Laptop, CreditCard, Landmark, ScrollText, Lock, Package, ArrowRight, Check, ThumbsUp, ThumbsDown, Copy, MessageCircle, Phone, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ORGANISATION_NAME, WORKING_OFFICE, formatAddressInline } from "../utils/companyInfo";
 import "./FAQ.css";
@@ -10,7 +11,7 @@ const FAQ_CATEGORIES = [
     shortName: "Learning Journey",
     tagline: "Beginners roadmap, conversational Sanskrit, combos & scripture study",
     color: "#2563eb",
-    icon: "📖",
+    icon: BookOpen,
     questions: [
       {
         id: "q-g1",
@@ -19,7 +20,7 @@ const FAQ_CATEGORIES = [
           "Vyoma offers digital Sanskrit learning for interested learners at all levels. This learning is in the form of Courses, Self-learning tools (interchangeably called products here) and books. Digital Sanskrit Guru is a one-stop portal to explore and purchase all products created by the Vyoma team.",
         tags: ["About", "Vyoma", "Overview"],
         actionUrl: "https://vyoma.org/about/",
-        actionLabel: "🌐 Visit Vyoma.org"
+        actionLabel: "Visit Vyoma.org"
       },
       {
         id: "q-p2",
@@ -49,7 +50,7 @@ const FAQ_CATEGORIES = [
           "Yes. Our foundational grammar and shloka packs introduce sentence syntax and sandhi/samasa basics. Once comfortable, we recommend scripture study courses on SanskritFromHome that train you to interpret classical texts directly.",
         tags: ["Scriptures", "Upanishads", "Gita", "Advanced"],
         actionUrl: "https://www.sanskritfromhome.org",
-        actionLabel: "🎓 Explore Scripture Courses"
+        actionLabel: "Explore Scripture Courses"
       },
       {
         id: "q-p5",
@@ -66,7 +67,7 @@ const FAQ_CATEGORIES = [
     shortName: "Media & Formats",
     tagline: "USB pen drives, downloadable Windows offline, Web & Flipbooks",
     color: "#8b5cf6",
-    icon: "💿",
+    icon: Disc3,
     questions: [
       {
         id: "q-p7",
@@ -104,7 +105,7 @@ const FAQ_CATEGORIES = [
     shortName: "Tech & Setup",
     tagline: "macOS compatibility, mobile setup, ZIP extraction & USB care",
     color: "#ef4444",
-    icon: "💻",
+    icon: Laptop,
     questions: [
       {
         id: "q-t7",
@@ -113,7 +114,7 @@ const FAQ_CATEGORIES = [
           "Quick 3-step extraction guide:\n1. Download the ZIP file from your order confirmation email or My Account.\n2. Right-click the downloaded ZIP file and choose 'Extract All...'.\n3. Open the extracted folder and run the Application (.exe).\n\nDownload step-by-step PDF guide with screenshots: https://digitalsanskritguru.com/wp-content/uploads/2020/09/Steps-to-Extract-method-downloadable-version.pdf",
         tags: ["Download", "ZIP", "Extraction", "Windows"],
         actionUrl: "https://digitalsanskritguru.com/wp-content/uploads/2020/09/Steps-to-Extract-method-downloadable-version.pdf",
-        actionLabel: "📥 Download Extraction PDF Guide"
+        actionLabel: "Download Extraction PDF Guide"
       },
       {
         id: "q-t1",
@@ -122,7 +123,7 @@ const FAQ_CATEGORIES = [
           "Yes! Web-version products, online courses, and flipbooks run seamlessly in any browser on macOS (Safari, Chrome, Firefox).\n\nNote: Downloadable .exe files are for Windows only. For Mac users, please select the Web Version or Flipbook format.",
         tags: ["Mac", "macOS", "Apple", "Safari"],
         actionUrl: "https://digitalsanskritguru.com/shop/?filter_cat_1=25",
-        actionLabel: "🍎 Browse macOS Ready Catalog"
+        actionLabel: "Browse macOS Ready Catalog"
       },
       {
         id: "q-t2",
@@ -160,7 +161,7 @@ const FAQ_CATEGORIES = [
     shortName: "Payments & Orders",
     tagline: "UPI, International cards, ordering guide & physical store",
     color: "#10b981",
-    icon: "💳",
+    icon: CreditCard,
     questions: [
       {
         id: "q-pay2",
@@ -183,7 +184,7 @@ const FAQ_CATEGORIES = [
           "You can browse our online store, add products to your cart, and check out securely through our online catalog at: https://digitalsanskritguru.com",
         tags: ["Buy", "Cart", "Checkout"],
         actionUrl: "https://digitalsanskritguru.com",
-        actionLabel: "🛍️ Browse Products"
+        actionLabel: "Browse Products"
       },
       {
         id: "q-g8",
@@ -192,7 +193,7 @@ const FAQ_CATEGORIES = [
           "Yes, we have a helpful illustrated PDF guide explaining the entire checkout process: https://digitalsanskritguru.com/wp-content/uploads/2020/10/Procedure_for_downloadable_link.pdf",
         tags: ["Guide", "Ordering PDF", "How to Order"],
         actionUrl: "https://digitalsanskritguru.com/wp-content/uploads/2020/10/Procedure_for_downloadable_link.pdf",
-        actionLabel: "📥 Download Checkout Guide (PDF)"
+        actionLabel: "Download Checkout Guide (PDF)"
       },
       {
         id: "q-pay5",
@@ -208,7 +209,7 @@ const FAQ_CATEGORIES = [
           `Yes, you can directly visit our physical center and purchase products:\n${ORGANISATION_NAME}\n${formatAddressInline(WORKING_OFFICE)}.`,
         tags: ["Physical Store", "Walk-in", "Bengaluru"],
         actionUrl: "https://maps.google.com/?q=Vyoma+Linguistic+Labs+Foundation+Bengaluru",
-        actionLabel: "📍 Google Maps Location"
+        actionLabel: "Google Maps Location"
       },
       {
         id: "q-pay-shipping",
@@ -218,7 +219,7 @@ const FAQ_CATEGORIES = [
         tags: ["Shipping", "Delivery", "Refund", "Returns"],
         isInternalLink: true,
         actionUrl: "/shipping-refund-policy",
-        actionLabel: "📦 View Shipping & Refund Policy"
+        actionLabel: "View Shipping & Refund Policy"
       }
     ]
   },
@@ -228,7 +229,7 @@ const FAQ_CATEGORIES = [
     shortName: "About Vyoma",
     tagline: "Organization mission, leadership scholars & online courses",
     color: "#f59e0b",
-    icon: "🏛️",
+    icon: Landmark,
     questions: [
       {
         id: "q-g2",
@@ -244,7 +245,7 @@ const FAQ_CATEGORIES = [
           "Our core team consists of distinguished Sanskrit scholars, educational researchers, software engineers, and passionate volunteers. You can meet our leadership and advisors at: https://vyoma.org/about/",
         tags: ["Team", "Scholars", "Leadership"],
         actionUrl: "https://vyoma.org/about/",
-        actionLabel: "👥 Meet Our Scholars & Team"
+        actionLabel: "Meet Our Scholars & Team"
       },
       {
         id: "q-g6",
@@ -253,7 +254,7 @@ const FAQ_CATEGORIES = [
           "Yes! Our brochure detailing our educational initiatives, digital tools, and mission impact can be downloaded here: https://digitalsanskritguru.com/wp-content/uploads/2020/08/Vyoma-Sanskrit-Movement-2020-DSG-website.pdf",
         tags: ["Brochure", "PDF", "Downloads"],
         actionUrl: "https://digitalsanskritguru.com/wp-content/uploads/2020/08/Vyoma-Sanskrit-Movement-2020-DSG-website.pdf",
-        actionLabel: "📥 Download Organization Brochure (PDF)"
+        actionLabel: "Download Organization Brochure (PDF)"
       },
       {
         id: "q-g7",
@@ -262,7 +263,7 @@ const FAQ_CATEGORIES = [
           "You can explore, register for, and attend our structured online courses at our dedicated Sanskrit learning portal: https://www.sanskritfromhome.org",
         tags: ["Courses", "Sanskrit From Home", "Live Classes"],
         actionUrl: "https://www.sanskritfromhome.org",
-        actionLabel: "🎓 Visit SanskritFromHome.org"
+        actionLabel: "Visit SanskritFromHome.org"
       },
       {
         id: "q-g-privacy",
@@ -272,7 +273,7 @@ const FAQ_CATEGORIES = [
         tags: ["Privacy", "Security", "GDPR", "DPDP"],
         isInternalLink: true,
         actionUrl: "/privacy-policy",
-        actionLabel: "🔒 View Privacy Policy"
+        actionLabel: "View Privacy Policy"
       },
       {
         id: "q-g-terms",
@@ -282,7 +283,7 @@ const FAQ_CATEGORIES = [
         tags: ["Terms", "Conditions", "Licensing", "Copyright"],
         isInternalLink: true,
         actionUrl: "/terms-and-conditions",
-        actionLabel: "📜 View Terms and Conditions"
+        actionLabel: "View Terms and Conditions"
       }
     ]
   }
@@ -421,17 +422,17 @@ export default function FAQ() {
 
         <div className="faq-hero-policy-bar">
           <Link to="/terms-and-conditions" className="faq-policy-nav-btn">
-            <span>📜</span>
+            <ScrollText size={16} aria-hidden="true" />
             <span>Terms & Conditions</span>
             <span className="faq-policy-arrow">→</span>
           </Link>
           <Link to="/privacy-policy" className="faq-policy-nav-btn">
-            <span>🔒</span>
+            <Lock size={16} aria-hidden="true" />
             <span>Privacy Policy</span>
             <span className="faq-policy-arrow">→</span>
           </Link>
           <Link to="/shipping-refund-policy" className="faq-policy-nav-btn">
-            <span>📦</span>
+            <Package size={16} aria-hidden="true" />
             <span>Shipping & Refund</span>
             <span className="faq-policy-arrow">→</span>
           </Link>
@@ -451,14 +452,14 @@ export default function FAQ() {
               style={{ "--cat-color": cat.color }}
             >
               <div className="faq-cat-top">
-                <span className="faq-cat-icon">{cat.icon}</span>
+                <span className="faq-cat-icon"><cat.icon size={24} aria-hidden="true" /></span>
                 <span className="faq-cat-count">{cat.questions.length} Questions</span>
               </div>
               <h3 className="faq-cat-title">{cat.shortName}</h3>
               <p className="faq-cat-desc">{cat.tagline}</p>
               <div className="faq-cat-action">
                 <span className="faq-cat-link-text">
-                  {isActive ? "● Active Category" : "Select Topic →"}
+                  {isActive ? "Active Category" : "Select Topic →"}
                 </span>
               </div>
             </button>
@@ -470,7 +471,7 @@ export default function FAQ() {
       <section className="faq-questions-pill-selector">
         <div className="faq-questions-selector-header">
           <div className="faq-cat-heading-wrap">
-            <span className="faq-cat-heading-icon">{currentCategory.icon}</span>
+            <span className="faq-cat-heading-icon"><currentCategory.icon size={24} aria-hidden="true" /></span>
             <div>
               <h2>{currentCategory.name}</h2>
               <span className="faq-cat-subtext">{currentCategory.tagline}</span>
@@ -537,7 +538,8 @@ export default function FAQ() {
                     className="faq-direct-cta"
                     style={{ backgroundColor: currentCategory.color }}
                   >
-                    {currentQuestion.actionLabel || "Open Action ➔"}
+                    {currentQuestion.actionLabel || "Open Action"}
+                    <ArrowRight size={16} className="ui-inline-icon-end" aria-hidden="true" />
                   </Link>
                 ) : (
                   <a
@@ -547,7 +549,8 @@ export default function FAQ() {
                     className="faq-direct-cta"
                     style={{ backgroundColor: currentCategory.color }}
                   >
-                    {currentQuestion.actionLabel || "Open Action ➔"}
+                    {currentQuestion.actionLabel || "Open Action"}
+                    <ArrowRight size={16} className="ui-inline-icon-end" aria-hidden="true" />
                   </a>
                 )}
               </div>
@@ -597,7 +600,7 @@ export default function FAQ() {
                 <span className="faq-feedback-prompt">Was this helpful?</span>
                 {helpfulFeedback[currentQuestion.id] ? (
                   <span className="faq-feedback-confirmed">
-                    ✓ Thank you for your feedback!
+                    <Check size={15} className="ui-inline-icon" aria-hidden="true" />Thank you for your feedback!
                   </span>
                 ) : (
                   <div className="faq-feedback-thumbs">
@@ -608,7 +611,7 @@ export default function FAQ() {
                         setHelpfulFeedback((p) => ({ ...p, [currentQuestion.id]: true }))
                       }
                     >
-                      👍 Yes
+                      <ThumbsUp size={14} className="ui-inline-icon" aria-hidden="true" />Yes
                     </button>
                     <button
                       type="button"
@@ -617,7 +620,7 @@ export default function FAQ() {
                         setHelpfulFeedback((p) => ({ ...p, [currentQuestion.id]: true }))
                       }
                     >
-                      👎 No
+                      <ThumbsDown size={14} className="ui-inline-icon" aria-hidden="true" />No
                     </button>
                   </div>
                 )}
@@ -625,7 +628,11 @@ export default function FAQ() {
 
               <div className="faq-action-buttons-group">
                 <button type="button" className="faq-copy-action-btn" onClick={handleCopy}>
-                  {copied ? "✓ Copied!" : "📋 Copy Details"}
+                  {copied ? (
+                    <><Check size={14} className="ui-inline-icon" aria-hidden="true" />Copied!</>
+                  ) : (
+                    <><Copy size={14} className="ui-inline-icon" aria-hidden="true" />Copy Details</>
+                  )}
                 </button>
 
                 <a
@@ -636,7 +643,7 @@ export default function FAQ() {
                   rel="noopener noreferrer"
                   className="faq-whatsapp-action-btn"
                 >
-                  💬 WhatsApp Seva
+                  <MessageCircle size={15} className="ui-inline-icon" aria-hidden="true" />WhatsApp Seva
                 </a>
               </div>
             </div>
@@ -656,7 +663,7 @@ export default function FAQ() {
 
         <div className="faq-support-footer-channels">
           <a href="tel:+919480865623" className="faq-footer-channel-card">
-            <span className="faq-footer-ch-icon">📞</span>
+            <span className="faq-footer-ch-icon"><Phone size={20} aria-hidden="true" /></span>
             <div>
               <strong>Call Us</strong>
               <span>+91 9480 865 623</span>
@@ -664,7 +671,7 @@ export default function FAQ() {
           </a>
 
           <a href="mailto:support@vyomalabs.in" className="faq-footer-channel-card">
-            <span className="faq-footer-ch-icon">✉️</span>
+            <span className="faq-footer-ch-icon"><Mail size={20} aria-hidden="true" /></span>
             <div>
               <strong>Email Us</strong>
               <span>support@vyomalabs.in</span>

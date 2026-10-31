@@ -15,6 +15,7 @@ import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct } from "../utils/productOptions";
+import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -30,7 +31,20 @@ import {
   Sparkles,
   ChevronDown,
   MessageCircle,
-  X
+  X,
+  Tag,
+  Copy,
+  Package,
+  Smartphone,
+  ExternalLink,
+  AlertTriangle,
+  Gift,
+  Info,
+  Globe,
+  Laptop,
+  Mail,
+  GraduationCap,
+  Check
 } from "lucide-react";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import {
@@ -290,7 +304,7 @@ function ProductSkeleton() {
 function ProductNotFound() {
   return (
     <div className="product-not-found">
-      <div className="product-not-found-icon" aria-hidden="true">📦</div>
+      <div className="product-not-found-icon" aria-hidden="true"><Package size={44} /></div>
       <h1>Product not found</h1>
       <p>We couldn't find the product you're looking for. It may have been removed or the link is incorrect.</p>
       <div className="product-not-found-actions">
@@ -530,6 +544,22 @@ function Product() {
       .catch(() => setStoreSettings(null));
   }, []);
 
+  // Public coupons, to show offers made for this product
+  const [publicCoupons, setPublicCoupons] = useState([]);
+  useEffect(() => {
+    let active = true;
+    axios.get("/api/coupons")
+      .then((res) => {
+        if (active) setPublicCoupons(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (active) setPublicCoupons([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const isIntlPhysicalRestricted = Boolean(
     memoBuyProduct &&
     !isDigitalItem(memoBuyProduct) &&
@@ -715,11 +745,6 @@ function Product() {
         cancelText: "Close"
       });
     }
-  };
-
-  const _renderStars = (value) => {
-    const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)));
-    return `${"★".repeat(rounded)}${"☆".repeat(5 - rounded)}`;
   };
 
   const getGalleryImages = (item) => {
@@ -1092,6 +1117,21 @@ function Product() {
   const mediaItems = buildProductMediaItems(product, galleryImages, trailerVideo);
   const activeMedia = selectedMedia || mediaItems[0] || null;
   const isKindleBook = isKindleProduct(buyProduct);
+  // Coupons made for the exact product (or chosen format) being bought. Kindle editions are
+  // sold on Amazon, so no store coupon applies to them.
+  const productOffers = buyProduct && !isKindleBook
+    ? couponsForProduct(publicCoupons, buyProduct._id).filter(
+        (coupon) => !coupon.expiresAt || new Date(coupon.expiresAt).getTime() >= Date.now()
+      )
+    : [];
+  const copyCouponCode = async (couponCode) => {
+    try {
+      await navigator.clipboard.writeText(couponCode);
+      showToast(`Code ${couponCode} copied. Apply it at checkout.`);
+    } catch {
+      showToast(`Use code ${couponCode} at checkout.`);
+    }
+  };
 
 
 
@@ -1431,6 +1471,36 @@ function Product() {
                 </p>
                 <p className="tax-note">Inclusive of all taxes</p>
               </div>
+              {productOffers.length > 0 && (
+                <div className="product-coupon-offers" aria-label="Coupon offers for this product">
+                  {productOffers.map((coupon) => {
+                    const minOrder = Number(coupon.minOrder || 0);
+                    return (
+                      <div key={coupon._id || coupon.code} className="product-coupon-offer">
+                        <Tag size={16} className="product-coupon-offer-icon" aria-hidden="true" />
+                        <p>
+                          <strong>
+                            {coupon.type === "percentage"
+                              ? `Extra ${Number(coupon.value || 0)}% off`
+                              : `Extra ${formatCurrencyExact(Number(coupon.value || 0), "INR")} off`}
+                          </strong>{" "}
+                          with code <span className="product-coupon-code">{coupon.code}</span>
+                          {minOrder > 0 ? ` when you buy ${formatCurrencyExact(minOrder, "INR")} or more of this item` : ""}
+                          . Apply it at checkout.
+                        </p>
+                        <button
+                          type="button"
+                          className="product-coupon-copy"
+                          onClick={() => copyCouponCode(coupon.code)}
+                          aria-label={`Copy coupon code ${coupon.code}`}
+                        >
+                          <Copy size={14} aria-hidden="true" /> Copy
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <p className="stock">
                 {buyProduct.isDigital === true ? (
                   <span className="in-stock">
@@ -1499,7 +1569,7 @@ function Product() {
                       rel="noopener noreferrer"
                       className="product-kindle-cta-btn"
                     >
-                      📱 Buy Kindle Edition on Amazon ↗
+                      <Smartphone size={16} className="ui-inline-icon" aria-hidden="true" />Buy Kindle Edition on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                     </a>
                     <p className="product-kindle-note">
                       Kindle books are sold and fulfilled directly on Amazon Kindle Store.
@@ -1510,7 +1580,7 @@ function Product() {
                     {digitalOwnership.blocked ? (
                       <div className="product-purchased-alert">
                         <p className="product-purchased-alert-title">
-                          <span>⚠️</span> {digitalOwnership.message || "You have already purchased this web version."}
+                          <AlertTriangle size={16} className="ui-inline-icon" aria-hidden="true" />{digitalOwnership.message || "You have already purchased this web version."}
                         </p>
                         {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
                           <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
@@ -1525,7 +1595,7 @@ function Product() {
                               onChange={(e) => setPurchaseAsGift(e.target.checked)}
                               className="product-purchased-checkbox"
                             />
-                            🎁 Purchase as a gift for someone else
+                            <Gift size={15} className="ui-inline-icon" aria-hidden="true" />Purchase as a gift for someone else
                           </label>
                         )}
                       </div>
@@ -1545,7 +1615,7 @@ function Product() {
                         }}
                       >
                         <p style={{ margin: 0, fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <span>ℹ️</span> {digitalOwnership.message}
+                          <Info size={16} style={{ flexShrink: 0 }} aria-hidden="true" />{digitalOwnership.message}
                         </p>
                         {digitalOwnership.upgradeCredit > 0 && (() => {
                           const mergedDetails = getMergedUpgradeOwnedDetails(digitalOwnership.upgradeCreditItems);
@@ -1577,7 +1647,7 @@ function Product() {
                               onChange={(e) => setPurchaseAsGift(e.target.checked)}
                               className="product-purchased-checkbox"
                             />
-                            🎁 Purchase as a gift for someone else
+                            <Gift size={15} className="ui-inline-icon" aria-hidden="true" />Purchase as a gift for someone else
                           </label>
                         )}
                       </div>
@@ -1602,10 +1672,10 @@ function Product() {
                       <div className="product-digital-badge-wrap">
                         <p className="product-digital-badge-pill">
                           {isManualAccessProduct(buyProduct)
-                            ? "🌐 Access will be provided within 24–48 hours of purchase"
+                            ? <><Globe size={14} className="ui-inline-icon" aria-hidden="true" />Access will be provided within 24–48 hours of purchase</>
                             : isExternalDelivery(buyProduct)
-                              ? "🌐 External Digital Access"
-                              : "💻 Web Version – Available for one-time purchase only."}
+                              ? <><Globe size={14} className="ui-inline-icon" aria-hidden="true" />External Digital Access</>
+                              : <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Web Version – Available for one-time purchase only.</>}
                         </p>
                       </div>
                     ) : (
@@ -1650,7 +1720,7 @@ function Product() {
 
                     {isIntlPhysicalRestricted && (
                       <div className="product-intl-restricted-alert">
-                        <strong>⚠️ International Delivery Unavailable:</strong> Physical product shipping to {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally.
+                        <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />International Delivery Unavailable:</strong> Physical product shipping to {selectedAddress?.country || "international addresses"} is currently disabled. Only digital products (E-books, Flipbooks & Web versions) can be ordered internationally.
                       </div>
                     )}
 
@@ -1684,7 +1754,7 @@ function Product() {
                           }}
                           className="bulk-quote-btn product-bulk-quote-btn"
                         >
-                          ✉ Request Bulk / Wholesale Quote
+                          <Mail size={15} className="ui-inline-icon" aria-hidden="true" />Request Bulk / Wholesale Quote
                         </button>
                       </div>
                     )}
@@ -1704,7 +1774,7 @@ function Product() {
                       rel="noopener noreferrer"
                       className="view-course-btn"
                     >
-                      🎓 View Course on SFH ↗
+                      <GraduationCap size={16} className="ui-inline-icon" aria-hidden="true" />View Course on SFH <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                     </a>
                   </div>
                 ) : null}
@@ -1786,9 +1856,9 @@ function Product() {
 
                       <div className="bundle-item-meta">
                         {isDigitalItem ? (
-                          <span className="bundle-format-tag bundle-format-tag--digital">💻 {digitalFormatLabel}</span>
+                          <span className="bundle-format-tag bundle-format-tag--digital"><Laptop size={12} className="ui-inline-icon" aria-hidden="true" />{digitalFormatLabel}</span>
                         ) : (
-                          <span className="bundle-format-tag bundle-format-tag--physical">📦 {physicalFormatLabel}</span>
+                          <span className="bundle-format-tag bundle-format-tag--physical"><Package size={12} className="ui-inline-icon" aria-hidden="true" />{physicalFormatLabel}</span>
                         )}
                         {includedPrice > 0 ? (
                           <span className="bundle-item-price-val">
@@ -2055,11 +2125,11 @@ function Product() {
                   />
                   {reviewWordCount > MAX_REVIEW_WORDS && (
                     <p className="review-form-error-msg" style={{ marginTop: "6px" }}>
-                      ⚠️ Word limit exceeded: Your review has {reviewWordCount} words. Please shorten it to at most {MAX_REVIEW_WORDS} words to submit.
+                      <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />Word limit exceeded: Your review has {reviewWordCount} words. Please shorten it to at most {MAX_REVIEW_WORDS} words to submit.
                     </p>
                   )}
                   {reviewError && (
-                    <p className="review-form-error-msg">⚠️ {reviewError}</p>
+                    <p className="review-form-error-msg"><AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />{reviewError}</p>
                   )}
                 </div>
 
@@ -2123,7 +2193,7 @@ function Product() {
                     className={`reviews-chip ${selectedRatingFilter === d.star ? "active" : ""}`}
                     onClick={() => setSelectedRatingFilter(selectedRatingFilter === d.star ? null : d.star)}
                   >
-                    {d.star} ★ ({d.count})
+                    {d.star} <Star size={13} fill="currentColor" className="ui-inline-icon" style={{ marginInlineEnd: "0.2em" }} aria-label="star" /> ({d.count})
                   </button>
                 ))}
             </div>
@@ -2348,7 +2418,7 @@ function Product() {
             <form onSubmit={handleBulkSubmit} className="product-bulk-modal-form">
               {bulkSuccess ? (
                 <div className="product-bulk-modal-success">
-                  <span className="product-bulk-modal-success-icon">✅</span>
+                  <span className="product-bulk-modal-success-icon"><CheckCircle2 size={40} aria-hidden="true" /></span>
                   <h4 className="product-bulk-modal-success-title">Enquiry Submitted Successfully!</h4>
                   <p className="product-bulk-modal-success-desc">
                     We have logged your wholesale enquiry. Our administrative team will get back to you with custom rates within 24 hours.
@@ -2362,7 +2432,7 @@ function Product() {
 
                   {bulkError && (
                     <div className="product-bulk-modal-error">
-                      ⚠️ {bulkError}
+                      <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />{bulkError}
                     </div>
                   )}
 
@@ -2573,7 +2643,7 @@ function Product() {
               onClick={() => setShowLightbox(false)}
               aria-label="Close image preview"
             >
-              ✕
+              <X size={22} aria-hidden="true" />
             </button>
 
             {mediaItems.length > 1 && (
@@ -2615,7 +2685,7 @@ function Product() {
       {showReviewSuccessModal && (
         <div className="review-redirect-modal-backdrop" onClick={() => setShowReviewSuccessModal(false)}>
           <div className="review-redirect-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="review-success-popup-icon">✓</div>
+            <div className="review-success-popup-icon"><Check size={32} strokeWidth={3} aria-hidden="true" /></div>
             <h2>Review Added Successfully!</h2>
             <p>Thank you for sharing your feedback. Your review has been added to this product.</p>
             <div className="review-redirect-modal-actions">

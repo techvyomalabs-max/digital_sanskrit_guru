@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
+import { isChatbotEnabled } from "../../utils/chatbotClient";
 import "./WhatsAppButton.css";
 
 function WhatsAppButton() {
@@ -33,7 +34,7 @@ function WhatsAppButton() {
   }, []);
 
   useEffect(() => {
-    if (isAdminRoute) return undefined;
+    if (isAdminRoute || isChatbotEnabled) return undefined;
 
     // Show tooltip 2 seconds after page load
     const timer = setTimeout(() => {
@@ -68,7 +69,8 @@ function WhatsAppButton() {
 
   return (
     <div className="whatsapp-float-container">
-      {showTooltip && (
+      {/* The chat assistant's launcher sits where this tooltip would appear */}
+      {showTooltip && !isChatbotEnabled && (
         <div className="whatsapp-tooltip">
           <span>Need Help? Chat with us!</span>
           <button

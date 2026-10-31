@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Lightbulb } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import ProductCard from "../components/ProductCard";
@@ -208,7 +209,7 @@ function SearchResults() {
 
         {suggestion && (
           <div className="search-results-suggestion-banner" role="alert">
-            <span className="search-results-suggestion-icon" aria-hidden="true">💡</span>
+            <span className="search-results-suggestion-icon" aria-hidden="true"><Lightbulb size={15} /></span>
             <span className="search-results-suggestion-text">
               Did you mean:{" "}
               <button

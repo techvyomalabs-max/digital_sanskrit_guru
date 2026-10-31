@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TrendingUp, BookOpen, Trophy, Globe, MapPin } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import AdminSidebar from "../components/admin/AdminSidebar";
@@ -215,14 +216,14 @@ function AdminSalesDashboard() {
             {/* Dashboard Graphs Row 1 */}
             <div className="sales-dashboard-grid">
               <div className="card sales-dashboard-chart-card double-width">
-                <h3>📈 Monthly Sales Performance</h3>
+                <h3><TrendingUp size={18} className="ui-inline-icon" aria-hidden="true" />Monthly Sales Performance</h3>
                 <div className="chart-container">
                   <Line data={monthlyTrendData} options={trendOptions} />
                 </div>
               </div>
 
               <div className="card sales-dashboard-chart-card">
-                <h3>📖 Sales by Product Format</h3>
+                <h3><BookOpen size={18} className="ui-inline-icon" aria-hidden="true" />Sales by Product Format</h3>
                 <div className="chart-container">
                   <Doughnut data={formatDistributionData} options={doughnutOptions} />
                 </div>
@@ -232,19 +233,19 @@ function AdminSalesDashboard() {
             {/* Dashboard Graphs Row 2 */}
             <div className="sales-dashboard-grid">
               <div className="card sales-dashboard-chart-card double-width">
-                <h3>🏆 Top 10 Best-Selling Products</h3>
+                <h3><Trophy size={18} className="ui-inline-icon" aria-hidden="true" />Top 10 Best-Selling Products</h3>
                 <div className="chart-container">
                   <Bar data={topProductsData} options={barOptions} />
                 </div>
               </div>
 
               <div className="card sales-dashboard-chart-card">
-                <h3>🌍 Geographic Sales Distribution</h3>
+                <h3><Globe size={18} className="ui-inline-icon" aria-hidden="true" />Geographic Sales Distribution</h3>
                 <div className="sales-geo-list">
                   {data?.geographicDistribution?.length > 0 ? (
                     data.geographicDistribution.map((geo, index) => (
                       <div key={`${geo.name}-${index}`} className="sales-geo-row" style={{ background: "var(--admin-surface-2)", borderColor: "var(--admin-border)" }}>
-                        <span className="sales-geo-name" style={{ color: "var(--admin-text)" }}>📍 {geo.name}</span>
+                        <span className="sales-geo-name" style={{ color: "var(--admin-text)" }}><MapPin size={14} className="ui-inline-icon" aria-hidden="true" />{geo.name}</span>
                         <strong className="sales-geo-count" style={{ color: "var(--admin-primary)" }}>
                           {geo.count} order{geo.count === 1 ? "" : "s"}
                         </strong>

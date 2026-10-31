@@ -1,4 +1,5 @@
 import { Link, Navigate } from "react-router-dom";
+import { ShieldAlert } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
 function AdminRoute({ children, requiredPage }) {
@@ -40,7 +41,7 @@ function AdminRoute({ children, requiredPage }) {
 
       return (
         <div style={{ padding: "60px 24px", maxWidth: "600px", margin: "40px auto", textAlign: "center", backgroundColor: "var(--admin-surface, #fff)", border: "1px solid var(--admin-border, #e5e7eb)", borderRadius: "12px" }}>
-          <div style={{ fontSize: "48px", marginBottom: "12px" }}>🛡️</div>
+          <div style={{ marginBottom: "12px" }}><ShieldAlert size={48} strokeWidth={1.6} aria-hidden="true" /></div>
           <h2 style={{ margin: "0 0 8px" }}>Page Access Restricted</h2>
           <p style={{ color: "#6b7280", margin: "0 0 20px" }}>
             You are logged in as a <strong>Level 2 Sub-Admin</strong>, but access to this particular page (<code>{requiredPage}</code>) has not been assigned to your account.

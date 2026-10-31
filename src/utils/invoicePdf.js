@@ -635,7 +635,7 @@ export async function generateInvoicePdf(order, options = {}) {
   doc.setFont("helvetica", "italic");
   doc.setFontSize(8.5);
   doc.setTextColor(148, 163, 184);
-  doc.text("Thank you for your business & spreading the wisdom of Sanskrit! 🙏", 297.5, footerY - 14, { align: "center" });
+  doc.text("Thank you for your business & spreading the wisdom of Sanskrit!", 297.5, footerY - 14, { align: "center" });
   doc.text("This is a computer-generated invoice and requires no physical signature.", 297.5, footerY, { align: "center" });
 
   doc.save(`${filePrefix}-${orderCode || "order"}.pdf`);

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Truck, RotateCcw, ShieldCheck, Mail, Phone, HelpCircle, Clock, CheckCircle2 } from "lucide-react";
+import { Truck, RotateCcw, ShieldCheck, Mail, Phone, HelpCircle, Clock, CheckCircle2, MapPin, Zap } from "lucide-react";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import "./ShippingPolicy.css";
 
@@ -24,7 +24,7 @@ function ShippingPolicy() {
 
         {/* Highlight Banner */}
         <div className="policy-alert-banner">
-          <div className="alert-icon">📍</div>
+          <div className="alert-icon"><MapPin size={28} aria-hidden="true" /></div>
           <div className="alert-text">
             <strong>Important Notice:</strong> Physical products (Books, Audio Devices, USBs, etc.) are shipped <strong>within India only</strong>. Digital products (E-books, Web/Flipbook versions & Courses) can be purchased <strong>worldwide</strong>.
           </div>
@@ -143,7 +143,7 @@ function ShippingPolicy() {
         {/* Audio Device Special Guarantee Box */}
         <section className="policy-special-box" id="audio-device-guarantee">
           <div className="special-head">
-            <h3>⚡ Audio Device / Hardware - 15 Days Replacement Guarantee</h3>
+            <h3><Zap size={18} className="ui-inline-icon" aria-hidden="true" />Audio Device / Hardware - 15 Days Replacement Guarantee</h3>
           </div>
           <div className="special-body">
             <p>

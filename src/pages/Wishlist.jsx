@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Trash2, ShoppingCart, ArrowLeft } from "lucide-react";
+import { Trash2, ShoppingCart, ArrowLeft, ExternalLink, Heart } from "lucide-react";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { useCart } from "../hooks/useCart";
@@ -157,7 +157,7 @@ function Wishlist() {
                             className="wishlist-add-to-cart-btn wishlist-kindle-btn"
                             aria-label="Buy on Amazon"
                           >
-                            Buy on Amazon ↗
+                            Buy on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                           </a>
                         ) : (
                           <button
@@ -188,7 +188,7 @@ function Wishlist() {
           </div>
         ) : (
           <div className="wishlist-empty-state">
-            <div className="wishlist-empty-icon">❤️</div>
+            <div className="wishlist-empty-icon"><Heart size={44} aria-hidden="true" /></div>
             <h2>Your wishlist is empty</h2>
             <p>Save products from the catalog to compare and buy them later.</p>
             <Link to="/collection" className="wishlist-shop-btn">

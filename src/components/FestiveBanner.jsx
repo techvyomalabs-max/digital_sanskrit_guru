@@ -1,4 +1,5 @@
 import "./FestiveBanner.css";
+import { PartyPopper, X } from "lucide-react";
 
 export default function FestiveBanner({ text, bgFrom, bgTo, textColor, linkUrl, linkText, onDismiss }) {
   const style = {
@@ -10,7 +11,12 @@ export default function FestiveBanner({ text, bgFrom, bgTo, textColor, linkUrl, 
   return (
     <div className="festive-banner" style={style} role="banner" aria-label="Festive announcement">
       <span className="festive-banner-text">
-        {text || "🎉 Festive Sale is Live!"}
+        {text || (
+          <>
+            <PartyPopper size={16} className="ui-inline-icon" aria-hidden="true" />
+            Festive Sale is Live!
+          </>
+        )}
         {linkUrl && (
           <a
             className="festive-banner-link"
@@ -28,7 +34,7 @@ export default function FestiveBanner({ text, bgFrom, bgTo, textColor, linkUrl, 
         aria-label="Dismiss festive banner"
         title="Dismiss"
       >
-        ✕
+        <X size={16} aria-hidden="true" />
       </button>
     </div>
   );

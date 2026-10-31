@@ -106,7 +106,7 @@ html.banner-active .navbar {
   padding: 0 10px;
   height: 32px;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 16.5px;
   font-weight: 600;
   box-sizing: border-box;
   transition: all 0.15s ease;
@@ -234,7 +234,7 @@ html.banner-active .navbar {
   background: transparent;
   color: #ffffff;
   text-decoration: none;
-  font-size: 15px;
+  font-size: 16.5px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -380,14 +380,14 @@ html.banner-active .navbar {
 
 .navbar-location-label {
   color: rgba(255, 255, 255, 0.75);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.1;
   font-weight: 500;
 }
 
 .navbar-location-value {
   color: var(--site-header-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   max-width: 180px;
   white-space: nowrap;
@@ -714,7 +714,7 @@ html.banner-active .navbar {
 }
 
 .navbar-account-line1 {
-  font-size: 11px;
+  font-size: 12.5px;
   color: rgba(255, 255, 255, 0.75);
   white-space: nowrap;
   overflow: hidden;
@@ -724,7 +724,7 @@ html.banner-active .navbar {
 }
 
 .navbar-account-line2 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--site-header-text);
 }
@@ -751,7 +751,7 @@ html.banner-active .navbar {
 }
 
 .navbar-cart-label {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -776,7 +776,7 @@ html.banner-active .navbar {
   background: transparent;
   color: var(--site-header-text);
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
   cursor: pointer;
   align-items: center;
@@ -1502,7 +1502,7 @@ html.banner-active .navbar {
    RESPONSIVE BREAKPOINTS
    ════════════════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 1150px) {
+@media (max-width: 1220px) {
   .navbar-inner {
     grid-template-columns: max-content minmax(260px, 1fr) max-content;
     grid-template-areas:
@@ -1533,6 +1533,19 @@ html.banner-active .navbar {
 
   .navbar-right {
     grid-area: right;
+  }
+}
+
+/* Small laptops: keep the right-hand links on screen by showing icon-only
+   Cart and Menu buttons and letting the search box shrink a little more */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .navbar-inner {
+    grid-template-columns: max-content minmax(200px, 1fr) max-content;
+  }
+
+  .navbar-cart-label,
+  .navbar-menu-text {
+    display: none;
   }
 }
 
@@ -1713,7 +1726,7 @@ html.banner-active .navbar {
   }
 
   .navbar-quick-nav-btn {
-    font-size: 13.5px;
+    font-size: 15px;
     padding: 0 7px;
     height: 28px;
     line-height: 28px;
@@ -1723,7 +1736,7 @@ html.banner-active .navbar {
   .navbar-collection-menu-btn {
     height: 28px;
     padding: 0 7px;
-    font-size: 13.5px;
+    font-size: 15px;
     line-height: 28px;
   }
 
@@ -1758,11 +1771,11 @@ html.banner-active .navbar {
   }
 
   .navbar-account-line1 {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .navbar-account-line2 {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .navbar-badge {

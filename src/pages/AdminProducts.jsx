@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Package, Wallet, AlertTriangle, Timer, BarChart3, Factory, Zap, CheckCircle2, RefreshCw } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -260,7 +261,7 @@ function AdminProducts() {
           )
         )
       );
-      setWarehouseMessage(`✓ Successfully restocked ${critical.length} critical physical product(s) to 10 units!`);
+      setWarehouseMessage(`Successfully restocked ${critical.length} critical physical product(s) to 10 units!`);
       await loadProducts();
     } catch {
       setWarehouseMessage("Bulk restock failed. Please check network connection and retry.");
@@ -299,7 +300,7 @@ function AdminProducts() {
           )
         )
       );
-      setWarehouseMessage(`✓ Added +10 units to ${lowStockItems.length} low-stock physical product(s)!`);
+      setWarehouseMessage(`Added +10 units to ${lowStockItems.length} low-stock physical product(s)!`);
       await loadProducts();
     } catch {
       setWarehouseMessage("Low-stock restock failed. Please retry.");
@@ -327,7 +328,7 @@ function AdminProducts() {
           <div className="inv-kpi-card blue">
             <div className="inv-kpi-top">
               <span className="inv-kpi-label">Total Stock Units</span>
-              <div className="inv-kpi-icon-wrap">📦</div>
+              <div className="inv-kpi-icon-wrap"><Package size={22} aria-hidden="true" /></div>
             </div>
             <div className="inv-kpi-amount">{inventoryAnalytics.totalStockUnits}</div>
             <span className="inv-kpi-subtext">Across {products.length} products</span>
@@ -336,7 +337,7 @@ function AdminProducts() {
           <div className="inv-kpi-card green">
             <div className="inv-kpi-top">
               <span className="inv-kpi-label">Inventory Value</span>
-              <div className="inv-kpi-icon-wrap green">💰</div>
+              <div className="inv-kpi-icon-wrap green"><Wallet size={22} aria-hidden="true" /></div>
             </div>
             <div className="inv-kpi-amount">₹{Math.round(inventoryAnalytics.inventoryValue).toLocaleString("en-IN")}</div>
             <span className="inv-kpi-subtext">Estimated stock valuation</span>
@@ -345,7 +346,7 @@ function AdminProducts() {
           <div className="inv-kpi-card red">
             <div className="inv-kpi-top">
               <span className="inv-kpi-label">Out of Stock</span>
-              <div className="inv-kpi-icon-wrap red">⚠️</div>
+              <div className="inv-kpi-icon-wrap red"><AlertTriangle size={22} aria-hidden="true" /></div>
             </div>
             <div className="inv-kpi-amount">{inventoryAnalytics.outOfStockCount}</div>
             <span className="inv-kpi-subtext">Needs immediate restocking</span>
@@ -354,7 +355,7 @@ function AdminProducts() {
           <div className="inv-kpi-card amber">
             <div className="inv-kpi-top">
               <span className="inv-kpi-label">Low Stock</span>
-              <div className="inv-kpi-icon-wrap amber">⏱</div>
+              <div className="inv-kpi-icon-wrap amber"><Timer size={22} aria-hidden="true" /></div>
             </div>
             <div className="inv-kpi-amount">{inventoryAnalytics.lowStockCount}</div>
             <span className="inv-kpi-subtext">Items with 1-5 units remaining</span>
@@ -363,7 +364,7 @@ function AdminProducts() {
 
         {/* Category Distribution Analytics */}
         <section className="card">
-          <h3 style={{ margin: "0 0 14px", fontSize: "16px", fontWeight: 700 }}>📊 Category Inventory Distribution</h3>
+          <h3 style={{ margin: "0 0 14px", fontSize: "16px", fontWeight: 700 }}><BarChart3 size={17} className="ui-inline-icon" aria-hidden="true" />Category Inventory Distribution</h3>
           {isLoading ? (
             <p style={{ color: "var(--admin-muted)" }}>Loading inventory data...</p>
           ) : inventoryAnalytics.categoryStock.length === 0 ? (
@@ -389,7 +390,7 @@ function AdminProducts() {
 
         {/* Storage Zones & Restock Queue */}
         <section className="card">
-          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>🏭 Stock Overview & Restock Queue</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}><Factory size={17} className="ui-inline-icon" aria-hidden="true" />Stock Overview & Restock Queue</h3>
           <div className="warehouse-summary-grid">
             <div className="warehouse-metric">
               <span>Total Stored Units</span>
@@ -415,7 +416,7 @@ function AdminProducts() {
 
           <div className="warehouse-zones-grid">
             <div>
-              <h4 className="warehouse-subheading">📊 Stock by Category</h4>
+              <h4 className="warehouse-subheading"><BarChart3 size={15} className="ui-inline-icon" aria-hidden="true" />Stock by Category</h4>
               <div className="warehouse-zone-list">
                 {warehouseAnalytics.zones.length === 0 ? (
                   <p style={{ color: "var(--admin-muted)" }}>No stock data available.</p>
@@ -445,7 +446,7 @@ function AdminProducts() {
 
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
-                <h4 className="warehouse-subheading" style={{ margin: 0 }}>⚡ Priority Restock Queue</h4>
+                <h4 className="warehouse-subheading" style={{ margin: 0 }}><Zap size={15} className="ui-inline-icon" aria-hidden="true" />Priority Restock Queue</h4>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <button
                     className="warehouse-action-btn"
@@ -480,7 +481,7 @@ function AdminProducts() {
                   </p>
                 ) : warehouseAnalytics.restockQueue.length === 0 ? (
                   <p style={{ color: "var(--admin-muted)", padding: "20px 0", textAlign: "center" }}>
-                    ✓ All products are sufficiently stocked. No items in restock queue.
+                    <CheckCircle2 size={15} className="ui-inline-icon" aria-hidden="true" />All products are sufficiently stocked. No items in restock queue.
                   </p>
                 ) : (
                   warehouseAnalytics.restockQueue.map((product) => (
@@ -490,7 +491,11 @@ function AdminProducts() {
                         <span>{product.category || "General"} • ₹{(product.price || 0).toLocaleString("en-IN")}</span>
                       </div>
                       <span className={product.priority === "Critical" ? "restock-tag critical" : "restock-tag"}>
-                        {product.priority === "Critical" ? "⚠️ Out of Stock" : "⏱ Low Stock"}
+                        {product.priority === "Critical" ? (
+                        <><AlertTriangle size={12} className="ui-inline-icon" aria-hidden="true" />Out of Stock</>
+                      ) : (
+                        <><Timer size={12} className="ui-inline-icon" aria-hidden="true" />Low Stock</>
+                      )}
                       </span>
                       <div className="warehouse-stock-actions">
                         <p style={{ fontWeight: 800, color: product.stock === 0 ? "#dc2626" : "#d97706", margin: 0 }}>
@@ -518,10 +523,10 @@ function AdminProducts() {
 
         {/* Stock Manager with Search & Zone Filtering */}
         <section className="card">
-          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>📦 Warehouse Stock Inventory</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}><Package size={17} className="ui-inline-icon" aria-hidden="true" />Warehouse Stock Inventory</h3>
           <div className="warehouse-manager-tools">
             <input
-              placeholder="🔍 Search product name or category..."
+              placeholder="Search product name or category..."
               value={warehouseSearch}
               onChange={(e) => setWarehouseSearch(e.target.value)}
             />
@@ -529,7 +534,7 @@ function AdminProducts() {
               value={warehouseZoneFilter}
               onChange={(e) => setWarehouseZoneFilter(e.target.value)}
             >
-              <option value="All">🌐 All Categories</option>
+              <option value="All">All Categories</option>
               {warehouseAnalytics.zones.map((zone) => (
                 <option key={zone.category} value={zone.category}>
                   {zone.category}
@@ -558,7 +563,7 @@ function AdminProducts() {
               onClick={recomputeRowOrder}
               title="Re-sort rows by stock and name"
             >
-              🔄 Re-sort
+              <RefreshCw size={13} className="ui-inline-icon" aria-hidden="true" />Re-sort
             </button>
           </div>
 

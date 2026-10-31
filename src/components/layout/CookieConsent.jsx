@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Cookie } from "lucide-react";
 import { Link } from "react-router-dom";
 import "./CookieConsent.css";
 
@@ -67,7 +68,7 @@ export default function CookieConsent() {
     <div className="cookie-banner-overlay" id="dsg-cookie-consent-banner">
       <div className="cookie-card">
         <div className="cookie-header">
-          <div className="cookie-icon">🍪</div>
+          <div className="cookie-icon"><Cookie size={26} aria-hidden="true" /></div>
           <div className="cookie-title-group">
             <h3>Cookie Consent & Privacy</h3>
             <p className="cookie-compliance-badge">DPDP Act 2023 & GDPR Compliant</p>

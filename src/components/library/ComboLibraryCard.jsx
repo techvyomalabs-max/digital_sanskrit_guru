@@ -1,4 +1,5 @@
 import { formatDate } from "../../utils/date";
+import { Hourglass, Package, ExternalLink, Smartphone } from "lucide-react";
 import { isExternalDelivery } from "../../utils/digitalDelivery";
 import { isKindleProduct } from "../../utils/kindle";
 import "./ComboLibraryCard.css";
@@ -22,7 +23,11 @@ export default function ComboLibraryCard({ combo, onOpenReader }) {
           }}
         />
         <span className={`my-library-format-badge ${isPending ? "pending" : ""}`}>
-          {isPending ? "⏳ Access being set up" : `📦 Combo · ${itemCount} ${itemCount === 1 ? "item" : "items"}`}
+          {isPending ? (
+            <><Hourglass size={13} className="ui-inline-icon" aria-hidden="true" />Access being set up</>
+          ) : (
+            <><Package size={13} className="ui-inline-icon" aria-hidden="true" />{`Combo · ${itemCount} ${itemCount === 1 ? "item" : "items"}`}</>
+          )}
         </span>
       </div>
 
@@ -64,11 +69,8 @@ export default function ComboLibraryCard({ combo, onOpenReader }) {
                   rel="noopener noreferrer"
                   className="my-library-btn-primary combo-main-btn"
                 >
-                  {combo.externalAccessLabel?.trim()
-                    ? (combo.externalAccessLabel.includes("↗")
-                      ? combo.externalAccessLabel.trim()
-                      : `${combo.externalAccessLabel.trim()} ↗`)
-                    : "View ↗"}
+                  {combo.externalAccessLabel?.replace(/↗/g, "").trim() || "View"}
+                  <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                 </a>
               </div>
             )}
@@ -105,11 +107,8 @@ export default function ComboLibraryCard({ combo, onOpenReader }) {
                               rel="noopener noreferrer"
                               className="my-library-btn-primary combo-action-btn"
                             >
-                              {comp.externalAccessLabel?.trim()
-                                ? (comp.externalAccessLabel.includes("↗")
-                                  ? comp.externalAccessLabel.trim()
-                                  : `${comp.externalAccessLabel.trim()} ↗`)
-                                : "View ↗"}
+                              {comp.externalAccessLabel?.replace(/↗/g, "").trim() || "View"}
+                              <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                             </a>
                           ) : (
                             <span className="combo-muted-text">
@@ -123,7 +122,8 @@ export default function ComboLibraryCard({ combo, onOpenReader }) {
                             rel="noopener noreferrer"
                             className="my-library-btn-kindle combo-action-btn"
                           >
-                            📱 View on Amazon ↗
+                            <Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />View on Amazon
+                            <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                           </a>
                         ) : (
                           <button

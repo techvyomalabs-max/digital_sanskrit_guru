@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Zap } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import AdminSidebar from "../components/admin/AdminSidebar";
@@ -259,7 +260,7 @@ function AdminOrderDetails() {
                   color: "#991b1b"
                 }}
               >
-                <strong>⚠ Stock Issue:</strong>
+                <strong><AlertTriangle size={15} className="ui-inline-icon" aria-hidden="true" />Stock Issue:</strong>
                 <p style={{ margin: "4px 0 0 0", fontSize: "14px" }}>
                   {order.stockIssueDetails && order.stockIssueDetails.length > 0
                     ? order.stockIssueDetails.join(", ")
@@ -321,7 +322,7 @@ function AdminOrderDetails() {
                     </div>
                     {displayRefundStatus === "Refunded" ? (
                       <p style={{ margin: "6px 0 0", fontSize: "12.5px", fontWeight: 700, color: "#166534" }}>
-                        ✓ Refund Completed & Finalized
+                        <CheckCircle2 size={15} className="ui-inline-icon" aria-hidden="true" />Refund Completed & Finalized
                       </p>
                     ) : (
                       <div className="admin-order-details-refund-actions">
@@ -383,7 +384,7 @@ function AdminOrderDetails() {
                   </p>
                 ) : order?.paymentMeta?.razorpayRefundId ? (
                   <p style={{ marginTop: '8px', color: '#4f46e5', fontWeight: 600 }}>
-                    ⚡ Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
+                    <Zap size={14} className="ui-inline-icon" aria-hidden="true" />Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
                   </p>
                 ) : null}
                 {order?.paymentMeta?.refundedAt ? (
@@ -562,7 +563,7 @@ function AdminOrderDetails() {
                       </div>
                     ) : (
                       <div className="admin-order-shipping-digital-granted">
-                        ⚡ Digital Order: Instant online access granted. No physical shipping required.
+                        <Zap size={15} className="ui-inline-icon" aria-hidden="true" />Digital Order: Instant online access granted. No physical shipping required.
                       </div>
                     )
                   ) : (

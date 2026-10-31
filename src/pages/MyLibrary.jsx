@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { Library, Ticket, BookOpen, ShoppingBag, Hourglass, Globe, Smartphone, Zap, ExternalLink, Lightbulb, Lock, AlertTriangle, RefreshCw, Headphones, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -534,7 +535,7 @@ function MyLibrary() {
     <div className="my-library-container">
       <div className="my-library-header">
         <div className="my-library-title-area">
-          <h1>📚 My Digital Library</h1>
+          <h1><Library size={26} className="ui-inline-icon" aria-hidden="true" />My Digital Library</h1>
           <p>Access all your purchased Web Versions, Flipbooks, and E-Books in one place.</p>
         </div>
 
@@ -555,7 +556,7 @@ function MyLibrary() {
             className="my-library-redeem-btn"
             onClick={() => setShowRedeemModal(true)}
           >
-            🎟️ Redeem Gift Pass
+            <Ticket size={16} className="ui-inline-icon" aria-hidden="true" />Redeem Gift Pass
           </button>
         </div>
       </div>
@@ -567,11 +568,11 @@ function MyLibrary() {
         </div>
       ) : digitalBooks.length === 0 ? (
         <div className="my-library-empty-card">
-          <div className="my-library-empty-icon">📖</div>
+          <div className="my-library-empty-icon"><BookOpen size={44} aria-hidden="true" /></div>
           <h2>Your Digital Library is Empty</h2>
           <p>You haven't purchased any Web Versions or Flipbooks yet. Explore our Sanskrit collection to start reading instantly!</p>
           <Link to="/collection" className="my-library-explore-btn">
-            Explore Collection 🛍️
+            Explore Collection <ShoppingBag size={16} className="ui-inline-icon-end" aria-hidden="true" />
           </Link>
         </div>
       ) : (
@@ -614,9 +615,19 @@ function MyLibrary() {
                         }}
                       />
                       <span className={`my-library-format-badge ${isExternal && book.accessPending ? "pending" : ""}`}>
-                        {isExternal
-                          ? (book.accessPending ? "⏳ Access being set up" : "🌐 External Access")
-                          : isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                        {isExternal ? (
+                          book.accessPending ? (
+                            <><Hourglass size={12} className="ui-inline-icon" aria-hidden="true" />Access being set up</>
+                          ) : (
+                            <><Globe size={12} className="ui-inline-icon" aria-hidden="true" />External Access</>
+                          )
+                        ) : isKindle ? (
+                          <><Smartphone size={12} className="ui-inline-icon" aria-hidden="true" />Kindle Edition</>
+                        ) : isFlipbook ? (
+                          <><BookOpen size={12} className="ui-inline-icon" aria-hidden="true" />Flipbook</>
+                        ) : (
+                          <><Zap size={12} className="ui-inline-icon" aria-hidden="true" />Web Version</>
+                        )}
                       </span>
                     </div>
 
@@ -669,11 +680,8 @@ function MyLibrary() {
                                 justifyContent: "center"
                               }}
                             >
-                              {book.externalAccessLabel?.trim()
-                                ? (book.externalAccessLabel.includes("↗")
-                                  ? book.externalAccessLabel.trim()
-                                  : `${book.externalAccessLabel.trim()} ↗`)
-                                : "View ↗"}
+                              {book.externalAccessLabel?.replace(/↗/g, "").trim() || "View"}
+                              <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                             </a>
                           ) : (
                             <span
@@ -694,7 +702,11 @@ function MyLibrary() {
                             className="my-library-btn-primary"
                             onClick={() => openSecureReader(book)}
                           >
-                            {isFlipbook ? "📖 Read Flipbook" : "📖 Read Web Version"}
+                            {isFlipbook ? (
+                              <><BookOpen size={15} className="ui-inline-icon" aria-hidden="true" />Read Flipbook</>
+                            ) : (
+                              <><BookOpen size={15} className="ui-inline-icon" aria-hidden="true" />Read Web Version</>
+                            )}
                           </button>
                         ) : (
                           <a
@@ -703,7 +715,7 @@ function MyLibrary() {
                             rel="noopener noreferrer"
                             className="my-library-btn-kindle"
                           >
-                            📱 View on Amazon ↗
+                            <Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />View on Amazon <ExternalLink size={14} className="ui-inline-icon-end" aria-hidden="true" />
                           </a>
                         )}
 
@@ -713,7 +725,7 @@ function MyLibrary() {
                             className="my-library-btn-outline"
                             onClick={() => setActiveGuideItem(book)}
                           >
-                            💡 Guide
+                            <Lightbulb size={14} className="ui-inline-icon" aria-hidden="true" />Guide
                           </button>
                         )}
                       </div>
@@ -755,7 +767,13 @@ function MyLibrary() {
                           }}
                         />
                         <span className="my-library-format-badge">
-                          {isKindle ? "📱 Kindle Edition" : isFlipbook ? "📖 Flipbook" : "⚡ Web Version"}
+                          {isKindle ? (
+                            <><Smartphone size={12} className="ui-inline-icon" aria-hidden="true" />Kindle Edition</>
+                          ) : isFlipbook ? (
+                            <><BookOpen size={12} className="ui-inline-icon" aria-hidden="true" />Flipbook</>
+                          ) : (
+                            <><Zap size={12} className="ui-inline-icon" aria-hidden="true" />Web Version</>
+                          )}
                         </span>
                       </div>
 
@@ -809,7 +827,7 @@ function MyLibrary() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#fff", fontWeight: 600, fontSize: "14px" }}>
-                <span style={{ fontSize: "16px" }}>🔒</span>
+                <Lock size={16} aria-hidden="true" />
                 <span>
                   {activeReaderItem?.name || "Digital Sanskrit Reader"} • <span style={{ color: "#4ade80", fontSize: "12px", fontWeight: 500 }}>Encrypted Protected Session</span>
                 </span>
@@ -848,7 +866,7 @@ function MyLibrary() {
               >
                 <div className="my-library-spinner" />
                 <p style={{ margin: 0, fontSize: "14px", fontWeight: 500 }}>
-                  🔒 Initializing secure session & streaming content...
+                  <Lock size={14} className="ui-inline-icon" aria-hidden="true" />Initializing secure session & streaming content...
                 </p>
               </div>
             ) : readerError ? (
@@ -864,7 +882,7 @@ function MyLibrary() {
                   textAlign: "center"
                 }}
               >
-                <div style={{ fontSize: "40px" }}>⚠️</div>
+                <AlertTriangle size={40} color="#ff6b6b" aria-hidden="true" />
                 <h3 style={{ color: "#ff6b6b", margin: 0 }}>Unable to Load Digital Media</h3>
                 <p style={{ color: "#94a3b8", maxWidth: "450px", margin: 0, fontSize: "13.5px" }}>{readerError}</p>
                 <button
@@ -873,7 +891,7 @@ function MyLibrary() {
                   className="review-redirect-btn-primary"
                   style={{ marginTop: "10px", padding: "8px 20px" }}
                 >
-                  Retry Loading 🔄
+                  Retry Loading <RefreshCw size={15} className="ui-inline-icon-end" aria-hidden="true" />
                 </button>
               </div>
             ) : activeBlobUrl ? (
@@ -910,7 +928,7 @@ function MyLibrary() {
                     gap: "20px"
                   }}
                 >
-                  <div style={{ fontSize: "56px" }}>🎧</div>
+                  <Headphones size={56} color="#ffffff" aria-hidden="true" />
                   <h3 style={{ color: "#fff", margin: 0 }}>{activeReaderItem?.name}</h3>
                   <audio
                     src={activeBlobUrl}
@@ -953,7 +971,7 @@ function MyLibrary() {
             style={{ maxWidth: "520px", textAlign: "left" }}
           >
             <h3 style={{ marginTop: 0, marginBottom: "8px", color: "var(--site-text)" }}>
-              📖 Access Instructions for {activeGuideItem.name}
+              <BookOpen size={18} className="ui-inline-icon" aria-hidden="true" />Access Instructions for {activeGuideItem.name}
             </h3>
 
             <div style={{ fontSize: "13.5px", color: "var(--site-text)", lineHeight: 1.6, display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -964,12 +982,12 @@ function MyLibrary() {
               ) : null}
 
               <div>
-                <strong>⚡ Web Version / Bunny CDN Reader:</strong>
+                <strong><Zap size={14} className="ui-inline-icon" aria-hidden="true" />Web Version / Bunny CDN Reader:</strong>
                 <p style={{ margin: "4px 0 0" }}>Click "Read Web Version" to open the interactive full-screen reader directly inside your browser. No extra app required.</p>
               </div>
 
               <div>
-                <strong>📱 Kindle Version:</strong>
+                <strong><Smartphone size={14} className="ui-inline-icon" aria-hidden="true" />Kindle Version:</strong>
                 <p style={{ margin: "4px 0 0" }}>Kindle titles open directly on Amazon India / US. You can send the e-book to your Kindle device or read on the Kindle App.</p>
               </div>
             </div>
@@ -1003,7 +1021,7 @@ function MyLibrary() {
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
               <h3 style={{ margin: 0, color: "var(--site-text)", display: "flex", alignItems: "center", gap: "6px" }}>
-                🎟️ Redeem Gift Pass
+                <Ticket size={18} aria-hidden="true" />Redeem Gift Pass
               </h3>
               <button
                 type="button"
@@ -1011,9 +1029,10 @@ function MyLibrary() {
                   setShowRedeemModal(false);
                   setRedeemError("");
                 }}
-                style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "var(--site-text-soft)" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--site-text-soft)" }}
+                aria-label="Close"
               >
-                ✕
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
@@ -1055,7 +1074,7 @@ function MyLibrary() {
                   disabled={isRedeeming || !redeemCode.trim()}
                   style={{ padding: "9px 18px", borderRadius: "8px", fontSize: "13px", fontWeight: 700 }}
                 >
-                  {isRedeeming ? "Redeeming..." : "Unlock Gift 📖"}
+                  {isRedeeming ? "Redeeming..." : <>Unlock Gift <BookOpen size={15} className="ui-inline-icon-end" aria-hidden="true" /></>}
                 </button>
               </div>
             </form>
