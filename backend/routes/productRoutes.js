@@ -14,6 +14,7 @@ const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = re
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
+const { categoryKey, isComboCategory } = require("../utils/categoryKey");
 const {
   normalizeOptionsInput,
   validateOptionTargets,
@@ -1175,46 +1176,53 @@ router.get("/", async (req, res) => {
     const configuredCategoryMap = new Map();
     for (const category of configuredCategories) {
       const trimmed = String(category || "").trim();
-      const key = trimmed.toLowerCase();
+      const key = categoryKey(trimmed);
       if (trimmed && !configuredCategoryMap.has(key)) {
         configuredCategoryMap.set(key, trimmed);
       }
     }
-    const regularCategoryMap = new Map();
+    // One filter per category key, labelled with the admin's configured spelling,
+    // or else the spelling most products use
+    const labelCountsByKey = new Map();
     for (const product of baseProducts) {
       const label = getCategoryLabel(product);
-      const key = label.toLowerCase();
-      if (!regularCategoryMap.has(key)) {
-        regularCategoryMap.set(key, configuredCategoryMap.get(key) || label);
-      }
+      const key = categoryKey(label);
+      if (!labelCountsByKey.has(key)) labelCountsByKey.set(key, new Map());
+      const counts = labelCountsByKey.get(key);
+      counts.set(label, (counts.get(label) || 0) + 1);
     }
-    const regularCategories = [...regularCategoryMap.values()];
+    const regularCategories = [...labelCountsByKey.entries()].map(([key, counts]) =>
+      configuredCategoryMap.get(key) || [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0]
+    );
+    // A store category such as "Combo" already holds the bundle products, so the
+    // automatic "Bundle" filter is folded into it instead of listing them twice
+    const comboCategory = regularCategories.find((category) => isComboCategory(category)) || "";
+    const showBundleFilter = !comboCategory && baseProducts.some((product) => isBundleProduct(product));
     const categories = [
       "All",
       ...(festiveOffersFilterEnabled && baseProducts.some((product) => isFestiveOfferProduct(product)) ? ["Festive Offer"] : []),
-      ...(baseProducts.some((product) => isBundleProduct(product)) ? ["Bundle"] : []),
+      ...(showBundleFilter ? ["Bundle"] : []),
       ...regularCategories.filter((category) => category !== "Festive Offer" && category !== "Bundle")
     ];
+
+    const matchesCategory = (product, category) => {
+      if (category === "All") return true;
+      if (category === "Festive Offer") return festiveOffersFilterEnabled && isFestiveOfferProduct(product);
+      const isCombo = Boolean(comboCategory) && categoryKey(category) === categoryKey(comboCategory);
+      // Old "?category=Bundle" links keep working and show the combo category
+      if (category === "Bundle" || isCombo) {
+        return isBundleProduct(product) || (Boolean(comboCategory) && categoryKey(getCategoryLabel(product)) === categoryKey(comboCategory));
+      }
+      return categoryKey(getCategoryLabel(product)) === categoryKey(category);
+    };
+
     const categoryCounts = { All: baseProducts.length };
     categories.forEach((category) => {
       if (category === "All") return;
-      if (category === "Festive Offer") {
-        categoryCounts[category] = baseProducts.filter((product) => isFestiveOfferProduct(product)).length;
-        return;
-      }
-      if (category === "Bundle") {
-        categoryCounts[category] = baseProducts.filter((product) => isBundleProduct(product)).length;
-        return;
-      }
-      categoryCounts[category] = baseProducts.filter((product) => getCategoryLabel(product).toLowerCase() === category.toLowerCase()).length;
+      categoryCounts[category] = baseProducts.filter((product) => matchesCategory(product, category)).length;
     });
 
-    const filteredProducts = baseProducts.filter((product) => {
-      if (selectedCategory === "All") return true;
-      if (selectedCategory === "Festive Offer") return festiveOffersFilterEnabled && isFestiveOfferProduct(product);
-      if (selectedCategory === "Bundle") return isBundleProduct(product);
-      return getCategoryLabel(product).toLowerCase() === selectedCategory.toLowerCase();
-    });
+    const filteredProducts = baseProducts.filter((product) => matchesCategory(product, selectedCategory));
 
     filteredProducts.sort((a, b) => {
       if (sortOption === "priceLow") {

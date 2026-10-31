@@ -28,7 +28,20 @@ import {
   Pin,
   Phone,
   Settings,
-  Trash2
+  Trash2,
+  Globe,
+  Tablet,
+  Usb,
+  BookOpenText,
+  Route,
+  GraduationCap,
+  Headphones,
+  Boxes,
+  Sparkles,
+  CalendarDays,
+  Tag,
+  LayoutGrid,
+  ArrowRight
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
@@ -39,9 +52,30 @@ import { scoreProduct, getSearchSuggestion } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 
+// Icon for a category in the "Browse by category" menu, picked from its name
+// because categories are typed freely by admins
+const CATEGORY_ICON_RULES = [
+  [/kindle/i, Tablet],
+  [/flipbook/i, BookOpenText],
+  [/web/i, Globe],
+  [/usb|pen ?drive/i, Usb],
+  [/audio|device/i, Headphones],
+  [/learning path|path/i, Route],
+  [/course/i, GraduationCap],
+  [/bulk/i, Boxes],
+  [/festiv|festival|offer/i, Sparkles],
+  [/calendar/i, CalendarDays],
+  [/bundle|combo|pack/i, Package],
+  [/book|paperback/i, BookOpen]
+];
+
+function getCategoryIcon(category) {
+  const match = CATEGORY_ICON_RULES.find(([pattern]) => pattern.test(String(category || "")));
+  return match ? match[1] : Tag;
+}
+
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
-  "Bundle",
   "Web Version",
   "E-Book - Kindle",
   "Book - Paperback",
@@ -88,6 +122,7 @@ function Navbar({ bannerActive = false }) {
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [isCollectionFilterMenuOpen, setIsCollectionFilterMenuOpen] = useState(false);
   const [collectionCategories, setCollectionCategories] = useState(DEFAULT_COLLECTION_CATEGORIES);
+  const [collectionCategoryCounts, setCollectionCategoryCounts] = useState({});
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
   const isAdminRoute = location.pathname.startsWith("/admin");
@@ -261,6 +296,9 @@ function Navbar({ bannerActive = false }) {
         if (Array.isArray(res.data?.categories) && res.data.categories.length > 0) {
           setCollectionCategories(res.data.categories);
         }
+        if (res.data?.categoryCounts && typeof res.data.categoryCounts === "object") {
+          setCollectionCategoryCounts(res.data.categoryCounts);
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -375,6 +413,36 @@ function Navbar({ bannerActive = false }) {
     }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
+
+  const activeCollectionCategory =
+    location.pathname === "/collection"
+      ? String(new URLSearchParams(location.search).get("category") || "").trim()
+      : "";
+
+  const openCollectionCategory = (category) => {
+    setIsCollectionFilterMenuOpen(false);
+    setSearchQuery("");
+    navigate(
+      category === "All"
+        ? "/collection"
+        : `/collection?category=${encodeURIComponent(category)}`
+    );
+  };
+
+  // Escape closes the "Browse by category" menu
+  useEffect(() => {
+    if (!isCollectionFilterMenuOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setIsCollectionFilterMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    // Lets CSS hide the floating chat/WhatsApp buttons over the menu on phones
+    document.body.classList.add("category-menu-open");
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+      document.body.classList.remove("category-menu-open");
+    };
+  }, [isCollectionFilterMenuOpen]);
 
   const handleSectionNav = (sectionKey) => {
     setSearchQuery("");
@@ -827,27 +895,51 @@ function Navbar({ bannerActive = false }) {
             </div>
           </div>
           {!isAdminRoute && isCollectionFilterMenuOpen ? (
-            <div className="navbar-collection-filter-menu">
-              <strong className="navbar-collection-filter-title">Browse by category</strong>
+            <div className="navbar-collection-filter-menu" role="dialog" aria-label="Browse by category">
+              <div className="navbar-collection-filter-head">
+                <strong className="navbar-collection-filter-title">
+                  <LayoutGrid size={17} aria-hidden="true" />
+                  Browse by category
+                </strong>
+                <button
+                  type="button"
+                  className="navbar-collection-filter-all"
+                  onClick={() => openCollectionCategory("All")}
+                >
+                  View all
+                  {collectionCategoryCounts.All ? ` (${collectionCategoryCounts.All})` : ""}
+                  <ArrowRight size={15} aria-hidden="true" />
+                </button>
+              </div>
               <div className="navbar-collection-filter-list">
-                {collectionCategories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    className="navbar-collection-filter-item"
-                    onClick={() => {
-                      setIsCollectionFilterMenuOpen(false);
-                      setSearchQuery("");
-                      navigate(
-                        category === "All"
-                          ? "/collection"
-                          : `/collection?category=${encodeURIComponent(category)}`
-                      );
-                    }}
-                  >
-                    {category}
-                  </button>
-                ))}
+                {collectionCategories
+                  .filter((category) => category !== "All")
+                  .map((category) => {
+                    const CategoryIcon = getCategoryIcon(category);
+                    const count = Number(collectionCategoryCounts[category] || 0);
+                    const isCurrent = activeCollectionCategory === category;
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`navbar-collection-filter-item${isCurrent ? " is-current" : ""}`}
+                        aria-current={isCurrent ? "page" : undefined}
+                        onClick={() => openCollectionCategory(category)}
+                      >
+                        <span className="navbar-collection-filter-icon" aria-hidden="true">
+                          <CategoryIcon size={18} />
+                        </span>
+                        <span className="navbar-collection-filter-text">
+                          <span className="navbar-collection-filter-name">{category}</span>
+                          {count > 0 && (
+                            <span className="navbar-collection-filter-count">
+                              {count} {count === 1 ? "item" : "items"}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           ) : null}

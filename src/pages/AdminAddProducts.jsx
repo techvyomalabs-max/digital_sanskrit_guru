@@ -10,6 +10,7 @@ import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
+import { categoryKey } from "../utils/categoryKey";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -1231,11 +1232,12 @@ function AdminAddProducts() {
       return;
     }
 
-    const exists = categoryOptions.some(
-      (option) => option.toLowerCase() === value.toLowerCase() && option.toLowerCase() !== editingCategoryName.toLowerCase()
+    // Spacing and capital letters don't make a new category ("Book-Paperback" = "Book - Paperback")
+    const existing = categoryOptions.find(
+      (option) => categoryKey(option) === categoryKey(value) && categoryKey(option) !== categoryKey(editingCategoryName)
     );
-    if (exists) {
-      setCategoryMessage("That category already exists.");
+    if (existing) {
+      setCategoryMessage(`That category already exists as "${existing}".`);
       return;
     }
 

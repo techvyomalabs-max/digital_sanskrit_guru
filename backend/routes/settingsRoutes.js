@@ -8,6 +8,7 @@ const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit")
 const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 const { normalizeCountryName } = require("../utils/deliveryPricing");
 const { validateBusinessDetails, normalizeGstin } = require("../utils/gstin");
+const { categoryKey } = require("../utils/categoryKey");
 const {
   normalizeDigitalFormatTypes,
   canSaveProductSettings,
@@ -106,7 +107,8 @@ function normalizeProductCategories(input) {
 
   const normalized = values.reduce((acc, item) => {
     const value = String(item || "").trim();
-    const key = value.toLowerCase();
+    // "Book - Paperback" and "Book-Paperback" are the same category
+    const key = categoryKey(value);
 
     if (!value || seen.has(key)) {
       return acc;
