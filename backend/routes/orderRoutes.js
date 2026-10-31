@@ -831,7 +831,8 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limitQuery = req.query.limit;
     const isPaginated = limitQuery !== "all";
-    const limit = Math.max(1, parseInt(limitQuery) || 20);
+    // A normal page is at most 100 orders; "all" stays for the CSV export.
+    const limit = Math.max(1, Math.min(100, parseInt(limitQuery) || 20));
     const skip = (page - 1) * limit;
 
     const sortOrder = req.query.sort === "oldest" ? 1 : -1;
