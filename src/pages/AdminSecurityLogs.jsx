@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ShieldCheck, Check, Copy } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -7,12 +7,27 @@ import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminDashboard.css";
 
+const PAGE_SIZE = 50;
+const THREAT_FILTERS = [
+  { id: "", label: "All" },
+  { id: "NoSQL_INJECTION", label: "NoSQL injection" },
+  { id: "XSS_EXPLOIT", label: "XSS" }
+];
+
 function AdminSecurityLogs() {
   const { token } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [threatFilter, setThreatFilter] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [stats, setStats] = useState({ total: 0, nosql: 0, xss: 0 });
+  const [matching, setMatching] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [selectedThreat, setSelectedThreat] = useState(null);
   const [copiedPayload, setCopiedPayload] = useState(false);
 
@@ -47,63 +62,65 @@ function AdminSecurityLogs() {
       setTurnstileEnabled(nextState);
       try {
         localStorage.setItem("dsg-turnstile-enabled", String(nextState));
-      } catch {}
+      } catch {
+        // Storage can be blocked; the server setting is what matters.
+      }
       setTurnstileMessage(
         nextState
           ? "Cloudflare Turnstile is now ACTIVE across all forms."
           : "Cloudflare Turnstile is now DISABLED (forms will submit directly)."
       );
       setTimeout(() => setTurnstileMessage(""), 5000);
-    } catch (err) {
+    } catch {
       setTurnstileMessage("Failed to update Turnstile setting.");
     } finally {
       setSavingTurnstile(false);
     }
   };
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get("/api/auth/admin/security-logs", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setLogs(res.data?.logs || []);
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load security logs.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // The server reads only the newest part of the log and sends one page (newest first).
+  const fetchLogs = useCallback(
+    async (targetPage = 1) => {
+      const append = targetPage > 1;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const res = await axios.get("/api/auth/admin/security-logs", {
+          params: { page: targetPage, limit: PAGE_SIZE, search, threat: threatFilter },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = res.data || {};
+        const next = Array.isArray(data.logs) ? data.logs : [];
+        setLogs((prev) => (append ? [...prev, ...next] : next));
+        setPage(data.page || targetPage);
+        setHasMore(Boolean(data.hasMore));
+        setStats(data.stats || { total: next.length, nosql: 0, xss: 0 });
+        setMatching(Number(data.matching ?? next.length));
+        setTruncated(Boolean(data.truncated));
+        setError("");
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load security logs.");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [token, search, threatFilter]
+  );
 
   useEffect(() => {
-    fetchLogs();
+    const id = window.setTimeout(() => setSearch(searchQuery.trim()), 350);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    fetchLogs(1);
+  }, [fetchLogs]);
+
+  useEffect(() => {
     fetchSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load the setting once per sign-in
   }, [token]);
-
-  // Stats calculation
-  const stats = useMemo(() => {
-    let nosql = 0;
-    let xss = 0;
-    logs.forEach(log => {
-      const threat = String(log.threat || log.THREAT || "");
-      if (threat === "NoSQL_INJECTION") nosql++;
-      if (threat === "XSS_EXPLOIT") xss++;
-    });
-    return { total: logs.length, nosql, xss };
-  }, [logs]);
-
-  // Filter logs by search query
-  const filteredLogs = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return logs;
-    return logs.filter(log => {
-      const ip = (log.ip || log.IP || "").toLowerCase();
-      const path = (log.path || log.PATH || "").toLowerCase();
-      const threat = (log.threat || log.THREAT || "").toLowerCase();
-      return ip.includes(query) || path.includes(query) || threat.includes(query);
-    });
-  }, [logs, searchQuery]);
 
   return (
     <div className="admin-layout">
@@ -117,7 +134,7 @@ function AdminSecurityLogs() {
             </p>
           </div>
           <button 
-            onClick={fetchLogs} 
+            onClick={() => fetchLogs(1)} 
             className="action-btn" 
             style={{ padding: "8px 16px", borderRadius: "6px" }}
           >
@@ -188,7 +205,7 @@ function AdminSecurityLogs() {
         </div>
 
         <section className="card">
-          <div className="table-controls" style={{ padding: "16px", display: "flex", gap: "12px" }}>
+          <div className="table-controls" style={{ padding: "16px", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
             <input
               type="text"
               placeholder="Search by IP, endpoint, or threat type..."
@@ -196,6 +213,7 @@ function AdminSecurityLogs() {
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 flex: 1,
+                minWidth: "220px",
                 padding: "10px 14px",
                 border: "1px solid var(--border-color, #cbd5e1)",
                 borderRadius: "8px",
@@ -204,7 +222,34 @@ function AdminSecurityLogs() {
                 fontSize: "14px"
               }}
             />
+            <div style={{ display: "inline-flex", gap: "6px", flexWrap: "wrap" }} role="group" aria-label="Threat type">
+              {THREAT_FILTERS.map((f) => (
+                <button
+                  key={f.id || "all"}
+                  type="button"
+                  onClick={() => setThreatFilter(f.id)}
+                  aria-pressed={threatFilter === f.id}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--admin-border, #cbd5e1)",
+                    background: threatFilter === f.id ? "var(--admin-primary, #d97706)" : "transparent",
+                    color: threatFilter === f.id ? "#fff" : "inherit",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
+          {truncated ? (
+            <p style={{ margin: "0 16px 12px", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
+              Showing the newest entries only. Very old entries in a large log are left out to keep this page fast.
+            </p>
+          ) : null}
 
           {loading ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
@@ -214,9 +259,9 @@ function AdminSecurityLogs() {
             <div style={{ padding: "40px", textAlign: "center", color: "#ef4444" }}>
               {error}
             </div>
-          ) : filteredLogs.length === 0 ? (
+          ) : logs.length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              No threat occurrences detected. Your site is secure!
+              {search || threatFilter ? "No entries match this search." : "No threat occurrences detected. Your site is secure!"}
             </div>
           ) : (
             <div className="admin-table-wrap">
@@ -231,7 +276,7 @@ function AdminSecurityLogs() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLogs.map((log, index) => {
+                  {logs.map((log, index) => {
                     const timestamp = log.timestamp || log.TIMESTAMP || new Date().toISOString();
                     const ip = log.ip || log.IP || "Unknown";
                     const threat = log.threat || log.THREAT || "Injection";
@@ -279,6 +324,22 @@ function AdminSecurityLogs() {
                   })}
                 </tbody>
               </table>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
+                <span style={{ fontSize: "13px", color: "var(--admin-muted, #64748b)" }}>
+                  Showing {logs.length.toLocaleString("en-IN")} of {matching.toLocaleString("en-IN")}
+                </span>
+                {hasMore ? (
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => fetchLogs(page + 1)}
+                    disabled={loadingMore}
+                    style={{ padding: "8px 16px", borderRadius: "6px" }}
+                  >
+                    {loadingMore ? "Loading…" : `Load ${PAGE_SIZE} more`}
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </section>

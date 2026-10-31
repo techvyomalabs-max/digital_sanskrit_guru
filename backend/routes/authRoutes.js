@@ -19,6 +19,7 @@ const { sendWhatsAppOtp } = require("../utils/whatsapp");
 const { honeypotMiddleware, turnstileMiddleware } = require("../utils/spamFilter");
 const { parseReportRange, idRangeForDates, summarizeSignupRows } = require("../utils/signupReport");
 const { sanitizeAttribution } = require("../utils/attribution");
+const { LOG_FILE: SECURITY_LOG_FILE, readTail, pageLogs } = require("../utils/securityLog");
 const { ACTIVE_WINDOWS_MS, computeUserOverview, userListSort } = require("../utils/userInsights");
 const Order = require("../models/Order");
 
@@ -739,44 +740,15 @@ router.get("/admin/audit-logs", protect, admin, requireAdminPage("users"), async
 
 router.get("/admin/security-logs", protect, admin, requireSuperAdmin, async (req, res) => {
   try {
-    const fs = require("fs");
-    const path = require("path");
-    const logFile = path.resolve(__dirname, "../../logs/security_threats.log");
-
-    if (!fs.existsSync(logFile)) {
-      return res.json({ logs: [] });
-    }
-
-    const data = fs.readFileSync(logFile, "utf8");
-    const lines = data.split("\n").filter(line => line.trim().length > 0);
-    const parsedLogs = lines.map(line => {
-      // 1. Try standard JSON parse
-      try {
-        return JSON.parse(line);
-      } catch (e) { }
-
-      // 2. Parse text log format: [ISO_DATE] IP=xxx PATH=xxx THREAT=xxx DETAILS={...}
-      const match = line.match(/^\[(.*?)\]\s+IP=(.*?)\s+PATH=(.*?)\s+THREAT=(.*?)\s+DETAILS=(.*)$/);
-      if (match) {
-        let details = {};
-        try {
-          details = JSON.parse(match[5]);
-        } catch (e) {
-          details = { raw: match[5] };
-        }
-        return {
-          timestamp: match[1],
-          ip: match[2],
-          path: match[3],
-          threat: match[4],
-          details
-        };
-      }
-
-      return null;
-    }).filter(log => log !== null).reverse();
-
-    res.json({ logs: parsedLogs });
+    // Reads only the newest part of the log, without blocking the server, and sends one page.
+    const { lines, truncated } = await readTail(SECURITY_LOG_FILE);
+    const result = pageLogs(lines, {
+      page: req.query.page,
+      limit: req.query.limit,
+      search: req.query.search,
+      threat: req.query.threat
+    });
+    res.json({ ...result, truncated });
   } catch (err) {
     console.error("[Auth] Security logs fetch error:", err.message);
     res.status(500).json({ message: "Failed to load security logs." });
