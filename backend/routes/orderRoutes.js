@@ -18,6 +18,7 @@ const { requireAdminPage, requireSuperAdmin } = require("../middleware/adminMidd
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
+const { sanitizeAttribution } = require("../utils/attribution");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -2737,12 +2738,20 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       const salt = await bcrypt.genSalt(12);
       const hashedPassword = await bcrypt.hash(tempPassword, salt);
       
+      // Where the buyer came from (UTM / referrer), same as on Register. Never blocks the order.
+      let acquisition = null;
+      try {
+        if (req.body?.attribution) acquisition = sanitizeAttribution(req.body.attribution);
+      } catch {
+        acquisition = null;
+      }
       targetUser = await User.create({
         name: guestName,
         email: guestEmail,
         password: hashedPassword,
         phone: guestPhone,
-        isAdmin: false
+        isAdmin: false,
+        ...(acquisition ? { acquisition } : {})
       });
       isNewUserCreated = true;
     }
