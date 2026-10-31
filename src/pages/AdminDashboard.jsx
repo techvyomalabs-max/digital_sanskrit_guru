@@ -60,6 +60,18 @@ import "./AdminDashboard.css";
 import { startVisiblePolling } from "../utils/visiblePolling";
 
 const LOW_STOCK_THRESHOLD = 5;
+const EMPTY_SUMMARY = {
+  totals: { paidOrders: 0, revenueInr: 0, averageOrderInr: 0, unitsSold: 0, uniqueCustomers: 0, repeatCustomers: 0, repeatRate: 0 },
+  statuses: { Pending: 0, Shipped: 0, Delivered: 0, Cancelled: 0 },
+  revenue: { today: 0, last7Days: 0, last30Days: 0, previous30Days: 0, growthPercent: 0, total: 0 },
+  monthly: [],
+  weekly: [],
+  weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({ day, value: 0 })),
+  topCustomer: null,
+  topProducts: [],
+  alerts: {},
+  recentOrders: []
+};
 const NON_DISMISSIBLE_NOTIFICATION_IDS = [
   "return-requests",
   "returns-received",
@@ -347,7 +359,8 @@ function AdminDashboard() {
   const { token, user } = useAuth();
   const isSuperAdmin = Number(user?.adminLevel) === 1;
   const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [isExporting, setIsExporting] = useState(false);
   const [orderLoadError, setOrderLoadError] = useState("");
   const [dismissedNotifications, setDismissedNotifications] = useState([]);
   const [unmatchedPaymentsCount, setUnmatchedPaymentsCount] = useState(0);
@@ -376,21 +389,20 @@ function AdminDashboard() {
       try {
         const [productRes, orderRes] = await Promise.all([
           axios.get("/api/products", { params: { includeHidden: 1 } }),
-          axios.get("/api/orders?limit=all", {
+          // Figures are worked out on the server; the page no longer downloads every order.
+          axios.get("/api/orders/admin/dashboard-summary", {
             headers: { Authorization: `Bearer ${token}` }
           })
         ]);
         if (!active) return;
         setProducts(productRes.data);
-        const data = orderRes.data || {};
-        const ordersArray = Array.isArray(data) ? data : (Array.isArray(data.orders) ? data.orders : []);
-        setOrders(ordersArray);
+        setSummary({ ...EMPTY_SUMMARY, ...(orderRes.data || {}) });
         setOrderLoadError("");
         setLastUpdatedAt(new Date());
       } catch {
         if (!active) return;
         setProducts([]);
-        setOrders([]);
+        setSummary(EMPTY_SUMMARY);
         setOrderLoadError("Could not load orders. Top selling products may be unavailable.");
       } finally {
         if (active) {
@@ -432,7 +444,7 @@ function AdminDashboard() {
     };
 
     loadDashboard();
-    // Every 60 s, and only while this tab is visible (each refresh loads all orders and products)
+    // Every 60 s, and only while this tab is visible
     const stopPolling = startVisiblePolling(() => loadDashboard(true), 60000);
 
     return () => {
@@ -777,98 +789,27 @@ function AdminDashboard() {
 
 
 
-  const topProducts = useMemo(() => {
-    const salesByName = orders.reduce((acc, order) => {
-      (order.items || []).forEach((item) => {
-        const itemName = String(item?.name || item?.product?.name || item?.title || "").trim();
-        if (!itemName) return;
-        acc[itemName] = (acc[itemName] || 0) + Number(item?.quantity || 1);
-      });
-      return acc;
-    }, {});
+  // All order figures below come from the server summary (paid orders, INR, after refunds).
+  const topSellingProducts = summary.topProducts;
+  const topProducts = useMemo(
+    () => summary.topProducts.slice(0, 6).map((item) => [item.name, item.quantity]),
+    [summary.topProducts]
+  );
 
-    return Object.entries(salesByName)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
-  }, [orders]);
+  const analytics = useMemo(
+    () => ({
+      totalRevenue: summary.totals.revenueInr,
+      totalQuantity: summary.totals.unitsSold,
+      averageOrderValue: summary.totals.averageOrderInr,
+      statuses: summary.statuses,
+      uniqueCustomers: summary.totals.uniqueCustomers,
+      repeatCustomers: summary.totals.repeatCustomers,
+      repeatRate: summary.totals.repeatRate
+    }),
+    [summary.totals, summary.statuses]
+  );
 
-  const topSellingProducts = useMemo(() => {
-    const salesByProduct = orders.reduce((acc, order) => {
-      (order.items || []).forEach((item) => {
-        const itemName = String(item?.name || item?.product?.name || item?.title || "").trim();
-        if (!itemName) return;
-
-        if (!acc[itemName]) {
-          acc[itemName] = { name: itemName, quantity: 0, sales: 0 };
-        }
-
-        const quantity = Number(item?.quantity || 1);
-        acc[itemName].quantity += quantity;
-        acc[itemName].sales += Number(item?.price || 0) * quantity;
-      });
-
-      return acc;
-    }, {});
-
-    return Object.values(salesByProduct)
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 10);
-  }, [orders]);
-
-  const analytics = useMemo(() => {
-    const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
-    const totalQuantity = orders.reduce((sum, order) => {
-      return sum + (order.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 1), 0);
-    }, 0);
-    const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
-    const statuses = orders.reduce(
-      (acc, order) => {
-        acc[normalizeStatus(order?.status)] += 1;
-        return acc;
-      },
-      { Pending: 0, Shipped: 0, Delivered: 0 }
-    );
-    const customers = orders.reduce((acc, order) => {
-      const key = String(order?.user?._id || order?.user?.email || order?.shipping?.phone || "").trim();
-      if (!key) return acc;
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    const uniqueCustomers = Object.keys(customers).length;
-    const repeatCustomers = Object.values(customers).filter((count) => count > 1).length;
-
-    return {
-      totalRevenue,
-      totalQuantity,
-      averageOrderValue,
-      statuses,
-      uniqueCustomers,
-      repeatCustomers,
-      repeatRate: uniqueCustomers > 0 ? (repeatCustomers / uniqueCustomers) * 100 : 0
-    };
-  }, [orders]);
-
-  const revenueKpis = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const last7d = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-    const last30d = now.getTime() - 30 * 24 * 60 * 60 * 1000;
-
-    return orders.reduce(
-      (acc, order) => {
-        const orderTs = new Date(order?.createdAt).getTime();
-        const total = Number(order?.total || 0);
-        if (Number.isNaN(orderTs)) return acc;
-
-        if (orderTs >= startOfToday) acc.today += total;
-        if (orderTs >= last7d) acc.last7Days += total;
-        if (orderTs >= last30d) acc.last30Days += total;
-        acc.total += total;
-        return acc;
-      },
-      { today: 0, last7Days: 0, last30Days: 0, total: 0 }
-    );
-  }, [orders]);
+  const revenueKpis = summary.revenue;
 
   const lowStockProducts = useMemo(() => {
     return products
@@ -878,26 +819,16 @@ function AdminDashboard() {
   }, [products]);
 
   const aiPredictions = useMemo(() => {
-    const monthlyRevenueMap = orders.reduce((acc, order) => {
-      const date = new Date(order?.createdAt);
-      if (Number.isNaN(date.getTime())) return acc;
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      acc[key] = (acc[key] || 0) + Number(order?.total || 0);
-      return acc;
-    }, {});
+    const monthlyPoints = summary.monthly.map((month, index) => ({ x: index, y: Number(month.revenue || 0) }));
+    const monthsWithSales = monthlyPoints.filter((point) => point.y > 0).length;
 
-    const monthlyPoints = Object.entries(monthlyRevenueMap)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-6)
-      .map(([, value], index) => ({ x: index, y: Number(value || 0) }));
-
-    if (monthlyPoints.length < 2) {
-      const fallback = monthlyPoints[monthlyPoints.length - 1]?.y || 0;
+    if (monthsWithSales < 2) {
+      const fallback = [...monthlyPoints].reverse().find((point) => point.y > 0)?.y || 0;
       return {
         nextMonthRevenue: fallback,
         confidence: 42,
         trend: "Insufficient data",
-        monthlyPoints: monthlyPoints.map((point) => point.y)
+        monthlyPoints: monthsWithSales ? monthlyPoints.map((point) => point.y) : []
       };
     }
 
@@ -909,13 +840,10 @@ function AdminDashboard() {
     const denominator = n * sumX2 - sumX * sumX;
     const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
-    const nextX = n;
-    const predicted = Math.max(0, intercept + slope * nextX);
+    const predicted = Math.max(0, intercept + slope * n);
 
     const avgAbsDelta =
-      monthlyPoints.slice(1).reduce((sum, point, idx) => {
-        return sum + Math.abs(point.y - monthlyPoints[idx].y);
-      }, 0) /
+      monthlyPoints.slice(1).reduce((sum, point, idx) => sum + Math.abs(point.y - monthlyPoints[idx].y), 0) /
       Math.max(1, monthlyPoints.length - 1);
     const volatility = sumY > 0 ? Math.min(1, avgAbsDelta / (sumY / n || 1)) : 1;
     const confidence = Math.max(35, Math.round((1 - volatility) * 100));
@@ -926,105 +854,39 @@ function AdminDashboard() {
       trend: slope > 0 ? "Upward trend" : slope < 0 ? "Downward trend" : "Stable trend",
       monthlyPoints: monthlyPoints.map((point) => point.y)
     };
-  }, [orders]);
+  }, [summary.monthly]);
 
-  const weeklyStats = useMemo(() => {
-    const weeklyStatsMap = orders.reduce((acc, order) => {
-      const date = new Date(order.createdAt);
-      if (Number.isNaN(date.getTime())) return acc;
+  const weeklyStats = summary.weekly;
 
-      const day = date.getDay();
-      const diff = date.getDate() - day;
-      const sunday = new Date(date);
-      sunday.setDate(diff);
-      sunday.setHours(0, 0, 0, 0);
+  const advancedAnalytics = useMemo(
+    () => ({
+      last30Revenue: summary.revenue.last30Days,
+      prev30Revenue: summary.revenue.previous30Days,
+      revenueGrowth: summary.revenue.growthPercent,
+      statusCounts: summary.statuses,
+      weekdaySeries: summary.weekdays,
+      topCustomer: summary.topCustomer
+    }),
+    [summary.revenue, summary.statuses, summary.weekdays, summary.topCustomer]
+  );
 
-      const key = sunday.toISOString().split("T")[0];
-      const weekLabel = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const exportSalesReport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    let orders = [];
+    try {
+      const res = await axios.get("/api/orders", {
+        params: { limit: "all" },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      orders = Array.isArray(res.data?.orders) ? res.data.orders : Array.isArray(res.data) ? res.data : [];
+    } catch {
+      setOrderLoadError("Could not download the orders for the report. Please try again.");
+      setIsExporting(false);
+      return;
+    }
+    setIsExporting(false);
 
-      if (!acc[key]) {
-        acc[key] = {
-          weekStart: key,
-          label: `Week of ${weekLabel}`,
-          revenue: 0,
-          ordersCount: 0,
-          purchasingUsers: new Set()
-        };
-      }
-
-      acc[key].revenue += Number(order.total || 0);
-      acc[key].ordersCount += 1;
-
-      const userKey = order.user?._id || order.user?.email || order.shipping?.phone || order.shipping?.name || "Guest";
-      acc[key].purchasingUsers.add(String(userKey));
-
-      return acc;
-    }, {});
-
-    return Object.values(weeklyStatsMap)
-      .map((w) => ({
-        ...w,
-        uniqueUsersCount: w.purchasingUsers.size
-      }))
-      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
-      .slice(0, 8);
-  }, [orders]);
-
-  const advancedAnalytics = useMemo(() => {
-    const now = new Date();
-    const last30Start = now.getTime() - 30 * 24 * 60 * 60 * 1000;
-    const prev30Start = now.getTime() - 60 * 24 * 60 * 60 * 1000;
-
-    const last30 = orders.filter((order) => new Date(order?.createdAt).getTime() >= last30Start);
-    const prev30 = orders.filter((order) => {
-      const ts = new Date(order?.createdAt).getTime();
-      return ts >= prev30Start && ts < last30Start;
-    });
-
-    const last30Revenue = last30.reduce((sum, order) => sum + Number(order?.total || 0), 0);
-    const prev30Revenue = prev30.reduce((sum, order) => sum + Number(order?.total || 0), 0);
-    const revenueGrowth =
-      prev30Revenue > 0 ? ((last30Revenue - prev30Revenue) / prev30Revenue) * 100 : last30Revenue > 0 ? 100 : 0;
-
-    const statusCounts = orders.reduce(
-      (acc, order) => {
-        const status = normalizeStatus(order?.status);
-        acc[status] += 1;
-        return acc;
-      },
-      { Pending: 0, Shipped: 0, Delivered: 0 }
-    );
-
-    const weekdayRevenue = orders.reduce((acc, order) => {
-      const date = new Date(order?.createdAt);
-      if (Number.isNaN(date.getTime())) return acc;
-      const day = date.toLocaleDateString("en-IN", { weekday: "short" });
-      acc[day] = (acc[day] || 0) + Number(order?.total || 0);
-      return acc;
-    }, {});
-    const weekdaySeries = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({
-      day,
-      value: weekdayRevenue[day] || 0
-    }));
-
-    const customerSpendMap = orders.reduce((acc, order) => {
-      const name = String(order?.user?.name || order?.shipping?.name || "Customer").trim();
-      acc[name] = (acc[name] || 0) + Number(order?.total || 0);
-      return acc;
-    }, {});
-    const topCustomerEntry = Object.entries(customerSpendMap).sort((a, b) => b[1] - a[1])[0];
-
-    return {
-      last30Revenue,
-      prev30Revenue,
-      revenueGrowth,
-      statusCounts,
-      weekdaySeries,
-      topCustomer: topCustomerEntry ? { name: topCustomerEntry[0], spend: topCustomerEntry[1] } : null
-    };
-  }, [orders]);
-
-  const exportSalesReport = () => {
     const itemQuantity = orders.reduce(
       (sum, order) => sum + (order?.items || []).reduce((itemSum, item) => itemSum + Number(item?.quantity || 1), 0),
       0
@@ -1033,8 +895,9 @@ function AdminDashboard() {
     const summaryRows = [
       ["Report Name", "Sales Report"],
       ["Generated At", new Date().toISOString()],
-      ["Total Orders", orders.length],
-      ["Total Revenue INR", Math.round(Number(revenueKpis.total || 0))],
+      ["Total Orders (all)", orders.length],
+      ["Paid Orders", summary.totals.paidOrders],
+      ["Total Revenue INR (paid, after refunds)", Math.round(Number(revenueKpis.total || 0))],
       ["Revenue Today INR", Math.round(Number(revenueKpis.today || 0))],
       ["Revenue Last 7 Days INR", Math.round(Number(revenueKpis.last7Days || 0))],
       ["Revenue Last 30 Days INR", Math.round(Number(revenueKpis.last30Days || 0))],
@@ -1124,29 +987,10 @@ function AdminDashboard() {
 
   const notifications = useMemo(() => {
     const list = [];
-    let returnRequestsCount = 0;
-    let returnsReceivedCount = 0;
-    let returnsOverdueCount = 0;
-    const nowMs = Date.now();
-
-    orders.forEach((o) => {
-      if (o?.refundStatus === "Refunded") return;
-      if (Array.isArray(o?.items)) {
-        o.items.forEach((item) => {
-          const s = item?.returnRequest?.status;
-          if (s === "Requested") {
-            returnRequestsCount++;
-          } else if (s === "Received") {
-            returnsReceivedCount++;
-          } else if (s === "Approved" && item?.returnRequest?.approvedAt) {
-            const ms = nowMs - new Date(item.returnRequest.approvedAt).getTime();
-            if (ms > 14 * 24 * 60 * 60 * 1000) {
-              returnsOverdueCount++;
-            }
-          }
-        });
-      }
-    });
+    const alerts = summary.alerts || {};
+    const returnRequestsCount = Number(alerts.returnRequests || 0);
+    const returnsReceivedCount = Number(alerts.returnsReceived || 0);
+    const returnsOverdueCount = Number(alerts.returnsOverdue || 0);
 
     if (returnRequestsCount > 0) {
       list.push({
@@ -1175,9 +1019,7 @@ function AdminDashboard() {
       });
     }
 
-    const cancelRefunds = orders.filter(
-      (o) => o?.status === "Cancelled" && o?.refundStatus === "Pending"
-    ).length;
+    const cancelRefunds = Number(alerts.cancelledAwaitingRefund || 0);
     if (cancelRefunds > 0) {
       list.push({
         id: "cancel-refunds",
@@ -1187,7 +1029,7 @@ function AdminDashboard() {
       });
     }
 
-    const refundProcessing = orders.filter((o) => o?.refundStatus === "Processing").length;
+    const refundProcessing = Number(alerts.refundsProcessing || 0);
     if (refundProcessing > 0) {
       list.push({
         id: "refund-processing",
@@ -1235,7 +1077,7 @@ function AdminDashboard() {
     }
     return list.filter((item) => NON_DISMISSIBLE_NOTIFICATION_IDS.includes(item.id) || !dismissedNotifications.includes(item.id));
   }, [
-    orders,
+    summary.alerts,
     unmatchedPaymentsCount,
     pendingAccessCount,
     analytics.statuses.Pending,
@@ -1263,8 +1105,8 @@ function AdminDashboard() {
             </p>
           </div>
           <div className="admin-header-actions">
-            <button type="button" className="admin-header-link-btn" onClick={exportSalesReport}>
-              <Download size={14} /> Export Report
+            <button type="button" className="admin-header-link-btn" onClick={exportSalesReport} disabled={isExporting}>
+              <Download size={14} /> {isExporting ? "Preparing…" : "Export Report"}
             </button>
             <Link className="admin-header-link-btn" to="/admin/theme">
               <Settings2 size={14} /> Theme Settings
@@ -2259,9 +2101,9 @@ function AdminDashboard() {
             <div className="card analytics-card analytics-card--amber">
               <div className="analytics-card-icon"><ShoppingCart size={20} /></div>
               <div className="analytics-card-body">
-                <h3>Total Orders</h3>
-                <p>{orders.length}</p>
-                <span>{analytics.statuses.Pending} pending</span>
+                <h3>Paid Orders</h3>
+                <p>{summary.totals.paidOrders.toLocaleString("en-IN")}</p>
+                <span>{analytics.statuses.Pending} not shipped yet</span>
               </div>
             </div>
             <div className="card analytics-card analytics-card--green">
@@ -2269,7 +2111,7 @@ function AdminDashboard() {
               <div className="analytics-card-body">
                 <h3>Total Revenue</h3>
                 <p>{formatCurrency(analytics.totalRevenue)}</p>
-                <span>From all orders</span>
+                <span>Paid orders, after refunds</span>
               </div>
             </div>
             <div className="card analytics-card analytics-card--purple">
@@ -2335,11 +2177,13 @@ function AdminDashboard() {
               ) : (
                 aiPredictions.monthlyPoints.map((value, index) => {
                   const max = Math.max(...aiPredictions.monthlyPoints, 1);
-                  const h = Math.max(10, Math.round((value / max) * 100));
+                  // Pixel heights: a % height has nothing to measure against here and collapses to 0.
+                  const h = Math.max(6, Math.round((value / max) * 84));
+                  const label = summary.monthly[index]?.label || `M${index + 1}`;
                   return (
-                    <div key={`${value}-${index}`} className="spark-col">
-                      <div className="spark-bar" style={{ height: `${h}%` }} />
-                      <span>M{index + 1}</span>
+                    <div key={label} className="spark-col" title={`${label}: ${formatCurrency(value)}`}>
+                      <div className="spark-bar" style={{ height: `${h}px` }} />
+                      <span>{label}</span>
                     </div>
                   );
                 })
@@ -2449,7 +2293,7 @@ function AdminDashboard() {
 
         <section className="charts-grid">
           <div className="card">
-            <SalesChart orders={orders} />
+            <SalesChart months={summary.monthly} />
           </div>
           <div className="card">
             <h3 style={{ margin: "0 0 14px" }}>Best Selling Product Chart</h3>
@@ -2532,20 +2376,16 @@ function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {orders.slice(0, 8).map((order) => {
+                {summary.recentOrders.map((order) => {
                   const status = normalizeStatus(order?.status);
-                  const itemCount = (order.items || []).reduce(
-                    (sum, item) => sum + Number(item.quantity || 1),
-                    0
-                  );
 
                   return (
                     <tr key={order._id}>
                       <td>#{order._id.slice(-6).toUpperCase()}</td>
-                      <td>{order.user?.name || "Unknown"}</td>
+                      <td>{order.customerName || "Unknown"}</td>
                       <td>{formatDate(order.createdAt)}</td>
-                      <td>{itemCount}</td>
-                      <td>Rs {Math.round(order.total || 0)}</td>
+                      <td>{order.units}</td>
+                      <td>{formatCurrency(order.totalInr)}</td>
                       <td>
                         <span className={`table-status status-${status.toLowerCase()}`}>{status}</span>
                       </td>
@@ -2556,7 +2396,7 @@ function AdminDashboard() {
             </table>
             {isInitialLoading ? (
               <p style={{ margin: "12px 0 0", color: "var(--site-text-soft)" }}>Loading recent orders...</p>
-            ) : orders.length === 0 ? (
+            ) : summary.recentOrders.length === 0 ? (
               <p style={{ margin: "12px 0 0" }}>No orders found.</p>
             ) : null}
           </div>

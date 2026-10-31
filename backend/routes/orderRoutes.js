@@ -21,6 +21,9 @@ const crypto = require("crypto");
 const { sanitizeAttribution } = require("../utils/attribution");
 const { parseReportRange } = require("../utils/signupReport");
 const { computeSalesAnalytics } = require("../utils/salesAnalytics");
+const { computeDashboardSummary, computeAlertCounts } = require("../utils/dashboardSummary");
+const { orderGrossInr } = require("../utils/salesAnalytics");
+const { appCache } = require("../utils/cache");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -1267,6 +1270,62 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
 });
 
 // GET /api/orders/admin/access-pending (Admin only)
+// Admin Dashboard: the figures, the alerts and the 8 newest orders in one small response,
+// instead of the page downloading every order. Kept for 30 seconds so several admins
+// with the dashboard open do not each recalculate it.
+const DASHBOARD_CACHE_KEY = "admin:dashboard-summary";
+router.get("/admin/dashboard-summary", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    const cached = req.query.fresh === "1" ? null : appCache.get(DASHBOARD_CACHE_KEY);
+    if (cached) return res.json(cached);
+
+    const [paidOrders, alertOrders, recent, totalOrders] = await Promise.all([
+      Order.find({ paymentStatus: { $in: ["Paid", "Refunded"] } })
+        .select(
+          "createdAt status total totalInInr fxRateToInr currencyDisplay refundedAmountInInr user billing.name billing.email billing.phone shipping.name shipping.phone items.product items.name items.price items.quantity"
+        )
+        .lean(),
+      Order.find({
+        $or: [
+          { "items.returnRequest.status": { $in: ["Requested", "Received", "Approved"] } },
+          { status: "Cancelled", refundStatus: "Pending" },
+          { refundStatus: "Processing" }
+        ]
+      })
+        .select("status refundStatus items.returnRequest.status items.returnRequest.approvedAt")
+        .lean(),
+      Order.find({})
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .select("_id createdAt status paymentStatus total totalInInr fxRateToInr currencyDisplay items.quantity billing.name shipping.name user")
+        .populate("user", "name")
+        .lean(),
+      Order.estimatedDocumentCount()
+    ]);
+
+    const payload = {
+      success: true,
+      ...computeDashboardSummary({ paidOrders, now: new Date() }),
+      allOrdersCount: totalOrders,
+      alerts: computeAlertCounts(alertOrders),
+      recentOrders: recent.map((order) => ({
+        _id: String(order._id),
+        createdAt: order.createdAt,
+        status: order.status,
+        paymentStatus: order.paymentStatus || "Pending",
+        customerName: order.user?.name || order.billing?.name || order.shipping?.name || "Unknown",
+        units: (order.items || []).reduce((sum, item) => sum + Math.max(1, Number(item?.quantity || 1)), 0),
+        totalInr: orderGrossInr(order)
+      }))
+    };
+    appCache.set(DASHBOARD_CACHE_KEY, payload, 30);
+    res.json(payload);
+  } catch (err) {
+    console.error("[Orders] Dashboard summary error:", err.message);
+    res.status(500).json({ success: false, message: "Failed to load the dashboard figures." });
+  }
+});
+
 router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const query = {
