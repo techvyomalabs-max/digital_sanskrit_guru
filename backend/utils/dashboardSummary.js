@@ -23,8 +23,12 @@ function toInr(order, amount) {
   return round2((Number(amount) || 0) * (fx === null ? 1 : fx));
 }
 
-/** Shipped, Delivered or Cancelled; anything else counts as Pending (not shipped yet). */
+/**
+ * Shipped, Delivered or Cancelled. Completed (digital orders, done once access is given) counts
+ * with Delivered, since nothing is left to ship. Anything else is Pending (not shipped yet).
+ */
 function normalizeStatus(status) {
+  if (status === "Completed") return "Delivered";
   return status === "Shipped" || status === "Delivered" || status === "Cancelled" ? status : "Pending";
 }
 

@@ -84,6 +84,7 @@ const NON_DISMISSIBLE_NOTIFICATION_IDS = [
 
 function normalizeStatus(status) {
   if (status === "Shipped" || status === "Delivered" || status === "Cancelled") return status;
+  if (status === "Completed") return "Delivered"; // digital orders: nothing left to ship
   return "Pending";
 }
 
@@ -2387,7 +2388,9 @@ function AdminDashboard() {
                       <td>{order.units}</td>
                       <td>{formatCurrency(order.totalInr)}</td>
                       <td>
-                        <span className={`table-status status-${status.toLowerCase()}`}>{status}</span>
+                        <span className={`table-status status-${status.toLowerCase()}`}>
+                          {order?.status === "Completed" ? "Completed" : status}
+                        </span>
                       </td>
                     </tr>
                   );
