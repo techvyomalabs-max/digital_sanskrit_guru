@@ -1,7 +1,7 @@
 const express = require("express");
 const PushSubscription = require("../models/PushSubscription");
 const protect = require("../middleware/authMiddleware");
-const { initVapid, getVapidPublicKey } = require("../utils/webPush");
+const { initVapid, getVapidPublicKey, getPushStatus } = require("../utils/webPush");
 
 const router = express.Router();
 
@@ -84,15 +84,35 @@ router.post("/test", protect, async (req, res) => {
       });
     }
 
-    const results = await sendPushToUser(req.user, {
+    const status = getPushStatus();
+    if (!status.ready) {
+      return res.status(503).json({ success: false, message: `Notifications can't be sent right now. ${status.reason}` });
+    }
+
+    const summary = await sendPushToUser(req.user, {
       title: "Digital Sanskrit Guru — Test Notification",
-      body: "🔔 Push notifications are working perfectly on your device!",
+      body: "🔔 Push notifications are working on your device!",
       url: "/account",
       icon: "/favicon.ico",
       badge: "/favicon.ico"
     });
 
-    res.json({ success: true, message: "Test notification sent!", results });
+    // Only say "sent" when the push service actually accepted it
+    if (summary.sent === 0) {
+      return res.status(502).json({
+        success: false,
+        summary,
+        message:
+          summary.removed > 0
+            ? "This device's notification registration was out of date and has been removed. Turn notifications off and on again on this page, then send another test."
+            : `The test could not be delivered. ${summary.reason || ""}`.trim()
+      });
+    }
+    res.json({
+      success: true,
+      summary,
+      message: `Test sent to ${summary.sent} device${summary.sent === 1 ? "" : "s"}. If nothing appears, check that notifications for this browser are allowed in your computer's or phone's settings.`
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

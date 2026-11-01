@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Mail, Bell, Users, AlertTriangle, FileText, Handshake, CheckCircle2, XCircle, Hourglass, Palette, Save, Rocket, Smartphone, Building2, Gift, Heart, Lightbulb } from "lucide-react";
 import axios from "axios";
-import { apiBaseUrl } from "../lib/api";
+import { enablePushNotifications, pushUnsupportedReason } from "../utils/pushSubscription";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import { useAuth } from "../hooks/useAuth";
 import { uploadImageDataUrl } from "../utils/mediaUpload";
@@ -251,35 +251,15 @@ function AdminMarketing() {
 
   // ── Push permission ───────────────────────────────────────────────────────
   const requestPushPermission = async () => {
-    if (!("Notification" in window)) return;
-    const result = await Notification.requestPermission();
-    setPushPermission(result);
-
-    if (result !== "granted") return;
+    setPushMsg("");
     try {
-      const sw = await navigator.serviceWorker.ready;
-      let sub = await sw.pushManager.getSubscription();
-
-      if (!sub) {
-        const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-        if (!keyRes.ok) return;
-        const { publicKey } = await keyRes.json();
-        if (!publicKey) return;
-
-        const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
-        const base64 = (publicKey + padding).replace(/-/g, "+").replace(/_/g, "/");
-        const raw = window.atob(base64);
-        const key = Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-
-        sub = await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      }
-
-      if (sub) {
-        await axios.post("/api/push/subscribe", sub.toJSON(), { headers: getAuthHeaders() });
-      }
+      await enablePushNotifications(token || localStorage.getItem("token"));
+      setPushMsg("Notifications are on for this browser.");
+    } catch (err) {
+      setPushMsg(err?.response?.data?.message || err?.message || "Could not turn on notifications.");
+    } finally {
+      setPushPermission(typeof Notification !== "undefined" ? Notification.permission : "default");
       loadStats();
-    } catch {
-      // ignore
     }
   };
 
@@ -1098,9 +1078,21 @@ function AdminMarketing() {
               )}
             </div>
 
+            {stats && stats.pushReady === false ? (
+              <div className="mkt-push-problem" role="alert">
+                <strong>Push notifications can't be sent from this server.</strong> {stats.pushProblem}
+              </div>
+            ) : null}
+            {pushUnsupportedReason() ? (
+              <div className="mkt-push-problem" role="note">{pushUnsupportedReason()}</div>
+            ) : null}
+
             <div className="card mkt-card">
               <h3>Broadcast Push Notification</h3>
-              <p className="mkt-hint">Sends to all {stats?.pushSubscribers ?? "?"} subscribed browsers.</p>
+              <p className="mkt-hint">
+                Sends to all {stats?.pushSubscribers ?? "?"} subscribed browsers. Each person sees it only on devices where
+                they turned notifications on while signed in.
+              </p>
               <div className="mkt-field">
                 <label>Title</label>
                 <input

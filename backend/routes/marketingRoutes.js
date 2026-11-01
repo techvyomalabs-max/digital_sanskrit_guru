@@ -10,7 +10,7 @@ const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
-const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload } = require("../utils/webPush");
+const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload, getPushStatus } = require("../utils/webPush");
 
 const router = express.Router();
 
@@ -60,7 +60,10 @@ router.get("/subscribers", async (_req, res) => {
     const threshold = Number(settings?.lowStockThreshold ?? 5);
     const lowStockCount = await Product.countDocuments({ stock: { $lte: threshold }, isDeleted: { $ne: true } });
 
+    const pushStatus = getPushStatus();
     res.json({
+      pushReady: pushStatus.ready,
+      pushProblem: pushStatus.reason,
       pushSubscribers: pushCount,
       emailSubscribers: userCount,
       lowStockCount,
@@ -340,13 +343,21 @@ router.post("/broadcast/push", async (req, res) => {
       return res.status(400).json({ message: "Title and body are required." });
     }
 
+    const status = getPushStatus();
+    if (!status.ready) {
+      return res.status(503).json({ message: `Push can't be sent: ${status.reason}` });
+    }
     const count = await PushSubscription.countDocuments();
-    res.json({ message: `Sending push to ${count} subscriber(s)...`, total: count });
+    if (count === 0) {
+      return res.status(400).json({ message: "No devices have turned on notifications yet, so there is no one to send to." });
+    }
 
-    // Fire-and-forget
-    broadcastPush(broadcastPayload(title, body, url)).catch((err) => {
-      console.error("[Marketing] Broadcast push error:", err.message);
-    });
+    // Wait for the result (a few seconds at most for a small list) so the admin sees what happened
+    const summary = await broadcastPush(broadcastPayload(title, body, url));
+    const parts = [`Sent to ${summary.sent} of ${summary.devices} device(s).`];
+    if (summary.removed) parts.push(`${summary.removed} expired device(s) were removed.`);
+    if (summary.failed - summary.removed > 0) parts.push(`${summary.failed - summary.removed} failed: ${summary.reason}`);
+    res.json({ message: parts.join(" "), total: summary.devices, summary });
   } catch {
     res.status(500).json({ message: "Failed to send broadcast push." });
   }
