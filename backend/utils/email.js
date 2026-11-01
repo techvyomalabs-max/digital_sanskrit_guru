@@ -75,7 +75,11 @@ async function getTransporter() {
       user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || ""
     },
-    tls: tlsOptions
+    tls: tlsOptions,
+    // Give up instead of hanging for minutes when the mail server doesn't answer
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000
   });
   return transporter;
 }

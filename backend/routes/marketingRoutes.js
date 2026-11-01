@@ -9,6 +9,7 @@ const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
+const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
 const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
 const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload, getPushStatus } = require("../utils/webPush");
 
@@ -57,8 +58,8 @@ router.get("/subscribers", async (_req, res) => {
       StoreSettings.findOne().select("lowStockThreshold notificationEmail emailEnabled pushEnabled").lean()
     ]);
 
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
-    const lowStockCount = await Product.countDocuments({ stock: { $lte: threshold }, isDeleted: { $ne: true } });
+    const threshold = lowStockThreshold(settings);
+    const lowStockCount = await Product.countDocuments(lowStockFilter(threshold));
 
     const pushStatus = getPushStatus();
     res.json({
@@ -189,9 +190,9 @@ router.post("/segmented-customers", async (req, res) => {
 router.get("/low-stock", async (_req, res) => {
   try {
     const settings = await StoreSettings.findOne().select("lowStockThreshold").lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const threshold = lowStockThreshold(settings);
 
-    const products = await Product.find({ stock: { $lte: threshold }, isDeleted: { $ne: true } })
+    const products = await Product.find(lowStockFilter(threshold))
       .select("_id name stock category image")
       .sort({ stock: 1 })
       .lean();
@@ -221,10 +222,14 @@ router.get("/low-stock", async (_req, res) => {
 // Manually trigger low-stock admin email + alert all wishlist users
 router.post("/alert/low-stock", async (_req, res) => {
   try {
-    const settings = await StoreSettings.findOne().select("lowStockThreshold notificationEmail").lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const settings = await StoreSettings.findOne().select("lowStockThreshold notificationEmail emailEnabled pushEnabled").lean();
+    const threshold = lowStockThreshold(settings);
+    const channels = alertChannels(settings);
+    if (!channels.email && !channels.push) {
+      return res.status(400).json({ message: "Both email and push are switched off in Alert Settings, so no alerts were sent." });
+    }
 
-    const products = await Product.find({ stock: { $lte: threshold }, isDeleted: { $ne: true } })
+    const products = await Product.find(lowStockFilter(threshold))
       .select("_id name stock category")
       .sort({ stock: 1 })
       .lean();
@@ -247,9 +252,9 @@ router.post("/alert/low-stock", async (_req, res) => {
       wishlistCount: wishlistCountMap.get(String(p._id)) || 0
     }));
 
-    // 1. Admin email + push
-    await sendLowStockAdminAlert(enrichedProducts);
-    if (settings?.notificationEmail || process.env.ADMIN_EMAIL) {
+    // 1. Admin email + push (each only if switched on in Alert Settings)
+    if (channels.email) await sendLowStockAdminAlert(enrichedProducts);
+    if (channels.push) {
       // Push to admin subscriptions (find admin users)
       const admins = await User.find({ isAdmin: true }).select("_id").lean();
       for (const adminUser of admins) {
@@ -279,18 +284,19 @@ router.post("/alert/low-stock", async (_req, res) => {
       const productNames = userWishlistedLowStock.map((p) => p.name);
       const minStock = Math.min(...userWishlistedLowStock.map((p) => p.stock));
 
-      // Push
-      await sendPushToUser(wl.user._id, wishlistLowStockPayload(productNames, minStock));
+      if (channels.push) await sendPushToUser(wl.user._id, wishlistLowStockPayload(productNames, minStock));
 
-      // Email (lazy import to avoid circular)
-      const { sendWishlistLowStockAlert } = require("../utils/email");
-      await sendWishlistLowStockAlert(wl.user, userWishlistedLowStock);
+      if (channels.email) {
+        // Email (lazy import to avoid circular)
+        const { sendWishlistLowStockAlert } = require("../utils/email");
+        await sendWishlistLowStockAlert(wl.user, userWishlistedLowStock);
+      }
 
       userAlertsSent++;
     }
 
     res.json({
-      message: `Low-stock alerts sent. Admin notified. ${userAlertsSent} wishlist user(s) alerted.`,
+      message: `Low-stock alerts sent for ${products.length} product(s) by ${[channels.email && "email", channels.push && "push"].filter(Boolean).join(" and ")}. ${userAlertsSent} wishlist customer(s) alerted.`,
       productsAlerted: products.length,
       userAlertsSent
     });

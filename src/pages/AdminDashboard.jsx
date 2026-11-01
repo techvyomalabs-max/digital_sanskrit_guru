@@ -814,7 +814,14 @@ function AdminDashboard() {
 
   const lowStockProducts = useMemo(() => {
     return products
-      .filter((product) => Number(product?.stock ?? 0) <= LOW_STOCK_THRESHOLD)
+      // Physical products only: digital items never run out, and products with options/formats
+      // are covered by their own physical options (same rule as Marketing → Low-Stock Alerts)
+      .filter(
+        (product) =>
+          product?.isDigital !== true &&
+          product?.hasOptions !== true &&
+          Number(product?.stock ?? 0) <= LOW_STOCK_THRESHOLD
+      )
       .sort((a, b) => Number(a?.stock ?? 0) - Number(b?.stock ?? 0))
       .slice(0, 6);
   }, [products]);
