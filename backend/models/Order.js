@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { invoiceCounterId, formatInvoiceNumber } = require("../utils/invoiceNumber");
 
 const counterSchema = new mongoose.Schema({
   _id: { type: String, required: true },
@@ -355,15 +356,16 @@ const orderSchema = new mongoose.Schema(
 orderSchema.pre("save", function() {
   const self = this;
   if (self.isNew && !self.invoiceNumber) {
+    // GST invoice number by financial year in India time, e.g. DSG/2026-27/0001.
+    // Each financial year has its own counter, so the number restarts at 0001 every 1 April.
+    const issuedAt = new Date();
     return Counter.findByIdAndUpdate(
-      { _id: "orderInvoice" },
+      { _id: invoiceCounterId(issuedAt) },
       { $inc: { seq: 1 } },
       { returnDocument: 'after', upsert: true }
     )
       .then((counter) => {
-        const year = new Date().getFullYear();
-        const seqStr = String(counter.seq).padStart(4, "0");
-        self.invoiceNumber = `DSG-${year}-${seqStr}`;
+        self.invoiceNumber = formatInvoiceNumber(issuedAt, counter.seq);
       });
   }
 });

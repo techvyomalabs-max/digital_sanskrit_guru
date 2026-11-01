@@ -9,8 +9,9 @@ const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
+const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
 const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
-const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload } = require("../utils/webPush");
+const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload, getPushStatus } = require("../utils/webPush");
 
 const router = express.Router();
 
@@ -57,10 +58,13 @@ router.get("/subscribers", async (_req, res) => {
       StoreSettings.findOne().select("lowStockThreshold notificationEmail emailEnabled pushEnabled").lean()
     ]);
 
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
-    const lowStockCount = await Product.countDocuments({ stock: { $lte: threshold }, isDeleted: { $ne: true } });
+    const threshold = lowStockThreshold(settings);
+    const lowStockCount = await Product.countDocuments(lowStockFilter(threshold));
 
+    const pushStatus = getPushStatus();
     res.json({
+      pushReady: pushStatus.ready,
+      pushProblem: pushStatus.reason,
       pushSubscribers: pushCount,
       emailSubscribers: userCount,
       lowStockCount,
@@ -186,9 +190,9 @@ router.post("/segmented-customers", async (req, res) => {
 router.get("/low-stock", async (_req, res) => {
   try {
     const settings = await StoreSettings.findOne().select("lowStockThreshold").lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const threshold = lowStockThreshold(settings);
 
-    const products = await Product.find({ stock: { $lte: threshold }, isDeleted: { $ne: true } })
+    const products = await Product.find(lowStockFilter(threshold))
       .select("_id name stock category image")
       .sort({ stock: 1 })
       .lean();
@@ -218,10 +222,14 @@ router.get("/low-stock", async (_req, res) => {
 // Manually trigger low-stock admin email + alert all wishlist users
 router.post("/alert/low-stock", async (_req, res) => {
   try {
-    const settings = await StoreSettings.findOne().select("lowStockThreshold notificationEmail").lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const settings = await StoreSettings.findOne().select("lowStockThreshold notificationEmail emailEnabled pushEnabled").lean();
+    const threshold = lowStockThreshold(settings);
+    const channels = alertChannels(settings);
+    if (!channels.email && !channels.push) {
+      return res.status(400).json({ message: "Both email and push are switched off in Alert Settings, so no alerts were sent." });
+    }
 
-    const products = await Product.find({ stock: { $lte: threshold }, isDeleted: { $ne: true } })
+    const products = await Product.find(lowStockFilter(threshold))
       .select("_id name stock category")
       .sort({ stock: 1 })
       .lean();
@@ -244,9 +252,9 @@ router.post("/alert/low-stock", async (_req, res) => {
       wishlistCount: wishlistCountMap.get(String(p._id)) || 0
     }));
 
-    // 1. Admin email + push
-    await sendLowStockAdminAlert(enrichedProducts);
-    if (settings?.notificationEmail || process.env.ADMIN_EMAIL) {
+    // 1. Admin email + push (each only if switched on in Alert Settings)
+    if (channels.email) await sendLowStockAdminAlert(enrichedProducts);
+    if (channels.push) {
       // Push to admin subscriptions (find admin users)
       const admins = await User.find({ isAdmin: true }).select("_id").lean();
       for (const adminUser of admins) {
@@ -276,18 +284,19 @@ router.post("/alert/low-stock", async (_req, res) => {
       const productNames = userWishlistedLowStock.map((p) => p.name);
       const minStock = Math.min(...userWishlistedLowStock.map((p) => p.stock));
 
-      // Push
-      await sendPushToUser(wl.user._id, wishlistLowStockPayload(productNames, minStock));
+      if (channels.push) await sendPushToUser(wl.user._id, wishlistLowStockPayload(productNames, minStock));
 
-      // Email (lazy import to avoid circular)
-      const { sendWishlistLowStockAlert } = require("../utils/email");
-      await sendWishlistLowStockAlert(wl.user, userWishlistedLowStock);
+      if (channels.email) {
+        // Email (lazy import to avoid circular)
+        const { sendWishlistLowStockAlert } = require("../utils/email");
+        await sendWishlistLowStockAlert(wl.user, userWishlistedLowStock);
+      }
 
       userAlertsSent++;
     }
 
     res.json({
-      message: `Low-stock alerts sent. Admin notified. ${userAlertsSent} wishlist user(s) alerted.`,
+      message: `Low-stock alerts sent for ${products.length} product(s) by ${[channels.email && "email", channels.push && "push"].filter(Boolean).join(" and ")}. ${userAlertsSent} wishlist customer(s) alerted.`,
       productsAlerted: products.length,
       userAlertsSent
     });
@@ -340,13 +349,21 @@ router.post("/broadcast/push", async (req, res) => {
       return res.status(400).json({ message: "Title and body are required." });
     }
 
+    const status = getPushStatus();
+    if (!status.ready) {
+      return res.status(503).json({ message: `Push can't be sent: ${status.reason}` });
+    }
     const count = await PushSubscription.countDocuments();
-    res.json({ message: `Sending push to ${count} subscriber(s)...`, total: count });
+    if (count === 0) {
+      return res.status(400).json({ message: "No devices have turned on notifications yet, so there is no one to send to." });
+    }
 
-    // Fire-and-forget
-    broadcastPush(broadcastPayload(title, body, url)).catch((err) => {
-      console.error("[Marketing] Broadcast push error:", err.message);
-    });
+    // Wait for the result (a few seconds at most for a small list) so the admin sees what happened
+    const summary = await broadcastPush(broadcastPayload(title, body, url));
+    const parts = [`Sent to ${summary.sent} of ${summary.devices} device(s).`];
+    if (summary.removed) parts.push(`${summary.removed} expired device(s) were removed.`);
+    if (summary.failed - summary.removed > 0) parts.push(`${summary.failed - summary.removed} failed: ${summary.reason}`);
+    res.json({ message: parts.join(" "), total: summary.devices, summary });
   } catch {
     res.status(500).json({ message: "Failed to send broadcast push." });
   }

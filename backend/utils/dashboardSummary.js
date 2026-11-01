@@ -23,8 +23,12 @@ function toInr(order, amount) {
   return round2((Number(amount) || 0) * (fx === null ? 1 : fx));
 }
 
-/** Shipped, Delivered or Cancelled; anything else counts as Pending (not shipped yet). */
+/**
+ * Shipped, Delivered or Cancelled. Completed (digital orders, done once access is given) counts
+ * with Delivered, since nothing is left to ship. Anything else is Pending (not shipped yet).
+ */
 function normalizeStatus(status) {
+  if (status === "Completed") return "Delivered";
   return status === "Shipped" || status === "Delivered" || status === "Cancelled" ? status : "Pending";
 }
 
@@ -67,11 +71,13 @@ function lastMonths(now, count) {
  */
 function computeDashboardSummary({ paidOrders = [], now = new Date() }) {
   const today = istDay(now);
+  // Whole India days, the same as the Sales Dashboard: "last 7 days" is today and the 6 days
+  // before it, from midnight IST; "last 30 days" is today and the 29 before; the previous 30
+  // days are the 30 whole days before that.
   const todayStart = dayMs(today) - 330 * 60 * 1000; // IST midnight as a real instant
-  const nowMs = new Date(now).getTime();
-  const last7Start = nowMs - 7 * DAY_MS;
-  const last30Start = nowMs - 30 * DAY_MS;
-  const prev30Start = nowMs - 60 * DAY_MS;
+  const last7Start = todayStart - 6 * DAY_MS;
+  const last30Start = todayStart - 29 * DAY_MS;
+  const prev30Start = todayStart - 59 * DAY_MS;
 
   const months = lastMonths(now, 6);
   const monthByKey = new Map(months.map((mo) => [mo.key, mo]));

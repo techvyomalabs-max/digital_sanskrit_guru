@@ -766,3 +766,14 @@
 .mkt-email-footer-preview p {
   margin: 0;
 }
+
+.mkt-push-problem {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--admin-text, #0f172a);
+  font-size: 13.5px;
+  line-height: 1.5;
+}

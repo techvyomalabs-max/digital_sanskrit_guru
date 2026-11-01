@@ -24,6 +24,8 @@ const { computeSalesAnalytics } = require("../utils/salesAnalytics");
 const { computeDashboardSummary, computeAlertCounts } = require("../utils/dashboardSummary");
 const { orderGrossInr } = require("../utils/salesAnalytics");
 const { appCache } = require("../utils/cache");
+const { REVENUE_FIELDS, sumNetRevenueInr, paidOnly } = require("../utils/orderRevenue");
+const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -146,20 +148,22 @@ async function fireLowStockAlerts(normalizedItems) {
     const settings = await StoreSettings.findOne()
       .select("lowStockThreshold notificationEmail pushEnabled emailEnabled")
       .lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const threshold = lowStockThreshold(settings);
+    const channels = alertChannels(settings);
+    if (!channels.email && !channels.push) return;
 
-    const productIds = normalizedItems.map((i) => i.product);
-    const lowStockProducts = await Product.find({
-      _id: { $in: productIds },
-      stock: { $lte: threshold }
-    }).select("_id name stock category").lean();
+    // Physical products in this order that are now low (digital items never run out)
+    const productIds = normalizedItems.map((i) => i.product?._id || i.product);
+    const lowStockProducts = await Product.find(lowStockFilter(threshold, { _id: { $in: productIds } }))
+      .select("_id name stock category")
+      .lean();
 
     if (lowStockProducts.length === 0) return;
 
     // 1. Admin alert
-    const admins = await User.find({ isAdmin: true }).select("_id").lean();
+    const admins = channels.push ? await User.find({ isAdmin: true }).select("_id").lean() : [];
     const enriched = lowStockProducts.map((p) => ({ ...p, wishlistCount: 0 }));
-    await sendLowStockAdminAlert(enriched);
+    if (channels.email) await sendLowStockAdminAlert(enriched);
     for (const adminUser of admins) {
       await sendPushToUser(adminUser._id,
         lowStockPayload(`${lowStockProducts.length} item(s)`, lowStockProducts.map((p) => p.stock).join(", "))
@@ -180,8 +184,8 @@ async function fireLowStockAlerts(normalizedItems) {
       if (affected.length === 0) continue;
       const names = affected.map((p) => p.name);
       const minStock = Math.min(...affected.map((p) => p.stock));
-      await sendPushToUser(wl.user._id, wishlistLowStockPayload(names, minStock));
-      await sendWishlistLowStockAlert(wl.user, affected);
+      if (channels.push) await sendPushToUser(wl.user._id, wishlistLowStockPayload(names, minStock));
+      if (channels.email) await sendWishlistLowStockAlert(wl.user, affected);
     }
   } catch (err) {
     console.error("[Low-Stock Alert] Error:", err.message);
@@ -805,32 +809,6 @@ const autoCompletePaidDigitalOrders = async (orders) => {
 // Get all orders (admin only)
 router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
-    const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
-    const rates = settings?.currencyConversionRates || {};
-
-    const branches = Object.entries(rates)
-      .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
-      .map(([currency, rate]) => ({
-        case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
-        then: Number(rate)
-      }));
-
-    const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
-
-    const totalInBaseExpression = branches.length > 0
-      ? {
-          $divide: [
-            paidAmountExpression,
-            {
-              $switch: {
-                branches,
-                default: 1
-              }
-            }
-          ]
-        }
-      : paidAmountExpression;
-
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limitQuery = req.query.limit;
     const isPaginated = limitQuery !== "all";
@@ -903,6 +881,9 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
     } else if (statusFilter === "Delivered") {
       finalQuery.status = "Delivered";
       finalQuery.paymentStatus = "Paid";
+    } else if (statusFilter === "Completed") {
+      finalQuery.status = "Completed";
+      finalQuery.paymentStatus = "Paid";
     } else if (statusFilter === "Cancelled") {
       finalQuery.status = "Cancelled";
     } else if (statusFilter === "Return Requests") {
@@ -945,7 +926,9 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
       cancelledCount,
       returnCount,
       accessPendingCount,
-      statsResult
+      statsResult,
+      completedCount,
+      revenueOrders
     ] = await Promise.all([
       Order.countDocuments(baseQuery),
       Order.countDocuments({ ...baseQuery, status: { $ne: "Cancelled" }, paymentStatus: { $ne: "Paid" } }),
@@ -972,20 +955,6 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         {
           $group: {
             _id: null,
-            totalRevenue: {
-              $sum: {
-                $cond: [
-                  {
-                    $or: [
-                      { $eq: ["$status", "Cancelled"] },
-                      { $eq: ["$refundStatus", "Refunded"] }
-                    ]
-                  },
-                  0,
-                  totalInBaseExpression
-                ]
-              }
-            },
             pendingPaymentsCount: {
               $sum: {
                 $cond: [
@@ -1005,7 +974,7 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
                 $cond: [
                   {
                     $and: [
-                      { $in: ["$status", ["Shipped", "Delivered"]] },
+                      { $in: ["$status", ["Shipped", "Delivered", "Completed"]] },
                       { $eq: ["$paymentStatus", "Paid"] }
                     ]
                   },
@@ -1016,7 +985,11 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
             }
           }
         }
-      ])
+      ]),
+      Order.countDocuments({ ...baseQuery, status: "Completed", paymentStatus: "Paid" }),
+      // Revenue: paid orders in this view, in INR at each order's own rate, minus refunds,
+      // worked out with the same helpers as the Dashboard, Sales and Finance pages.
+      Order.find(paidOnly(finalQuery)).select(REVENUE_FIELDS).lean()
     ]);
 
     const overviewStats = statsResult[0] || {
@@ -1036,13 +1009,14 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         Pending: pendingCount,
         Shipped: shippedCount,
         Delivered: deliveredCount,
+        Completed: completedCount,
         Cancelled: cancelledCount,
         "Return Requests": returnCount,
         "Access Pending": accessPendingCount
       },
       overviewStats: {
         totalOrders: totalMatchingOrders,
-        totalRevenue: overviewStats.totalRevenue || 0,
+        totalRevenue: sumNetRevenueInr(revenueOrders),
         pendingPayments: overviewStats.pendingPaymentsCount || 0,
         fulfilledOrders: overviewStats.fulfilledCount || 0
       }
@@ -2910,6 +2884,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 
     fireNotifications(async () => {
       if (rawPaymentStatus === "Paid") {
+        // Buyers who already have an account and turned notifications on get the push too
+        if (targetUser?._id) await sendPushToUser(targetUser._id, orderPayload(order, "placed"));
         await sendOrderConfirmation(order, targetUser);
         if (hasPendingManualAccess(order)) {
           notifyAdminsOfPendingAccess(order);

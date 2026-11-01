@@ -1,7 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
-import { apiBaseUrl } from "./lib/api";
 import Navbar from "./components/layout/Navbar";
 import Breadcrumb from "./components/layout/Breadcrumb";
 import Footer from "./components/layout/Footer";
@@ -19,6 +18,8 @@ import FestiveBanner from "./components/FestiveBanner";
 import { requestLocationPermissionForCurrency } from "./utils/currency";
 import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils/siteTheme";
 import { storePricingConfig } from "./utils/productPricing";
+import { useAuth } from "./hooks/useAuth";
+import { pushUnsupportedReason, syncPushSubscription } from "./utils/pushSubscription";
 
 const Home = lazy(() => import("./pages/Home"));
 const Collection = lazy(() => import("./pages/Collection"));
@@ -177,52 +178,18 @@ function App() {
     return () => document.documentElement.classList.remove("banner-active");
   }, [isBannerActive]);
 
-  // Register service worker for push notifications & sync subscription
+  // Register the service worker once, and whenever someone is signed in on a device that has
+  // already allowed notifications, make sure that device is saved under their account
+  // (also right after they log in, not only on the first page load).
+  const { token: authToken } = useAuth();
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then(async (registration) => {
-        // Only auto-subscribe if permission was already granted
-        if (Notification.permission !== "granted") return;
-
-        try {
-          let sub = await registration.pushManager.getSubscription();
-
-          if (!sub) {
-            const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-            if (!keyRes.ok) return;
-            const { publicKey } = await keyRes.json();
-            if (!publicKey) return;
-
-            sub = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(publicKey)
-            });
-          }
-
-          const token = sessionStorage.getItem("token") || localStorage.getItem("token");
-          if (token && sub) {
-            await fetch(`${apiBaseUrl || ""}/api/push/subscribe`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify(sub.toJSON())
-            });
-          }
-        } catch {
-          // Push subscription is optional — ignore errors
-        }
-      })
-      .catch(() => {});
+    if (pushUnsupportedReason()) return;
+    navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("[Push] Service worker:", err?.message));
   }, []);
-
-  function urlBase64ToUint8Array(base64String) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const rawData = window.atob(base64);
-    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-  }
+  useEffect(() => {
+    if (!authToken || pushUnsupportedReason() || Notification.permission !== "granted") return;
+    syncPushSubscription(authToken).catch((err) => console.warn("[Push] Could not sync this device:", err?.message));
+  }, [authToken]);
 
   useEffect(() => {
     let active = true;

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { apiBaseUrl } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
@@ -23,6 +22,7 @@ import { validatePhoneNumber } from "../utils/phoneValidation";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyAccount.css";
+import { enablePushNotifications, pushUnsupportedReason, syncPushSubscription } from "../utils/pushSubscription";
 import {
   Bell,
   BellOff,
@@ -97,89 +97,30 @@ function PushSubscribeSection({ token }) {
   );
   const [status, setStatus] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const vapidKeyRef = useRef(null);
 
-  // Preload VAPID key on mount & auto-sync subscription to backend for active user
+  const unsupportedReason = pushUnsupportedReason();
+
+  // This device already allowed notifications: make sure it is saved under this account
+  // with the server's current key (the site does this too, this covers opening this page directly).
   useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window) {
-      fetch(`${apiBaseUrl || ""}/api/push/vapid-key`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then(async (data) => {
-          if (data?.publicKey) {
-            vapidKeyRef.current = data.publicKey;
-          }
-          if (Notification.permission === "granted" && token) {
-            try {
-              const sw = await navigator.serviceWorker.ready;
-              let sub = await sw.pushManager.getSubscription();
-              if (!sub && data?.publicKey) {
-                sub = await sw.pushManager.subscribe({
-                  userVisibleOnly: true,
-                  applicationServerKey: urlBase64ToUint8Array(data.publicKey)
-                });
-              }
-              if (sub) {
-                await axios.post("/api/push/subscribe", sub.toJSON(), {
-                  headers: { Authorization: `Bearer ${token}` }
-                });
-              }
-            } catch {
-              // Ignore background auto-sync errors
-            }
-          }
-        })
-        .catch(() => {});
-    }
-  }, [token]);
-
-  function urlBase64ToUint8Array(base64String) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const rawData = window.atob(base64);
-    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-  }
+    if (unsupportedReason || !token || Notification.permission !== "granted") return;
+    syncPushSubscription(token).catch((err) => console.warn("[Push] Could not sync this device:", err?.message));
+  }, [token, unsupportedReason]);
 
   const subscribe = async () => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setStatus("Push notifications are not supported by your browser.");
+    if (unsupportedReason) {
+      setStatus(unsupportedReason);
       return;
     }
     setIsSubscribing(true);
     setStatus("");
     try {
-      const result = await Notification.requestPermission();
-      setPermission(result);
-      if (result !== "granted") {
-        setStatus("Notification permission denied. Enable it in browser settings.");
-        return;
-      }
-      const sw = await navigator.serviceWorker.ready;
-      let sub = await sw.pushManager.getSubscription();
-      if (!sub) {
-        let publicKey = vapidKeyRef.current;
-        if (!publicKey) {
-          const keyRes = await fetch(`${apiBaseUrl || ""}/api/push/vapid-key`);
-          if (!keyRes.ok) throw new Error("Could not get push key.");
-          const keyData = await keyRes.json();
-          publicKey = keyData.publicKey;
-          vapidKeyRef.current = publicKey;
-        }
-
-        sub = await sw.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey)
-        });
-      }
-
-      if (token && sub) {
-        await axios.post("/api/push/subscribe", sub.toJSON(), {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
-      setStatus("Subscribed! You'll receive notifications for orders and stock alerts.");
+      await enablePushNotifications(token);
+      setPermission(Notification.permission);
+      setStatus("Notifications are on for this device. You’ll get alerts for your orders here.");
     } catch (err) {
-      setStatus(err?.message || "Failed to subscribe.");
+      setPermission(typeof Notification !== "undefined" ? Notification.permission : "default");
+      setStatus(err?.response?.data?.message || err?.message || "Could not turn on notifications.");
     } finally {
       setIsSubscribing(false);
     }
@@ -206,27 +147,6 @@ function PushSubscribeSection({ token }) {
       setStatus("Failed to unsubscribe.");
     } finally {
       setIsSubscribing(false);
-    }
-  };
-
-  const sendTestNotification = async () => {
-    setIsTesting(true);
-    setStatus("");
-    try {
-      const res = await axios.post(
-        "/api/push/test",
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (res.data?.success) {
-        setStatus("Test notification sent! Check your device notifications.");
-      } else {
-        setStatus(res.data?.message || "Failed to send test notification.");
-      }
-    } catch (err) {
-      setStatus(err?.response?.data?.message || err?.message || "Failed to send test notification.");
-    } finally {
-      setIsTesting(false);
     }
   };
 
@@ -287,30 +207,6 @@ function PushSubscribeSection({ token }) {
             </span>
           </button>
         </div>
-
-        {isGranted && (
-          <div style={{ marginTop: "12px", display: "flex", gap: "8px" }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={sendTestNotification}
-              disabled={isTesting}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                cursor: isTesting ? "not-allowed" : "pointer"
-              }}
-            >
-              <Bell size={14} />
-              {isTesting ? "Sending test..." : "Send Test Notification"}
-            </button>
-          </div>
-        )}
 
         {status && <p className="my-account-push-msg">{status}</p>}
 

@@ -84,6 +84,7 @@ const NON_DISMISSIBLE_NOTIFICATION_IDS = [
 
 function normalizeStatus(status) {
   if (status === "Shipped" || status === "Delivered" || status === "Cancelled") return status;
+  if (status === "Completed") return "Delivered"; // digital orders: nothing left to ship
   return "Pending";
 }
 
@@ -813,7 +814,14 @@ function AdminDashboard() {
 
   const lowStockProducts = useMemo(() => {
     return products
-      .filter((product) => Number(product?.stock ?? 0) <= LOW_STOCK_THRESHOLD)
+      // Physical products only: digital items never run out, and products with options/formats
+      // are covered by their own physical options (same rule as Marketing → Low-Stock Alerts)
+      .filter(
+        (product) =>
+          product?.isDigital !== true &&
+          product?.hasOptions !== true &&
+          Number(product?.stock ?? 0) <= LOW_STOCK_THRESHOLD
+      )
       .sort((a, b) => Number(a?.stock ?? 0) - Number(b?.stock ?? 0))
       .slice(0, 6);
   }, [products]);
@@ -2387,7 +2395,9 @@ function AdminDashboard() {
                       <td>{order.units}</td>
                       <td>{formatCurrency(order.totalInr)}</td>
                       <td>
-                        <span className={`table-status status-${status.toLowerCase()}`}>{status}</span>
+                        <span className={`table-status status-${status.toLowerCase()}`}>
+                          {order?.status === "Completed" ? "Completed" : status}
+                        </span>
                       </td>
                     </tr>
                   );

@@ -262,8 +262,11 @@ function AdminSalesDashboard() {
           <article className="sd-kpi sd-kpi--main">
             <span className="sd-kpi-label"><IndianRupee size={14} aria-hidden="true" />Net revenue</span>
             <strong className="sd-kpi-value">{inr(summary.netInr)}</strong>
-            <span className="sd-kpi-sub">
-              Gross {inr(summary.grossInr)} · Refunded {inr(summary.refundedInr)}
+            <span
+              className="sd-kpi-sub"
+              title="Refunds on orders placed in this period, whenever they were refunded. Finance & Taxes counts refunds by the date they were made."
+            >
+              Gross {inr(summary.grossInr)} · Refunded on these orders {inr(summary.refundedInr)}
               {summary.refundedOrders ? ` (${summary.refundedOrders} order${summary.refundedOrders === 1 ? "" : "s"})` : ""}
             </span>
             <Change value={changes.netInr} />
