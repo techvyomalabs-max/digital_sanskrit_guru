@@ -2881,6 +2881,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
 
     fireNotifications(async () => {
       if (rawPaymentStatus === "Paid") {
+        // Buyers who already have an account and turned notifications on get the push too
+        if (targetUser?._id) await sendPushToUser(targetUser._id, orderPayload(order, "placed"));
         await sendOrderConfirmation(order, targetUser);
         if (hasPendingManualAccess(order)) {
           notifyAdminsOfPendingAccess(order);
