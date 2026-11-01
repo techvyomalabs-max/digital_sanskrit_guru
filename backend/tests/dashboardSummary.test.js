@@ -43,6 +43,23 @@ describe("dashboardSummary", () => {
     assert.equal(out.revenue.growthPercent, 100);
   });
 
+  it("counts whole India days for 7 and 30 days, the same as the Sales Dashboard", () => {
+    // now: Sat 31 Oct 2026, 12:00 IST. 30 days = 2 Oct to 31 Oct; 7 days = 25 Oct to 31 Oct.
+    const out = computeDashboardSummary({
+      now,
+      paidOrders: [
+        { createdAt: at("2026-10-01T23:30:00+05:30"), totalInInr: 1 }, // day before the 30-day window
+        { createdAt: at("2026-10-02T00:05:00+05:30"), totalInInr: 10 }, // first minutes of the window
+        { createdAt: at("2026-10-24T23:59:00+05:30"), totalInInr: 100 }, // day before the 7-day window
+        { createdAt: at("2026-10-25T00:01:00+05:30"), totalInInr: 1000 }, // first minute of the 7 days
+        { createdAt: at("2026-09-02T00:00:00+05:30"), totalInInr: 5 } // first day of the previous 30
+      ]
+    });
+    assert.equal(out.revenue.last30Days, 1110);
+    assert.equal(out.revenue.last7Days, 1000);
+    assert.equal(out.revenue.previous30Days, 6);
+  });
+
   it("keeps the last 6 months, including months with no sales", () => {
     const out = computeDashboardSummary({
       now,

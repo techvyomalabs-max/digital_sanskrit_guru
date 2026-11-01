@@ -674,7 +674,12 @@ function AdminFinancialDashboard() {
                   <span className="fin-kpi-amount">{(data?.summary?.refundsInr || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="fin-kpi-footer">
-                  <span className="fin-kpi-tag red">Credit Notes / Refunds</span>
+                  <span
+                    className="fin-kpi-tag red"
+                    title="Refunds made in this period (credit notes), even for orders placed earlier. The Sales Dashboard shows refunds on the orders placed in the period instead."
+                  >
+                    Refunds made in this period
+                  </span>
                 </div>
               </div>
 
