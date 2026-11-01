@@ -20,6 +20,7 @@ import { Line, Bar } from "react-chartjs-2";
 import "./AdminShared.css";
 import "./AdminSalesDashboard.css";
 import "./AdminFinancialDashboard.css";
+import { fyLabel, fyRange, fyStartYearOf, quarterOf, recentFinancialYears, recentQuarters, todayInIndia } from "../utils/financialYear";
 
 ChartJS.register(
   CategoryScale,
@@ -93,7 +94,13 @@ function AdminFinancialDashboard() {
   const [error, setError] = useState("");
 
   // Period Selector State
-  const [periodMode, setPeriodMode] = useState("month"); // "month" | "custom"
+  const [periodMode, setPeriodMode] = useState("month"); // "month" | "quarter" | "fy" | "custom"
+  // Indian financial year (Apr–Mar) choices, in India time
+  const fyToday = todayInIndia();
+  const quarterOptions = useMemo(() => recentQuarters(fyToday, 2), [fyToday]);
+  const fyOptions = useMemo(() => recentFinancialYears(fyToday, 3), [fyToday]);
+  const [selectedQuarter, setSelectedQuarter] = useState(() => `${fyStartYearOf(todayInIndia())}-${quarterOf(todayInIndia())}`);
+  const [selectedFy, setSelectedFy] = useState(() => fyStartYearOf(todayInIndia()));
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
     return istStr.slice(0, 7);
@@ -128,11 +135,18 @@ function AdminFinancialDashboard() {
         to: `${selectedMonth}-${String(lastDay).padStart(2, "0")}`
       };
     }
+    if (periodMode === "quarter") {
+      const match = quarterOptions.find((q) => q.value === selectedQuarter);
+      return match ? { from: match.from, to: match.to } : { from: "", to: "" };
+    }
+    if (periodMode === "fy") {
+      return fyRange(Number(selectedFy));
+    }
     return {
       from: customFrom,
       to: customTo
     };
-  }, [periodMode, selectedMonth, customFrom, customTo]);
+  }, [periodMode, selectedMonth, customFrom, customTo, selectedQuarter, selectedFy, quarterOptions]);
 
   useEffect(() => {
     if (!activePeriod.from || !activePeriod.to) {
@@ -472,6 +486,20 @@ function AdminFinancialDashboard() {
                 </button>
                 <button
                   type="button"
+                  className={`fin-toggle-btn ${periodMode === "quarter" ? "active" : ""}`}
+                  onClick={() => setPeriodMode("quarter")}
+                >
+                  By Quarter
+                </button>
+                <button
+                  type="button"
+                  className={`fin-toggle-btn ${periodMode === "fy" ? "active" : ""}`}
+                  onClick={() => setPeriodMode("fy")}
+                >
+                  Financial Year
+                </button>
+                <button
+                  type="button"
                   className={`fin-toggle-btn ${periodMode === "custom" ? "active" : ""}`}
                   onClick={() => setPeriodMode("custom")}
                 >
@@ -487,6 +515,30 @@ function AdminFinancialDashboard() {
                   className="fin-period-input"
                   title="Select Month"
                 />
+              ) : periodMode === "quarter" ? (
+                <select
+                  value={selectedQuarter}
+                  onChange={(e) => setSelectedQuarter(e.target.value)}
+                  className="fin-period-input"
+                  title="Select quarter (financial year)"
+                >
+                  {quarterOptions.map((q) => (
+                    <option key={q.value} value={q.value}>{q.label}</option>
+                  ))}
+                </select>
+              ) : periodMode === "fy" ? (
+                <select
+                  value={selectedFy}
+                  onChange={(e) => setSelectedFy(Number(e.target.value))}
+                  className="fin-period-input"
+                  title="Select financial year (April to March)"
+                >
+                  {fyOptions.map((startYear) => (
+                    <option key={startYear} value={startYear}>
+                      {fyLabel(startYear)} (Apr {startYear} – Mar {startYear + 1})
+                    </option>
+                  ))}
+                </select>
               ) : (
                 <div className="fin-custom-range-inputs">
                   <input
