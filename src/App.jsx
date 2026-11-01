@@ -7,6 +7,9 @@ import Breadcrumb from "./components/layout/Breadcrumb";
 import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
 import ChatWidget from "./components/layout/ChatWidget";
+import { BackToTop, NetworkNotice, PageContent } from "./components/layout/SiteHelpers";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import LoadingSpinner from "./components/common/LoadingSpinner";
 import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CartPopup from "./components/ui/CartPopup";
@@ -28,6 +31,7 @@ const MyAccount = lazy(() => import("./pages/MyAccount"));
 const MyOrders = lazy(() => import("./pages/MyOrders"));
 const Register = lazy(() => import("./pages/Register"));
 const Login = lazy(() => import("./pages/Login"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const RedeemGift = lazy(() => import("./pages/RedeemGift"));
 const MyLibrary = lazy(() => import("./pages/MyLibrary"));
@@ -56,21 +60,12 @@ const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditions = lazy(() => import("./pages/TermsAndConditions"));
 
 function RouteLoadingFallback() {
-  return (
-    <div
-      style={{
-        minHeight: "40vh",
-        display: "grid",
-        placeItems: "center",
-        padding: "32px 16px",
-        color: "#1d2a57",
-        fontSize: "1rem",
-        fontWeight: 600
-      }}
-    >
-      Loading page...
-    </div>
-  );
+  return <LoadingSpinner text="Loading page..." minHeight="50vh" />;
+}
+
+function RouteBoundary({ children }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary resetKey={pathname}>{children}</ErrorBoundary>;
 }
 
 function AnalyticsTracker() {
@@ -321,11 +316,14 @@ function App() {
         customColors={festiveAnimation.customColors}
         customAnimations={festiveAnimation.customAnimations || []}
       />
+      <a className="ux-skip-link" href="#main-content">Skip to content</a>
       <Navbar bannerActive={isBannerActive} />
       <Breadcrumb />
 
-      <Suspense fallback={<RouteLoadingFallback />}>
-        <Routes>
+      <PageContent>
+        <RouteBoundary>
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/collection" element={<Collection />} />
           <Route path="/search" element={<SearchResults />} />
@@ -515,12 +513,17 @@ function App() {
           <Route path="/terms-conditions" element={<TermsAndConditions />} />
           <Route path="/terms" element={<TermsAndConditions />} />
           <Route path="/buy/:id" element={<GuestBuy />} />
-        </Routes>
-      </Suspense>
+          <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </RouteBoundary>
+      </PageContent>
 
       <Footer />
       <WhatsAppButton />
       <ChatWidget />
+      <BackToTop />
+      <NetworkNotice />
       <CookieConsent />
       <CartPopup />
     </BrowserRouter>

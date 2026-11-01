@@ -9,6 +9,7 @@ import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import { isKindleProduct } from "../utils/kindle";
 import { getAttribution, clearAttribution } from "../utils/attribution";
+import { clampCartQuantity } from "../utils/orderQuantity";
 import "./Checkout.css";
 
 function GuestBuy() {
@@ -24,7 +25,9 @@ function GuestBuy() {
   const rawQty = searchParams.get("qty") || location.state?.qty;
   const isBulkProduct = product?.productType === "bulk";
   const parsedQty = Math.max(1, Number(rawQty || (isBulkProduct ? 10 : 1)));
-  const buyQuantity = isBulkProduct ? parsedQty : Math.min(5, parsedQty);
+  // Same limits the server applies when it prices the order (5 retail, 1 digital),
+  // so the total shown here is the total charged
+  const buyQuantity = clampCartQuantity(parsedQty, { isBulk: isBulkProduct, isDigital: product?.isDigital === true });
 
   // Customer guest details
   const [name, setName] = useState("");

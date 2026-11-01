@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { CartContext } from "../../context/CartContext";
 import { useDeliveryLocation } from "../../hooks/useDeliveryLocation";
@@ -9,6 +9,15 @@ import "./CartPopup.css";
 const CartPopup = () => {
   const { isPopupOpen, addedItem, cartItems, setIsPopupOpen } = useContext(CartContext);
   const { selectedAddress } = useDeliveryLocation();
+
+  useEffect(() => {
+    if (!isPopupOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setIsPopupOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isPopupOpen, setIsPopupOpen]);
 
   if (!isPopupOpen || !addedItem) return null;
 

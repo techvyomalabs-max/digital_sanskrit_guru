@@ -137,7 +137,7 @@
   padding: 12px 26px;
   border-radius: 12px;
   background: var(--site-button-bg, #b45309);
-  color: #ffffff;
+  color: var(--site-button-text, #ffffff);
   font-size: 14.5px;
   font-weight: 700;
   text-decoration: none;
@@ -491,6 +491,19 @@
 }
 
 /* ── Quantity Stepper Widget ── */
+.cart-qty-control {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.cart-qty-limit-note {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-text-soft, #57574f);
+}
+
 .cart-qty-stepper {
   display: inline-flex;
   align-items: center;
@@ -797,7 +810,7 @@
   min-height: 48px;
   padding: 0 20px;
   background: var(--site-button-bg, #b45309);
-  color: #ffffff;
+  color: var(--site-button-text, #ffffff);
   border: none;
   border-radius: 12px;
   cursor: pointer;
@@ -958,7 +971,7 @@
 
 .saved-move-btn {
   background: var(--site-button-bg, #b45309);
-  color: #ffffff;
+  color: var(--site-button-text, #ffffff);
   border: none;
 }
 

@@ -246,7 +246,7 @@
   margin-top: var(--space-2);
   border: none;
   background: var(--site-button-bg);
-  color: #fff;
+  color: var(--site-button-text);
   font-weight: 700;
   border-radius: var(--radius-md);
   padding: 12px var(--space-4);

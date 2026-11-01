@@ -127,7 +127,8 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
             _id: "prod_dup_1",
             name: "Vedic Chants Book",
             price: 250,
-            isDigital: true
+            isDigital: false,
+            stock: 50
           }
         ]
       })
@@ -144,7 +145,37 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
 
     assert.equal(result.normalizedItems.length, 1);
     assert.equal(result.normalizedItems[0].quantity, 5);
-    assert.equal(result.total, 1250); // 250 * 5
+    assert.equal(roundMoney(result.normalizedItems[0].price * result.normalizedItems[0].quantity), 1250); // 250 * 5
+  });
+
+  it("caps quantities at the per-order limits: 5 for retail, 1 for digital, none for bulk", async () => {
+    mock.method(Product, "find", () => ({
+      populate: () => ({
+        lean: async () => [
+          { _id: "prod_retail", name: "Paperback", price: 100, isDigital: false, stock: 50 },
+          { _id: "prod_digital", name: "Web Version", price: 200, isDigital: true },
+          { _id: "prod_bulk", name: "Bulk Pack", price: 10, isDigital: false, productType: "bulk", stock: 500 }
+        ]
+      })
+    }));
+
+    const result = await computeOrderTotals({
+      items: [
+        { product: "prod_retail", quantity: 4 },
+        { product: "prod_retail", quantity: 4 },
+        { product: "prod_digital", quantity: 3 },
+        { product: "prod_bulk", quantity: 120 }
+      ],
+      shipping: { country: "India", state: "Karnataka" },
+      settings: defaultSettings
+    });
+
+    const qtyById = Object.fromEntries(
+      result.normalizedItems.map((item) => [String(item.product?._id || item.product), item.quantity])
+    );
+    assert.equal(qtyById.prod_retail, 5);
+    assert.equal(qtyById.prod_digital, 1);
+    assert.equal(qtyById.prod_bulk, 120);
   });
 
   it("returns expected schema properties (normalizedItems, chargeAmount, taxDetails, etc.)", async () => {

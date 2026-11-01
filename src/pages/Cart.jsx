@@ -39,6 +39,7 @@ import {
   Info
 } from "lucide-react";
 import "./Cart.css";
+import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
 
 const getItemHsnSac = (item) => {
   if (item?.hsnSac) return String(item.hsnSac).trim();
@@ -144,13 +145,25 @@ function CartQtyInput({ item, currentQty, updateQty }) {
     );
   }
 
+  // Same limit the cart enforces: 5 per order (or the stock left, if lower)
+  const maxQty = maxCartQuantity({ isDigital, isBulk, stock: item.stock });
+  const atLimit = Number(currentQty) >= maxQty;
+
+  const applyQty = (value) => {
+    const nextQty = Math.max(1, Math.min(maxQty, Math.floor(Number(value) || 1)));
+    setLocalVal(nextQty);
+    if (nextQty !== Number(currentQty)) {
+      updateQty(item._id || item.id, nextQty);
+    }
+  };
+
   const handleChange = (e) => {
     const val = e.target.value;
     setLocalVal(val);
     if (val !== "") {
       const num = parseInt(val, 10);
       if (!isNaN(num) && num >= 1) {
-        updateQty(item._id || item.id, Math.min(item.isDigital === true ? 5 : (item.stock || 100), num));
+        applyQty(num);
       }
     }
   };
@@ -158,50 +171,51 @@ function CartQtyInput({ item, currentQty, updateQty }) {
   const handleBlur = () => {
     const num = parseInt(localVal, 10);
     if (localVal === "" || isNaN(num) || num < 1) {
-      setLocalVal(1);
-      updateQty(item._id || item.id, 1);
+      applyQty(1);
+    } else {
+      // Show the quantity the cart actually holds
+      setLocalVal(currentQty);
     }
   };
 
   return (
-    <div className="cart-qty-stepper">
-      <button
-        type="button"
-        className="cart-qty-btn minus"
-        disabled={Number(localVal) <= 1}
-        onClick={() => {
-          const nextQty = Math.max(1, Number(localVal || 1) - 1);
-          setLocalVal(nextQty);
-          updateQty(item._id || item.id, nextQty);
-        }}
-        aria-label="Decrease quantity"
-      >
-        <Minus size={13} />
-      </button>
-      <input
-        type="number"
-        className="cart-qty-input-field"
-        value={localVal}
-        min="1"
-        max={item.isDigital === true ? 5 : (item.stock || 100)}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        aria-label="Item quantity"
-      />
-      <button
-        type="button"
-        className="cart-qty-btn plus"
-        disabled={item.isDigital === true ? Number(localVal) >= 5 : (item.stock ? Number(localVal) >= item.stock : false)}
-        onClick={() => {
-          const maxStock = item.isDigital === true ? 5 : (item.stock || 100);
-          const nextQty = Math.min(maxStock, Number(localVal || 1) + 1);
-          setLocalVal(nextQty);
-          updateQty(item._id || item.id, nextQty);
-        }}
-        aria-label="Increase quantity"
-      >
-        <Plus size={13} />
-      </button>
+    <div className="cart-qty-control">
+      <div className="cart-qty-stepper">
+        <button
+          type="button"
+          className="cart-qty-btn minus"
+          disabled={Number(currentQty) <= 1}
+          onClick={() => applyQty(Number(currentQty) - 1)}
+          aria-label="Decrease quantity"
+        >
+          <Minus size={13} />
+        </button>
+        <input
+          type="number"
+          className="cart-qty-input-field"
+          value={localVal}
+          min="1"
+          max={maxQty}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          aria-label="Item quantity"
+        />
+        <button
+          type="button"
+          className="cart-qty-btn plus"
+          disabled={atLimit}
+          onClick={() => applyQty(Number(currentQty) + 1)}
+          aria-label="Increase quantity"
+          title={atLimit ? `Maximum ${maxQty} per order` : undefined}
+        >
+          <Plus size={13} />
+        </button>
+      </div>
+      {atLimit && (
+        <span className="cart-qty-limit-note">
+          {maxQty < MAX_RETAIL_QUANTITY ? `Only ${maxQty} in stock` : `Max ${maxQty} per order`}
+        </span>
+      )}
     </div>
   );
 }

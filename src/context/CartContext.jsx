@@ -6,10 +6,25 @@ import { isDigitalItem } from "../utils/deliveryPricing";
 import { resolveInitialWishlist } from "../utils/wishlistOwnership";
 import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent } from "../utils/productOptions";
+import { clampCartQuantity } from "../utils/orderQuantity";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
 const SAVED_FOR_LATER_STORAGE_KEY = "savedForLaterItems";
+
+const isBulkItem = (item) => String(item?.productType || item?.product?.productType || "single").toLowerCase() === "bulk";
+
+// Holds every cart line to the per-order limits (5 retail, 1 digital), including
+// carts saved before the limit existed, so the cart never shows a quantity the
+// order won't be charged for
+const limitCartQuantity = (item, quantity = item?.quantity) =>
+  clampCartQuantity(quantity, { isDigital: isDigitalItem(item), isBulk: isBulkItem(item) });
+
+const withQuantityLimits = (items) =>
+  (Array.isArray(items) ? items : []).map((item) => {
+    const quantity = limitCartQuantity(item);
+    return quantity === item?.quantity ? item : { ...item, quantity };
+  });
 
 const normalizeGuestCartItems = (items) =>
   (Array.isArray(items) ? items : [])
@@ -69,7 +84,7 @@ const normalizeGuestCartItems = (items) =>
 const readGuestCart = () => {
   if (typeof window === "undefined") return [];
   try {
-    return normalizeGuestCartItems(JSON.parse(window.localStorage.getItem(GUEST_CART_STORAGE_KEY) || "[]"));
+    return withQuantityLimits(normalizeGuestCartItems(JSON.parse(window.localStorage.getItem(GUEST_CART_STORAGE_KEY) || "[]")));
   } catch {
     return [];
   }
@@ -165,7 +180,7 @@ export function CartProvider({ children }) {
     setIsLoadingCart(true);
     try {
       const res = await axios.get("/api/cart", getCartHeaders());
-      setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      setCartItems(withQuantityLimits(res.data?.items));
     } catch (err) {
       const status = Number(err?.response?.status || 0);
       if (status === 401) {
@@ -287,9 +302,7 @@ export function CartProvider({ children }) {
         if (existingIndex >= 0) {
           return current.map((item, index) => {
             if (index === existingIndex) {
-              if (isDigital) return { ...item, quantity: 1 };
-              const total = Number(item.quantity || 1) + nextQty;
-              return { ...item, quantity: isBulk ? total : Math.min(5, total) };
+              return { ...item, quantity: limitCartQuantity(item, Number(item.quantity || 1) + nextQty) };
             }
             return item;
           });
@@ -336,7 +349,7 @@ export function CartProvider({ children }) {
             description: String(product?.description || "").trim(),
             category: String(product?.category || "General").trim() || "General",
             stock: Number(product?.stock || 0),
-            quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+            quantity: clampCartQuantity(nextQty, { isDigital, isBulk }),
             festiveOffer: Boolean(product?.festiveOffer),
             festiveDiscountPercent: Number(product?.festiveDiscountPercent || 0),
             discountType: String(product?.discountType || "").trim(),
@@ -352,7 +365,7 @@ export function CartProvider({ children }) {
         name: String(product?.name || "").trim(),
         price: Number(product?.price || 0),
         image: String(product?.image || "").trim(),
-        quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty),
+        quantity: clampCartQuantity(nextQty, { isDigital, isBulk }),
         digitalDelivery: String(product?.digitalDelivery || "onsite"),
         externalAccessManual: Boolean(product?.externalAccessManual)
       });
@@ -368,7 +381,7 @@ export function CartProvider({ children }) {
         getCartHeaders()
       );
 
-      setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      setCartItems(withQuantityLimits(res.data?.items));
       setAddedItem({
         ...product,
         id: productId,
@@ -411,7 +424,7 @@ export function CartProvider({ children }) {
     try {
       const res = await axios.delete(`/api/cart/${targetId}`, getCartHeaders());
       if (res.data?.items) {
-        setCartItems(Array.isArray(res.data.items) ? res.data.items : []);
+        setCartItems(withQuantityLimits(res.data.items));
       }
       return true;
     } catch (err) {
@@ -430,15 +443,13 @@ export function CartProvider({ children }) {
   const updateQty = async (id, qty) => {
     const targetId = String(id || "");
     const existingItem = cartItems.find((item) => String(item?.id || item?._id || "") === targetId);
-    const isDigital = isDigitalItem(existingItem);
-    const nextQty = isDigital ? 1 : Math.max(1, Number(qty) || 1);
+    const nextQty = existingItem ? limitCartQuantity(existingItem, qty) : Math.max(1, Math.floor(Number(qty) || 1));
 
     if (!token) {
       setCartItems((current) =>
         current.map((item) => {
           if (String(item?.id || item?._id || "") === targetId) {
-            const isBulk = String(item?.productType || "single").toLowerCase() === "bulk";
-            return { ...item, quantity: isDigital ? 1 : isBulk ? nextQty : Math.min(5, nextQty) };
+            return { ...item, quantity: limitCartQuantity(item, nextQty) };
           }
           return item;
         })
@@ -447,15 +458,13 @@ export function CartProvider({ children }) {
     }
 
     try {
-      const targetId = String(id || "");
-      const nextQty = Math.max(1, Number(qty) || 1);
-      if (!targetId) return;
+      if (!targetId) return false;
       const res = await axios.put(
         `/api/cart/${targetId}`,
         { qty: nextQty },
         getCartHeaders()
       );
-      setCartItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      setCartItems(withQuantityLimits(res.data?.items));
       return true;
     } catch (err) {
       const status = Number(err?.response?.status || 0);
