@@ -852,7 +852,7 @@ function Navbar({ bannerActive = false }) {
                     {renderIcon("cart", storeIcons.cart)}
                   </span>
                   <span className="navbar-cart-label">Cart</span>
-                  <span className="navbar-badge">{totalCartCount}</span>
+                  <span key={totalCartCount} className="navbar-badge ux-count-pop">{totalCartCount}</span>
                 </Link>
 
                 <button

@@ -9,6 +9,7 @@ const { getSettlementCharge } = require("./paymentVerification");
 const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
 const { applyComboWeights } = require("./comboWeight");
 const { isKindleProduct } = require("./kindle");
+const { clampOrderQuantity } = require("./orderQuantity");
 
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
@@ -91,7 +92,8 @@ async function computeOrderTotals({
       const p = byId.get(l.productId);
       if (!p) return null;
       const pricing = getProductPriceDetails(p, country, cfg);
-      return normalizeOrderItem(p, { quantity: l.quantity }, pricing);
+      // Same per-order limits as the cart (5 retail, 1 digital), whichever page sent the order
+      return normalizeOrderItem(p, { quantity: clampOrderQuantity(p, l.quantity) }, pricing);
     })
     .filter(Boolean);
 

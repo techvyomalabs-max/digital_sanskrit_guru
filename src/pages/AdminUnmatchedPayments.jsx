@@ -7,6 +7,8 @@ import { useDialog } from "../hooks/useDialog";
 import { formatDateTime } from "../utils/date";
 import "./AdminShared.css";
 
+const PAGE_SIZE = 50;
+
 export default function AdminUnmatchedPayments() {
   const { token, user } = useAuth();
   const { confirm, prompt } = useDialog();
@@ -16,26 +18,37 @@ export default function AdminUnmatchedPayments() {
   const [pageMessage, setPageMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const isSuperAdmin = Number(user?.adminLevel) === 1;
 
-  const fetchOrphans = useCallback(async () => {
+  // One page at a time, newest first; "Load more" adds the next page below.
+  const fetchOrphans = useCallback(async (targetPage = 1) => {
     if (!token) return;
-    setIsLoading(true);
+    const append = targetPage > 1;
+    if (append) setLoadingMore(true);
+    else setIsLoading(true);
     setActionError("");
     try {
-      const url = statusFilter === "all"
-        ? "/api/admin/payments/orphans"
-        : `/api/admin/payments/orphans?status=${statusFilter}`;
-
-      const res = await axios.get(url, {
+      const params = { page: targetPage, limit: PAGE_SIZE };
+      if (statusFilter !== "all") params.status = statusFilter;
+      const res = await axios.get("/api/admin/payments/orphans", {
+        params,
         headers: { Authorization: `Bearer ${token}` }
       });
-      setItems(Array.isArray(res.data?.items) ? res.data.items : []);
+      const next = Array.isArray(res.data?.items) ? res.data.items : [];
+      setItems((prev) => (append ? [...prev, ...next] : next));
+      setPage(res.data?.page || targetPage);
+      setHasMore(Boolean(res.data?.hasMore));
+      setTotal(Number(res.data?.total ?? res.data?.count ?? next.length));
     } catch (err) {
       setPageMessage(err?.response?.data?.message || "Failed to load unmatched payments.");
     } finally {
       setIsLoading(false);
+      setLoadingMore(false);
     }
   }, [token, statusFilter]);
 
@@ -137,7 +150,7 @@ export default function AdminUnmatchedPayments() {
           <button
             type="button"
             className="admin-btn admin-btn-secondary"
-            onClick={fetchOrphans}
+            onClick={() => fetchOrphans(1)}
             disabled={isLoading}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
@@ -298,6 +311,23 @@ export default function AdminUnmatchedPayments() {
               </tbody>
             </table>
           )}
+          {!isLoading && items.length > 0 ? (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid #e2e8f0" }}>
+              <span style={{ fontSize: "13px", color: "#64748b" }}>
+                Showing {items.length.toLocaleString("en-IN")} of {total.toLocaleString("en-IN")}
+              </span>
+              {hasMore ? (
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-secondary"
+                  onClick={() => fetchOrphans(page + 1)}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading…" : `Load ${PAGE_SIZE} more`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

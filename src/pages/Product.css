@@ -140,7 +140,7 @@
 .thumbnail-toggle-btn {
   background: none;
   border: none;
-  color: var(--site-button-bg, #0284c7);
+  color: var(--site-link, #0284c7);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -152,7 +152,7 @@
 }
 
 .thumbnail-toggle-btn:hover {
-  color: var(--site-button-bg-hover, #0369a1);
+  color: var(--site-link-hover, #0369a1);
 }
 
 /* Main Image Nav Buttons & Counter Pill */
@@ -770,12 +770,12 @@
 
 .buy-now-btn {
   background: var(--site-text);
-  color: var(--site-header-text);
+  color: var(--site-surface);
   margin-top: 0;
 }
 
 .buy-now-btn:hover {
-  background: var(--site-header-border);
+  background: color-mix(in srgb, var(--site-text) 82%, var(--site-surface));
   transform: translateY(-1px);
 }
 

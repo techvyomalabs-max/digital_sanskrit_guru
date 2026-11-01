@@ -19,6 +19,11 @@ const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit")
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { sanitizeAttribution } = require("../utils/attribution");
+const { parseReportRange } = require("../utils/signupReport");
+const { computeSalesAnalytics } = require("../utils/salesAnalytics");
+const { computeDashboardSummary, computeAlertCounts } = require("../utils/dashboardSummary");
+const { orderGrossInr } = require("../utils/salesAnalytics");
+const { appCache } = require("../utils/cache");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -829,7 +834,8 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limitQuery = req.query.limit;
     const isPaginated = limitQuery !== "all";
-    const limit = Math.max(1, parseInt(limitQuery) || 20);
+    // A normal page is at most 100 orders; "all" stays for the CSV export.
+    const limit = Math.max(1, Math.min(100, parseInt(limitQuery) || 20));
     const skip = (page - 1) * limit;
 
     const sortOrder = req.query.sort === "oldest" ? 1 : -1;
@@ -1050,97 +1056,25 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
 // Sales Analytics (Admin only)
 router.get("/analytics/sales", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
-    const orders = await Order.find({ paymentStatus: "Paid" }).lean();
-    
-    let totalItemsSold = 0;
-    let totalRevenue = 0;
-    const formatCounts = {
-      "Web Version": 0,
-      "Flipbook": 0,
-      "Kindle": 0,
-      "Paperback": 0,
-      "E-Book/PDF": 0,
-      "Other": 0
-    };
-    const productSalesMap = {};
-    const countrySalesMap = {};
-    const monthlySalesMap = {};
+    // Period in India time (?from=YYYY-MM-DD&to=YYYY-MM-DD, default last 30 days, max 366 days)
+    const range = parseReportRange(req.query.from, req.query.to);
+    if (range.error) {
+      return res.status(400).json({ message: range.error });
+    }
+    const { startDate, endDate } = range;
+    const lengthMs = endDate.getTime() - startDate.getTime();
+    const previousStart = new Date(startDate.getTime() - lengthMs - 1);
+    const previousEnd = new Date(startDate.getTime() - 1);
 
-    orders.forEach((order) => {
-      totalRevenue += Number(order.total || 0);
-      
-      // Items sold
-      const items = Array.isArray(order.items) ? order.items : [];
-      items.forEach((item) => {
-        const qty = Number(item.quantity || 1);
-        totalItemsSold += qty;
+    const select = "createdAt total totalInInr fxRateToInr currencyDisplay refundedAmountInInr shipping items.product items._id items.name items.price items.quantity items.isDigital items.digitalType items.format items.productType items.bundleItems.product";
+    const paid = { paymentStatus: { $in: ["Paid", "Refunded"] } };
+    const [orders, previousOrders] = await Promise.all([
+      Order.find({ ...paid, createdAt: { $gte: startDate, $lte: endDate } }).select(select).lean(),
+      Order.find({ ...paid, createdAt: { $gte: previousStart, $lte: previousEnd } }).select(select).lean()
+    ]);
 
-        // Product sales aggregation
-        const prodName = String(item.name || "Unknown Product").trim();
-        productSalesMap[prodName] = (productSalesMap[prodName] || 0) + qty;
-
-        // Format detection
-        const nameLower = prodName.toLowerCase();
-        const formatLower = String(item.format || "").toLowerCase();
-        let detectedFormat = "Other";
-
-        if (nameLower.includes("web") || formatLower.includes("web")) {
-          detectedFormat = "Web Version";
-        } else if (nameLower.includes("flipbook") || formatLower.includes("flipbook")) {
-          detectedFormat = "Flipbook";
-        } else if (nameLower.includes("kindle") || formatLower.includes("kindle")) {
-          detectedFormat = "Kindle";
-        } else if (nameLower.includes("paperback") || nameLower.includes("hardcover") || formatLower.includes("paperback")) {
-          detectedFormat = "Paperback";
-        } else if (nameLower.includes("pdf") || nameLower.includes("e-book") || formatLower.includes("pdf") || formatLower.includes("e-book")) {
-          detectedFormat = "E-Book/PDF";
-        }
-        formatCounts[detectedFormat] = (formatCounts[detectedFormat] || 0) + qty;
-      });
-
-      // Geographic aggregation
-      const country = String(order.shipping?.country || order.billing?.country || "India").trim();
-      const normalizedCountry = country.charAt(0).toUpperCase() + country.slice(1).toLowerCase();
-      countrySalesMap[normalizedCountry] = (countrySalesMap[normalizedCountry] || 0) + 1;
-
-      // Monthly sales aggregation
-      const date = new Date(order.createdAt);
-      if (!Number.isNaN(date.getTime())) {
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        monthlySalesMap[monthKey] = (monthlySalesMap[monthKey] || 0) + Number(order.total || 0);
-      }
-    });
-
-    // Formatting top selling products list
-    const topProducts = Object.entries(productSalesMap)
-      .map(([name, qty]) => ({ name, quantity: qty }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 10);
-
-    // Formatting country list
-    const countrySales = Object.entries(countrySalesMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // Formatting monthly sales list
-    const monthlySales = Object.entries(monthlySalesMap)
-      .map(([month, amount]) => ({ month, amount: Math.round(amount) }))
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-12);
-
-    res.json({
-      success: true,
-      summary: {
-        totalOrders: orders.length,
-        totalItemsSold,
-        totalRevenue: Math.round(totalRevenue),
-        averageOrderValue: orders.length > 0 ? Math.round(totalRevenue / orders.length) : 0
-      },
-      formatDistribution: formatCounts,
-      topProducts,
-      geographicDistribution: countrySales,
-      monthlySalesTrends: monthlySales
-    });
+    const analytics = computeSalesAnalytics({ orders, previousOrders, startDate, endDate });
+    res.json({ success: true, ...analytics });
   } catch (err) {
     console.error("Sales analytics error:", err);
     res.status(500).json({ message: "Failed to generate sales analytics" });
@@ -1337,6 +1271,62 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
 });
 
 // GET /api/orders/admin/access-pending (Admin only)
+// Admin Dashboard: the figures, the alerts and the 8 newest orders in one small response,
+// instead of the page downloading every order. Kept for 30 seconds so several admins
+// with the dashboard open do not each recalculate it.
+const DASHBOARD_CACHE_KEY = "admin:dashboard-summary";
+router.get("/admin/dashboard-summary", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    const cached = req.query.fresh === "1" ? null : appCache.get(DASHBOARD_CACHE_KEY);
+    if (cached) return res.json(cached);
+
+    const [paidOrders, alertOrders, recent, totalOrders] = await Promise.all([
+      Order.find({ paymentStatus: { $in: ["Paid", "Refunded"] } })
+        .select(
+          "createdAt status total totalInInr fxRateToInr currencyDisplay refundedAmountInInr user billing.name billing.email billing.phone shipping.name shipping.phone items.product items.name items.price items.quantity"
+        )
+        .lean(),
+      Order.find({
+        $or: [
+          { "items.returnRequest.status": { $in: ["Requested", "Received", "Approved"] } },
+          { status: "Cancelled", refundStatus: "Pending" },
+          { refundStatus: "Processing" }
+        ]
+      })
+        .select("status refundStatus items.returnRequest.status items.returnRequest.approvedAt")
+        .lean(),
+      Order.find({})
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .select("_id createdAt status paymentStatus total totalInInr fxRateToInr currencyDisplay items.quantity billing.name shipping.name user")
+        .populate("user", "name")
+        .lean(),
+      Order.estimatedDocumentCount()
+    ]);
+
+    const payload = {
+      success: true,
+      ...computeDashboardSummary({ paidOrders, now: new Date() }),
+      allOrdersCount: totalOrders,
+      alerts: computeAlertCounts(alertOrders),
+      recentOrders: recent.map((order) => ({
+        _id: String(order._id),
+        createdAt: order.createdAt,
+        status: order.status,
+        paymentStatus: order.paymentStatus || "Pending",
+        customerName: order.user?.name || order.billing?.name || order.shipping?.name || "Unknown",
+        units: (order.items || []).reduce((sum, item) => sum + Math.max(1, Number(item?.quantity || 1)), 0),
+        totalInr: orderGrossInr(order)
+      }))
+    };
+    appCache.set(DASHBOARD_CACHE_KEY, payload, 30);
+    res.json(payload);
+  } catch (err) {
+    console.error("[Orders] Dashboard summary error:", err.message);
+    res.status(500).json({ success: false, message: "Failed to load the dashboard figures." });
+  }
+});
+
 router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const query = {

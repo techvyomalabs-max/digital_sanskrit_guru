@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Trash2, RotateCcw, XCircle, Check, AlertTriangle, RefreshCw, PartyPopper } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
@@ -7,6 +7,8 @@ import AdminSidebar from "../components/admin/AdminSidebar";
 import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminDashboard.css";
+
+const PAGE_SIZE = 25;
 
 function AdminTrash() {
   const { token } = useAuth();
@@ -19,26 +21,48 @@ function AdminTrash() {
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [processingId, setProcessingId] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [matching, setMatching] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchTrash = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get("/api/trash", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setTrashItems(res.data?.trash || []);
-      setSummary(res.data?.summary || { total: 0, products: 0, coupons: 0, users: 0 });
-      setError("");
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load Recycle Bin items.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // The server sends one page (newest first); search and the type filter run on the server.
+  const fetchTrash = useCallback(
+    async (targetPage = 1) => {
+      const append = targetPage > 1;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const res = await axios.get("/api/trash", {
+          params: { page: targetPage, limit: PAGE_SIZE, type: typeFilter, search },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const next = Array.isArray(res.data?.trash) ? res.data.trash : [];
+        setTrashItems((prev) => (append ? [...prev, ...next] : next));
+        setSummary(res.data?.summary || { total: 0, products: 0, coupons: 0, users: 0 });
+        setPage(res.data?.page || targetPage);
+        setHasMore(Boolean(res.data?.hasMore));
+        setMatching(Number(res.data?.matching ?? next.length));
+        setError("");
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load Recycle Bin items.");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [token, typeFilter, search]
+  );
 
   useEffect(() => {
-    fetchTrash();
-  }, [token]);
+    const id = window.setTimeout(() => setSearch(searchQuery.trim()), 350);
+    return () => window.clearTimeout(id);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    fetchTrash(1);
+  }, [fetchTrash]);
 
   const handleRestoreItem = async (item) => {
     setProcessingId(item._id);
@@ -95,7 +119,7 @@ function AdminTrash() {
   };
 
   const handleRestoreAll = async () => {
-    if (trashItems.length === 0) return;
+    if (summary.total === 0) return;
     const confirmed = await confirm({
       title: "Restore All Items?",
       message: "Restore all items from the Recycle Bin back to active inventory?",
@@ -117,7 +141,7 @@ function AdminTrash() {
   };
 
   const handleEmptyTrash = async () => {
-    if (trashItems.length === 0) return;
+    if (summary.total === 0) return;
     const confirmed = await confirm({
       title: "Empty Recycle Bin?",
       message: "EMPTY RECYCLE BIN?\n\nThis will PERMANENTLY ERASE all soft-deleted items from MongoDB.\nThis action CANNOT be undone!",
@@ -139,18 +163,6 @@ function AdminTrash() {
     }
   };
 
-  const filteredTrash = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return trashItems.filter((item) => {
-      if (typeFilter !== "all" && item.entityType !== typeFilter) return false;
-      if (!query) return true;
-      const name = (item.name || "").toLowerCase();
-      const cat = (item.category || "").toLowerCase();
-      const by = (item.deletedBy || "").toLowerCase();
-      return name.includes(query) || cat.includes(query) || by.includes(query);
-    });
-  }, [trashItems, searchQuery, typeFilter]);
-
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -165,7 +177,7 @@ function AdminTrash() {
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <button
               onClick={handleRestoreAll}
-              disabled={loading || trashItems.length === 0}
+              disabled={loading || summary.total === 0}
               className="action-btn"
               style={{ padding: "8px 16px", borderRadius: "6px", backgroundColor: "#059669", color: "#fff" }}
             >
@@ -173,7 +185,7 @@ function AdminTrash() {
             </button>
             <button
               onClick={handleEmptyTrash}
-              disabled={loading || trashItems.length === 0}
+              disabled={loading || summary.total === 0}
               className="action-btn"
               style={{ padding: "8px 16px", borderRadius: "6px", backgroundColor: "#dc2626", color: "#fff" }}
             >
@@ -252,7 +264,7 @@ function AdminTrash() {
               <option value="user">Users Only</option>
             </select>
             <button
-              onClick={fetchTrash}
+              onClick={() => fetchTrash(1)}
               className="action-btn"
               style={{ padding: "10px 16px", borderRadius: "8px" }}
             >
@@ -264,9 +276,9 @@ function AdminTrash() {
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
               Loading Recycle Bin items...
             </div>
-          ) : filteredTrash.length === 0 ? (
+          ) : trashItems.length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              {trashItems.length === 0 ? "Recycle Bin is clean! No deleted items found." : "No matching items found."}
+              {summary.total === 0 ? "Recycle Bin is clean! No deleted items found." : "No matching items found."}
             </div>
           ) : (
             <div className="admin-table-wrap">
@@ -281,7 +293,7 @@ function AdminTrash() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTrash.map((item) => (
+                  {trashItems.map((item) => (
                     <tr key={item._id}>
                       <td>
                         <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{item.name}</div>
@@ -360,6 +372,22 @@ function AdminTrash() {
                   ))}
                 </tbody>
               </table>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
+                <span style={{ fontSize: "13px", color: "var(--admin-muted, #64748b)" }}>
+                  Showing {trashItems.length.toLocaleString("en-IN")} of {matching.toLocaleString("en-IN")}
+                </span>
+                {hasMore ? (
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => fetchTrash(page + 1)}
+                    disabled={loadingMore}
+                    style={{ padding: "8px 16px", borderRadius: "6px" }}
+                  >
+                    {loadingMore ? "Loading…" : `Load ${PAGE_SIZE} more`}
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </section>

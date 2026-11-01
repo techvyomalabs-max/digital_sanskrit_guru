@@ -53,6 +53,7 @@ import {
 } from "../utils/countryPhoneCodes";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import { formatDate } from "../utils/date";
+import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
 
 const AVATAR_PALETTES = [
   { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
@@ -1061,6 +1062,8 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // Same per-order limit the cart applies: 5, or the stock left if lower
+  const retailMaxQty = maxCartQuantity({ stock: buyProduct?.stock });
   const optionParentId = product?.optionParent
     ? String(product.optionParent?._id || product.optionParent).trim()
     : "";
@@ -1687,7 +1690,7 @@ function Product() {
                             className="qty-input product-retail-qty-input"
                             value={qty}
                             min="1"
-                            max={buyProduct.isDigital === true ? 5 : Math.min(5, buyProduct.stock || 5)}
+                            max={retailMaxQty}
                             onChange={(e) => {
                               const val = e.target.value;
                               if (val === "") {
@@ -1695,7 +1698,7 @@ function Product() {
                               } else {
                                 const num = parseInt(val, 10);
                                 if (!isNaN(num)) {
-                                  setQty(Math.max(1, Math.min(buyProduct.isDigital === true ? 5 : Math.min(5, buyProduct.stock || 5), num)));
+                                  setQty(Math.max(1, Math.min(retailMaxQty, num)));
                                 }
                               }
                             }}
@@ -1709,11 +1712,11 @@ function Product() {
                           <button
                             type="button"
                             className="qty-btn"
-                            onClick={() => setQty(Number(qty || 1) < (buyProduct.isDigital === true ? 5 : Math.min(5, buyProduct.stock || 5)) ? Number(qty || 1) + 1 : Number(qty || 1))}
+                            onClick={() => setQty(Number(qty || 1) < retailMaxQty ? Number(qty || 1) + 1 : Number(qty || 1))}
                           >+</button>
                         </div>
                         <p className="product-retail-qty-note">
-                          Standard retail order limit: Maximum 5 units.
+                          Standard retail order limit: Maximum {MAX_RETAIL_QUANTITY} units.
                         </p>
                       </div>
                     )}

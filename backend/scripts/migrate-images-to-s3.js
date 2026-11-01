@@ -39,12 +39,15 @@ function createEmptyStats() {
     wpDistinctCount: 0,
     cdnCount: 0,
     unsupportedCount: 0,
-    _wpDistinctSet: new Set()
+    rehomeCount: 0,
+    rehomeDistinctCount: 0,
+    _wpDistinctSet: new Set(),
+    _rehomeDistinctSet: new Set()
   };
 }
 
-function finalizeStats(stats) {
-  return {
+function finalizeStats(stats, includeRehome = false) {
+  const base = {
     base64Count: stats.base64Count,
     base64Bytes: stats.base64Bytes,
     base64MB: Number((stats.base64Bytes / (1024 * 1024)).toFixed(4)),
@@ -53,6 +56,11 @@ function finalizeStats(stats) {
     cdnCount: stats.cdnCount,
     unsupportedCount: stats.unsupportedCount
   };
+  if (includeRehome) {
+    base.rehomeCount = stats.rehomeCount;
+    base.rehomeDistinctCount = stats._rehomeDistinctSet.size;
+  }
+  return base;
 }
 
 function estimateBase64Bytes(dataUrl) {
@@ -243,6 +251,18 @@ async function downloadWpImage(downloadUrl, fetchFn, fetchOptions = {}) {
   }
 }
 
+/**
+ * Downloads a rehome image URL over HTTPS only.
+ */
+async function downloadRehomeImage(downloadUrl, fetchFn, fetchOptions = {}) {
+  if (!/^https:\/\//i.test(downloadUrl)) {
+    const err = new Error(`HTTPS required for rehome URL: ${downloadUrl}`);
+    err.noRetry = true;
+    throw err;
+  }
+  return await fetchWithRetries(downloadUrl, fetchFn, fetchOptions);
+}
+
 function decodeDataUrlBytes(dataUrl) {
   const idx = dataUrl.indexOf(";base64,");
   if (idx === -1) {
@@ -367,9 +387,11 @@ async function runMigration({
       : null);
 
   const targets = resolveCollectionsToScan(args.only, customCollections);
+  const isRehomeMode = Boolean(args.rehomeFrom);
   const refOptions = {
     extraHosts: args.hosts || [],
-    mediaCdnUrl
+    mediaCdnUrl,
+    ...(isRehomeMode ? { rehomeFrom: args.rehomeFrom } : {})
   };
 
   const perCollectionStats = {};
@@ -425,6 +447,12 @@ async function runMigration({
             patStat.wpCount += 1;
             patStat._wpDistinctSet.add(ref.downloadUrl || ref.match);
             hasMigratableInField = true;
+          } else if (ref.kind === "rehome") {
+            colStat.rehomeCount += 1;
+            colStat._rehomeDistinctSet.add(ref.downloadUrl || ref.match);
+            patStat.rehomeCount += 1;
+            patStat._rehomeDistinctSet.add(ref.downloadUrl || ref.match);
+            hasMigratableInField = true;
           } else if (ref.kind === "cdn") {
             colStat.cdnCount += 1;
             patStat.cdnCount += 1;
@@ -452,7 +480,7 @@ async function runMigration({
           docMigratableFields.push({
             path: field.path,
             value: field.value,
-            refs: refs.filter((r) => r.kind === "data" || r.kind === "wp")
+            refs: refs.filter((r) => r.kind === "data" || r.kind === "wp" || r.kind === "rehome")
           });
         }
       }
@@ -543,6 +571,9 @@ async function runMigration({
               bytes = decodeDataUrlBytes(ref.match);
               const fullSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
               sourceRef = `data:sha256:${fullSha256}`;
+            } else if (ref.kind === "rehome") {
+              bytes = await downloadRehomeImage(ref.downloadUrl || ref.match, fetchFn, fetchOptions);
+              sourceRef = ref.match;
             } else {
               bytes = await downloadWpImage(ref.downloadUrl, fetchFn, fetchOptions);
               sourceRef = ref.match;
@@ -618,12 +649,12 @@ async function runMigration({
 
   const formattedCollections = {};
   for (const [k, v] of Object.entries(perCollectionStats)) {
-    formattedCollections[k] = finalizeStats(v);
+    formattedCollections[k] = finalizeStats(v, isRehomeMode);
   }
 
   const formattedFieldPatterns = {};
   for (const [k, v] of Object.entries(perFieldPatternStats)) {
-    formattedFieldPatterns[k] = finalizeStats(v);
+    formattedFieldPatterns[k] = finalizeStats(v, isRehomeMode);
   }
 
   const topExternalImageHosts = Array.from(externalHostCounts.entries())
@@ -634,6 +665,7 @@ async function runMigration({
   const report = {
     env: args.env,
     mode: args.apply ? "apply" : "dry-run",
+    ...(isRehomeMode ? { rehomeFrom: args.rehomeFrom } : {}),
     timestamp: new Date().toISOString(),
     database: maskedConnection,
     collections: formattedCollections,
@@ -672,15 +704,23 @@ function printConsoleReport(report, logger) {
   logger.log("=== Image Migration Summary ===");
   logger.log("Per Collection:");
   for (const [col, stats] of Object.entries(report.collections)) {
+    const rehomeSuffix =
+      stats.rehomeCount !== undefined
+        ? `, rehome=${stats.rehomeCount} (distinct=${stats.rehomeDistinctCount})`
+        : "";
     logger.log(
-      `  ${col}: base64=${stats.base64Count} (${stats.base64MB} MB), wp=${stats.wpCount} (distinct=${stats.wpDistinctCount}), cdn=${stats.cdnCount}, unsupported=${stats.unsupportedCount}`
+      `  ${col}: base64=${stats.base64Count} (${stats.base64MB} MB), wp=${stats.wpCount} (distinct=${stats.wpDistinctCount}), cdn=${stats.cdnCount}, unsupported=${stats.unsupportedCount}${rehomeSuffix}`
     );
   }
 
   logger.log("Per Field Pattern:");
   for (const [pat, stats] of Object.entries(report.fieldPatterns)) {
+    const rehomeSuffix =
+      stats.rehomeCount !== undefined
+        ? `, rehome=${stats.rehomeCount} (distinct=${stats.rehomeDistinctCount})`
+        : "";
     logger.log(
-      `  ${pat}: base64=${stats.base64Count} (${stats.base64MB} MB), wp=${stats.wpCount} (distinct=${stats.wpDistinctCount}), cdn=${stats.cdnCount}, unsupported=${stats.unsupportedCount}`
+      `  ${pat}: base64=${stats.base64Count} (${stats.base64MB} MB), wp=${stats.wpCount} (distinct=${stats.wpDistinctCount}), cdn=${stats.cdnCount}, unsupported=${stats.unsupportedCount}${rehomeSuffix}`
     );
   }
 
@@ -771,5 +811,6 @@ module.exports = {
   formatMaskedConnection,
   validateSafetyChecks,
   downloadWpImage,
+  downloadRehomeImage,
   runMigration
 };

@@ -7,6 +7,7 @@ const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { logAdminAction } = require("../utils/adminAudit");
 const { invalidateProductCache } = require("../utils/cache");
+const { TYPES, trashFilter, parsePaging, mergeTrashPage } = require("../utils/trashList");
 
 const router = express.Router();
 
@@ -26,54 +27,46 @@ router.get("/", protect, admin, (req, res, next) => {
     const canSeeCoupons = isSuper || pages.includes("coupons");
     const canSeeUsers = isSuper || pages.includes("users");
 
-    const [deletedProducts, deletedCoupons, deletedUsers] = await Promise.all([
-      canSeeProducts ? Product.find({ isDeleted: true }).lean() : Promise.resolve([]),
-      canSeeCoupons ? Coupon.find({ isDeleted: true }).lean() : Promise.resolve([]),
-      canSeeUsers ? User.find({ isDeleted: true }).lean() : Promise.resolve([])
+    // One page at a time, newest first. Only the fields shown are read, and each collection
+    // gives at most page*limit items, so a full bin no longer loads every deleted record.
+    const { page, limit, type, search } = parsePaging(req.query);
+    const models = { product: Product, coupon: Coupon, user: User };
+    const fields = {
+      product: "_id name price category deletedAt updatedAt deletedBy",
+      coupon: "_id code type value usageCount deletedAt updatedAt deletedBy",
+      user: "_id name email isAdmin adminRole deletedAt updatedAt deletedBy"
+    };
+    const visible = { product: canSeeProducts, coupon: canSeeCoupons, user: canSeeUsers };
+    const wanted = TYPES.filter((t) => visible[t] && (type === "all" || type === t));
+
+    const countFor = (t, filter) => (visible[t] ? models[t].countDocuments(filter) : Promise.resolve(0));
+    const [products, coupons, users, ...matchingCounts] = await Promise.all([
+      countFor("product", { isDeleted: true }),
+      countFor("coupon", { isDeleted: true }),
+      countFor("user", { isDeleted: true }),
+      ...wanted.map((t) => models[t].countDocuments(trashFilter(t, search)))
     ]);
-
-    const formattedProducts = deletedProducts.map((p) => ({
-      _id: String(p._id),
-      entityType: "product",
-      name: p.name || "Unnamed Product",
-      category: p.category || "General",
-      deletedAt: p.deletedAt || p.updatedAt || new Date(),
-      deletedBy: p.deletedBy?.name ? `${p.deletedBy.name} (${p.deletedBy.email})` : p.deletedBy?.email || "Admin",
-      details: `Price: ₹${p.price || 0} | Category: ${p.category || "General"}`
-    }));
-
-    const formattedCoupons = deletedCoupons.map((c) => ({
-      _id: String(c._id),
-      entityType: "coupon",
-      name: `Coupon Code: ${c.code}`,
-      category: "Coupon",
-      deletedAt: c.deletedAt || c.updatedAt || new Date(),
-      deletedBy: c.deletedBy?.name ? `${c.deletedBy.name} (${c.deletedBy.email})` : c.deletedBy?.email || "Admin",
-      details: `Type: ${c.type} | Value: ${c.value} | Uses: ${c.usageCount || 0}`
-    }));
-
-    const formattedUsers = deletedUsers.map((u) => ({
-      _id: String(u._id),
-      entityType: "user",
-      name: u.name || "User",
-      category: u.isAdmin ? "Admin User" : "Customer",
-      deletedAt: u.deletedAt || u.updatedAt || new Date(),
-      deletedBy: u.deletedBy?.name ? `${u.deletedBy.name} (${u.deletedBy.email})` : u.deletedBy?.email || "Admin",
-      details: `Email: ${u.email} | Role: ${u.isAdmin ? u.adminRole || "Admin" : "Customer"}`
-    }));
-
-    const allTrash = [...formattedProducts, ...formattedCoupons, ...formattedUsers].sort(
-      (a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime()
+    const lists = {};
+    await Promise.all(
+      wanted.map(async (t) => {
+        lists[t] = await models[t]
+          .find(trashFilter(t, search))
+          .select(fields[t])
+          .sort({ deletedAt: -1, updatedAt: -1, _id: -1 })
+          .limit(page * limit)
+          .lean();
+      })
     );
 
+    const result = mergeTrashPage(lists, {
+      page,
+      limit,
+      matching: matchingCounts.reduce((sum, n) => sum + n, 0)
+    });
+
     res.json({
-      trash: allTrash,
-      summary: {
-        total: allTrash.length,
-        products: formattedProducts.length,
-        coupons: formattedCoupons.length,
-        users: formattedUsers.length
-      }
+      ...result,
+      summary: { total: products + coupons + users, products, coupons, users }
     });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch trash items", error: error.message });

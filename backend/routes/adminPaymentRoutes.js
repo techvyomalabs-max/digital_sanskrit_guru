@@ -5,6 +5,7 @@ const admin = require("../middleware/adminMiddleware");
 const PaymentIntent = require("../models/PaymentIntent");
 const getRazorpayClient = require("../utils/razorpay");
 const { logAdminAction } = require("../utils/adminAudit");
+const { parsePageParams } = require("../utils/paging");
 
 const router = express.Router();
 
@@ -13,7 +14,8 @@ router.use(protect, admin, admin.requireAdminPage("orders"));
 
 /**
  * GET /api/admin/payments/orphans
- * List intents with status orphan, refunded, or resolved (newest first, limit 100)
+ * List intents with status orphan, refunded, or resolved (newest first), one page at a time.
+ * `count` is the total that match (not just this page), so the dashboard alert is exact.
  */
 router.get("/orphans", async (req, res) => {
   try {
@@ -24,15 +26,24 @@ router.get("/orphans", async (req, res) => {
       ? { status: requestedStatus }
       : { status: { $in: ["orphan", "refunding", "refunded", "resolved"] } };
 
-    const items = await PaymentIntent.find(query)
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .populate("user", "name email")
-      .lean();
+    const { page, limit, skip } = parsePageParams(req.query, { defaultLimit: 50, maxLimit: 100 });
+    const [items, total] = await Promise.all([
+      PaymentIntent.find(query)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("user", "name email")
+        .lean(),
+      PaymentIntent.countDocuments(query)
+    ]);
 
     return res.json({
       success: true,
-      count: items.length,
+      count: total,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
       items
     });
   } catch (err) {

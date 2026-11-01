@@ -179,11 +179,16 @@ function extractCandidateTokens(value) {
   return results;
 }
 
+function normalizeRehomeFrom(rehomeFrom) {
+  if (typeof rehomeFrom !== "string") return "";
+  return rehomeFrom.trim().replace(/^\/+|\/+$/g, "");
+}
+
 /**
  * Finds all image/upload references inside a string value.
- * Returns an array of { kind: "data"|"wp"|"cdn"|"unsupported"|"nonImageUpload"|"unrecognised", match, mime?, downloadUrl?, reason? }.
+ * Returns an array of { kind: "data"|"wp"|"cdn"|"rehome"|"unsupported"|"nonImageUpload"|"unrecognised", match, mime?, downloadUrl?, reason? }.
  */
-function findImageRefs(value, { extraHosts = [], mediaCdnUrl } = {}) {
+function findImageRefs(value, { extraHosts = [], mediaCdnUrl, rehomeFrom } = {}) {
   if (typeof value !== "string" || value.length === 0) {
     return [];
   }
@@ -191,6 +196,9 @@ function findImageRefs(value, { extraHosts = [], mediaCdnUrl } = {}) {
   const allowedHosts = buildAllowedHostsSet(extraHosts);
   const cdnBase = normalizeCdnBase(mediaCdnUrl);
   const cdnBaseLower = cdnBase.toLowerCase();
+  const cleanRehomeFrom = normalizeRehomeFrom(rehomeFrom);
+  const rehomePrefixLower =
+    cdnBaseLower && cleanRehomeFrom ? `${cdnBaseLower}/${cleanRehomeFrom.toLowerCase()}/` : "";
   const candidates = extractCandidateTokens(value);
   const refs = [];
 
@@ -294,6 +302,18 @@ function findImageRefs(value, { extraHosts = [], mediaCdnUrl } = {}) {
       // Check MEDIA_CDN_URL first
       if (cdnBaseLower) {
         if (tokenLower === cdnBaseLower || tokenLower.startsWith(`${cdnBaseLower}/`)) {
+          if (rehomePrefixLower && tokenLower.startsWith(rehomePrefixLower)) {
+            const subPath = token.slice(rehomePrefixLower.length);
+            const ext = getPathnameExtension(subPath);
+            if (ext && ALLOWED_WP_EXTS.has(ext)) {
+              refs.push({
+                kind: "rehome",
+                match: token,
+                downloadUrl: token
+              });
+              continue;
+            }
+          }
           refs.push({
             kind: "cdn",
             match: token
@@ -652,7 +672,8 @@ function parseArgs(argv = []) {
     apply: false,
     backupDone: false,
     confirmDb: null,
-    concurrency: 4
+    concurrency: 4,
+    rehomeFrom: null
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -691,6 +712,8 @@ function parseArgs(argv = []) {
         throw new Error("--concurrency must be a positive integer");
       }
       args.concurrency = c;
+    } else if (flag === "--rehome-from") {
+      args.rehomeFrom = String(nextVal() || "").trim();
     } else if (flag.startsWith("-")) {
       throw new Error(`Unknown flag: ${flag}`);
     }
@@ -735,14 +758,34 @@ function validateSafetyChecks(input = {}, envOverride) {
     }
   }
 
+  const rawPrefix = String(envObj.S3_PREFIX || "").trim();
+  const cleanPrefix = rawPrefix.replace(/^\/+|\/+$/g, "");
+  const expectedPrefix = `dsg/${args.env}`;
+  const hasRehomeFrom = args.rehomeFrom !== null && args.rehomeFrom !== undefined;
+
+  if (hasRehomeFrom) {
+    if (args.rehomeFrom !== "dsg/staging") {
+      throw new Error(
+        `Invalid --rehome-from value '${args.rehomeFrom}'. The only accepted value is 'dsg/staging'.`
+      );
+    }
+    if (args.env !== "production") {
+      throw new Error("--rehome-from requires --env production.");
+    }
+    if (cleanPrefix !== "dsg/production") {
+      throw new Error(
+        `--rehome-from requires S3_PREFIX to be 'dsg/production' (got '${cleanPrefix}').`
+      );
+    }
+    if (!String(envObj.MEDIA_CDN_URL || "").trim()) {
+      throw new Error("Missing required environment variable for --rehome-from: MEDIA_CDN_URL");
+    }
+  }
+
   const mongoUri = String(envObj.MONGO_URI || "").trim();
   if (!mongoUri) {
     throw new Error("Missing required environment variable: MONGO_URI");
   }
-
-  const rawPrefix = String(envObj.S3_PREFIX || "").trim();
-  const cleanPrefix = rawPrefix.replace(/^\/+|\/+$/g, "");
-  const expectedPrefix = `dsg/${args.env}`;
 
   if (args.apply) {
     const requiredVars = [

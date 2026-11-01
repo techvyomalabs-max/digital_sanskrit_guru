@@ -865,4 +865,424 @@ describe("imageMigration utilities and script", () => {
       assert.match(report.failures[0].reason, /10 MB/i);
     });
   });
+
+  // 10. Rehome mode (--rehome-from dsg/staging)
+  describe("10. Rehome mode (--rehome-from dsg/staging)", () => {
+    const cdnUrlBase = "https://d185zuld18le4r.cloudfront.net";
+
+    test("classification with and without rehomeFrom (staging URL, production URL, other CDN path, non-image extension, uppercase .JPG, embedded in HTML, URL with query string)", () => {
+      const stagingMigrated = `${cdnUrlBase}/dsg/staging/migrated/0123456789abcdef0123456789abcdef.jpg`;
+      const stagingProduct = `${cdnUrlBase}/dsg/staging/product/uuid-1234.png`;
+      const stagingUpper = `${cdnUrlBase}/dsg/staging/banner/HERO.JPG`;
+      const stagingQuery = `${cdnUrlBase}/dsg/staging/site/logo.webp?v=2&w=400`;
+      const stagingPdf = `${cdnUrlBase}/dsg/staging/docs/brochure.pdf`;
+      const prodUrl = `${cdnUrlBase}/dsg/production/migrated/0123456789abcdef0123456789abcdef.jpg`;
+      const otherCdnPath = `${cdnUrlBase}/other/folder/pic.gif`;
+
+      // Without rehomeFrom -> all CDN URLs stay "cdn"
+      assert.deepEqual(findImageRefs(stagingMigrated, { mediaCdnUrl: cdnUrlBase }), [
+        { kind: "cdn", match: stagingMigrated }
+      ]);
+      assert.deepEqual(findImageRefs(prodUrl, { mediaCdnUrl: cdnUrlBase }), [
+        { kind: "cdn", match: prodUrl }
+      ]);
+      assert.deepEqual(findImageRefs(otherCdnPath, { mediaCdnUrl: cdnUrlBase }), [
+        { kind: "cdn", match: otherCdnPath }
+      ]);
+
+      // With rehomeFrom: "dsg/staging"
+      const opts = { mediaCdnUrl: cdnUrlBase, rehomeFrom: "dsg/staging" };
+
+      assert.deepEqual(findImageRefs(stagingMigrated, opts), [
+        { kind: "rehome", match: stagingMigrated, downloadUrl: stagingMigrated }
+      ]);
+      assert.deepEqual(findImageRefs(stagingProduct, opts), [
+        { kind: "rehome", match: stagingProduct, downloadUrl: stagingProduct }
+      ]);
+      assert.deepEqual(findImageRefs(stagingUpper, opts), [
+        { kind: "rehome", match: stagingUpper, downloadUrl: stagingUpper }
+      ]);
+      assert.deepEqual(findImageRefs(stagingQuery, opts), [
+        { kind: "rehome", match: stagingQuery, downloadUrl: stagingQuery }
+      ]);
+
+      // Non-image extension under dsg/staging stays "cdn"
+      assert.deepEqual(findImageRefs(stagingPdf, opts), [
+        { kind: "cdn", match: stagingPdf }
+      ]);
+
+      // Production URL stays "cdn"
+      assert.deepEqual(findImageRefs(prodUrl, opts), [
+        { kind: "cdn", match: prodUrl }
+      ]);
+
+      // Other CDN path stays "cdn"
+      assert.deepEqual(findImageRefs(otherCdnPath, opts), [
+        { kind: "cdn", match: otherCdnPath }
+      ]);
+
+      // Embedded in HTML with quotes, entities, and mixed refs
+      const html = `<div class="gallery"><img src="${stagingMigrated}" alt="1"><img src=&quot;${stagingUpper}&quot;><img src="${prodUrl}"></div>`;
+      assert.deepEqual(findImageRefs(html, opts), [
+        { kind: "rehome", match: stagingMigrated, downloadUrl: stagingMigrated },
+        { kind: "rehome", match: stagingUpper, downloadUrl: stagingUpper },
+        { kind: "cdn", match: prodUrl }
+      ]);
+    });
+
+    test("replacement of rehome URLs leaves surrounding HTML byte-for-byte unchanged", () => {
+      const oldStaging1 = `${cdnUrlBase}/dsg/staging/migrated/aaaa1111bbbb2222cccc3333dddd4444.jpg`;
+      const oldStaging2 = `${cdnUrlBase}/dsg/staging/product/uuid-99.png?width=500`;
+      const keepProd = `${cdnUrlBase}/dsg/production/migrated/ffff0000ffff0000ffff0000ffff0000.jpg`;
+      const newProd1 = `${cdnUrlBase}/dsg/production/migrated/aaaa1111bbbb2222cccc3333dddd4444.jpg`;
+      const newProd2 = `${cdnUrlBase}/dsg/production/migrated/99998888777766665555444433332222.png`;
+
+      const html =
+        `<section data-attr="val">\n` +
+        `  <p>Check out <img src="${oldStaging1}" class="thumb" /> &amp; more!</p>\n` +
+        `  <div style="background-image:url(${oldStaging2})"></div>\n` +
+        `  <img src="${keepProd}" alt="already prod">\n` +
+        `</section>`;
+
+      const expected =
+        `<section data-attr="val">\n` +
+        `  <p>Check out <img src="${newProd1}" class="thumb" /> &amp; more!</p>\n` +
+        `  <div style="background-image:url(${newProd2})"></div>\n` +
+        `  <img src="${keepProd}" alt="already prod">\n` +
+        `</section>`;
+
+      const actual = replaceRefs(
+        html,
+        new Map([
+          [oldStaging1, newProd1],
+          [oldStaging2, newProd2]
+        ])
+      );
+      assert.equal(actual, expected);
+    });
+
+    test("guards: --rehome-from with --env staging aborts; --rehome-from dsg/production aborts; wrong S3_PREFIX aborts; missing MEDIA_CDN_URL aborts in dry run", () => {
+      const validRehomeEnv = {
+        MONGO_URI: "mongodb+srv://user:pass@cluster0.example.mongodb.net/dsg_prod",
+        S3_PREFIX: "dsg/production",
+        MEDIA_CDN_URL: cdnUrlBase
+      };
+
+      // 1. --rehome-from with --env staging aborts
+      assert.throws(
+        () =>
+          validateSafetyChecks({
+            args: ["--env", "staging", "--rehome-from", "dsg/staging"],
+            env: { ...validRehomeEnv, S3_PREFIX: "dsg/staging" }
+          }),
+        /--rehome-from requires --env production/
+      );
+
+      // 2. --rehome-from dsg/production (or any value other than dsg/staging) aborts
+      assert.throws(
+        () =>
+          validateSafetyChecks({
+            args: ["--env", "production", "--rehome-from", "dsg/production"],
+            env: validRehomeEnv
+          }),
+        /only accepted value is 'dsg\/staging'/
+      );
+
+      // 3. wrong or missing S3_PREFIX aborts (even in dry-run)
+      assert.throws(
+        () =>
+          validateSafetyChecks({
+            args: ["--env", "production", "--rehome-from", "dsg/staging"],
+            env: { ...validRehomeEnv, S3_PREFIX: "dsg/staging" }
+          }),
+        /S3_PREFIX/
+      );
+
+      assert.throws(
+        () =>
+          validateSafetyChecks({
+            args: ["--env", "production", "--rehome-from", "dsg/staging"],
+            env: { MONGO_URI: validRehomeEnv.MONGO_URI, MEDIA_CDN_URL: cdnUrlBase }
+          }),
+        /S3_PREFIX/
+      );
+
+      // 4. missing MEDIA_CDN_URL aborts in dry run when --rehome-from is used
+      assert.throws(
+        () =>
+          validateSafetyChecks({
+            args: ["--env", "production", "--rehome-from", "dsg/staging"],
+            env: {
+              MONGO_URI: validRehomeEnv.MONGO_URI,
+              S3_PREFIX: "dsg/production",
+              MEDIA_CDN_URL: ""
+            }
+          }),
+        /MEDIA_CDN_URL/
+      );
+
+      // Valid dry-run with trimmed S3_PREFIX passes
+      const ok = validateSafetyChecks({
+        args: ["--env", "production", "--rehome-from", "dsg/staging"],
+        env: { ...validRehomeEnv, S3_PREFIX: "/dsg/production/" }
+      });
+      assert.equal(ok.s3Prefix, "dsg/production");
+      assert.equal(ok.args.rehomeFrom, "dsg/staging");
+    });
+
+    test("mocked full run: dry run, apply with 404, deduplication across docs, and idempotent second apply", async () => {
+      const rehomeEnv = {
+        MONGO_URI: "mongodb://admin:pass@db.local:27017/dsg_production",
+        AWS_REGION: "ap-south-1",
+        AWS_ACCESS_KEY_ID: "AKIAFAKE",
+        AWS_SECRET_ACCESS_KEY: "SECRETFAKE",
+        S3_BUCKET: "dsg-prod-bucket",
+        S3_PREFIX: "dsg/production",
+        MEDIA_CDN_URL: cdnUrlBase
+      };
+
+      const jpgHash = contentHashKey({ prefix: "dsg/staging", bytes: VALID_JPEG_BYTES, ext: "jpg" }).split("/").pop();
+      const pngHash = contentHashKey({ prefix: "dsg/staging", bytes: VALID_PNG_BYTES, ext: "png" }).split("/").pop();
+
+      const stagingJpgUrl = `${cdnUrlBase}/dsg/staging/migrated/${jpgHash}`;
+      const stagingPngUrl = `${cdnUrlBase}/dsg/staging/product/custom-uuid.png`;
+      const staging404Url = `${cdnUrlBase}/dsg/staging/migrated/deadbeefdeadbeefdeadbeefdeadbeef.jpg`;
+      const alreadyProdUrl = `${cdnUrlBase}/dsg/production/migrated/${jpgHash}`;
+
+      // Mutable in-memory documents to test full lifecycle including second apply
+      const docs = [
+        {
+          _id: "prod-1",
+          image: stagingJpgUrl,
+          images: [stagingPngUrl, alreadyProdUrl],
+          description: `<p>Intro <img src="${stagingJpgUrl}"> and broken <img src="${staging404Url}"></p>`
+        },
+        {
+          _id: "prod-2",
+          image: stagingJpgUrl, // identical bytes as prod-1.image -> should upload only once
+          banner: staging404Url // 404 -> should remain unchanged
+        }
+      ];
+
+      function getByDottedPath(obj, pathStr) {
+        return pathStr.split(".").reduce((acc, part) => (acc == null ? undefined : acc[part]), obj);
+      }
+
+      function setByDottedPath(obj, pathStr, val) {
+        const parts = pathStr.split(".");
+        let cur = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = val;
+      }
+
+      const updates = [];
+      const statefulProdCol = {
+        updates,
+        find() {
+          return {
+            async *[Symbol.asyncIterator]() {
+              for (const d of docs) {
+                yield JSON.parse(JSON.stringify(d));
+              }
+            }
+          };
+        },
+        async updateOne(filter, update) {
+          updates.push({ filter, update });
+          const target = docs.find((d) => d._id === filter._id);
+          if (!target) return { acknowledged: true, matchedCount: 0, modifiedCount: 0 };
+          for (const [k, expectedVal] of Object.entries(filter)) {
+            if (k === "_id") continue;
+            if (getByDottedPath(target, k) !== expectedVal) {
+              return { acknowledged: true, matchedCount: 0, modifiedCount: 0 };
+            }
+          }
+          for (const [k, newVal] of Object.entries(update.$set || {})) {
+            setByDottedPath(target, k, newVal);
+          }
+          return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
+        }
+      };
+
+      // --- Phase 1: Dry run ---
+      let dryFetchCalls = 0;
+      let dryS3Calls = 0;
+      const { report: dryReport } = await runMigration({
+        args: ["--env", "production", "--rehome-from", "dsg/staging", "--only", "products"],
+        env: rehomeEnv,
+        collections: [{ name: "products", collection: statefulProdCol }],
+        fetchFn: async () => {
+          dryFetchCalls += 1;
+          throw new Error("No fetch in dry-run");
+        },
+        s3Send: async () => {
+          dryS3Calls += 1;
+          throw new Error("No S3 in dry-run");
+        },
+        logger: { log() {} }
+      });
+
+      assert.equal(dryFetchCalls, 0);
+      assert.equal(dryS3Calls, 0);
+      assert.equal(updates.length, 0);
+      // 6 staging refs total across the two docs (3 of stagingJpgUrl, 1 of stagingPngUrl, 2 of staging404Url), 3 distinct
+      assert.equal(dryReport.collections.products.rehomeCount, 6);
+      assert.equal(dryReport.collections.products.rehomeDistinctCount, 3);
+      assert.equal(dryReport.collections.products.cdnCount, 1);
+      assert.equal(dryReport.fieldPatterns["products.image"].rehomeCount, 2);
+      assert.equal(dryReport.fieldPatterns["products.image"].rehomeDistinctCount, 1);
+
+      // --- Phase 2: Apply run ---
+      const s3Uploads = [];
+      const fakeS3Send = async (cmd) => {
+        s3Uploads.push(cmd.input);
+        return {};
+      };
+
+      const fakeFetch = async (url) => {
+        if (url === stagingJpgUrl) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Map(),
+            async arrayBuffer() {
+              return VALID_JPEG_BYTES.buffer.slice(
+                VALID_JPEG_BYTES.byteOffset,
+                VALID_JPEG_BYTES.byteOffset + VALID_JPEG_BYTES.byteLength
+              );
+            }
+          };
+        }
+        if (url === stagingPngUrl) {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Map(),
+            async arrayBuffer() {
+              return VALID_PNG_BYTES.buffer.slice(
+                VALID_PNG_BYTES.byteOffset,
+                VALID_PNG_BYTES.byteOffset + VALID_PNG_BYTES.byteLength
+              );
+            }
+          };
+        }
+        if (url === staging404Url) {
+          return {
+            ok: false,
+            status: 404,
+            headers: new Map(),
+            async arrayBuffer() {
+              return new ArrayBuffer(0);
+            }
+          };
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      const { report: applyReport } = await runMigration({
+        args: [
+          "--env",
+          "production",
+          "--rehome-from",
+          "dsg/staging",
+          "--only",
+          "products",
+          "--apply",
+          "--backup-done",
+          "--confirm-db",
+          "dsg_production"
+        ],
+        env: rehomeEnv,
+        collections: [{ name: "products", collection: statefulProdCol }],
+        s3Send: fakeS3Send,
+        fetchFn: fakeFetch,
+        logger: { log() {} }
+      });
+
+      const expectedProdJpgKey = `dsg/production/migrated/${jpgHash}`;
+      const expectedProdPngKey = `dsg/production/migrated/${pngHash}`;
+      const expectedProdJpgUrl = `${cdnUrlBase}/${expectedProdJpgKey}`;
+      const expectedProdPngUrl = `${cdnUrlBase}/${expectedProdPngKey}`;
+
+      // Uploads to production prefix with the same content-hash filename, deduplicated (only 2 S3 PutObject calls)
+      assert.equal(s3Uploads.length, 2);
+      assert.equal(applyReport.distinctS3ObjectsUploaded, 2);
+      const uploadedKeys = s3Uploads.map((u) => u.Key).sort();
+      assert.deepEqual(uploadedKeys, [expectedProdJpgKey, expectedProdPngKey].sort());
+      for (const u of s3Uploads) {
+        assert.ok(u.Key.startsWith("dsg/production/"), `Key must be under dsg/production/: ${u.Key}`);
+        assert.equal(u.Bucket, "dsg-prod-bucket");
+        assert.equal(u.CacheControl, CACHE_CONTROL_HEADER);
+      }
+
+      // Both documents updated (prod-1 has image, images.0, description; prod-2 has image while banner failed with 404)
+      assert.equal(updates.length, 2);
+      assert.equal(applyReport.documentsChanged, 2);
+      assert.equal(applyReport.refsMigrated, 4);
+
+      // Verify exact dotted paths on prod-1
+      const prod1Update = updates.find((u) => u.filter._id === "prod-1");
+      assert.deepEqual(prod1Update.update.$set, {
+        image: expectedProdJpgUrl,
+        "images.0": expectedProdPngUrl,
+        description: `<p>Intro <img src="${expectedProdJpgUrl}"> and broken <img src="${staging404Url}"></p>`
+      });
+
+      // Verify exact dotted paths on prod-2 (banner 404 left untouched)
+      const prod2Update = updates.find((u) => u.filter._id === "prod-2");
+      assert.deepEqual(prod2Update.update.$set, {
+        image: expectedProdJpgUrl
+      });
+      assert.equal(docs[1].banner, staging404Url);
+
+      // Failures list contains the two 404 occurrences
+      assert.equal(applyReport.failures.length, 2);
+      assert.ok(applyReport.failures.every((f) => /404/.test(f.reason)));
+
+      // Manifest entries use kind "rehome" and sourceRef = old staging URL
+      assert.equal(applyReport.manifest.length, 4);
+      for (const entry of applyReport.manifest) {
+        assert.equal(entry.kind, "rehome");
+        assert.ok(entry.sourceRef.startsWith(`${cdnUrlBase}/dsg/staging/`));
+        assert.ok(entry.newUrl.startsWith(`${cdnUrlBase}/dsg/production/migrated/`));
+      }
+
+      // --- Phase 3: Idempotency check (second apply once 404s are resolved/removed or on already-migrated docs) ---
+      docs[0].description = `<p>Intro <img src="${expectedProdJpgUrl}"></p>`;
+      docs[1].banner = expectedProdJpgUrl;
+      updates.length = 0;
+      s3Uploads.length = 0;
+
+      const { report: secondApplyReport } = await runMigration({
+        args: [
+          "--env",
+          "production",
+          "--rehome-from",
+          "dsg/staging",
+          "--only",
+          "products",
+          "--apply",
+          "--backup-done",
+          "--confirm-db",
+          "dsg_production"
+        ],
+        env: rehomeEnv,
+        collections: [{ name: "products", collection: statefulProdCol }],
+        s3Send: fakeS3Send,
+        fetchFn: fakeFetch,
+        logger: { log() {} }
+      });
+
+      assert.equal(secondApplyReport.collections.products.rehomeCount, 0);
+      assert.equal(secondApplyReport.collections.products.rehomeDistinctCount, 0);
+      assert.equal(secondApplyReport.collections.products.cdnCount, 6);
+      assert.equal(secondApplyReport.documentsChanged, 0);
+      assert.equal(secondApplyReport.refsMigrated, 0);
+      assert.equal(secondApplyReport.distinctS3ObjectsUploaded, 0);
+      assert.equal(updates.length, 0);
+      assert.equal(s3Uploads.length, 0);
+    });
+  });
 });

@@ -9,7 +9,12 @@
 
 /* Hero Section */
 .about-hero {
-  background: linear-gradient(135deg, var(--site-hero-start) 0%, var(--site-hero-end) 100%);
+  /* Dark-to-darker brand gradient keeps white text readable across the whole banner */
+  background: linear-gradient(
+    135deg,
+    var(--site-header-bg, #0f172a),
+    color-mix(in srgb, var(--site-header-bg, #0f172a) 65%, #000000)
+  );
   color: #ffffff;
   padding: 80px 20px;
   text-align: center;
@@ -36,6 +41,7 @@
 }
 
 .about-hero h1 {
+  color: inherit;
   font-size: 3rem;
   font-weight: 800;
   margin-bottom: var(--space-4);

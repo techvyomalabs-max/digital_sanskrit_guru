@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import axios from "axios";
-import { SlidersHorizontal, ArrowUpDown, X } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, PackageSearch, RefreshCw, WifiOff, X } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import "./Collection.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
-import LoadingSpinner from "../components/common/LoadingSpinner";
 import { resolveCategoryAlias } from "../utils/categoryKey";
 
 const PRODUCTS_PER_PAGE = 8;
@@ -86,6 +85,8 @@ function Collection() {
   const [hasMoreProducts, setHasMoreProducts] = useState(false);
   const [categories, setCategories] = useState(["All"]);
   const [categoryCounts, setCategoryCounts] = useState({ All: 0 });
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Only a Back/Forward (or refresh) visit restores the previous list and scroll position
   const restoreViewRef = useRef(navigationType === "POP" ? readSavedView(location.search) : null);
@@ -123,6 +124,7 @@ function Collection() {
 
     const fetchProducts = async () => {
       setIsLoadingProducts(true);
+      setLoadFailed(false);
       setCurrentPage(1);
 
       try {
@@ -145,6 +147,7 @@ function Collection() {
         );
       } catch {
         if (!isMounted) return;
+        setLoadFailed(true);
         setProducts([]);
         setTotalProducts(0);
         setAvailableProducts(0);
@@ -166,7 +169,7 @@ function Collection() {
     return () => {
       isMounted = false;
     };
-  }, [selectedCategory, sortOption]);
+  }, [selectedCategory, sortOption, retryCount]);
 
   // Scroll back to where the shopper was, once the restored products are on screen
   useEffect(() => {
@@ -405,17 +408,50 @@ function Collection() {
               </div>
             </div>
 
-            <div className="collection-grid">
+            <div className="collection-grid" aria-busy={isLoadingProducts}>
               {isLoadingProducts ? (
-                <LoadingSpinner text="Loading catalog items..." minHeight="240px" />
+                Array.from({ length: PRODUCTS_PER_PAGE }).map((_, index) => (
+                  <div key={index} className="ux-card-skeleton" aria-hidden="true">
+                    <span className="ux-skeleton" />
+                    <span className="ux-skeleton" />
+                    <span className="ux-skeleton" />
+                    <span className="ux-skeleton" />
+                  </div>
+                ))
+              ) : loadFailed ? (
+                <div className="ux-state" role="alert">
+                  <span className="ux-state-icon" aria-hidden="true">
+                    <WifiOff size={32} />
+                  </span>
+                  <h2>We couldn't load the products</h2>
+                  <p>This may be a brief connection problem. Please try again.</p>
+                  <div className="ux-state-actions">
+                    <button
+                      type="button"
+                      className="ux-btn ux-btn-primary"
+                      onClick={() => setRetryCount((count) => count + 1)}
+                    >
+                      <RefreshCw size={18} aria-hidden="true" />
+                      Try again
+                    </button>
+                  </div>
+                </div>
               ) : products.length > 0 ? (
                 products.map((product) => (
                   <ProductCard key={product._id} product={product} showDescription={false} variant="home" />
                 ))
               ) : (
-                <div className="collection-empty-state">
-                  <strong>No products found</strong>
-                  <p>Try changing your filters or clearing them to see more products.</p>
+                <div className="ux-state">
+                  <span className="ux-state-icon" aria-hidden="true">
+                    <PackageSearch size={32} />
+                  </span>
+                  <h2>No products found</h2>
+                  <p>Try another category, or clear your filters to see everything.</p>
+                  <div className="ux-state-actions">
+                    <button type="button" className="ux-btn ux-btn-primary" onClick={resetFilters}>
+                      Clear filters
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
