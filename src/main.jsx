@@ -16,6 +16,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import "./responsive-overrides.css"; // global responsive fixes for all pages/devices
+import "./ux-foundation.css"; // focus, touch, motion and state rules for every page
 import "./lib/api";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
@@ -26,6 +27,7 @@ import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
 import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
 import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
 import { captureAttribution } from "./utils/attribution";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 
 captureAttribution();
 
@@ -51,7 +53,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <CartProvider>
             <DeliveryLocationProvider>
               <WishlistProvider>
-                <App />
+                <ErrorBoundary>
+                  <App />
+                </ErrorBoundary>
               </WishlistProvider>
             </DeliveryLocationProvider>
           </CartProvider>

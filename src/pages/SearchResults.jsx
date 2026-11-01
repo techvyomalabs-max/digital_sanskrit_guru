@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, RefreshCw, WifiOff } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -57,6 +57,8 @@ function getReviewCount(product) {
 function SearchResults() {
   const [products, setProducts] = useState([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -78,9 +80,18 @@ function SearchResults() {
     axios
       .get("/api/products")
       .then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setProducts([]))
+      .catch(() => {
+        setProducts([]);
+        setLoadFailed(true);
+      })
       .finally(() => setIsLoadingProducts(false));
-  }, []);
+  }, [retryCount]);
+
+  const retrySearch = () => {
+    setIsLoadingProducts(true);
+    setLoadFailed(false);
+    setRetryCount((count) => count + 1);
+  };
 
   const handleCategorySelect = (category) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -386,6 +397,24 @@ function SearchResults() {
                       <span className="home-skeleton home-skeleton-line medium" />
                     </div>
                   ))
+                ) : loadFailed ? (
+                  <div className="ux-state" role="alert">
+                    <span className="ux-state-icon" aria-hidden="true">
+                      <WifiOff size={32} />
+                    </span>
+                    <h2>We couldn't load the results</h2>
+                    <p>This may be a brief connection problem. Please try again.</p>
+                    <div className="ux-state-actions">
+                      <button
+                        type="button"
+                        className="ux-btn ux-btn-primary"
+                        onClick={retrySearch}
+                      >
+                        <RefreshCw size={18} aria-hidden="true" />
+                        Try again
+                      </button>
+                    </div>
+                  </div>
                 ) : sortedProducts.length > 0 ? (
                   sortedProducts.map((product) => (
                     <ProductCard key={product._id} product={product} variant="search" />

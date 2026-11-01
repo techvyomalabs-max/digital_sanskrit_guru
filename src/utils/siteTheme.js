@@ -177,10 +177,36 @@ function toRgba(color, alpha = 1) {
   return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
 }
 
-function getReadableTextColor(color) {
+function relativeLuminance(color) {
   const { r, g, b } = hexToRgb(color);
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.62 ? "#111827" : "#ffffff";
+  const [red, green, blue] = [r, g, b].map((value) => {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(colorA, colorB) {
+  const a = relativeLuminance(colorA);
+  const b = relativeLuminance(colorB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+// Picks whichever of dark or white text is easier to read on this background (WCAG contrast)
+function getReadableTextColor(color) {
+  return contrastRatio(color, "#111827") > contrastRatio(color, "#ffffff") ? "#111827" : "#ffffff";
+}
+
+// Secondary text: as soft as the theme allows while staying readable (4.5:1) on every surface
+function getSoftTextColor(text, surface, bg) {
+  const surfaces = [surface, bg, mixColors(surface, bg, 0.4)];
+  for (let ratio = 0.45; ratio > 0; ratio -= 0.03) {
+    const candidate = mixColors(text, surface, ratio);
+    if (surfaces.every((background) => contrastRatio(candidate, background) >= 4.5)) {
+      return candidate;
+    }
+  }
+  return text;
 }
 
 function buildThemeVariables(theme) {
@@ -201,7 +227,7 @@ function buildThemeVariables(theme) {
     "--site-surface": palette.surface,
     "--site-surface-muted": mixColors(palette.surface, palette.bg, 0.4),
     "--site-text": palette.text,
-    "--site-text-soft": mixColors(palette.text, palette.surface, 0.45),
+    "--site-text-soft": getSoftTextColor(palette.text, palette.surface, palette.bg),
     "--site-border": mixColors(palette.text, palette.surface, 0.18),
     "--site-link": palette.accent,
     "--site-link-hover": darken(palette.accent, 0.12),
@@ -351,6 +377,9 @@ export function applySiteTheme(themeValue, customThemes = [], shouldPersist = tr
   Object.entries(buildThemeVariables(activeTheme)).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
+
+  // Colours the phone's browser bar to match the site header
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activeTheme.palette.header);
 
   if (shouldPersist) {
     persistSiteTheme(activeTheme.value, customThemes);
