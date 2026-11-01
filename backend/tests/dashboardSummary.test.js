@@ -101,6 +101,7 @@ describe("dashboardSummary", () => {
     assert.deepEqual(out.statuses, { Pending: 1, Shipped: 0, Delivered: 1, Cancelled: 1 });
     assert.deepEqual(out.topCustomer, { name: "Asha", spend: 900 });
     assert.equal(normalizeStatus("Placed"), "Pending");
+    assert.equal(normalizeStatus("Completed"), "Delivered");
   });
 
   it("returns zeros when there are no paid orders", () => {

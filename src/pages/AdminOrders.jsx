@@ -198,6 +198,14 @@ function AdminOrders() {
     return "Pending";
   };
 
+  // The date boxes hold local (India) time with no zone, e.g. "2026-10-01T00:00". The server
+  // runs on UTC, so send the exact moment with its zone instead; otherwise the filter shifts 5½ hours.
+  const toServerDateTime = (value) => {
+    if (!value) return undefined;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+  };
+
   const toInputDateTime = (date) => {
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return "";
@@ -219,8 +227,8 @@ function AdminOrders() {
         sort: sortOrder,
         search: debouncedSearchText,
         status: selectedStatus,
-        fromDateTime,
-        toDateTime
+        fromDateTime: toServerDateTime(fromDateTime),
+        toDateTime: toServerDateTime(toDateTime)
       };
       const res = await axios.get("/api/orders", {
         params,
@@ -604,8 +612,8 @@ function AdminOrders() {
         sort: sortOrder,
         search: debouncedSearchText,
         status: selectedStatus,
-        fromDateTime,
-        toDateTime
+        fromDateTime: toServerDateTime(fromDateTime),
+        toDateTime: toServerDateTime(toDateTime)
       };
       const res = await axios.get("/api/orders", {
         params,
@@ -914,7 +922,12 @@ function AdminOrders() {
           </article>
           {canViewRevenue ? (
             <article className="admin-overview-card">
-              <p className="admin-overview-label">Visible Revenue</p>
+              <p
+                className="admin-overview-label"
+                title="Paid orders in the current view, in ₹ at each order's own rate, minus refunds. Unpaid or failed orders are not counted."
+              >
+                Paid revenue (after refunds)
+              </p>
               <p className="admin-overview-value">{formatMoney(overviewStats.totalRevenue)}</p>
             </article>
           ) : null}

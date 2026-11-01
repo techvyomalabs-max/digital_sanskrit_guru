@@ -24,6 +24,7 @@ const { computeSalesAnalytics } = require("../utils/salesAnalytics");
 const { computeDashboardSummary, computeAlertCounts } = require("../utils/dashboardSummary");
 const { orderGrossInr } = require("../utils/salesAnalytics");
 const { appCache } = require("../utils/cache");
+const { REVENUE_FIELDS, sumNetRevenueInr, paidOnly } = require("../utils/orderRevenue");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -805,32 +806,6 @@ const autoCompletePaidDigitalOrders = async (orders) => {
 // Get all orders (admin only)
 router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
-    const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
-    const rates = settings?.currencyConversionRates || {};
-
-    const branches = Object.entries(rates)
-      .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
-      .map(([currency, rate]) => ({
-        case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
-        then: Number(rate)
-      }));
-
-    const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
-
-    const totalInBaseExpression = branches.length > 0
-      ? {
-          $divide: [
-            paidAmountExpression,
-            {
-              $switch: {
-                branches,
-                default: 1
-              }
-            }
-          ]
-        }
-      : paidAmountExpression;
-
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limitQuery = req.query.limit;
     const isPaginated = limitQuery !== "all";
@@ -903,6 +878,9 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
     } else if (statusFilter === "Delivered") {
       finalQuery.status = "Delivered";
       finalQuery.paymentStatus = "Paid";
+    } else if (statusFilter === "Completed") {
+      finalQuery.status = "Completed";
+      finalQuery.paymentStatus = "Paid";
     } else if (statusFilter === "Cancelled") {
       finalQuery.status = "Cancelled";
     } else if (statusFilter === "Return Requests") {
@@ -945,7 +923,9 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
       cancelledCount,
       returnCount,
       accessPendingCount,
-      statsResult
+      statsResult,
+      completedCount,
+      revenueOrders
     ] = await Promise.all([
       Order.countDocuments(baseQuery),
       Order.countDocuments({ ...baseQuery, status: { $ne: "Cancelled" }, paymentStatus: { $ne: "Paid" } }),
@@ -972,20 +952,6 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         {
           $group: {
             _id: null,
-            totalRevenue: {
-              $sum: {
-                $cond: [
-                  {
-                    $or: [
-                      { $eq: ["$status", "Cancelled"] },
-                      { $eq: ["$refundStatus", "Refunded"] }
-                    ]
-                  },
-                  0,
-                  totalInBaseExpression
-                ]
-              }
-            },
             pendingPaymentsCount: {
               $sum: {
                 $cond: [
@@ -1005,7 +971,7 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
                 $cond: [
                   {
                     $and: [
-                      { $in: ["$status", ["Shipped", "Delivered"]] },
+                      { $in: ["$status", ["Shipped", "Delivered", "Completed"]] },
                       { $eq: ["$paymentStatus", "Paid"] }
                     ]
                   },
@@ -1016,7 +982,11 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
             }
           }
         }
-      ])
+      ]),
+      Order.countDocuments({ ...baseQuery, status: "Completed", paymentStatus: "Paid" }),
+      // Revenue: paid orders in this view, in INR at each order's own rate, minus refunds,
+      // worked out with the same helpers as the Dashboard, Sales and Finance pages.
+      Order.find(paidOnly(finalQuery)).select(REVENUE_FIELDS).lean()
     ]);
 
     const overviewStats = statsResult[0] || {
@@ -1036,13 +1006,14 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         Pending: pendingCount,
         Shipped: shippedCount,
         Delivered: deliveredCount,
+        Completed: completedCount,
         Cancelled: cancelledCount,
         "Return Requests": returnCount,
         "Access Pending": accessPendingCount
       },
       overviewStats: {
         totalOrders: totalMatchingOrders,
-        totalRevenue: overviewStats.totalRevenue || 0,
+        totalRevenue: sumNetRevenueInr(revenueOrders),
         pendingPayments: overviewStats.pendingPaymentsCount || 0,
         fulfilledOrders: overviewStats.fulfilledCount || 0
       }
