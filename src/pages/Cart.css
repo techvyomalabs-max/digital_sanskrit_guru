@@ -491,6 +491,19 @@
 }
 
 /* ── Quantity Stepper Widget ── */
+.cart-qty-control {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.cart-qty-limit-note {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-text-soft, #57574f);
+}
+
 .cart-qty-stepper {
   display: inline-flex;
   align-items: center;
