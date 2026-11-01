@@ -97,7 +97,6 @@ function PushSubscribeSection({ token }) {
   );
   const [status, setStatus] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
 
   const unsupportedReason = pushUnsupportedReason();
 
@@ -118,7 +117,7 @@ function PushSubscribeSection({ token }) {
     try {
       await enablePushNotifications(token);
       setPermission(Notification.permission);
-      setStatus("Notifications are on for this device. Use “Send test” to check one arrives.");
+      setStatus("Notifications are on for this device. You’ll get alerts for your orders here.");
     } catch (err) {
       setPermission(typeof Notification !== "undefined" ? Notification.permission : "default");
       setStatus(err?.response?.data?.message || err?.message || "Could not turn on notifications.");
@@ -148,27 +147,6 @@ function PushSubscribeSection({ token }) {
       setStatus("Failed to unsubscribe.");
     } finally {
       setIsSubscribing(false);
-    }
-  };
-
-  const sendTestNotification = async () => {
-    setIsTesting(true);
-    setStatus("");
-    try {
-      const res = await axios.post(
-        "/api/push/test",
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (res.data?.success) {
-        setStatus(res.data.message || "Test notification sent! Check your device notifications.");
-      } else {
-        setStatus(res.data?.message || "Failed to send test notification.");
-      }
-    } catch (err) {
-      setStatus(err?.response?.data?.message || err?.message || "Failed to send test notification.");
-    } finally {
-      setIsTesting(false);
     }
   };
 
@@ -229,30 +207,6 @@ function PushSubscribeSection({ token }) {
             </span>
           </button>
         </div>
-
-        {isGranted && (
-          <div style={{ marginTop: "12px", display: "flex", gap: "8px" }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={sendTestNotification}
-              disabled={isTesting}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                cursor: isTesting ? "not-allowed" : "pointer"
-              }}
-            >
-              <Bell size={14} />
-              {isTesting ? "Sending test..." : "Send Test Notification"}
-            </button>
-          </div>
-        )}
 
         {status && <p className="my-account-push-msg">{status}</p>}
 

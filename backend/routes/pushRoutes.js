@@ -1,6 +1,7 @@
 const express = require("express");
 const PushSubscription = require("../models/PushSubscription");
 const protect = require("../middleware/authMiddleware");
+const admin = require("../middleware/adminMiddleware");
 const { initVapid, getVapidPublicKey, getPushStatus } = require("../utils/webPush");
 
 const router = express.Router();
@@ -72,8 +73,9 @@ router.post("/status", protect, async (req, res) => {
   }
 });
 
-// POST /api/push/test — send an instant test push to the logged-in user
-router.post("/test", protect, async (req, res) => {
+// POST /api/push/test — send an instant test push to the logged-in admin's own devices.
+// Admins only: customers no longer have a test button.
+router.post("/test", protect, admin, async (req, res) => {
   try {
     const { sendPushToUser } = require("../utils/webPush");
     const count = await PushSubscription.countDocuments({ user: req.user });
