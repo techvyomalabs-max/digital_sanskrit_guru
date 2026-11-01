@@ -25,6 +25,7 @@ const { computeDashboardSummary, computeAlertCounts } = require("../utils/dashbo
 const { orderGrossInr } = require("../utils/salesAnalytics");
 const { appCache } = require("../utils/cache");
 const { REVENUE_FIELDS, sumNetRevenueInr, paidOnly } = require("../utils/orderRevenue");
+const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
 const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -147,20 +148,22 @@ async function fireLowStockAlerts(normalizedItems) {
     const settings = await StoreSettings.findOne()
       .select("lowStockThreshold notificationEmail pushEnabled emailEnabled")
       .lean();
-    const threshold = Number(settings?.lowStockThreshold ?? 5);
+    const threshold = lowStockThreshold(settings);
+    const channels = alertChannels(settings);
+    if (!channels.email && !channels.push) return;
 
-    const productIds = normalizedItems.map((i) => i.product);
-    const lowStockProducts = await Product.find({
-      _id: { $in: productIds },
-      stock: { $lte: threshold }
-    }).select("_id name stock category").lean();
+    // Physical products in this order that are now low (digital items never run out)
+    const productIds = normalizedItems.map((i) => i.product?._id || i.product);
+    const lowStockProducts = await Product.find(lowStockFilter(threshold, { _id: { $in: productIds } }))
+      .select("_id name stock category")
+      .lean();
 
     if (lowStockProducts.length === 0) return;
 
     // 1. Admin alert
-    const admins = await User.find({ isAdmin: true }).select("_id").lean();
+    const admins = channels.push ? await User.find({ isAdmin: true }).select("_id").lean() : [];
     const enriched = lowStockProducts.map((p) => ({ ...p, wishlistCount: 0 }));
-    await sendLowStockAdminAlert(enriched);
+    if (channels.email) await sendLowStockAdminAlert(enriched);
     for (const adminUser of admins) {
       await sendPushToUser(adminUser._id,
         lowStockPayload(`${lowStockProducts.length} item(s)`, lowStockProducts.map((p) => p.stock).join(", "))
@@ -181,8 +184,8 @@ async function fireLowStockAlerts(normalizedItems) {
       if (affected.length === 0) continue;
       const names = affected.map((p) => p.name);
       const minStock = Math.min(...affected.map((p) => p.stock));
-      await sendPushToUser(wl.user._id, wishlistLowStockPayload(names, minStock));
-      await sendWishlistLowStockAlert(wl.user, affected);
+      if (channels.push) await sendPushToUser(wl.user._id, wishlistLowStockPayload(names, minStock));
+      if (channels.email) await sendWishlistLowStockAlert(wl.user, affected);
     }
   } catch (err) {
     console.error("[Low-Stock Alert] Error:", err.message);
