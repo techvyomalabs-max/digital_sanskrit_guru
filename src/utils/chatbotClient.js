@@ -1,20 +1,21 @@
-// Chatbot API client.
-//
-// The real chatbot API is not connected yet. Until VITE_CHATBOT_API_URL is set,
-// sendChatMessage() answers with the sample replies below so the chat window can be
-// designed and tested. To connect the API, set VITE_CHATBOT_API_URL and make sure the
-// endpoint accepts and returns the shapes documented on sendChatMessage().
+// Client for the Vyoma chatbot API. The rules for what may be sent live in chatbotApi.js.
 
 import axios from "axios";
+import { buildChatRequest, getChatErrorMessage, getPrivateTopicReply, parseChatReply } from "./chatbotApi.js";
 
-const CHATBOT_API_URL = String(import.meta.env.VITE_CHATBOT_API_URL || "").trim();
+const CHATBOT_API_BASE = String(
+  import.meta.env.VITE_CHATBOT_API_URL || "https://cross-platform-chatbot.ai.vyoma.org"
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+// localhost is not on the API's allowlist, so development goes through the Vite proxy
+const CHAT_ENDPOINT = import.meta.env.DEV ? "/chatbot-api/v1/chat" : `${CHATBOT_API_BASE}/v1/chat`;
 
 // The widget is shown in local development, and on a deployed site only when
-// VITE_CHATBOT_ENABLED is "true" (so customers never see the sample replies).
+// VITE_CHATBOT_ENABLED is "true".
 export const isChatbotEnabled =
   Boolean(import.meta.env.DEV) || String(import.meta.env.VITE_CHATBOT_ENABLED || "") === "true";
-
-export const isChatbotConnected = Boolean(CHATBOT_API_URL);
 
 export const CHATBOT_STARTER_REPLIES = [
   "Track my order",
@@ -23,87 +24,39 @@ export const CHATBOT_STARTER_REPLIES = [
   "Help me choose a book"
 ];
 
-const SAMPLE_REPLIES = [
-  {
-    match: /track|order status|where is my order|delivery status/i,
-    text: "You can see the status and tracking details of every order on your Orders page. If you checked out as a guest, use the link in your order confirmation email.",
-    links: [{ label: "Go to My Orders", to: "/my-orders" }]
-  },
-  {
-    match: /ship|deliver|refund|return|cancel/i,
-    text: "Delivery charges and times depend on your PIN code and are shown at checkout. Our Shipping & Refund Policy has the full details on returns and refunds.",
-    links: [{ label: "Shipping & Refund Policy", to: "/shipping-refund-policy" }]
-  },
-  {
-    match: /digital|library|download|web version|access|e-?book|kindle/i,
-    text: "Web versions and other on-site digital products appear in My Digital Library once your payment is confirmed. Kindle editions are delivered through Amazon.",
-    links: [{ label: "Open My Digital Library", to: "/my-library" }]
-  },
-  {
-    match: /choose|recommend|suggest|beginner|learn|book/i,
-    text: "Happy to help! Browse the full collection, or tell me a little about your level (beginner, intermediate or advanced) and what you'd like to learn.",
-    links: [{ label: "Browse the collection", to: "/collection" }],
-    quickReplies: ["I'm a beginner", "For my child", "Scripture study"]
-  },
-  {
-    match: /human|agent|person|support|call|whatsapp|talk/i,
-    text: "You can reach our Customer Seva Team on WhatsApp or by phone, 10 AM to 7 PM India time, Monday to Saturday.",
-    links: [{ label: "Contact Us", to: "/contact" }]
-  }
-];
-
-const FALLBACK_REPLY = {
-  text: "I'm still learning, so I may not have the answer to that yet. Our FAQ covers most questions, or you can contact our Customer Seva Team.",
-  links: [
-    { label: "Read the FAQ", to: "/faq" },
-    { label: "Contact Us", to: "/contact" }
-  ]
-};
-
-function sampleReply(text) {
-  const found = SAMPLE_REPLIES.find((reply) => reply.match.test(text)) || FALLBACK_REPLY;
-  return {
-    text: found.text,
-    links: found.links || [],
-    quickReplies: found.quickReplies || []
-  };
-}
+let retryAllowedAt = 0;
+let lastBusyMessage = "";
 
 /**
- * Sends the conversation to the chatbot and returns its reply.
+ * Sends the conversation's latest question and returns the reply. Questions about
+ * orders, accounts, payments or passwords are answered locally and never leave the site.
+ * A failed request throws an Error whose message is safe to show to the visitor.
  *
- * @param {Array<{role: "user" | "bot", text: string}>} messages Conversation so far, oldest first.
- * @param {{token?: string, pagePath?: string}} [options]
- * @returns {Promise<{text: string, links: Array<{label: string, to: string}>, quickReplies: string[]}>}
- *
- * Expected API contract once connected:
- *   POST VITE_CHATBOT_API_URL  { messages, pagePath }
- *   -> { reply: string, links?: [{label, to}], quickReplies?: string[] }
+ * @param {Array<{id: string, role: "user" | "bot", text: string}>} messages Oldest first, ending with the question.
+ * @param {string} sessionId Anonymous random ID for this browser tab.
+ * @returns {Promise<{text: string, links: Array<{label: string, to: string}>, quickReplies: string[], isLocal?: boolean}>}
  */
-export async function sendChatMessage(messages, { token, pagePath } = {}) {
-  const lastUserText = [...messages].reverse().find((m) => m.role === "user")?.text || "";
+export async function sendChatMessage(messages, sessionId) {
+  const localReply = getPrivateTopicReply(messages[messages.length - 1]?.text);
+  if (localReply) return { ...localReply, isLocal: true };
 
-  if (!isChatbotConnected) {
-    // Short pause so the typing indicator is visible while testing the layout
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    return sampleReply(lastUserText);
-  }
+  if (Date.now() < retryAllowedAt) throw new Error(lastBusyMessage);
 
-  const res = await axios.post(
-    CHATBOT_API_URL,
-    {
-      messages: messages.map(({ role, text }) => ({ role, text })),
-      pagePath
-    },
-    {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      timeout: 30000
+  try {
+    const res = await axios.post(CHAT_ENDPOINT, buildChatRequest(messages, sessionId), {
+      baseURL: "", // Not the site's own API, which axios.defaults points at
+      headers: { "Content-Type": "application/json" },
+      timeout: 45000
+    });
+    return parseChatReply(res.data);
+  } catch (err) {
+    const status = err?.response?.status;
+    const message = getChatErrorMessage(status, err?.response?.data?.detail);
+    const retryAfterSeconds = Number(err?.response?.headers?.["retry-after"]);
+    if (status === 429 && retryAfterSeconds > 0) {
+      retryAllowedAt = Date.now() + retryAfterSeconds * 1000;
+      lastBusyMessage = message;
     }
-  );
-
-  return {
-    text: String(res.data?.reply || "").trim() || FALLBACK_REPLY.text,
-    links: Array.isArray(res.data?.links) ? res.data.links : [],
-    quickReplies: Array.isArray(res.data?.quickReplies) ? res.data.quickReplies : []
-  };
+    throw new Error(message);
+  }
 }

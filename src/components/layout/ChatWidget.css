@@ -383,6 +383,31 @@
   white-space: pre-wrap;
 }
 
+.chat-bubble p + p,
+.chat-bubble p + ul,
+.chat-bubble p + ol,
+.chat-bubble ul + p,
+.chat-bubble ol + p {
+  margin-top: 8px;
+}
+
+.chat-bubble ul,
+.chat-bubble ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.chat-bubble li + li {
+  margin-top: 4px;
+}
+
+.chat-bubble p a,
+.chat-bubble li a {
+  color: var(--chat-brand);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .chat-message-bot .chat-bubble {
   background: var(--chat-surface);
   color: var(--chat-text);
