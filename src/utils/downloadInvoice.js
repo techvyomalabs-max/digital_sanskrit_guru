@@ -42,3 +42,23 @@ export function downloadInvoice(orderId, token) {
       throw new Error(err.message === "Unable to download right now." ? "Unable to download the invoice right now." : err.message);
     });
 }
+
+/**
+ * Refunds on an order that have a GST credit note, oldest first, each with the position (n)
+ * the server uses for its download. Same order as backend creditNoteRefunds().
+ */
+export function creditNoteList(order) {
+  const refunds = Array.isArray(order?.paymentMeta?.refunds) ? order.paymentMeta.refunds : [];
+  return refunds
+    .filter((r) => r && r.creditNoteNumber)
+    .sort((a, b) => new Date(a.creditNoteIssuedAt || a.at || 0) - new Date(b.creditNoteIssuedAt || b.at || 0))
+    .map((r, i) => ({ ...r, n: i + 1 }));
+}
+
+/** The GST credit note PDF for the order's n-th refund. */
+export function downloadCreditNote(orderId, n, token) {
+  return downloadFromApi(`/api/orders/${orderId}/credit-notes/${n}`, token, `credit-note-${n}.pdf`)
+    .catch((err) => {
+      throw new Error(err.message === "Unable to download right now." ? "Unable to download the credit note right now." : err.message);
+    });
+}

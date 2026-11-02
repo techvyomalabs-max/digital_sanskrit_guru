@@ -48,7 +48,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
-import { downloadInvoice } from "../utils/downloadInvoice";
+import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
 
 const CANCELLATION_REASONS = [
   "Ordered by mistake",
@@ -654,6 +654,18 @@ function MyOrders() {
 
     try {
       await downloadInvoice(order._id, token);
+    } catch (err) {
+      setPageMessage(err.message);
+    } finally {
+      setGeneratingInvoiceOrderId("");
+    }
+  };
+
+  const getCreditNote = async (order, n) => {
+    setGeneratingInvoiceOrderId(`${order._id}:${n}`);
+    setPageMessage("");
+    try {
+      await downloadCreditNote(order._id, n, token);
     } catch (err) {
       setPageMessage(err.message);
     } finally {
@@ -1427,6 +1439,20 @@ function MyOrders() {
                       ? "Download invoice"
                       : "Invoice after payment"}
                   </button>
+
+                  {canDownloadInvoice &&
+                    creditNoteList(order).map((note) => (
+                      <button
+                        key={note.creditNoteNumber}
+                        type="button"
+                        className="my-order-invoice-btn"
+                        disabled={generatingInvoiceOrderId === `${order._id}:${note.n}`}
+                        onClick={() => void getCreditNote(order, note.n)}
+                        title={`Credit note ${note.creditNoteNumber} for your refund`}
+                      >
+                        {generatingInvoiceOrderId === `${order._id}:${note.n}` ? "Preparing…" : `Credit note ${note.creditNoteNumber}`}
+                      </button>
+                    ))}
 
                   {order.trackingId && (
                     <button

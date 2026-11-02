@@ -11,7 +11,15 @@ import { isDigitalLikeItem, pendingAccessItems } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import GrantAccessModal from "../components/admin/GrantAccessModal";
 import "./AdminOrderDetails.css";
-import { downloadInvoice } from "../utils/downloadInvoice";
+import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
+
+const PAYMENT_SOURCES = {
+  checkout: "Checkout",
+  "customer-payment": "Customer paid (retry)",
+  "customer-update": "Customer",
+  "manual-override": "Marked by admin",
+  update: "Updated"
+};
 
 function AdminOrderDetails() {
   const { id } = useParams();
@@ -177,6 +185,21 @@ function AdminOrderDetails() {
   const displayPaymentStatus = String(order?.paymentStatus || "").trim() || "Pending";
   const displayOrderStatus = String(order?.status || "").trim() || "Pending";
   const displayRefundStatus = String(order?.refundStatus || "Not Applicable").trim() || "Not Applicable";
+
+  const [downloadingCreditNote, setDownloadingCreditNote] = useState("");
+  const handleCreditNote = async (number) => {
+    const note = creditNoteList(order).find((c) => c.creditNoteNumber === number);
+    if (!note) return;
+    setDownloadingCreditNote(number);
+    setPageMessage("");
+    try {
+      await downloadCreditNote(order._id, note.n, token);
+    } catch (err) {
+      setPageMessage(err.message);
+    } finally {
+      setDownloadingCreditNote("");
+    }
+  };
 
   const generateInvoice = async () => {
     if (!order) return;
@@ -410,6 +433,27 @@ function AdminOrderDetails() {
                   </div>
                 )}
 
+                {Array.isArray(order?.paymentHistory) && order.paymentHistory.length > 0 && (
+                  <div className="admin-payment-history">
+                    <h3>Payment history</h3>
+                    <ol>
+                      {order.paymentHistory.map((h, idx) => (
+                        <li key={`${h.at}-${idx}`}>
+                          <span className="admin-payment-history-change">
+                            {h.from ? `${h.from} → ${h.to}` : h.to}
+                          </span>
+                          <span className="admin-payment-history-meta">
+                            {h.at ? formatDateTime(h.at) : "—"} · {PAYMENT_SOURCES[h.source] || h.source || "—"}
+                            {h.by ? ` · ${h.by}` : ""}
+                            {h.reference ? ` · ${h.reference}` : ""}
+                          </span>
+                          {h.note ? <span className="admin-payment-history-note">"{h.note}"</span> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
                 {Array.isArray(order?.paymentMeta?.refunds) && order.paymentMeta.refunds.length > 0 && (
                   <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
                     <h3 style={{ margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
@@ -417,7 +461,7 @@ function AdminOrderDetails() {
                     </h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {order.paymentMeta.refunds.map((rf, idx) => (
-                        <div key={rf.refundId || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                        <div key={rf.refundId || rf.creditNoteNumber || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
                             <span>₹{((Number(rf.amountMinor) || 0) / 100).toFixed(2)}</span>
                             <span style={{ textTransform: "capitalize", color: rf.method === "manual" ? "#b45309" : "#4f46e5" }}>
@@ -429,6 +473,19 @@ function AdminOrderDetails() {
                             <span>{rf.reference ? `Ref: ${rf.reference}` : ""}</span>
                           </div>
                           {rf.reason ? <div style={{ color: "#475569", marginTop: "4px", fontSize: "11.5px", fontStyle: "italic" }}>"{rf.reason}"</div> : null}
+                          {rf.creditNoteNumber ? (
+                            <div className="admin-credit-note-row">
+                              <span>Credit note <strong>{rf.creditNoteNumber}</strong></span>
+                              <button
+                                type="button"
+                                className="admin-credit-note-btn"
+                                disabled={downloadingCreditNote === rf.creditNoteNumber}
+                                onClick={() => void handleCreditNote(rf.creditNoteNumber)}
+                              >
+                                {downloadingCreditNote === rf.creditNoteNumber ? "Preparing…" : "Download PDF"}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>

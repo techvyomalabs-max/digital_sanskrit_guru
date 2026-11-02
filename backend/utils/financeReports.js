@@ -201,7 +201,8 @@ function creditNotes(order, settings, period) {
       cgst: sum("cgst"),
       sgst: sum("sgst"),
       igst: sum("igst"),
-      deliveryShare: roundMoney(a.delivery * ratio)
+      // The rest of the refund after the items (as on the credit note PDF)
+      deliveryShare: Math.max(0, roundMoney(cn.refundInr - sum("taxable") - sum("cgst") - sum("sgst") - sum("igst")))
     };
   });
 }

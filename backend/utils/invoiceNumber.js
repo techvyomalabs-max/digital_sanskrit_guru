@@ -31,4 +31,26 @@ function formatInvoiceNumber(date, sequence) {
   return `${PREFIX}/${financialYearOf(date).label}/${String(seq).padStart(4, "0")}`;
 }
 
-module.exports = { financialYearOf, invoiceCounterId, formatInvoiceNumber };
+/**
+ * Credit notes (refunds) have their own series, also restarting every 1 April:
+ *   CN/2026-27/0001
+ * GST allows at most 16 characters, so "DSG/CN/2026-27/0001" (19) is too long; this is 15.
+ */
+const CREDIT_NOTE_PREFIX = "CN";
+
+function creditNoteCounterId(date = new Date()) {
+  return `creditNote-${financialYearOf(date).label}`;
+}
+
+function formatCreditNoteNumber(date, sequence) {
+  const seq = Math.max(1, Math.floor(Number(sequence) || 1));
+  return `${CREDIT_NOTE_PREFIX}/${financialYearOf(date).label}/${String(seq).padStart(4, "0")}`;
+}
+
+module.exports = {
+  financialYearOf,
+  invoiceCounterId,
+  formatInvoiceNumber,
+  creditNoteCounterId,
+  formatCreditNoteNumber
+};

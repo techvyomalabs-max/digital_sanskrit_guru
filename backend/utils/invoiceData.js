@@ -250,4 +250,76 @@ function pickFilled(obj = {}) {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => text(v)));
 }
 
-module.exports = { buildInvoice, amountInWords, integerToWords, placeOfSupply };
+/** Refunds on the order that have a credit note, oldest first. */
+function creditNoteRefunds(order) {
+  const refunds = Array.isArray(order?.paymentMeta?.refunds) ? order.paymentMeta.refunds : [];
+  return refunds
+    .filter((r) => r && r.creditNoteNumber)
+    .sort((a, b) => new Date(a.creditNoteIssuedAt || a.at || 0) - new Date(b.creditNoteIssuedAt || b.at || 0));
+}
+
+/**
+ * A GST credit note for one refund, in the same shape as the invoice so it prints the same way.
+ * The refund (recorded in INR) is spread over the invoice lines in proportion to each line's
+ * amount, so every GST rate and HSN/SAC is reduced by its own share; delivery takes the rest.
+ * Amounts are in the invoice's currency.
+ */
+function buildCreditNote(order, refund, options = {}) {
+  const inv = buildInvoice(order, options);
+  const totalInr = Number(order?.totalInInr) > 0 ? Number(order.totalInInr) : inv.totals.grandTotal;
+  const refundInr = roundMoney((Number(refund?.amountMinor) || 0) / 100);
+  const ratio = totalInr > 0 ? Math.min(1, Math.max(0, refundInr / totalInr)) : 0;
+  const refundAmount = roundMoney(inv.totals.grandTotal * ratio);
+
+  const scale = (v) => roundMoney((Number(v) || 0) * ratio);
+  const lines = inv.lines.map((l) => {
+    const taxable = scale(l.taxable);
+    const tax = scale(l.tax);
+    const cgst = inv.isLocal ? roundMoney(tax / 2) : 0;
+    const sgst = inv.isLocal ? roundMoney(tax - cgst) : 0;
+    return { ...l, gross: roundMoney(taxable + tax), discount: 0, taxable, cgst, sgst, igst: inv.isLocal ? 0 : tax, tax, total: roundMoney(taxable + tax) };
+  });
+
+  const sum = (key) => roundMoney(lines.reduce((a, l) => a + l[key], 0));
+  const taxable = sum("taxable");
+  const tax = sum("tax");
+  // Whatever is left of the refund after the items is the delivery share (never below zero)
+  const deliveryCharge = Math.max(0, roundMoney(refundAmount - taxable - tax));
+  const totals = {
+    gross: roundMoney(taxable + tax),
+    discount: 0,
+    taxable,
+    cgst: sum("cgst"),
+    sgst: sum("sgst"),
+    igst: sum("igst"),
+    tax,
+    deliveryCharge
+  };
+  totals.grandTotal = roundMoney(taxable + tax + deliveryCharge);
+
+  const byRate = new Map();
+  for (const l of lines) {
+    const row = byRate.get(l.rate) || { rate: l.rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
+    for (const k of ["taxable", "cgst", "sgst", "igst", "tax"]) row[k] = roundMoney(row[k] + l[k]);
+    byRate.set(l.rate, row);
+  }
+
+  return {
+    ...inv,
+    lines,
+    rates: [...byRate.values()].sort((a, b) => a.rate - b.rate),
+    totals,
+    amountInWords: amountInWords(totals.grandTotal, inv.currency),
+    creditNote: {
+      number: text(refund?.creditNoteNumber),
+      date: refund?.creditNoteIssuedAt || refund?.at || null,
+      refundInr,
+      isFull: ratio >= 0.9999,
+      reason: text(refund?.reason) || "Refund",
+      method: text(refund?.method) === "razorpay" ? "Razorpay refund" : "Refunded outside Razorpay",
+      reference: text(refund?.refundId || (refund?.reference !== "manual" ? refund?.reference : ""))
+    }
+  };
+}
+
+module.exports = { buildInvoice, buildCreditNote, creditNoteRefunds, amountInWords, integerToWords, placeOfSupply };
