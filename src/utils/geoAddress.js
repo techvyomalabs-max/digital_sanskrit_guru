@@ -1,12 +1,14 @@
+import { apiBaseUrl } from "../lib/api";
+
 export async function reverseGeocodeCoordinates(latitude, longitude) {
-  const googleKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const radarKey = import.meta.env.VITE_RADAR_PUBLISHABLE_KEY;
 
-  if (googleKey) {
+  // Google, through our server (Google refuses website-restricted keys for this service,
+  // so the key stays on the server). If the server has no key, it answers 503 and we fall back.
+  {
     try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleKey}`
-      );
+      const params = new URLSearchParams({ lat: String(latitude), lng: String(longitude) });
+      const response = await fetch(`${apiBaseUrl || ""}/api/maps/geocode?${params.toString()}`);
 
       if (response.ok) {
         const data = await response.json();

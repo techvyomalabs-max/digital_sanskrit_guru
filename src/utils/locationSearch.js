@@ -1,3 +1,5 @@
+import { apiBaseUrl } from "../lib/api";
+
 function pickFirstAddressValue(address, keys) {
   for (const key of keys) {
     const value = String(address?.[key] || "").trim();
@@ -47,11 +49,11 @@ export async function searchAddressSuggestions(query, signal) {
     return [];
   }
 
-  const googleKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  if (googleKey) {
+  // Google, through our server (the key stays on the server); falls back to OpenStreetMap
+  {
     try {
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleanQuery)}&key=${googleKey}`,
+        `${apiBaseUrl || ""}/api/maps/geocode?${new URLSearchParams({ q: cleanQuery }).toString()}`,
         { signal }
       );
 
