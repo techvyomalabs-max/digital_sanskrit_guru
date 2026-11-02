@@ -72,7 +72,8 @@ const {
 } = require("../utils/accessFulfilment");
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { billingGstFields } = require("../utils/gstin");
-const { generateInvoicePdfBuffer } = require("../utils/invoicePdfGenerator");
+const { generateInvoicePdfBuffer, generateCreditNotePdfBuffer } = require("../utils/invoicePdfGenerator");
+const { creditNoteRefunds } = require("../utils/invoiceData");
 const { REPORTS, buildFinanceReport, toCsv } = require("../utils/financeReports");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
@@ -1727,8 +1728,12 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     }
   }
 
-  if (isOwner && (order.paymentStatus === "Paid" || order.paymentStatus === "Refunded")) {
-    return res.status(400).json({ message: "Paid orders cannot have their payment status modified." });
+  // Once paid, the payment status is locked for everyone (an invoice has been issued).
+  // Money is given back with a refund, which gets its own credit note.
+  if (order.paymentStatus === "Paid" || order.paymentStatus === "Refunded") {
+    return res.status(409).json({
+      message: "This order is already paid, so its payment status can't be changed. To give the money back, issue a refund."
+    });
   }
 
   let manualReason = "";
@@ -1783,6 +1788,10 @@ router.put("/:id/payment-status", protect, async (req, res) => {
 
   const previousPaymentStatus = order.paymentStatus;
   order.paymentStatus = rawPaymentStatus;
+  // Recorded in the order's payment history
+  order.$locals.paymentChange = isOwner
+    ? { by: "customer", source: rawPaymentStatus === "Paid" ? "customer-payment" : "customer-update", reference: razorpayPaymentId }
+    : { by: adminEmail || String(req.user), source: "manual-override", reference: manualPaymentReference, note: manualReason };
   if (rawPaymentStatus === "Paid") {
     order.paymentMeta = {
       ...(order.paymentMeta || {}),
@@ -2722,49 +2731,84 @@ router.get("/:id/tracking", protect, async (req, res) => {
   }
 });
 
+// The order for an invoice or credit note download, when the viewer may see it:
+// the customer who placed it, or an admin with the Orders page. Sends the error itself otherwise.
+async function loadOrderForDocument(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(400).json({ message: "Invalid order id" });
+    return null;
+  }
+  const order = await Order.findById(req.params.id).lean();
+  if (!order) {
+    res.status(404).json({ message: "Order not found" });
+    return null;
+  }
+  const isOwner = String(order.user) === String(req.user);
+  if (!isOwner) {
+    const viewer = await User.findById(req.user).select("isAdmin adminLevel allowedPages").lean();
+    const pages = Array.isArray(viewer?.allowedPages) ? viewer.allowedPages : [];
+    const canSeeOrders = Boolean(viewer?.isAdmin) && (Number(viewer.adminLevel) === 1 || pages.includes("orders"));
+    if (!canSeeOrders) {
+      res.status(404).json({ message: "Order not found" });
+      return null;
+    }
+  }
+  const user = await User.findById(order.user).select("name email").lean();
+  let seller = null;
+  if (!String(order?.sellerDetails?.gstin || "").trim()) {
+    const settings = await StoreSettings.findOne().select("businessDetails").lean();
+    seller = settings?.businessDetails || null;
+  }
+  return { order, isOwner, user, seller };
+}
+
+function sendPdf(res, pdf, number) {
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${String(number).replace(/[^A-Za-z0-9-]+/g, "-")}.pdf"`,
+    "Content-Length": pdf.length,
+    "Cache-Control": "private, no-store"
+  });
+  return res.send(pdf);
+}
+
 // GET /api/orders/:id/invoice — the GST tax invoice PDF (the same one that is emailed).
 // The customer who placed the order, once it is paid; or an admin with the Orders page
 // (who gets an "Order summary, not a tax invoice" for unpaid orders).
 router.get("/:id/invoice", protect, async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid order id" });
-    }
-    const order = await Order.findById(req.params.id).lean();
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    const isOwner = String(order.user) === String(req.user);
-    if (!isOwner) {
-      const viewer = await User.findById(req.user).select("isAdmin adminLevel allowedPages").lean();
-      const pages = Array.isArray(viewer?.allowedPages) ? viewer.allowedPages : [];
-      const canSeeOrders = Boolean(viewer?.isAdmin) && (Number(viewer.adminLevel) === 1 || pages.includes("orders"));
-      if (!canSeeOrders) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-    } else if (!order.invoiceNumber || !["Paid", "Refunded"].includes(order.paymentStatus)) {
+    const found = await loadOrderForDocument(req, res);
+    if (!found) return undefined;
+    const { order, isOwner, user, seller } = found;
+    if (isOwner && (!order.invoiceNumber || !["Paid", "Refunded"].includes(order.paymentStatus))) {
       return res.status(409).json({ message: "The invoice is available once the payment is received." });
     }
-
-    const user = await User.findById(order.user).select("name email").lean();
-    let seller = null;
-    if (!String(order?.sellerDetails?.gstin || "").trim()) {
-      const settings = await StoreSettings.findOne().select("businessDetails").lean();
-      seller = settings?.businessDetails || null;
-    }
     const pdf = await generateInvoicePdfBuffer(order, user, seller);
-    const name = String(order.invoiceNumber || `order-${String(order._id).slice(-8).toUpperCase()}`).replace(/[^A-Za-z0-9-]+/g, "-");
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${name}.pdf"`,
-      "Content-Length": pdf.length,
-      "Cache-Control": "private, no-store"
-    });
-    return res.send(pdf);
+    return sendPdf(res, pdf, order.invoiceNumber || `order-${String(order._id).slice(-8).toUpperCase()}`);
   } catch (err) {
     console.error("[OrderRoutes] Invoice PDF failed:", err.message);
     return res.status(500).json({ message: "Unable to create the invoice right now." });
+  }
+});
+
+// GET /api/orders/:id/credit-notes/:n — the GST credit note PDF for the order's n-th refund
+// (1 = first). Same viewers as the invoice.
+router.get("/:id/credit-notes/:n", protect, async (req, res) => {
+  try {
+    const found = await loadOrderForDocument(req, res);
+    if (!found) return undefined;
+    const { order, user, seller } = found;
+    const notes = creditNoteRefunds(order);
+    const n = Number(req.params.n);
+    const refund = Number.isInteger(n) && n >= 1 ? notes[n - 1] : null;
+    if (!refund) {
+      return res.status(404).json({ message: "Credit note not found" });
+    }
+    const pdf = await generateCreditNotePdfBuffer(order, refund, user, seller);
+    return sendPdf(res, pdf, refund.creditNoteNumber);
+  } catch (err) {
+    console.error("[OrderRoutes] Credit note PDF failed:", err.message);
+    return res.status(500).json({ message: "Unable to create the credit note right now." });
   }
 });
 

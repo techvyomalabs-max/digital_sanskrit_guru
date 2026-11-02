@@ -6,7 +6,7 @@
  */
 
 const PDFDocument = require("pdfkit");
-const { buildInvoice } = require("./invoiceData");
+const { buildInvoice, buildCreditNote } = require("./invoiceData");
 
 // The built-in PDF fonts only have Latin-1 characters, so Sanskrit transliteration marks
 // (ā, ś, ṇ …) are written as plain letters.
@@ -59,7 +59,8 @@ const PAGE = { left: 40, right: 555, width: 515, bottom: 790 };
 /** Renders an invoice model (from buildInvoice) into a PDF Buffer. */
 function renderInvoicePdf(inv) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 40, size: "A4", info: { Title: `Tax Invoice ${inv.invoiceNumber || inv.orderRef}`, Author: inv.seller.legalName } });
+    const title = inv.creditNote ? `Credit Note ${inv.creditNote.number}` : `Tax Invoice ${inv.invoiceNumber || inv.orderRef}`;
+    const doc = new PDFDocument({ margin: 40, size: "A4", info: { Title: title, Author: inv.seller.legalName } });
     const chunks = [];
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -76,7 +77,8 @@ function renderInvoicePdf(inv) {
 
 function draw(doc, inv) {
   const cur = inv.currency;
-  const isInvoice = inv.isPaid && Boolean(inv.invoiceNumber);
+  const cn = inv.creditNote || null;
+  const isInvoice = !cn && inv.isPaid && Boolean(inv.invoiceNumber);
   const { left, right, width } = PAGE;
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -107,8 +109,10 @@ function draw(doc, inv) {
   const rx = 355;
   const rw = right - rx;
   doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(15)
-    .text(isInvoice ? "TAX INVOICE" : "ORDER SUMMARY", rx, 26, { width: rw, align: "right" });
-  if (!isInvoice) {
+    .text(cn ? "CREDIT NOTE" : isInvoice ? "TAX INVOICE" : "ORDER SUMMARY", rx, 26, { width: rw, align: "right" });
+  if (cn) {
+    doc.fillColor(C.muted).font("Helvetica").fontSize(7.5).text("Issued for a refund (GST credit note)", rx, doc.y, { width: rw, align: "right" });
+  } else if (!isInvoice) {
     doc.fillColor(C.accent).font("Helvetica-Bold").fontSize(7.5).text("Not a tax invoice: payment not received", rx, doc.y, { width: rw, align: "right" });
   } else {
     doc.fillColor(C.muted).font("Helvetica").fontSize(7.5).text("Original for recipient", rx, doc.y, { width: rw, align: "right" });
@@ -119,7 +123,12 @@ function draw(doc, inv) {
     doc.font("Helvetica-Bold").fillColor(C.ink).text(plain(value), rx + 95, fy, { width: rw - 95, align: "right" });
     fy = Math.max(doc.y, fy + 10) + 1;
   };
-  if (isInvoice) {
+  if (cn) {
+    fact("Credit note no.", cn.number);
+    fact("Credit note date", dateText(cn.date));
+    fact("Against invoice", inv.invoiceNumber || "-");
+    fact("Invoice date", dateText(inv.invoiceDate));
+  } else if (isInvoice) {
     fact("Invoice no.", inv.invoiceNumber);
     fact("Invoice date", dateText(inv.invoiceDate));
   }
@@ -228,7 +237,9 @@ function draw(doc, inv) {
     doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
   });
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
-    .text(`Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.`, left, y + 4, { width });
+    .text(cn
+      ? `Amounts in ${cur}. Each line shows the refunded share of what was invoiced${cn.isFull ? " (the full amount)" : ""}; price and quantity are as invoiced.`
+      : `Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.`, left, y + 4, { width });
   y = doc.y + 12;
 
   // ── Tax by rate (left) and totals (right) ────────────────────────────────
@@ -296,11 +307,15 @@ function draw(doc, inv) {
   } else {
     totalRow("IGST", money(t.igst, cur));
   }
-  totalRow("Delivery charges", t.deliveryCharge > 0 ? money(t.deliveryCharge, cur) : "Free");
+  if (cn) {
+    if (t.deliveryCharge > 0) totalRow("Delivery charges", money(t.deliveryCharge, cur));
+  } else {
+    totalRow("Delivery charges", t.deliveryCharge > 0 ? money(t.deliveryCharge, cur) : "Free");
+  }
   by += 2;
   doc.moveTo(bx, by).lineTo(right, by).strokeColor(C.ink).lineWidth(0.8).stroke();
   by += 6;
-  totalRow(inv.isPaid ? "Total paid" : "Total", money(t.grandTotal, cur), true);
+  totalRow(cn ? "Total refunded" : inv.isPaid ? "Total paid" : "Total", money(t.grandTotal, cur), true);
 
   y = Math.max(leftBottom, by) + 10;
   doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(7.5).text("AMOUNT IN WORDS", left, y, { characterSpacing: 0.6 });
@@ -309,9 +324,14 @@ function draw(doc, inv) {
 
   // ── Payment and signature ────────────────────────────────────────────────
   ensure(70);
-  doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(7.5).text("PAYMENT", left, y, { characterSpacing: 0.6 });
+  doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(7.5).text(cn ? "REFUND" : "PAYMENT", left, y, { characterSpacing: 0.6 });
   doc.fillColor(C.body).font("Helvetica").fontSize(8);
-  const payLines = [
+  const payLines = cn ? [
+    `Reason: ${cn.reason}`,
+    `Method: ${cn.method}`,
+    cn.reference ? `Reference: ${cn.reference}` : "",
+    inv.paymentRef ? `Original payment: ${inv.paymentRef}` : ""
+  ].filter(Boolean) : [
     `Status: ${inv.paymentStatus}${inv.paymentStatus === "Refunded" ? " (see credit note)" : ""}`,
     `Method: ${inv.paymentMethod}`,
     inv.paymentRef ? `Reference: ${inv.paymentRef}` : ""
@@ -329,7 +349,7 @@ function draw(doc, inv) {
   y = Math.max(py, y + 42) + 14;
   doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
-    .text("This is a computer-generated invoice and does not need a physical signature.", left, y + 6, { width, align: "center" });
+    .text(`This is a computer-generated ${cn ? "credit note" : "invoice"} and does not need a physical signature.`, left, y + 6, { width, align: "center" });
 
   doc.rect(0, 836, 595.28, 6).fill(C.head);
 }
@@ -342,4 +362,9 @@ function generateInvoicePdfBuffer(order, user = null, seller = null) {
   return renderInvoicePdf(buildInvoice(order, { user, seller }));
 }
 
-module.exports = { generateInvoicePdfBuffer, renderInvoicePdf };
+/** The GST credit note PDF for one refund on the order. */
+function generateCreditNotePdfBuffer(order, refund, user = null, seller = null) {
+  return renderInvoicePdf(buildCreditNote(order, refund, { user, seller }));
+}
+
+module.exports = { generateInvoicePdfBuffer, generateCreditNotePdfBuffer, renderInvoicePdf };

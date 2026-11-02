@@ -290,6 +290,7 @@ function buildCreditNoteRows(order, invoiceRow, { from, to } = {}) {
         orderId: String(order?._id || invoiceRow?.orderId || ""),
         invoiceNumber: invoiceRow?.invoiceNumber || "",
         refundDate,
+        creditNoteNumber: String(entry?.creditNoteNumber || ""),
         refundId: String(entry?.refundId || entry?.reference || ""),
         method: String(entry?.method || "manual"),
         reason: String(entry?.reason || ""),
