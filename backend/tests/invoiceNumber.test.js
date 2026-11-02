@@ -47,13 +47,30 @@ describe("Order invoice number on save", () => {
       seen.push(filter._id);
       return Promise.resolve({ _id: filter._id, seq: 7 });
     });
-    const order = new Order({ items: [], total: 100 });
+    const order = new Order({ items: [], total: 100, paymentStatus: "Paid" });
     await Order.schema.s.hooks.execPre("save", order, []);
     assert.match(order.invoiceNumber, /^DSG\/\d{4}-\d{2}\/0007$/);
+    assert.ok(order.invoiceIssuedAt instanceof Date);
     assert.equal(seen[0], `orderInvoice-${financialYearOf(new Date()).label}`);
 
+    // Unpaid or failed checkouts never take a number, so paid invoices run without gaps
+    for (const paymentStatus of ["Pending", "Failed"]) {
+      const unpaid = new Order({ items: [], total: 100, paymentStatus });
+      await Order.schema.s.hooks.execPre("save", unpaid, []);
+      assert.equal(unpaid.invoiceNumber, undefined);
+      assert.equal(unpaid.invoiceIssuedAt, null);
+    }
+    assert.equal(seen.length, 1, "the counter is only used for the paid order");
+
+    // An order marked paid later gets its number then
+    const later = new Order({ items: [], total: 100, paymentStatus: "Pending" });
+    await Order.schema.s.hooks.execPre("save", later, []);
+    later.paymentStatus = "Paid";
+    await Order.schema.s.hooks.execPre("save", later, []);
+    assert.match(later.invoiceNumber, /^DSG\/\d{4}-\d{2}\/0007$/);
+
     // An order that already has a number keeps it
-    const old = new Order({ items: [], total: 100, invoiceNumber: "DSG-2026-0412" });
+    const old = new Order({ items: [], total: 100, paymentStatus: "Paid", invoiceNumber: "DSG-2026-0412" });
     await Order.schema.s.hooks.execPre("save", old, []);
     assert.equal(old.invoiceNumber, "DSG-2026-0412");
     mock.restoreAll();
@@ -83,5 +100,19 @@ describe("Finance dashboard financial-year periods (frontend helper)", () => {
     assert.deepEqual(fy.recentFinancialYears("2026-11-01", 3), [2026, 2025, 2024]);
     const qs = fy.recentQuarters("2026-11-01", 2).map((q) => q.value);
     assert.deepEqual(qs, ["2026-3", "2026-2", "2026-1", "2025-4", "2025-3", "2025-2", "2025-1"]);
+  });
+});
+
+describe("Finance report invoice date", () => {
+  it("uses the date payment succeeded, and the order date for older orders", () => {
+    const { buildInvoiceRow } = require("../utils/financeLedger");
+    const settings = { warehouseLocation: { state: "Karnataka" } };
+    const paidLater = buildInvoiceRow(
+      { _id: "o1", invoiceNumber: "DSG/2026-27/0003", createdAt: new Date("2026-10-30T10:00:00Z"), invoiceIssuedAt: new Date("2026-11-02T10:00:00Z"), total: 100 },
+      settings
+    );
+    assert.deepEqual(paidLater.invoiceDate, new Date("2026-11-02T10:00:00Z"));
+    const older = buildInvoiceRow({ _id: "o2", invoiceNumber: "DSG-2026-0412", createdAt: new Date("2026-10-30T10:00:00Z"), total: 100 }, settings);
+    assert.deepEqual(older.invoiceDate, new Date("2026-10-30T10:00:00Z"));
   });
 });

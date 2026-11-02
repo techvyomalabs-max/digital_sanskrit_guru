@@ -1098,11 +1098,17 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     const businessState = settings?.businessDetails?.state || settings?.warehouseLocation?.state || "Karnataka";
 
     const fieldsToSelect =
-      "_id invoiceNumber createdAt user shipping billing currencyDisplay total totalInInr fxRateToInr subtotal taxDetails gstAmount deliveryCharge discount refundedAmountInInr refundStatus paymentMeta razorpayPaymentId updatedAt";
+      "_id invoiceNumber invoiceIssuedAt createdAt user shipping billing currencyDisplay total totalInInr fxRateToInr subtotal taxDetails gstAmount deliveryCharge discount refundedAmountInInr refundStatus paymentMeta razorpayPaymentId updatedAt";
 
+    // Invoices belong to the period of their invoice date (when payment succeeded);
+    // older orders without one use the order date.
+    const periodRange = { $gte: fromDate, $lt: toExclusiveDate };
     const invoiceOrders = await Order.find({
       paymentStatus: { $in: ["Paid", "Refunded"] },
-      createdAt: { $gte: fromDate, $lt: toExclusiveDate }
+      $or: [
+        { invoiceIssuedAt: periodRange },
+        { invoiceIssuedAt: null, createdAt: periodRange }
+      ]
     })
       .select(fieldsToSelect)
       .populate("user", "name email")
