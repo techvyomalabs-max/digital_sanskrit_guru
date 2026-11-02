@@ -238,7 +238,9 @@ function draw(doc, inv) {
   });
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
     .text(cn
-      ? `Amounts in ${cur}. Each line shows the refunded share of what was invoiced${cn.isFull ? " (the full amount)" : ""}; price and quantity are as invoiced.`
+      ? cn.itemLevel
+        ? `Amounts in ${cur}. Returned items only, with the refunded share of what was invoiced for them; price and quantity are as invoiced.`
+        : `Amounts in ${cur}. Each line shows the refunded share of what was invoiced${cn.isFull ? " (the full amount)" : ""}; price and quantity are as invoiced.`
       : `Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.`, left, y + 4, { width });
   y = doc.y + 12;
 

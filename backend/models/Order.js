@@ -242,6 +242,8 @@ const orderSchema = new mongoose.Schema(
           // GST credit note for this refund (own series, e.g. CN/2026-27/0001), given when it is recorded
           creditNoteNumber: String,
           creditNoteIssuedAt: Date,
+          // Items returned (order item ids); empty = the whole order
+          itemIds: [String],
           _id: false
         }
       ],

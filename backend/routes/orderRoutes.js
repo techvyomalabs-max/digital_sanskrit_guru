@@ -2054,7 +2054,8 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
         reason: reasonString,
         actor,
         isManualOnly: Boolean(req.body?.manualRefund || req.body?.forceManual),
-        forceManual: Boolean(req.body?.forceManual)
+        forceManual: Boolean(req.body?.forceManual),
+        itemIds
       });
 
       // Post-refund: mark returned items as Refunded and restock if requested
