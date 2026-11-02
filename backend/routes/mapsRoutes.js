@@ -2,6 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { isAllowedGoogleMapsUrl, parseGoogleMapsCoordinates } = require("../utils/mapsLink");
 const { perWorker } = require("../utils/workerCount");
+const { geocode } = require("../utils/googleGeocode");
 
 const router = express.Router();
 
@@ -11,6 +12,26 @@ const mapsRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many map link resolution requests. Please try again later." }
+});
+
+// Address lookup for the address form: the browser asks us, we ask Google with the server's key.
+// GET /api/maps/geocode?lat=12.97&lng=77.59  (current location -> address)
+// GET /api/maps/geocode?q=Jayanagar Bengaluru (typed text -> addresses)
+const geocodeRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: perWorker(60), // 60 lookups per 15 minutes per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many address lookups. Please try again in a few minutes." }
+});
+
+router.get("/geocode", geocodeRateLimiter, async (req, res) => {
+  const result = await geocode({ lat: req.query.lat, lng: req.query.lng, q: req.query.q });
+  if (result.httpStatus) {
+    return res.status(result.httpStatus).json({ message: result.message });
+  }
+  res.set("Cache-Control", "private, max-age=300");
+  return res.json({ status: result.status, results: result.results });
 });
 
 router.post("/resolve-link", mapsRateLimiter, async (req, res) => {
