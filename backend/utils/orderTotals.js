@@ -3,7 +3,7 @@ const { resolveDeliveryCharge, isDigitalItem } = require("./deliveryPricing");
 const { convertCurrencyAmount, normalizeCurrencyRates, resolveItemsCurrency, normalizeCurrencyCode } = require("./currency");
 const { getProductPriceDetails, isInternationalCountry } = require("./productPricing");
 const { normalizeOrderItem } = require("./orderItems");
-const { getItemHsnSac } = require("./tax");
+const { lineCode, lineGstRate, lineTax } = require("./tax");
 const { validateCoupon } = require("./coupons");
 const { getSettlementCharge } = require("./paymentVerification");
 const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
@@ -172,7 +172,7 @@ async function computeOrderTotals({
   const priced = normalizedItems.map((it) => ({
     it,
     gross: roundMoney(it.price * it.quantity),
-    rate: isInternational || getItemHsnSac(it) === "4901" ? 0 : gstPercent
+    rate: lineGstRate(it, { isInternational, storeRate: gstPercent })
   }));
 
   let coupon = { discount: 0, appliedCouponCode: "", eligibleIds: new Set() };
@@ -196,10 +196,13 @@ async function computeOrderTotals({
   const eligible = priced.filter((p) => !coupon.eligibleIds.size || coupon.eligibleIds.has(String(p.it.product)));
   const eligibleGross = eligible.reduce((s, p) => s + p.gross, 0);
 
-  let allocated = 0;
-  let subtotal = 0;
-  let gstAmount = 0;
+  // Place of supply decides CGST+SGST (same state as the business) or IGST (other state)
+  const customerState = String(shipping?.state || "").trim().toLowerCase();
+  const isLocal = !isInternational && customerState === getWarehouseState(settings);
 
+  // Each line keeps its own tax as charged (code, rate, coupon share, taxable value, CGST/SGST/IGST),
+  // so invoices, GST returns and credit notes use what was actually charged, never a recalculation.
+  let allocated = 0;
   priced.forEach((p) => {
     let share = 0;
     if (coupon.discount > 0 && eligible.includes(p) && eligibleGross > 0) {
@@ -209,40 +212,31 @@ async function computeOrderTotals({
           : roundMoney(coupon.discount * (p.gross / eligibleGross));
       allocated = roundMoney(allocated + share);
     }
-    const net = Math.max(0, p.gross - share);
-    const base = roundMoney(net / (1 + p.rate / 100));
-    subtotal += base;
-    gstAmount += roundMoney(net - base);
+    p.it.hsnSac = lineCode(p.it);
+    p.it.tax = lineTax({ gross: p.gross, discount: share, rate: p.rate, isLocal });
   });
 
-  subtotal = roundMoney(subtotal);
-  gstAmount = roundMoney(gstAmount);
+  const sum = (key) => roundMoney(normalizedItems.reduce((acc, it) => acc + (Number(it.tax?.[key]) || 0), 0));
+  const subtotal = sum("taxable");
+  const gstAmount = sum("tax");
   const total = roundMoney(subtotal + gstAmount + deliveryCharge);
 
-  const customerState = String(shipping?.state || "").trim().toLowerCase();
-  const isLocal = !isInternational && customerState === getWarehouseState(settings);
-
-  const taxDetails = isLocal
-    ? {
-        hsnCode: "4901",
-        sacCode: "9984",
-        cgstPercent: gstPercent / 2,
-        sgstPercent: gstPercent / 2,
-        igstPercent: 0,
-        cgstAmount: roundMoney(gstAmount / 2),
-        sgstAmount: roundMoney(gstAmount - roundMoney(gstAmount / 2)),
-        igstAmount: 0
-      }
-    : {
-        hsnCode: "4901",
-        sacCode: "9984",
-        cgstPercent: 0,
-        sgstPercent: 0,
-        igstPercent: gstPercent,
-        cgstAmount: 0,
-        sgstAmount: 0,
-        igstAmount: gstAmount
-      };
+  // Order totals are the sum of the lines (so they always match line by line).
+  // The % fields only describe a single-rate order; mixed rates are listed per line.
+  const lineRates = [...new Set(normalizedItems.map((it) => Number(it.tax?.rate) || 0))];
+  const singleRate = lineRates.length === 1 ? lineRates[0] : null;
+  const taxDetails = {
+    hsnCode: "4901",
+    sacCode: "9984",
+    cgstPercent: isLocal && singleRate !== null ? singleRate / 2 : 0,
+    sgstPercent: isLocal && singleRate !== null ? singleRate / 2 : 0,
+    igstPercent: !isLocal && singleRate !== null ? singleRate : 0,
+    cgstAmount: sum("cgst"),
+    sgstAmount: sum("sgst"),
+    igstAmount: sum("igst"),
+    isLocal,
+    mixedRates: singleRate === null
+  };
 
   const fxRateToInr = orderCurrency === "INR" ? 1 : 1 / (rates[orderCurrency] || 1);
   const settlement = getSettlementCharge({ total, orderCurrency, rates });

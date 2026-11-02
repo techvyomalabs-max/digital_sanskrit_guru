@@ -239,3 +239,34 @@ export function determineIsIntrastate(order, customerState, sellerState) {
 
   return cust.toLowerCase() === effectiveSellerState.toLowerCase();
 }
+
+/** Customer GSTIN typed at checkout, without spaces, upper case. */
+export function cleanGstin(value) {
+  return normalizeGstin(value).replace(/\s+/g, "");
+}
+
+/** "" when a customer's optional GSTIN is fine (or blank), otherwise a message (same as the server). */
+export function gstinError(value) {
+  const gstin = cleanGstin(value);
+  if (!gstin) return "";
+  if (!isValidGstinFormat(gstin) || !stateByCode(gstinStateCode(gstin))) {
+    return "GSTIN should be 15 characters, like 29ABCDE1234F1ZW.";
+  }
+  if (!isValidGstinChecksum(gstin)) return "This GSTIN doesn't look right. Please check it and try again.";
+  return "";
+}
+
+/** The fields to send with billing, or an error message to show before payment. */
+export function gstinPayload(value) {
+  if (!value?.enabled) return { gstin: "", businessName: "" };
+  const gstin = cleanGstin(value.gstin);
+  if (!gstin) return { error: "Please enter your GSTIN, or untick the GST invoice option." };
+  const error = gstinError(gstin);
+  if (error) return { error };
+  const businessName = String(value.businessName || "").trim();
+  if (!businessName) return { error: "Please enter your business name for the GST invoice." };
+  return { gstin, businessName };
+}
+
+/** Checkout state for the optional GSTIN fields. */
+export const EMPTY_GSTIN = { enabled: false, gstin: "", businessName: "" };

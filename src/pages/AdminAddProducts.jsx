@@ -382,6 +382,9 @@ function AdminAddProducts() {
   const [productType, setProductType] = useState("single");
   const [isDigital, setIsDigital] = useState(false);
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
+  // Tax for this product: blank = automatic (printed books 0%, everything else the store GST rate)
+  const [hsnSac, setHsnSac] = useState("");
+  const [gstRate, setGstRate] = useState("");
   const [digitalType, setDigitalType] = useState("Web Version");
   const [digitalDelivery, setDigitalDelivery] = useState("onsite");
   const [externalAccessLink, setExternalAccessLink] = useState("");
@@ -752,6 +755,8 @@ function AdminAddProducts() {
     setProductType("single");
     setIsDigital(false);
     setSkipOwnershipRules(false);
+    setHsnSac("");
+    setGstRate("");
     setDigitalType("Web Version");
     setEditingDigitalTypeName("");
     setNewDigitalType("");
@@ -801,6 +806,8 @@ function AdminAddProducts() {
       productType,
       isDigital,
       skipOwnershipRules,
+      hsnSac,
+      gstRate,
       digitalType,
       digitalDelivery,
       externalAccessLink,
@@ -1760,6 +1767,8 @@ function AdminAddProducts() {
       productType: productType,
       isDigital,
       skipOwnershipRules: productType === "bundle" ? skipOwnershipRules : false,
+      hsnSac: hsnSac.trim(),
+      gstRate: gstRate === "" ? null : Number(gstRate),
       digitalType,
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
       externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
@@ -1896,6 +1905,8 @@ function AdminAddProducts() {
     );
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
+    setHsnSac(String(product.hsnSac || ""));
+    setGstRate(product.gstRate === null || product.gstRate === undefined ? "" : String(product.gstRate));
     setDigitalType(product.digitalType || "Web Version");
     setDigitalDelivery(product.digitalDelivery || "onsite");
     setExternalAccessLink(product.externalAccessLink || "");
@@ -2766,6 +2777,29 @@ function AdminAddProducts() {
                       ) : null}
                     </>
                   
+                  <label className="admin-field">
+                    <span>HSN/SAC code</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={8}
+                      placeholder="Automatic"
+                      value={hsnSac}
+                      onChange={(e) => setHsnSac(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    />
+                    <small>Blank: 4901 for printed books, 9973 for digital, 8523 otherwise.</small>
+                  </label>
+                  <label className="admin-field">
+                    <span>GST rate</span>
+                    <select value={gstRate} onChange={(e) => setGstRate(e.target.value)}>
+                      <option value="">Automatic (store rate; 0% for printed books)</option>
+                      {[0, 5, 12, 18, 28].map((rate) => (
+                        <option key={rate} value={String(rate)}>{rate}%</option>
+                      ))}
+                    </select>
+                    <small>Prices already include this GST.</small>
+                  </label>
+
                   <div className="admin-field admin-field-wide">
                     <span>Select Product Category</span>
                     <div className="admin-category-manager">

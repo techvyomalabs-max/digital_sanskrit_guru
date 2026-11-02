@@ -29,6 +29,7 @@ import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDeliver
 import { isDigitalLikeItem, orderHasPendingAccess } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
+import { downloadInvoice } from "../utils/downloadInvoice";
 
 const Icon = ({ name }) => {
   const paths = {
@@ -671,14 +672,9 @@ function AdminOrders() {
     setPageMessage("");
 
     try {
-      const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      await generateInvoicePdf(order, {
-        customerName: order?.user?.name || order?.shipping?.name || "Customer",
-        customerEmail: order?.user?.email || "N/A",
-        filePrefix: "invoice"
-      });
-    } catch {
-      setPageMessage("Unable to generate invoice right now.");
+      await downloadInvoice(order._id, token);
+    } catch (err) {
+      setPageMessage(err.message);
     } finally {
       setGeneratingInvoiceOrderId("");
     }

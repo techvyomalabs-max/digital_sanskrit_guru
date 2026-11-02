@@ -14,6 +14,7 @@ const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = re
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
+const { normalizeProductTax } = require("../utils/productTax");
 const { categoryKey, isComboCategory } = require("../utils/categoryKey");
 const {
   normalizeOptionsInput,
@@ -429,6 +430,8 @@ const getProductAuditFields = (product = {}) => ({
   trailerVideoUrl: String(product?.trailerVideoUrl || "").trim(),
   isDigital: product?.isDigital === true,
   skipOwnershipRules: product?.skipOwnershipRules === true,
+  hsnSac: String(product?.hsnSac || "").trim(),
+  gstRate: product?.gstRate === null || product?.gstRate === undefined ? null : Number(product.gstRate),
   digitalType: String(product?.digitalType || "").trim(),
   webReaderLink: String(product?.webReaderLink || "").trim(),
   kindleLink: String(product?.kindleLink || "").trim(),
@@ -460,6 +463,8 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   if (String(before.trailerVideoUrl || "") !== String(after.trailerVideoUrl || "")) changes.push("trailer video");
   if (Boolean(before.isDigital) !== Boolean(after.isDigital)) changes.push("digital item status");
   if (Boolean(before.skipOwnershipRules) !== Boolean(after.skipOwnershipRules)) changes.push("ownership rules exemption");
+  if (String(before.hsnSac || "") !== String(after.hsnSac || "")) changes.push("HSN/SAC code");
+  if ((before.gstRate ?? null) !== (after.gstRate ?? null)) changes.push("GST rate");
   if (String(before.kindleLink || "") !== String(after.kindleLink || "")) changes.push("kindle link");
   if (String(before.webReaderLink || "") !== String(after.webReaderLink || "")) changes.push("web reader link");
   if (String(before.courseLink || "") !== String(after.courseLink || "")) changes.push("SFH course link");
@@ -841,8 +846,14 @@ router.post("/", protect, admin, (req, res, next) => {
     if (!deliveryValidation.isValid) {
       return res.status(400).json({ message: deliveryValidation.error });
     }
+    const productTax = normalizeProductTax({ hsnSac: b.hsnSac, gstRate: b.gstRate });
+    if (productTax.error) {
+      return res.status(400).json({ message: productTax.error });
+    }
 
     const product = await Product.create({
+      hsnSac: productTax.hsnSac,
+      gstRate: productTax.gstRate,
       name,
       price,
       internationalPrice,
@@ -985,6 +996,17 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     }
     if (req.body.skipOwnershipRules !== undefined) {
       product.skipOwnershipRules = req.body.skipOwnershipRules === true;
+    }
+    if (req.body.hsnSac !== undefined || req.body.gstRate !== undefined) {
+      const productTax = normalizeProductTax({
+        hsnSac: req.body.hsnSac !== undefined ? req.body.hsnSac : product.hsnSac,
+        gstRate: req.body.gstRate !== undefined ? req.body.gstRate : product.gstRate
+      });
+      if (productTax.error) {
+        return res.status(400).json({ message: productTax.error });
+      }
+      product.hsnSac = productTax.hsnSac;
+      product.gstRate = productTax.gstRate;
     }
     if (req.body.digitalType !== undefined) {
       product.digitalType = String(req.body.digitalType || "Web Version").trim();

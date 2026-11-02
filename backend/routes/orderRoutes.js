@@ -71,6 +71,9 @@ const {
   hasPendingManualAccess
 } = require("../utils/accessFulfilment");
 const { normalizeOrderItem } = require("../utils/orderItems");
+const { billingGstFields } = require("../utils/gstin");
+const { generateInvoicePdfBuffer } = require("../utils/invoicePdfGenerator");
+const { REPORTS, buildFinanceReport, toCsv } = require("../utils/financeReports");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, expandItemsForStock } = require("../utils/stock");
@@ -304,51 +307,6 @@ const canRequestReturnForItem = (order, item) => {
 };
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-
-// Helper to determine HSN/SAC based on product classification (matching invoicePdf.js)
-function getItemHsnSac(item) {
-  if (item?.hsnSac) return String(item.hsnSac).trim();
-  const name = String(item?.name || "").trim().toLowerCase();
-  const category = String(item?.category || "").trim().toLowerCase();
-  
-  // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital = 
-    category.includes("ebook") ||
-    category.includes("e-book") ||
-    category.includes("kindle") ||
-    category.includes("web version") ||
-    category.includes("web-version") ||
-    category.includes("flipbook") ||
-    name.includes("ebook") ||
-    name.includes("e-book") ||
-    name.includes("kindle") ||
-    name.includes("web version") ||
-    name.includes("web-version") ||
-    name.includes("flipbook") ||
-    name.includes("epub") ||
-    name.includes("pdf");
-    
-  if (isDigital) {
-    return "9973"; // Digital products/services (18% GST)
-  }
-
-  // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook = 
-    category.includes("book") ||
-    category.includes("sanskrit") ||
-    category.includes("gita") ||
-    category.includes("scriptures") ||
-    category.includes("grammar") ||
-    category.includes("dharma") ||
-    category.includes("paperback") ||
-    name.includes("book") ||
-    name.includes("volume") ||
-    name.includes("vol.") ||
-    name.includes("hardcover") ||
-    name.includes("paperback");
-    
-  return isPrintedBook ? "4901" : "8523";
-}
 
 // Calculate order totals (logged-in user)
 router.post("/calculate-totals", protect, async (req, res) => {
@@ -670,6 +628,10 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     }
 
     const requestedBilling = req.body.billing || req.body.shipping || {};
+    // GSTIN was already checked before payment (/api/payment/create-order); if it still fails
+    // here, keep the order (the customer may have paid) and leave the GSTIN off.
+    const billingGst = billingGstFields(req.body.billing);
+    if (billingGst.error) billingGst.gstin = billingGst.businessName = "";
     const initialStatus = rawPaymentStatus === "Paid" && canAutoComplete(totals.normalizedItems) ? "Completed" : "Pending";
 
     const order = await Order.create({
@@ -718,7 +680,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         city: requestedBilling.city || "",
         state: requestedBilling.state || "",
         pincode: requestedBilling.pincode || "",
-        country: requestedBilling.country || ""
+        country: requestedBilling.country || "",
+        gstin: billingGst.gstin,
+        businessName: billingGst.businessName
       },
       shipping: {
         name: shipping.name || "",
@@ -1056,43 +1020,76 @@ router.get("/analytics/sales", protect, admin, requireAdminPage("orders"), async
 });
 
 // Financial Analytics (Admin only)
+// Finance period from ?from=YYYY-MM-DD&to=YYYY-MM-DD (India dates, "to" inclusive; default this month).
+// Returns { fromStr, toStr, fromDate, toExclusiveDate } or { error }.
+function parseFinancePeriod(query = {}) {
+  let fromStr = String(query.from || "").trim();
+  let toStr = String(query.to || "").trim();
+
+  if (!fromStr || !toStr) {
+    const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const ym = istStr.slice(0, 7);
+    const [y, m] = ym.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    if (!fromStr) fromStr = `${ym}-01`;
+    if (!toStr) toStr = `${ym}-${String(lastDay).padStart(2, "0")}`;
+  }
+
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(fromStr) || !dateRegex.test(toStr)) {
+    return { error: "Dates must be in YYYY-MM-DD format" };
+  }
+
+  const fromDate = new Date(`${fromStr}T00:00:00+05:30`);
+  const toStartDate = new Date(`${toStr}T00:00:00+05:30`);
+
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toStartDate.getTime())) {
+    return { error: "Invalid date provided" };
+  }
+
+  if (fromDate > toStartDate) {
+    return { error: "'from' date cannot be after 'to' date" };
+  }
+
+  const diffMs = toStartDate.getTime() - fromDate.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  if (diffDays > 366) {
+    return { error: "Date range cannot exceed 366 days" };
+  }
+
+  const toExclusiveDate = new Date(toStartDate.getTime() + 24 * 60 * 60 * 1000);
+  return { fromStr, toStr, fromDate, toExclusiveDate };
+}
+
+// Paid orders invoiced in the period (by invoice date; older orders without one by order date)
+const invoicedInPeriodFilter = (fromDate, toExclusiveDate) => {
+  const periodRange = { $gte: fromDate, $lt: toExclusiveDate };
+  return {
+    paymentStatus: { $in: ["Paid", "Refunded"] },
+    $or: [
+      { invoiceIssuedAt: periodRange },
+      { invoiceIssuedAt: null, createdAt: periodRange }
+    ]
+  };
+};
+
+// Orders with refunds that may be dated in the period
+const refundedInPeriodFilter = (fromDate, toExclusiveDate) => ({
+  paymentStatus: { $in: ["Paid", "Refunded"] },
+  refundedAmountInInr: { $gt: 0 },
+  $or: [
+    { "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } },
+    { "paymentMeta.refunds.0": { $exists: false }, updatedAt: { $gte: fromDate, $lt: toExclusiveDate } }
+  ]
+});
+
 router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
-    let fromStr = String(req.query.from || "").trim();
-    let toStr = String(req.query.to || "").trim();
-
-    if (!fromStr || !toStr) {
-      const istStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
-      const ym = istStr.slice(0, 7);
-      const [y, m] = ym.split("-").map(Number);
-      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-      if (!fromStr) fromStr = `${ym}-01`;
-      if (!toStr) toStr = `${ym}-${String(lastDay).padStart(2, "0")}`;
+    const period = parseFinancePeriod(req.query);
+    if (period.error) {
+      return res.status(400).json({ success: false, message: period.error });
     }
-
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(fromStr) || !dateRegex.test(toStr)) {
-      return res.status(400).json({ success: false, message: "Dates must be in YYYY-MM-DD format" });
-    }
-
-    const fromDate = new Date(`${fromStr}T00:00:00+05:30`);
-    const toStartDate = new Date(`${toStr}T00:00:00+05:30`);
-
-    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toStartDate.getTime())) {
-      return res.status(400).json({ success: false, message: "Invalid date provided" });
-    }
-
-    if (fromDate > toStartDate) {
-      return res.status(400).json({ success: false, message: "'from' date cannot be after 'to' date" });
-    }
-
-    const diffMs = toStartDate.getTime() - fromDate.getTime();
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
-    if (diffDays > 366) {
-      return res.status(400).json({ success: false, message: "Date range cannot exceed 366 days" });
-    }
-
-    const toExclusiveDate = new Date(toStartDate.getTime() + 24 * 60 * 60 * 1000);
+    const { fromStr, toStr, fromDate, toExclusiveDate } = period;
 
     const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
     const businessState = settings?.businessDetails?.state || settings?.warehouseLocation?.state || "Karnataka";
@@ -1102,14 +1099,7 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
 
     // Invoices belong to the period of their invoice date (when payment succeeded);
     // older orders without one use the order date.
-    const periodRange = { $gte: fromDate, $lt: toExclusiveDate };
-    const invoiceOrders = await Order.find({
-      paymentStatus: { $in: ["Paid", "Refunded"] },
-      $or: [
-        { invoiceIssuedAt: periodRange },
-        { invoiceIssuedAt: null, createdAt: periodRange }
-      ]
-    })
+    const invoiceOrders = await Order.find(invoicedInPeriodFilter(fromDate, toExclusiveDate))
       .select(fieldsToSelect)
       .populate("user", "name email")
       .lean();
@@ -1117,14 +1107,7 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
     const invoiceRows = invoiceOrders.map((order) => buildInvoiceRow(order, settings));
     invoiceRows.sort((a, b) => new Date(a.invoiceDate) - new Date(b.invoiceDate));
 
-    const refundedOrders = await Order.find({
-      paymentStatus: { $in: ["Paid", "Refunded"] },
-      refundedAmountInInr: { $gt: 0 },
-      $or: [
-        { "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } },
-        { "paymentMeta.refunds.0": { $exists: false }, updatedAt: { $gte: fromDate, $lt: toExclusiveDate } }
-      ]
-    })
+    const refundedOrders = await Order.find(refundedInPeriodFilter(fromDate, toExclusiveDate))
       .select(fieldsToSelect)
       .populate("user", "name email")
       .lean();
@@ -1247,6 +1230,64 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
   } catch (err) {
     console.error("Financial analytics error:", err);
     res.status(500).json({ message: "Failed to generate financial analytics" });
+  }
+});
+
+// GET /api/orders/analytics/finance/export?report=sales|lines|gst|credit-notes&from=&to=
+// Finance reports as CSV, built here from the saved orders (the same figures as the invoices).
+// Each download is recorded in the admin activity log.
+router.get("/analytics/finance/export", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    const report = String(req.query.report || "").trim();
+    if (!REPORTS[report]) {
+      return res.status(400).json({ message: `Unknown report. Use one of: ${Object.keys(REPORTS).join(", ")}` });
+    }
+    const period = parseFinancePeriod(req.query);
+    if (period.error) {
+      return res.status(400).json({ message: period.error });
+    }
+    const { fromDate, toExclusiveDate } = period;
+
+    const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
+    const load = (filter) => Order.find(filter).populate("user", "name email").lean();
+
+    const needsInvoiced = report !== "credit-notes";
+    const [invoicedOrders, refundedOrders, periodOrders] = await Promise.all([
+      needsInvoiced ? load(invoicedInPeriodFilter(fromDate, toExclusiveDate)) : [],
+      report === "credit-notes" || report === "gst" ? load(refundedInPeriodFilter(fromDate, toExclusiveDate)) : [],
+      report === "sales"
+        ? load({ paymentStatus: { $in: ["Pending", "Failed"] }, createdAt: { $gte: fromDate, $lt: toExclusiveDate } })
+        : []
+    ]);
+
+    const result = buildFinanceReport(report, {
+      invoicedOrders,
+      refundedOrders,
+      periodOrders,
+      settings: settings || {},
+      period: { ...period, from: fromDate, to: toExclusiveDate }
+    });
+
+    await logAdminAction({
+      req,
+      action: "finance-report-exported",
+      entityType: "finance-report",
+      entityId: report,
+      entityLabel: REPORTS[report],
+      summary: `Downloaded ${REPORTS[report]} for ${period.fromStr} to ${period.toStr} (${result.rows.length} rows)`,
+      details: { report, from: period.fromStr, to: period.toStr, rows: result.rows.length }
+    });
+
+    res.set({
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${result.filename}"`,
+      "Cache-Control": "private, no-store",
+      "X-Report-Rows": String(result.rows.length)
+    });
+    return res.send(toCsv(result.headers, result.rows));
+  } catch (err) {
+    console.error("Finance report export error:", err);
+    return res.status(500).json({ message: "Failed to build the report" });
   }
 });
 
@@ -2681,6 +2722,52 @@ router.get("/:id/tracking", protect, async (req, res) => {
   }
 });
 
+// GET /api/orders/:id/invoice — the GST tax invoice PDF (the same one that is emailed).
+// The customer who placed the order, once it is paid; or an admin with the Orders page
+// (who gets an "Order summary, not a tax invoice" for unpaid orders).
+router.get("/:id/invoice", protect, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+    const order = await Order.findById(req.params.id).lean();
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const isOwner = String(order.user) === String(req.user);
+    if (!isOwner) {
+      const viewer = await User.findById(req.user).select("isAdmin adminLevel allowedPages").lean();
+      const pages = Array.isArray(viewer?.allowedPages) ? viewer.allowedPages : [];
+      const canSeeOrders = Boolean(viewer?.isAdmin) && (Number(viewer.adminLevel) === 1 || pages.includes("orders"));
+      if (!canSeeOrders) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+    } else if (!order.invoiceNumber || !["Paid", "Refunded"].includes(order.paymentStatus)) {
+      return res.status(409).json({ message: "The invoice is available once the payment is received." });
+    }
+
+    const user = await User.findById(order.user).select("name email").lean();
+    let seller = null;
+    if (!String(order?.sellerDetails?.gstin || "").trim()) {
+      const settings = await StoreSettings.findOne().select("businessDetails").lean();
+      seller = settings?.businessDetails || null;
+    }
+    const pdf = await generateInvoicePdfBuffer(order, user, seller);
+    const name = String(order.invoiceNumber || `order-${String(order._id).slice(-8).toUpperCase()}`).replace(/[^A-Za-z0-9-]+/g, "-");
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${name}.pdf"`,
+      "Content-Length": pdf.length,
+      "Cache-Control": "private, no-store"
+    });
+    return res.send(pdf);
+  } catch (err) {
+    console.error("[OrderRoutes] Invoice PDF failed:", err.message);
+    return res.status(500).json({ message: "Unable to create the invoice right now." });
+  }
+});
+
 // POST /api/orders/direct-buy (PUBLIC)
 router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res) => {
   try {
@@ -2690,7 +2777,11 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
     }
 
     const shipping = req.body.shipping || {};
-    const requestedBilling = req.body.billing || req.body.shipping || {};
+    const requestedBilling = { ...(req.body.billing || req.body.shipping || {}) };
+    const billingGst = billingGstFields(req.body.billing);
+    if (billingGst.error) billingGst.gstin = billingGst.businessName = ""; // checked before payment
+    requestedBilling.gstin = billingGst.gstin;
+    requestedBilling.businessName = billingGst.businessName;
     const guestEmail = String(requestedBilling?.email || shipping?.email || "").trim().toLowerCase();
     const guestName = String(requestedBilling?.name || shipping?.name || "Customer").trim();
     const guestPhone = String(requestedBilling?.phone || shipping?.phone || "").trim();

@@ -45,6 +45,9 @@ function normalizeOrderItem(product, item, pricing = {}) {
     name: str(product?.name || item?.name),
     image: str(product?.image || item?.image),
     category: str(product?.category || item?.category) || "General",
+    // The product's own tax settings at the time of the order (blank/null = automatic)
+    hsnSac: str(product?.hsnSac),
+    gstRate: product?.gstRate === null || product?.gstRate === undefined ? null : Number(product.gstRate),
     format: isDigital ? digitalType : "",
     isDigital,
     digitalType,

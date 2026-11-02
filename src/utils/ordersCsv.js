@@ -253,8 +253,8 @@ export function splitName(rawName) {
 
 /**
  * Helper to determine HSN/SAC code.
- * NOTE: This mirrors the invoice rule from src/utils/invoicePdf.js (getItemHsnSac)
- * and backend/utils/invoicePdfGenerator.js so that billing codes match invoices.
+ * NOTE: This mirrors backend/utils/tax.js (getItemHsnSac), which the invoice uses,
+ * so that billing codes match invoices. Orders saved with item.hsnSac use that code.
  */
 export function getItemHsnSac(item) {
   if (item?.hsnSac) return String(item.hsnSac).trim();
