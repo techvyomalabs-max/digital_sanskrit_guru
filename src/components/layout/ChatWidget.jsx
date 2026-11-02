@@ -2,20 +2,73 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Bot, RotateCcw, SendHorizontal, Sparkles, X } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
+import { parseChatMarkdown } from "../../utils/chatbotApi";
 import {
   CHATBOT_STARTER_REPLIES,
-  isChatbotConnected,
   isChatbotEnabled,
   sendChatMessage
 } from "../../utils/chatbotClient";
 import "./ChatWidget.css";
 
 const STORAGE_KEY = "dsg-chat-conversation";
+const SESSION_KEY = "dsg-chat-session-id";
 const GREETING_KEY = "dsg-chat-greeting-shown";
 const MAX_INPUT_LENGTH = 500;
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeSessionId() {
+  return globalThis.crypto?.randomUUID?.() || `${makeId()}-${makeId()}`;
+}
+
+function storeSessionId(sessionId) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, sessionId);
+  } catch {
+    // Without storage the conversation memory lasts until the page reloads
+  }
+  return sessionId;
+}
+
+function readSessionId() {
+  try {
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (stored) return stored;
+  } catch {
+    // Fall through to a new ID
+  }
+  return storeSessionId(makeSessionId());
+}
+
+function renderInline(segments) {
+  return segments.map((segment, index) => {
+    if (segment.type === "link") {
+      return (
+        <a key={index} href={segment.url} target="_blank" rel="noopener noreferrer">
+          {segment.text}
+        </a>
+      );
+    }
+    if (segment.type === "bold") return <strong key={index}>{renderInline(segment.children)}</strong>;
+    if (segment.type === "italic") return <em key={index}>{renderInline(segment.children)}</em>;
+    return segment.text;
+  });
+}
+
+function BotMessageText({ text }) {
+  return parseChatMarkdown(text).map((block, index) => {
+    if (block.type === "paragraph") return <p key={index}>{renderInline(block.segments)}</p>;
+    const List = block.type === "numbers" ? "ol" : "ul";
+    return (
+      <List key={index}>
+        {block.items.map((item, itemIndex) => (
+          <li key={itemIndex}>{renderInline(item)}</li>
+        ))}
+      </List>
+    );
+  });
 }
 
 function welcomeMessage(name) {
@@ -49,7 +102,7 @@ function formatTime(time) {
 
 function ChatWidget() {
   const location = useLocation();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState(() => readStoredConversation() || [welcomeMessage(user?.name)]);
   const [draft, setDraft] = useState("");
@@ -57,6 +110,7 @@ function ChatWidget() {
   const [hasUnread, setHasUnread] = useState(false);
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const [sessionId, setSessionId] = useState(readSessionId);
 
   const [showGreeting, setShowGreeting] = useState(false);
 
@@ -142,19 +196,19 @@ function ChatWidget() {
       setIsTyping(true);
 
       try {
-        const reply = await sendChatMessage(conversation, { token, pagePath: location.pathname });
+        const reply = await sendChatMessage(conversation, sessionId);
         setMessages((prev) => [
           ...prev,
           { id: makeId(), role: "bot", ...reply, time: Date.now() }
         ]);
-      } catch {
+      } catch (err) {
         setMessages((prev) => [
           ...prev,
           {
             id: makeId(),
             role: "bot",
             isError: true,
-            text: "Sorry, I couldn't reach the assistant just now. Please try again in a moment.",
+            text: err.message,
             links: [],
             quickReplies: [],
             time: Date.now()
@@ -165,7 +219,7 @@ function ChatWidget() {
         if (!isOpen) setHasUnread(true);
       }
     },
-    [isOpen, isTyping, location.pathname, messages, token]
+    [isOpen, isTyping, messages, sessionId]
   );
 
   const handleSubmit = (event) => {
@@ -183,6 +237,7 @@ function ChatWidget() {
 
   const handleRestart = () => {
     setMessages([welcomeMessage(user?.name)]);
+    setSessionId(storeSessionId(makeSessionId()));
     setDraft("");
     inputRef.current?.focus();
   };
@@ -212,7 +267,7 @@ function ChatWidget() {
               <h2 id="chat-panel-title">Sanskrit Guru Assistant</h2>
               <span className="chat-panel-status">
                 <span className="chat-panel-status-dot" aria-hidden="true" />
-                {isChatbotConnected ? "Online · replies instantly" : "Preview mode · sample replies"}
+                Online
               </span>
             </div>
             <div className="chat-panel-actions">
@@ -250,7 +305,7 @@ function ChatWidget() {
                 )}
                 <div className="chat-message-content">
                   <div className="chat-bubble">
-                    <p>{message.text}</p>
+                    {message.role === "bot" ? <BotMessageText text={message.text} /> : <p>{message.text}</p>}
                     {Array.isArray(message.links) && message.links.length > 0 && (
                       <div className="chat-bubble-links">
                         {message.links.map((link) =>
@@ -320,7 +375,7 @@ function ChatWidget() {
             </button>
           </form>
           <p className="chat-panel-footnote">
-            Automated assistant. For order-specific help, contact our Customer Seva Team.
+            Automated assistant. Please don't share personal details here. For order-specific help, contact our Customer Seva Team.
           </p>
         </section>
       )}
