@@ -244,3 +244,70 @@ describe("GET /api/orders/:id/credit-notes/:n", () => {
     assert.equal((await call(other, 1)).status, 404);
   });
 });
+
+describe("item returns", () => {
+  const { buildInvoice, allocateRefund } = require("../utils/invoiceData");
+  const items = [
+    { product: "web1", name: "Web Version", category: "Web Version", price: 1180, quantity: 1, tax: lineTax({ gross: 1180, rate: 18, isLocal: false }) },
+    { product: "book1", name: "Book", category: "Books", price: 500, quantity: 1, tax: lineTax({ gross: 500, rate: 0, isLocal: false }) }
+  ];
+  const order = {
+    _id: "6730f1a2b3c4d5e6f7a8b9d0",
+    invoiceNumber: "DSG/2026-27/0009",
+    paymentStatus: "Paid",
+    items,
+    deliveryCharge: 60,
+    total: 1740,
+    totalInInr: 1740,
+    refundedAmountInInr: 450,
+    currencyDisplay: { currency: "INR" },
+    taxDetails: { isLocal: false },
+    sellerDetails: { legalName: "Vyoma", gstin: "29AAATV1234F1Z8", state: "Karnataka" },
+    shipping: { name: "A", address: "1 Road", city: "Kochi", state: "Kerala", pincode: "682001", country: "India" },
+    paymentMeta: {
+      refunds: [
+        // The book came back; Rs 50 return shipping was kept
+        { refundId: "rfnd_book", amountMinor: 45000, currency: "INR", method: "razorpay", reason: "Customer choice return: 1 item(s)", at: new Date("2026-11-07"), creditNoteNumber: "CN/2026-27/0003", itemIds: ["book1"] }
+      ]
+    }
+  };
+
+  it("reverse tax only on the returned items", () => {
+    const inv = buildInvoice(order);
+    const a = allocateRefund(order, inv, 450, ["book1"]);
+    assert.equal(a.itemLevel, true);
+    assert.deepEqual(a.lines.map((l) => l.total), [0, 450]);
+    assert.equal(a.lines[0].tax, 0, "the 18% item is untouched");
+    assert.equal(a.deliveryShare, 0);
+
+    // Item and its delivery refunded together: the rest goes to delivery
+    const withDelivery = allocateRefund(order, inv, 560, ["book1"]);
+    assert.deepEqual(withDelivery.lines.map((l) => l.total), [0, 500]);
+    assert.equal(withDelivery.deliveryShare, 60);
+
+    // No items named: spread over the whole invoice as before
+    const whole = allocateRefund(order, inv, 870, []);
+    assert.equal(whole.itemLevel, false);
+    assert.equal(whole.lines[0].tax, 90);
+  });
+
+  it("the credit note lists only the returned items, with no GST reversed on a 0% book", () => {
+    const cn = buildCreditNote(order, order.paymentMeta.refunds[0]);
+    assert.equal(cn.creditNote.itemLevel, true);
+    assert.deepEqual(cn.lines.map((l) => l.name), ["Book"]);
+    assert.equal(cn.totals.tax, 0);
+    assert.equal(cn.totals.grandTotal, 450);
+  });
+
+  it("the GST summary reverses only the book's 0% line", () => {
+    const r = buildFinanceReport("credit-notes", {
+      refundedOrders: [order],
+      period: { fromStr: "2026-11-01", toStr: "2026-11-30", from: new Date("2026-10-31T18:30:00Z"), to: new Date("2026-11-30T18:30:00Z") }
+    });
+    const row = r.rows[0];
+    const col = (name) => row[CREDIT_NOTE_HEADERS.indexOf(name)];
+    assert.equal(col("Credit Note No"), "CN/2026-27/0003");
+    assert.equal(col("IGST INR"), "0.00");
+    assert.equal(col("Taxable Value INR"), "450.00");
+  });
+});

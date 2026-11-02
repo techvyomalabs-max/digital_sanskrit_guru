@@ -12,7 +12,7 @@
  * Amounts are in INR, converted at each order's own exchange rate.
  */
 
-const { buildInvoice } = require("./invoiceData");
+const { buildInvoice, allocateRefund } = require("./invoiceData");
 const { getFxRate, buildInvoiceRow, buildCreditNoteRows, roundMoney } = require("./financeLedger");
 
 const REPORTS = {
@@ -182,15 +182,19 @@ function creditNotes(order, settings, period) {
   const inv = buildInvoice(order, { user: order?.user });
   const a = invoiceInr(order, inv);
   const ledgerRow = buildInvoiceRow(order, settings);
+  const refunds = Array.isArray(order?.paymentMeta?.refunds) ? order.paymentMeta.refunds : [];
   return buildCreditNoteRows(order, ledgerRow, period).map((cn) => {
+    // The refund behind this row, for the items it was for (an item return reverses only those)
+    const entry = refunds.find((r) => (cn.creditNoteNumber && r?.creditNoteNumber === cn.creditNoteNumber) || (cn.refundId && (r?.refundId === cn.refundId || r?.reference === cn.refundId)));
     const ratio = a.total > 0 ? Math.min(1, Math.max(0, cn.refundInr / a.total)) : 0;
-    const lines = inv.lines.map((l) => ({
+    const allocation = allocateRefund(order, inv, inv.totals.grandTotal * ratio, entry?.itemIds);
+    const lines = allocation.lines.map((l) => ({
       hsnSac: l.hsnSac,
       rate: l.rate,
-      taxable: roundMoney(inr(order, l.taxable) * ratio),
-      cgst: roundMoney(inr(order, l.cgst) * ratio),
-      sgst: roundMoney(inr(order, l.sgst) * ratio),
-      igst: roundMoney(inr(order, l.igst) * ratio)
+      taxable: inr(order, l.taxable),
+      cgst: inr(order, l.cgst),
+      sgst: inr(order, l.sgst),
+      igst: inr(order, l.igst)
     }));
     const sum = (k) => roundMoney(lines.reduce((s, l) => s + l[k], 0));
     return {
