@@ -240,7 +240,34 @@ function determineIsIntrastate(order, customerState, sellerState) {
   return cust.toLowerCase() === effectiveSellerState.toLowerCase();
 }
 
+/**
+ * A customer's optional GSTIN (business buyers who want to claim input tax credit).
+ * "" when it is fine or blank, otherwise a message for the customer. Spaces are ignored.
+ */
+function customerGstinError(value) {
+  const gstin = normalizeGstin(value).replace(/\s+/g, "");
+  if (!gstin) return "";
+  if (!isValidGstinFormat(gstin) || !stateByCode(gstinStateCode(gstin))) {
+    return "GSTIN should be 15 characters, like 29ABCDE1234F1ZW.";
+  }
+  if (!isValidGstinChecksum(gstin)) {
+    return "This GSTIN doesn't look right. Please check it and try again.";
+  }
+  return "";
+}
+
+/** GST fields of a checkout billing address: { gstin, businessName } or { error }. */
+function billingGstFields(billing = {}) {
+  const gstin = normalizeGstin(billing?.gstin).replace(/\s+/g, "");
+  const error = customerGstinError(gstin);
+  if (error) return { error };
+  const businessName = gstin ? String(billing?.businessName || "").trim().slice(0, 120) : "";
+  return { gstin, businessName };
+}
+
 module.exports = {
+  customerGstinError,
+  billingGstFields,
   GST_STATE_CODES,
   STATE_ABBREVIATIONS,
   normalizeGstin,

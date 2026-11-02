@@ -11,6 +11,7 @@ import { isDigitalLikeItem, pendingAccessItems } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import GrantAccessModal from "../components/admin/GrantAccessModal";
 import "./AdminOrderDetails.css";
+import { downloadInvoice } from "../utils/downloadInvoice";
 
 function AdminOrderDetails() {
   const { id } = useParams();
@@ -183,14 +184,9 @@ function AdminOrderDetails() {
     setPageMessage("");
 
     try {
-      const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      await generateInvoicePdf(order, {
-        customerName: order?.user?.name || order?.shipping?.name || "Customer",
-        customerEmail: order?.user?.email || "N/A",
-        filePrefix: "invoice"
-      });
-    } catch {
-      setPageMessage("Unable to generate invoice right now.");
+      await downloadInvoice(order._id, token);
+    } catch (err) {
+      setPageMessage(err.message);
     } finally {
       setIsGeneratingInvoice(false);
     }
@@ -223,6 +219,12 @@ function AdminOrderDetails() {
             <p className="admin-order-details-subtitle">
               Review customer, payment, shipping, and item-level information in one place.
             </p>
+            {order?.billing?.gstin ? (
+              <p className="admin-order-details-subtitle">
+                Business purchase: <strong>{order.billing.businessName || "—"}</strong>, GSTIN{" "}
+                <strong>{order.billing.gstin}</strong>
+              </p>
+            ) : null}
           </div>
           <div className="admin-order-details-actions">
             <Link to="/admin/orders" className="admin-order-details-link">

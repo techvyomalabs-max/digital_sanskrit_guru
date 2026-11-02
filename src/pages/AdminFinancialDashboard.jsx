@@ -20,6 +20,7 @@ import { Line, Bar } from "react-chartjs-2";
 import "./AdminShared.css";
 import "./AdminSalesDashboard.css";
 import "./AdminFinancialDashboard.css";
+import { downloadFromApi } from "../utils/downloadInvoice";
 import { fyLabel, fyRange, fyStartYearOf, quarterOf, recentFinancialYears, recentQuarters, todayInIndia } from "../utils/financialYear";
 
 ChartJS.register(
@@ -48,21 +49,12 @@ function formatISTDate(dateVal) {
   });
 }
 
-function formatISTDateDmy(dateVal) {
-  if (!dateVal) return "";
-  const d = new Date(dateVal);
-  if (Number.isNaN(d.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  }).formatToParts(d);
-  const day = parts.find((p) => p.type === "day")?.value || "01";
-  const month = parts.find((p) => p.type === "month")?.value || "01";
-  const year = parts.find((p) => p.type === "year")?.value || "2026";
-  return `${day}-${month}-${year}`;
-}
+const FINANCE_REPORTS = [
+  { value: "sales", label: "Master sales register", help: "One row per order: invoiced in the period, plus failed and unpaid orders placed in it." },
+  { value: "lines", label: "Invoice line register", help: "One row per invoiced item, with HSN/SAC, GST rate and tax." },
+  { value: "gst", label: "GST summary", help: "Taxable value and tax by place of supply and rate, by HSN/SAC, credit notes, and net." },
+  { value: "credit-notes", label: "Refunds & credit notes", help: "Refunds dated in the period, with the tax reversed on each." }
+];
 
 const WARNING_LABELS = {
   missing_invoice_number: "Missing invoice number",
@@ -76,14 +68,6 @@ function formatWarningTooltip(warnings = []) {
   if (!warnings || !warnings.length) return "";
   return warnings.map((w) => WARNING_LABELS[w] || w).join("; ");
 }
-
-const escapeCsv = (val) => {
-  let str = String(val ?? "");
-  if (/^\s*[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
-  return `"${str.replace(/"/g, '""')}"`;
-};
 
 function AdminFinancialDashboard() {
   const { token } = useAuth();
@@ -239,125 +223,22 @@ function AdminFinancialDashboard() {
     return filteredInvoices.slice(start, start + PAGE_SIZE);
   }, [filteredInvoices, currentPage]);
 
-  // CSV Export Handlers
-  const exportInvoicesCsv = () => {
-    if (!data?.invoices || !data.invoices.length) {
-      if (dialogAlert) {
-        dialogAlert("No invoices available to export for the selected period.");
+  // Reports are built on the server from the saved orders, so every download of a period matches
+  const [reportType, setReportType] = useState("sales");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadReport = async () => {
+    setIsDownloading(true);
+    try {
+      const params = new URLSearchParams({ report: reportType, from: activePeriod.from, to: activePeriod.to });
+      const result = await downloadFromApi(`/api/orders/analytics/finance/export?${params}`, token, `DSG_${reportType}.csv`);
+      if (result.rows === 0 && dialogAlert) {
+        dialogAlert("The report was downloaded, but there is nothing in it for the selected period.");
       }
-      return;
+    } catch (err) {
+      if (dialogAlert) dialogAlert(err.message || "Unable to download the report right now.");
+    } finally {
+      setIsDownloading(false);
     }
-
-    const headers = [
-      "Invoice Number",
-      "Invoice Date (IST)",
-      "Customer",
-      "Email",
-      "Place Of Supply",
-      "Export",
-      "Currency",
-      "Original Total",
-      "Taxable Value (INR)",
-      "CGST (INR)",
-      "SGST (INR)",
-      "IGST (INR)",
-      "Delivery (INR)",
-      "Discount (INR)",
-      "Total (INR)",
-      "Refunded (INR)",
-      "Refund Status",
-      "Payment Ref",
-      "Tax Source",
-      "Warnings"
-    ];
-
-    const rows = data.invoices.map((inv) => [
-      escapeCsv(inv.invoiceNumber || ""),
-      escapeCsv(formatISTDateDmy(inv.invoiceDate)),
-      escapeCsv(inv.customer || ""),
-      escapeCsv(inv.email || ""),
-      escapeCsv(inv.placeOfSupply || ""),
-      escapeCsv(inv.isExport ? "Yes" : "No"),
-      escapeCsv(inv.currency || "INR"),
-      (Number(inv.originalTotal) || 0).toFixed(2),
-      (Number(inv.taxableValueInr) || 0).toFixed(2),
-      (Number(inv.cgst) || 0).toFixed(2),
-      (Number(inv.sgst) || 0).toFixed(2),
-      (Number(inv.igst) || 0).toFixed(2),
-      (Number(inv.deliveryInr) || 0).toFixed(2),
-      (Number(inv.discountInr) || 0).toFixed(2),
-      (Number(inv.totalInr) || 0).toFixed(2),
-      (Number(inv.refundedInr) || 0).toFixed(2),
-      escapeCsv(inv.refundStatus || ""),
-      escapeCsv(inv.paymentRef || ""),
-      escapeCsv(inv.taxSource || ""),
-      escapeCsv((inv.warnings || []).join(", "))
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    const periodLabel = `${data.period?.from || "from"}_to_${data.period?.to || "to"}`;
-    link.setAttribute("download", `DSG_invoices_${periodLabel}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const exportCreditNotesCsv = () => {
-    if (!data?.creditNotes || !data.creditNotes.length) {
-      if (dialogAlert) {
-        dialogAlert("No credit notes available to export for the selected period.");
-      }
-      return;
-    }
-
-    const headers = [
-      "Invoice Number",
-      "Refund Date (IST)",
-      "Refund ID",
-      "Method",
-      "Reason",
-      "Place Of Supply",
-      "Refund Amount (INR)",
-      "Taxable Reversal (INR)",
-      "CGST Reversal (INR)",
-      "SGST Reversal (INR)",
-      "IGST Reversal (INR)",
-      "Tax Treatment",
-      "Warnings"
-    ];
-
-    const rows = data.creditNotes.map((cn) => [
-      escapeCsv(cn.invoiceNumber || ""),
-      escapeCsv(formatISTDateDmy(cn.refundDate)),
-      escapeCsv(cn.refundId || ""),
-      escapeCsv(cn.method || ""),
-      escapeCsv(cn.reason || ""),
-      escapeCsv(cn.placeOfSupply || ""),
-      (Number(cn.refundInr) || 0).toFixed(2),
-      (Number(cn.taxableValueInr) || 0).toFixed(2),
-      (Number(cn.cgst) || 0).toFixed(2),
-      (Number(cn.sgst) || 0).toFixed(2),
-      (Number(cn.igst) || 0).toFixed(2),
-      escapeCsv(cn.taxTreatment || "proportional"),
-      escapeCsv((cn.warnings || []).join(", "))
-    ]);
-
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    const periodLabel = `${data.period?.from || "from"}_to_${data.period?.to || "to"}`;
-    link.setAttribute("download", `DSG_credit_notes_${periodLabel}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   // Chart Data preparation
@@ -563,25 +444,25 @@ function AdminFinancialDashboard() {
             {/* Export Actions */}
             <div className="fin-export-actions">
               <div className="fin-export-buttons-row">
+                <label className="fin-report-picker">
+                  <select value={reportType} onChange={(e) => setReportType(e.target.value)} aria-label="Report to download">
+                    {FINANCE_REPORTS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="gstr-export-btn"
-                  onClick={exportInvoicesCsv}
-                  disabled={isLoading || !data?.invoices?.length}
-                  title="Export invoices as GSTR-1 CSV"
+                  onClick={() => void downloadReport()}
+                  disabled={isLoading || isDownloading}
+                  title={FINANCE_REPORTS.find((r) => r.value === reportType)?.help}
                 >
-                  <Download size={15} className="ui-inline-icon" aria-hidden="true" />Export invoices (CSV)
-                </button>
-                <button
-                  type="button"
-                  className="gstr-export-btn btn-secondary"
-                  onClick={exportCreditNotesCsv}
-                  disabled={isLoading || !data?.creditNotes?.length}
-                  title="Export credit notes / refunds as CSV"
-                >
-                  <ClipboardList size={15} className="ui-inline-icon" aria-hidden="true" />Export credit notes (CSV)
+                  <Download size={15} className="ui-inline-icon" aria-hidden="true" />
+                  {isDownloading ? "Preparing…" : "Download CSV"}
                 </button>
               </div>
+              <p className="fin-report-help">{FINANCE_REPORTS.find((r) => r.value === reportType)?.help}</p>
               <div className="fin-draft-disclaimer">
                 Draft figures — confirm refund/credit-note, export and digital-sale treatment with your accountant before filing.
               </div>

@@ -107,6 +107,15 @@ const orderSchema = new mongoose.Schema(
       country: {
         type: String,
         default: ""
+      },
+      // Optional, for business buyers: printed on the invoice so they can claim input tax credit
+      gstin: {
+        type: String,
+        default: ""
+      },
+      businessName: {
+        type: String,
+        default: ""
       }
     },
     shipping: {
@@ -353,7 +362,11 @@ const orderSchema = new mongoose.Schema(
       igstPercent: { type: Number, default: 0 },
       cgstAmount: { type: Number, default: 0 },
       sgstAmount: { type: Number, default: 0 },
-      igstAmount: { type: Number, default: 0 }
+      igstAmount: { type: Number, default: 0 },
+      // true when the buyer is in the business's state (CGST + SGST), false for IGST
+      isLocal: { type: Boolean, default: null },
+      // true when lines have different GST rates (see each line's tax)
+      mixedRates: { type: Boolean, default: false }
     }
   },
   { timestamps: true }

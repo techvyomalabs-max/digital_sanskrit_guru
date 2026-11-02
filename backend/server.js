@@ -110,10 +110,12 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     }
   }));
 
+  // Downloads (invoices, finance reports) send their file name in Content-Disposition
+  const exposedHeaders = ["Content-Disposition", "X-Report-Rows"];
   app.use(cors(
     corsOrigin
-      ? { origin: corsOrigin, credentials: true }
-      : undefined
+      ? { origin: corsOrigin, credentials: true, exposedHeaders }
+      : { exposedHeaders }
   ));
 
   const requireDatabase = (req, res, next) => {

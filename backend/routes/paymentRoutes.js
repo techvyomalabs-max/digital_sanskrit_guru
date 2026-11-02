@@ -12,6 +12,7 @@ const { computeOrderTotals, OrderTotalsError } = require("../utils/orderTotals")
 const { expandItemsForStock } = require("../utils/stock");
 const { paymentRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
+const { billingGstFields } = require("../utils/gstin");
 
 const router = express.Router();
 const MAX_CHARGE = Number(process.env.PAYMENT_MAX_CHARGE_AMOUNT || 500000); // 5 Lakhs max
@@ -26,6 +27,11 @@ const protectIfOrderId = (req, res, next) => {
 
 router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOrderId, async (req, res) => {
   try {
+    // Check an optional business GSTIN before the customer pays, so a typo can be fixed first
+    const billingGst = billingGstFields(req.body?.billing);
+    if (billingGst.error) {
+      return res.status(400).json({ message: billingGst.error, field: "gstin" });
+    }
     let amount;
     let currency;
     let receipt = `order_${Date.now()}`;
