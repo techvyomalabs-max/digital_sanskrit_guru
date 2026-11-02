@@ -138,7 +138,11 @@ function buildInvoiceRow(order, settings) {
   return {
     orderId: String(order?._id || ""),
     invoiceNumber,
-    invoiceDate: order?.createdAt ? new Date(order.createdAt) : null,
+    invoiceDate: order?.invoiceIssuedAt
+      ? new Date(order.invoiceIssuedAt)
+      : order?.createdAt
+        ? new Date(order.createdAt)
+        : null,
     customer: order?.user?.name || order?.shipping?.name || order?.billing?.name || "Customer",
     email: order?.user?.email || order?.shipping?.email || order?.billing?.email || "N/A",
     placeOfSupply,

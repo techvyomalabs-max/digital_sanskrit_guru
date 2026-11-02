@@ -339,6 +339,12 @@ const orderSchema = new mongoose.Schema(
       unique: true,
       sparse: true
     },
+    // When the tax invoice was issued: the moment payment succeeded (India time decides its
+    // financial year). Older orders don't have it; their invoice date is createdAt.
+    invoiceIssuedAt: {
+      type: Date,
+      default: null
+    },
     taxDetails: {
       hsnCode: { type: String, default: "4901" },
       sacCode: { type: String, default: "9984" },
@@ -355,10 +361,14 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.pre("save", function() {
   const self = this;
-  if (self.isNew && !self.invoiceNumber) {
+  // A tax invoice is issued only once payment has succeeded, so the numbers run without gaps
+  // (unpaid or failed checkouts never take one). Covers orders created as paid and orders
+  // marked paid later. An order that already has a number keeps it.
+  if (!self.invoiceNumber && self.paymentStatus === "Paid") {
     // GST invoice number by financial year in India time, e.g. DSG/2026-27/0001.
     // Each financial year has its own counter, so the number restarts at 0001 every 1 April.
     const issuedAt = new Date();
+    self.invoiceIssuedAt = issuedAt;
     return Counter.findByIdAndUpdate(
       { _id: invoiceCounterId(issuedAt) },
       { $inc: { seq: 1 } },

@@ -123,7 +123,8 @@ function generateInvoicePdfBuffer(order, user, passedSeller = null) {
 
       const orderId = String(order?._id || "");
       const orderCode = orderId.slice(-8).toUpperCase();
-      const createdAt = formatDateTime(order?.createdAt || new Date());
+      // Invoice date = when payment succeeded (older orders: when they were placed)
+      const createdAt = formatDateTime(order?.invoiceIssuedAt || order?.createdAt || new Date());
       const customerName = sanitizeIastString(order?.shippingAddress?.name || user?.name || "Valued Customer");
       const customerEmail = user?.email || order?.shippingAddress?.email || "N/A";
       const customerPhone = order?.shippingAddress?.phone || user?.phone || "N/A";
