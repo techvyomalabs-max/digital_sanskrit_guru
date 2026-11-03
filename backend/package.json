@@ -1,6 +1,9 @@
 {
   "name": "my-ecommerce-app-backend",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "type": "commonjs",
   "scripts": {
     "build": "node -e \"console.log('Backend build step not required')\"",
