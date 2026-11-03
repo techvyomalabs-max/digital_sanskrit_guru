@@ -10,7 +10,7 @@ const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
-const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside } = require("../utils/cache");
+const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate } = require("../utils/cache");
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
@@ -1114,7 +1114,7 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
 router.get("/home", async (req, res) => {
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    const data = await cacheAside("home:payload", TTL.PRODUCTS_HOME, async () => {
+    const data = await cacheStaleWhileRevalidate("home:payload", TTL.PRODUCTS_HOME, async () => {
       const [products, settings] = await Promise.all([
         Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
@@ -1158,16 +1158,25 @@ router.get("/", async (req, res) => {
 
     if (!hasPaginationQuery) {
       // Full product list for public — sanitized
-      const listFilter =
-        req.query.includeHidden === "1"
-          ? { isDeleted: { $ne: true } }
-          : { isDeleted: { $ne: true }, hideFromListings: { $ne: true } };
-      const products = await Product.find(listFilter)
-        .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
-        .lean();
-      return res.json(products.map(toPublicProduct));
+      const includeHidden = req.query.includeHidden === "1";
+      // Refreshed every TTL.PRODUCTS_LIST seconds in the background, and cleared
+      // by invalidateProductCache() on any product write
+      const publicList = await cacheStaleWhileRevalidate(
+        `products:all:${includeHidden ? "withHidden" : "listed"}`,
+        TTL.PRODUCTS_LIST,
+        async () => {
+          const listFilter = includeHidden
+            ? { isDeleted: { $ne: true } }
+            : { isDeleted: { $ne: true }, hideFromListings: { $ne: true } };
+          const products = await Product.find(listFilter)
+            .select(PUBLIC_PRODUCT_EXCLUDE)
+            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+            .lean();
+          return products.map(toPublicProduct);
+        }
+      );
+      return res.json(publicList);
     }
 
     // Build a deterministic cache key from all query params
@@ -1180,12 +1189,16 @@ router.get("/", async (req, res) => {
     const sortOption = String(req.query.sort || "featured").trim();
     const selectedCategory = String(req.query.category || "All").trim();
 
-    const products = await Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
-      .select(PUBLIC_PRODUCT_EXCLUDE)
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
-      .lean();
-    const baseProducts = products.map(toPublicProduct);
+    // The slow part of this route is loading every product, so that load is shared by
+    // all page/sort/category combinations and refreshed in the background
+    const baseProducts = await cacheStaleWhileRevalidate("products:base:paged", TTL.PRODUCTS_LIST, async () => {
+      const products = await Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
+        .select(PUBLIC_PRODUCT_EXCLUDE)
+        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
+        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .lean();
+      return products.map(toPublicProduct);
+    });
     const settings = await StoreSettings.findOne().lean();
     const pricingConfig = {
       pricingMarkets: settings?.pricingMarkets || [],

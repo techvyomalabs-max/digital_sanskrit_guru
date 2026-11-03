@@ -228,10 +228,21 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     app.use(express.static(DIST_DIR, {
       maxAge: "7d",            // cache static assets for 7 days in browser
       etag: true,
-      lastModified: true
+      lastModified: true,
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === "index.html") {
+          // Always check for a new build, so a deploy never leaves visitors on an
+          // old page that points at deleted assets
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (filePath.startsWith(path.join(DIST_DIR, "assets") + path.sep)) {
+          // Vite names these files by content hash, so they never change in place
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      }
     }));
 
     app.get(/^\/(?!api).*/, (req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(DIST_DIR, "index.html"));
     });
   } else {
