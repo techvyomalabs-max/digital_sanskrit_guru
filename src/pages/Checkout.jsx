@@ -41,6 +41,8 @@ import {
   AlertTriangle
 } from "lucide-react";
 import "./Checkout.css";
+import GstinFields from "../components/GstinFields";
+import { EMPTY_GSTIN, gstinPayload } from "../utils/gstin";
 
 const getAddressLocationText = (item) => {
   return [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
@@ -180,6 +182,7 @@ function Checkout() {
   const [selectedBillingIndex, setSelectedBillingIndex] = useState(0);
   const [isGift, setIsGift] = useState(false);
   const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
+  const [gstInfo, setGstInfo] = useState(EMPTY_GSTIN);
   const [honeyPot, setHoneyPot] = useState("");
   const selectedBillingAddress = addresses[selectedBillingIndex];
   const navigate = useNavigate();
@@ -655,11 +658,18 @@ function Checkout() {
   };
 
 
+  // Optional business GSTIN for the tax invoice ({} fields blank when not used)
+  const billingGst = () => {
+    const gst = gstinPayload(gstInfo);
+    return gst.error ? { gstin: "", businessName: "" } : gst;
+  };
+
   const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
     const checkoutCountry = String(selected?.country || "").trim().toUpperCase();
-    const billing = isBillingSame
-      ? selected
-      : (addresses[selectedBillingIndex] || selected);
+    const billing = {
+      ...(isBillingSame ? selected : (addresses[selectedBillingIndex] || selected)),
+      ...billingGst()
+    };
 
     const { data } = await axios.post(
       "/api/orders",
@@ -724,6 +734,12 @@ function Checkout() {
       return null;
     }
 
+    const gst = gstinPayload(gstInfo);
+    if (gst.error) {
+      setCheckoutMessage(gst.error);
+      return null;
+    }
+
     return selectedAddress;
   };
 
@@ -768,6 +784,7 @@ function Checkout() {
             selectedMarketCode: item.selectedMarketCode
           })),
           shipping: selected,
+          billing: billingGst(),
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
           isGift: hasManualAccessItem ? false : Boolean(isGift)
@@ -1263,6 +1280,8 @@ function Checkout() {
                 Billing address is same as delivery address
               </label>
             </div>
+
+            <GstinFields value={gstInfo} onChange={setGstInfo} idPrefix="checkout" />
 
             {!isBillingSame && (
               <div className="billing-address-section">

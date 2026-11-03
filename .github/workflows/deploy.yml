@@ -29,6 +29,10 @@ jobs:
             git fetch origin main
             git checkout main
             git reset --hard origin/main
+
+            # Stop here if this server's Node.js is missing security fixes
+            echo "🔒 Checking Node.js version..."
+            node -e "const c = require('./backend/utils/nodeSecurity').checkNodeVersion(); console.log('Node.js', c.version); if (!c.ok) { console.error(c.message); process.exit(1); }"
             
             # Install dependencies and build React frontend
             echo "📦 Installing root & frontend dependencies..."

@@ -277,6 +277,15 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // Tax for this product, set by the admin. Blank = automatic (printed books 0%, else the store rate).
+    hsnSac: {
+      type: String,
+      default: ""
+    },
+    gstRate: {
+      type: Number,
+      default: null
+    },
 
     digitalType: {
       type: String,

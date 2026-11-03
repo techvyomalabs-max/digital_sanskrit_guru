@@ -1,0 +1,88 @@
+.gstin-fields {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--site-surface-muted, #f8fafc);
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 10px;
+}
+
+.gstin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gstin-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--site-button-bg, #b45309);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.gstin-toggle em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--site-text-muted, #64748b);
+}
+
+.gstin-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin-top: 12px;
+}
+
+.gstin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gstin-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--site-text-muted, #475569);
+}
+
+.gstin-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  font-size: 14px;
+  border: 1px solid var(--site-border, #cbd5e1);
+  border-radius: 8px;
+  background: var(--site-surface, #fff);
+  color: inherit;
+}
+
+#checkout-gstin,
+#guest-gstin {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+
+.gstin-field input[aria-invalid="true"] {
+  border-color: #dc2626;
+}
+
+.gstin-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--site-text-muted, #64748b);
+}
+
+.gstin-help-error {
+  color: #dc2626;
+}
+
+@media (max-width: 560px) {
+  .gstin-inputs {
+    grid-template-columns: 1fr;
+  }
+}

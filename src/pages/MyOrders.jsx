@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./MyOrders.css";
+import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
 
 const CANCELLATION_REASONS = [
   "Ordered by mistake",
@@ -652,14 +653,21 @@ function MyOrders() {
     setPageMessage("");
 
     try {
-      const { generateInvoicePdf } = await import("../utils/invoicePdf");
-      await generateInvoicePdf(order, {
-        customerName: order?.shipping?.name || "Customer",
-        customerEmail: "N/A",
-        filePrefix: "invoice"
-      });
-    } catch {
-      setPageMessage("Unable to generate invoice.");
+      await downloadInvoice(order._id, token);
+    } catch (err) {
+      setPageMessage(err.message);
+    } finally {
+      setGeneratingInvoiceOrderId("");
+    }
+  };
+
+  const getCreditNote = async (order, n) => {
+    setGeneratingInvoiceOrderId(`${order._id}:${n}`);
+    setPageMessage("");
+    try {
+      await downloadCreditNote(order._id, n, token);
+    } catch (err) {
+      setPageMessage(err.message);
     } finally {
       setGeneratingInvoiceOrderId("");
     }
@@ -808,9 +816,8 @@ function MyOrders() {
               return isDigitalLikeItem(item) || (!isBundle && (Boolean(item.legacyAccess) || isExternalDelivery(item)));
             });
 
-          const canDownloadInvoice =
-            isPaid &&
-            (status === "Shipped" || status === "Delivered" || status === "Completed" || isDigitalOnly);
+          // The tax invoice is issued when the payment is received
+          const canDownloadInvoice = isPaid && !isWpOrder && !order?.isRedeemedGift && Boolean(order?.invoiceNumber);
 
           const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
           const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
@@ -1430,10 +1437,22 @@ function MyOrders() {
                       ? "Generating invoice..."
                       : canDownloadInvoice
                       ? "Download invoice"
-                      : isDigitalOnly
-                      ? "Invoice after payment"
-                      : "Invoice after shipping"}
+                      : "Invoice after payment"}
                   </button>
+
+                  {canDownloadInvoice &&
+                    creditNoteList(order).map((note) => (
+                      <button
+                        key={note.creditNoteNumber}
+                        type="button"
+                        className="my-order-invoice-btn"
+                        disabled={generatingInvoiceOrderId === `${order._id}:${note.n}`}
+                        onClick={() => void getCreditNote(order, note.n)}
+                        title={`Credit note ${note.creditNoteNumber} for your refund`}
+                      >
+                        {generatingInvoiceOrderId === `${order._id}:${note.n}` ? "Preparing…" : `Credit note ${note.creditNoteNumber}`}
+                      </button>
+                    ))}
 
                   {order.trackingId && (
                     <button

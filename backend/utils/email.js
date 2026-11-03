@@ -611,7 +611,7 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
       const pdfBuffer = await generateInvoicePdfBuffer(order, user, seller);
       const orderCode = String(order._id || "").slice(-8).toUpperCase();
       attachments.push({
-        filename: `Tax-Invoice-${orderCode}.pdf`,
+        filename: `${String(order.invoiceNumber || `Tax-Invoice-${orderCode}`).replace(/[^A-Za-z0-9-]+/g, "-")}.pdf`,
         content: pdfBuffer,
         contentType: "application/pdf"
       });

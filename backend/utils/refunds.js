@@ -103,7 +103,7 @@ function previewRefund({ order, refundAmount }) {
   };
 }
 
-async function processGatewayRefund({ orderId, refundAmount, reason = "Admin requested refund", actor, isManualOnly = false, forceManual = false }) {
+async function processGatewayRefund({ orderId, refundAmount, reason = "Admin requested refund", actor, isManualOnly = false, forceManual = false, itemIds = [] }) {
   const actorId = actor?._id || actor?.id || "admin";
   const { order: lockedOrder, token } = await acquireRefundLock(orderId, actorId);
 
@@ -235,7 +235,9 @@ async function processGatewayRefund({ orderId, refundAmount, reason = "Admin req
       reference: razorpayRefundId || "manual",
       reason: String(reason).slice(0, 255),
       byEmail: actor?.email || "",
-      at: new Date()
+      at: new Date(),
+      // Which items this refund is for, so the credit note reverses tax on those items only
+      itemIds: (Array.isArray(itemIds) ? itemIds : []).map(String).filter(Boolean)
     });
 
     lockedOrder.paymentMeta.refundedAmountMinor = Math.round(newRefundedTotal * 100);

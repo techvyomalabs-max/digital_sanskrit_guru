@@ -138,7 +138,11 @@ function buildInvoiceRow(order, settings) {
   return {
     orderId: String(order?._id || ""),
     invoiceNumber,
-    invoiceDate: order?.createdAt ? new Date(order.createdAt) : null,
+    invoiceDate: order?.invoiceIssuedAt
+      ? new Date(order.invoiceIssuedAt)
+      : order?.createdAt
+        ? new Date(order.createdAt)
+        : null,
     customer: order?.user?.name || order?.shipping?.name || order?.billing?.name || "Customer",
     email: order?.user?.email || order?.shipping?.email || order?.billing?.email || "N/A",
     placeOfSupply,
@@ -286,6 +290,7 @@ function buildCreditNoteRows(order, invoiceRow, { from, to } = {}) {
         orderId: String(order?._id || invoiceRow?.orderId || ""),
         invoiceNumber: invoiceRow?.invoiceNumber || "",
         refundDate,
+        creditNoteNumber: String(entry?.creditNoteNumber || ""),
         refundId: String(entry?.refundId || entry?.reference || ""),
         method: String(entry?.method || "manual"),
         reason: String(entry?.reason || ""),

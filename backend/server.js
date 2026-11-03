@@ -14,6 +14,7 @@
 
 const cluster = require("cluster");
 const os = require("os");
+const { checkNodeVersion, rejectBrotliBodies } = require("./utils/nodeSecurity");
 
 // ── Cluster: only in production — nodemon (dev) doesn't support multi-worker ─
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
@@ -110,10 +111,12 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     }
   }));
 
+  // Downloads (invoices, finance reports) send their file name in Content-Disposition
+  const exposedHeaders = ["Content-Disposition", "X-Report-Rows"];
   app.use(cors(
     corsOrigin
-      ? { origin: corsOrigin, credentials: true }
-      : undefined
+      ? { origin: corsOrigin, credentials: true, exposedHeaders }
+      : { exposedHeaders }
   ));
 
   const requireDatabase = (req, res, next) => {
@@ -124,6 +127,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
     }
     next();
   };
+
+  // Before any body parser: refuse Brotli-compressed request bodies (Node.js CVE-2026-111497)
+  app.use(rejectBrotliBodies);
 
   // ── Razorpay Webhook (Raw body required before JSON parsers & vulnerabilityGuard)
   app.post("/api/payment/webhook", requireDatabase, express.raw({ type: "application/json", limit: "1mb" }), paymentWebhookHandler);
@@ -292,6 +298,10 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   // ── HTTP server ─────────────────────────────────────────────────────────────
   const server = app.listen(PORT, () => {
     console.log(`[Worker ${process.pid}] Server running on port ${PORT}`);
+    const nodeCheck = checkNodeVersion();
+    if (!nodeCheck.ok) {
+      console.warn(`[Security] ${nodeCheck.message}`);
+    }
   });
 
   server.keepAliveTimeout = 65000;

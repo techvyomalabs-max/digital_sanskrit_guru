@@ -11,6 +11,8 @@ import { isKindleProduct } from "../utils/kindle";
 import { getAttribution, clearAttribution } from "../utils/attribution";
 import { clampCartQuantity } from "../utils/orderQuantity";
 import "./Checkout.css";
+import GstinFields from "../components/GstinFields";
+import { EMPTY_GSTIN, gstinPayload } from "../utils/gstin";
 
 function GuestBuy() {
   const { id } = useParams();
@@ -34,6 +36,7 @@ function GuestBuy() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [honeyPot, setHoneyPot] = useState("");
+  const [gstInfo, setGstInfo] = useState(EMPTY_GSTIN);
 
   // Shipping details (only required for physical products)
   const [address, setAddress] = useState("");
@@ -198,6 +201,12 @@ function GuestBuy() {
       return;
     }
 
+    const gst = gstinPayload(gstInfo);
+    if (gst.error) {
+      setCheckoutMessage(gst.error);
+      return;
+    }
+
     setCheckoutMessage("");
     setIsPaying(true);
 
@@ -277,6 +286,7 @@ function GuestBuy() {
           }
         ],
         shipping: shippingInfo,
+        billing: { gstin: gst.gstin, businessName: gst.businessName },
         couponCode: "",
         honey_pot_field: honeyPot
       });
@@ -330,7 +340,7 @@ function GuestBuy() {
                 externalAccessManual: Boolean(product.externalAccessManual)
               }],
               shipping: shippingInfo,
-              billing: shippingInfo,
+              billing: { ...shippingInfo, gstin: gst.gstin, businessName: gst.businessName },
               paymentStatus: "Paid",
               honey_pot_field: honeyPot,
               razorpayOrderId: response.razorpay_order_id,
@@ -849,6 +859,8 @@ function GuestBuy() {
                   </div>
                 </div>
               )}
+
+              <GstinFields value={gstInfo} onChange={setGstInfo} idPrefix="guest" />
 
               {checkoutMessage && <p style={{ color: "#ef4444", fontSize: "13px", margin: 0 }}>{checkoutMessage}</p>}
 

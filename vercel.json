@@ -5,6 +5,10 @@
       "destination": "https://digital-sanskrit-guru-1-testing.onrender.com/api/:path*"
     },
     {
+      "source": "/chatbot-api/:path*",
+      "destination": "https://cross-platform-chatbot.ai.vyoma.org/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
