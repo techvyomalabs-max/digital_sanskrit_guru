@@ -16,16 +16,16 @@ function safeDecode(value) {
   return text;
 }
 
-// "Bhagavad Gītā (Paperback)" -> "bhagavad-gita-paperback".
+// Turns any text into link-name form: lowercase words joined by "-".
 // Letters in other scripts (e.g. Devanagari) are kept, like WordPress does.
-function slugify(value, maxLength = MAX_SLUG_LENGTH) {
+function cleanSlug(value, maxLength = MAX_SLUG_LENGTH) {
   let s = safeDecode(value)
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .normalize("NFC")
     .toLowerCase()
     .replace(/&/g, " and ")
-    .replace(/['’‘`]/g, "")
+    .replace(/['\u2018\u2019`]/g, "")
     .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
 
@@ -37,6 +37,19 @@ function slugify(value, maxLength = MAX_SLUG_LENGTH) {
   return s;
 }
 
+// Link name for a product name: "Bhagavad Gītā (Paperback)" -> "bhagavad-gita-paperback".
+// HTML in names (<br>, &amp;) is ignored. When the name also has English letters,
+// words in other scripts are left out so the link is easy to share
+// ("Nāmarāmāyaṇam - नामरामायणम्" -> "namaramayanam"); names only in another script keep it.
+function slugify(name, maxLength = MAX_SLUG_LENGTH) {
+  const text = decodeEntities(String(name ?? "").replace(/<[^>]*>/g, " "))
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['\u2018\u2019`]/g, "");
+  const latinOnly = /[a-z0-9]/i.test(text) ? text.replace(/[^\p{ASCII}]+/gu, " ") : text;
+  return cleanSlug(latinOnly, maxLength);
+}
+
 // A link name must not look like a database id or an old WordPress number,
 // because those are looked up differently.
 function isReservedSlug(slug) {
@@ -45,7 +58,7 @@ function isReservedSlug(slug) {
 
 // Cleans a link name typed by an admin, taken from WordPress, or read from a URL.
 function normalizeSlug(value) {
-  const s = slugify(String(safeDecode(value)).trim().replace(/^\/+|\/+$/g, "").split("/").pop());
+  const s = cleanSlug(String(safeDecode(value)).trim().replace(/^\/+|\/+$/g, "").split("/").pop());
   if (!s) return "";
   return isReservedSlug(s) ? `${s}-item` : s;
 }
@@ -132,6 +145,7 @@ async function assignProductSlug(doc, Model) {
 
 module.exports = {
   assignProductSlug,
+  cleanSlug,
   MAX_SLUG_LENGTH,
   slugify,
   normalizeSlug,

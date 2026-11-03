@@ -74,7 +74,12 @@ function planSlugBackfill(products = [], wpProducts = []) {
     }
   }
 
-  for (const p of needing) {
+  // Live, listed products get the plain link name first; deleted or hidden copies get -2, -3 ...
+  const byPreference = needing
+    .map((p, index) => ({ p, index }))
+    .sort((a, b) => preference(a.p) - preference(b.p) || a.index - b.index)
+    .map(({ p }) => p);
+  for (const p of byPreference) {
     if (assigned.has(String(p._id)) && updates.some((u) => String(u._id) === String(p._id))) continue;
     if (p.slug) continue;
     const slug = uniqueFrom(slugify(p.name), taken);

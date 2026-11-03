@@ -29,6 +29,7 @@ describe("slugify / normalizeSlug", () => {
     const encoded = encodeURIComponent("संस्कृत-पुस्तक").toLowerCase();
     assert.equal(normalizeSlug(encoded), "संस्कृत-पुस्तक");
     assert.equal(slugify("संस्कृत पुस्तक"), "संस्कृत-पुस्तक");
+    assert.equal(normalizeSlug(encoded), normalizeSlug("संस्कृत-पुस्तक"));
   });
 
   it("never returns something that looks like an id or old product number", () => {
@@ -228,8 +229,38 @@ describe("productLink (frontend)", async () => {
   });
 
   it("previews the same link name the server makes", () => {
-    for (const name of ["Bhagavad Gītā (Paperback)", "Sanskrit & Vedic Maths – Book 2", "Children's Book", "संस्कृत पुस्तक"]) {
+    for (const name of ["Bhagavad Gītā (Paperback)", "Sanskrit & Vedic Maths – Book 2", "Children's Book", "संस्कृत पुस्तक",
+      "Shabdarupasangraha <br> Level 1 to 5<br>Book -Paperback", "Nāmarāmāyaṇam - नामरामायणम्", "Grammar &amp; Composition", "Starter’s Kit"]) {
       assert.equal(slugPreview(name), slugify(name));
     }
+  });
+});
+
+describe("link names from real product names", () => {
+  const cases = [
+    ["Shabdarupasangraha <br> Level 1 to 5<br>Book -Paperback", "shabdarupasangraha-level-1-to-5-book-paperback"],
+    ["Adi Shankaracharya Pendrive<br>Only for Indian Users</br>", "adi-shankaracharya-pendrive-only-for-indian-users"],
+    ["A Comprehensive Guide to Basic Sanskrit Grammar &amp; Composition Part 2", "a-comprehensive-guide-to-basic-sanskrit-grammar-and-composition-part-2"],
+    ["Nāmarāmāyaṇam - नामरामायणम्", "namaramayanam"],
+    ["Saptahaa Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) (Kannada - ಕನ್ನಡ)", "saptahaa-stotra-sangrahah-saptahastotra-sangrahah-kannada"],
+    ["Starter’s Kit to Indian Culture", "starters-kit-to-indian-culture"],
+    ["नामरामायणम्", "नामरामायणम्"]
+  ];
+  for (const [name, expected] of cases) {
+    it(name, () => assert.equal(slugify(name), expected));
+  }
+
+  it("an old WordPress link name in another script is kept as it is", () => {
+    assert.equal(normalizeSlug("namaramayanam-नामरामायणम्"), "namaramayanam-नामरामायणम्");
+  });
+
+  it("the live product gets the plain link name before a deleted copy", () => {
+    const plan = planSlugBackfill([
+      { _id: "old", name: "Krsnanandam Pendrive<br>Only for Indian Users</br>", isDeleted: true },
+      { _id: "live", name: "Krsnanandam Pendrive Only for Indian Users" }
+    ]);
+    const byId = Object.fromEntries(plan.updates.map((u) => [u._id, u.slug]));
+    assert.equal(byId.live, "krsnanandam-pendrive-only-for-indian-users");
+    assert.equal(byId.old, "krsnanandam-pendrive-only-for-indian-users-2");
   });
 });
