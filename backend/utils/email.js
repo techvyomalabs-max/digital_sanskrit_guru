@@ -1048,6 +1048,40 @@ async function sendBulkEnquiryEmail({ name, email, phone, quantity, productName,
   });
 }
 
+async function sendSupportInterestEmail({ name, email, phone, organisation, supportTypeLabel, message }) {
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@digitalsanskritguru.com";
+  const safeEmail = escapeHtml(email);
+  const row = (label, value) => `
+      <tr>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; width: 180px; background-color: #f8fafc;">${label}</td>
+        <td style="padding: 10px; border: 1px solid #e2e8f0; color: #334155; white-space: pre-wrap;">${value}</td>
+      </tr>`;
+
+  const html = htmlWrapper(
+    "New Support Request",
+    `
+    <h2 style="color: #1e293b; margin-top: 0;">Someone would like to support Digital Sanskrit Guru</h2>
+    <p>A visitor filled in the Support us form. It is saved in Admin, Support Requests.</p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px;">
+      ${row("How they want to help", escapeHtml(supportTypeLabel))}
+      ${row("Name", escapeHtml(name))}
+      ${row("Email", `<a href="mailto:${safeEmail}">${safeEmail}</a>`)}
+      ${row("Phone", escapeHtml(phone || "Not provided"))}
+      ${row("Organisation", escapeHtml(organisation || "Not provided"))}
+      ${row("Message", escapeHtml(message))}
+    </table>
+    <p>Reply directly to <a href="mailto:${safeEmail}">${safeEmail}</a>.</p>
+    `
+  );
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `New support request: ${cleanSubject(supportTypeLabel)} from ${cleanSubject(name)}`,
+    html,
+    type: "support-interest"
+  });
+}
+
 async function sendWelcomeCredentialsEmail(user, plainPassword) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
@@ -1344,6 +1378,7 @@ module.exports = {
   sendTestEmail,
   sendGiftPassEmail,
   sendBulkEnquiryEmail,
+  sendSupportInterestEmail,
   sendWelcomeCredentialsEmail,
   sendWishlistReminderEmail,
   sendReturnStatusEmail,

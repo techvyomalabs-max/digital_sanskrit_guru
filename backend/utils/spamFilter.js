@@ -84,6 +84,15 @@ const paymentRateLimiter = rateLimit({
   message: { message: "Too many payment requests. Please wait a few minutes before trying again." }
 });
 
+// "Support us" form: a few genuine submissions per connection is plenty
+const supportInterestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: perWorker(5),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests from this connection. Please try again after 15 minutes." }
+});
+
 // Bulk enquiry rate limiter (prevents wholesale quote request flooding)
 const bulkEnquiryLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -163,6 +172,7 @@ module.exports = {
   estimateRateLimiter,
   paymentRateLimiter,
   bulkEnquiryLimiter,
+  supportInterestLimiter,
   verifyTurnstileToken,
   turnstileMiddleware
 };

@@ -68,6 +68,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const pushRoutes = require("./routes/pushRoutes");
   const wishlistRoutes = require("./routes/wishlistRoutes");
   const marketingRoutes = require("./routes/marketingRoutes");
+  const supportInterestRoutes = require("./routes/supportInterestRoutes");
   const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
   const trashRoutes = require("./routes/trashRoutes");
   const mediaRoutes = require("./routes/mediaRoutes");
@@ -214,6 +215,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/push", requireDatabase, pushRoutes);
   app.use("/api/wishlist", requireDatabase, wishlistRoutes);
   app.use("/api/marketing", requireDatabase, marketingRoutes);
+  app.use("/api/support-interest", requireDatabase, supportInterestRoutes);
   app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/media", requireDatabase, mediaRoutes);
