@@ -2886,3 +2886,35 @@
 
 
 
+
+/* ── Tablets: images beside the details instead of one long column ──────── */
+@media (min-width: 720px) and (max-width: 1180px) {
+  .product-container {
+    grid-template-columns: minmax(260px, 40%) minmax(0, 1fr);
+    grid-template-areas:
+      "left center"
+      "left right";
+    align-items: start;
+    gap: var(--space-4);
+  }
+
+  .product-left {
+    grid-area: left;
+  }
+
+  .product-center {
+    grid-area: center;
+  }
+
+  .product-right {
+    grid-area: right;
+  }
+
+  .buy-box {
+    position: static;
+  }
+
+  .image-gallery {
+    max-width: 100%;
+  }
+}

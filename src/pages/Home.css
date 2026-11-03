@@ -1725,3 +1725,83 @@
 #home-section-budget-picks {
   scroll-margin-top: 130px;
 }
+
+/* ── Tablets (iPad portrait and landscape) ──────────────────────────────── */
+
+/* Between the phone layout and full desktop the banner image is very short,
+   so the text overflowed it. Give it a readable height and fill it. */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .home-hero-spotlight-card {
+    min-height: clamp(220px, 28vw, 300px);
+  }
+
+  .home-spotlight-backdrop-picture {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+  }
+
+  .home-spotlight-bg-img {
+    height: 100%;
+    object-fit: cover;
+    object-position: 70% center;
+  }
+
+  .home-spotlight-content {
+    max-width: min(520px, 62%);
+  }
+}
+
+/* iPad mini portrait uses the phone layout; keep the banner from filling the screen */
+@media (min-width: 600px) and (max-width: 768px) {
+  .home-hero-spotlight-card {
+    aspect-ratio: 21 / 9;
+    min-height: 260px;
+  }
+}
+
+/* Slider arrows sat outside the row and landed on top of the cards. Give them
+   their own gutter beside the row as solid buttons... */
+@media (min-width: 769px) and (max-width: 1280px) {
+  .home-slider-wrapper {
+    padding-inline: 44px;
+  }
+
+  .home-slider-arrow {
+    width: 38px;
+    height: 38px;
+    border-radius: 50% !important;
+    background: var(--site-surface, #ffffff) !important;
+    border: 1px solid var(--site-border, #e2e8f0) !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16) !important;
+  }
+
+  .home-slider-arrow.left {
+    left: 0;
+  }
+
+  .home-slider-arrow.right {
+    right: 0;
+  }
+
+  .home-slider-arrow:hover {
+    background: var(--site-surface, #ffffff) !important;
+    transform: translateY(-50%) scale(1.06);
+  }
+}
+
+/* ...and hide them on touch screens, where the rows are swiped */
+@media (hover: none) and (pointer: coarse) {
+  .home-slider-arrow {
+    display: none !important;
+  }
+
+  .home-slider-wrapper {
+    padding-inline: 0;
+  }
+
+  .home-spotlight-row {
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+}
