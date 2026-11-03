@@ -221,7 +221,7 @@ function draw(doc, inv) {
       unitPrice: num(l.unitPrice),
       discount: l.discount ? num(l.discount) : "-",
       taxable: num(l.taxable),
-      rate: pct(l.rate),
+      rate: l.rate === null ? "Mixed" : pct(l.rate),
       tax: num(l.tax),
       total: num(l.total)
     };
@@ -234,6 +234,34 @@ function draw(doc, inv) {
       x += c.w;
     });
     y += h;
+
+    // A combo's components, each with its own code and rate, under the combo
+    (l.parts || []).forEach((part) => {
+      const partName = plain(`- ${part.name}`);
+      doc.font("Helvetica").fontSize(7.5);
+      const ph = Math.max(14, doc.heightOfString(partName, { width: cols[1].w - pad * 2 - 6 }) + 6);
+      if (ensure(ph)) header();
+      if (i % 2 === 1) doc.rect(left, y, width, ph).fill(C.fill);
+      const partValues = {
+        idx: "",
+        name: partName,
+        hsnSac: part.hsnSac,
+        quantity: "",
+        unitPrice: "",
+        discount: part.discount ? num(part.discount) : "",
+        taxable: num(part.taxable),
+        rate: pct(part.rate),
+        tax: num(part.tax),
+        total: num(part.total)
+      };
+      let px = left;
+      cols.forEach((c) => {
+        doc.fillColor(C.muted).font("Helvetica").fontSize(7.5)
+          .text(partValues[c.key], px + pad + (c.key === "name" ? 6 : 0), y + 3, { width: c.w - pad * 2 - (c.key === "name" ? 6 : 0), align: c.align });
+        px += c.w;
+      });
+      y += ph;
+    });
     doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
   });
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
@@ -241,7 +269,11 @@ function draw(doc, inv) {
       ? cn.itemLevel
         ? `Amounts in ${cur}. Returned items only, with the refunded share of what was invoiced for them; price and quantity are as invoiced.`
         : `Amounts in ${cur}. Each line shows the refunded share of what was invoiced${cn.isFull ? " (the full amount)" : ""}; price and quantity are as invoiced.`
-      : `Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.`, left, y + 4, { width });
+      : `Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.${inv.lines.some((l) => l.parts) ? " A combo is taxed by its components, its price shared in proportion to their value." : ""}`, left, y + 4, { width });
+  if (inv.delivery?.taxed && inv.totals.deliveryGross > 0) {
+    doc.fillColor(C.muted).font("Helvetica").fontSize(7)
+      .text("Delivery charges are part of the taxable value, taxed at the rate of the items delivered; their GST is included below.", left, doc.y + 1, { width });
+  }
   y = doc.y + 12;
 
   // ── Tax by rate (left) and totals (right) ────────────────────────────────
@@ -279,9 +311,10 @@ function draw(doc, inv) {
       : [pct(r.rate), num(r.taxable), num(r.igst), num(r.tax)]);
   });
   const t = inv.totals;
+  const ratesTaxable = inv.rates.reduce((a, r) => a + r.taxable, 0);
   taxRow(inv.isLocal
-    ? ["Total", num(t.taxable), num(t.cgst), num(t.sgst), num(t.tax)]
-    : ["Total", num(t.taxable), num(t.igst), num(t.tax)], true);
+    ? ["Total", num(ratesTaxable), num(t.cgst), num(t.sgst), num(t.tax)]
+    : ["Total", num(ratesTaxable), num(t.igst), num(t.tax)], true);
   if (inv.isExport) {
     doc.fillColor(C.muted).font("Helvetica").fontSize(7).text("Supply to a customer outside India: no GST charged.", left, y + 4, { width: lw });
     y = doc.y;
@@ -302,17 +335,30 @@ function draw(doc, inv) {
     totalRow("Items before discount", money(t.gross, cur));
     totalRow("Discount", money(-t.discount, cur));
   }
-  totalRow("Taxable value", money(t.taxable, cur));
-  if (inv.isLocal) {
-    totalRow("CGST", money(t.cgst, cur));
-    totalRow("SGST", money(t.sgst, cur));
+  const gstRows = () => {
+    if (inv.isLocal) {
+      totalRow("CGST", money(t.cgst, cur));
+      totalRow("SGST", money(t.sgst, cur));
+    } else {
+      totalRow("IGST", money(t.igst, cur));
+    }
+  };
+  if (inv.delivery?.taxed) {
+    // Base price + delivery + GST = total
+    totalRow("Items (taxable value)", money(t.taxable, cur));
+    if (t.deliveryGross > 0 || !cn) {
+      totalRow("Delivery (taxable value)", t.deliveryGross > 0 ? money(t.deliveryCharge, cur) : "Free");
+    }
+    totalRow("Total taxable value", money(t.totalTaxable, cur));
+    gstRows();
   } else {
-    totalRow("IGST", money(t.igst, cur));
-  }
-  if (cn) {
-    if (t.deliveryCharge > 0) totalRow("Delivery charges", money(t.deliveryCharge, cur));
-  } else {
-    totalRow("Delivery charges", t.deliveryCharge > 0 ? money(t.deliveryCharge, cur) : "Free");
+    totalRow("Taxable value", money(t.taxable, cur));
+    gstRows();
+    if (cn) {
+      if (t.deliveryCharge > 0) totalRow("Delivery charges", money(t.deliveryCharge, cur));
+    } else {
+      totalRow("Delivery charges", t.deliveryCharge > 0 ? money(t.deliveryCharge, cur) : "Free");
+    }
   }
   by += 2;
   doc.moveTo(bx, by).lineTo(right, by).strokeColor(C.ink).lineWidth(0.8).stroke();

@@ -55,7 +55,17 @@ const FINANCE_REPORTS = [
   { value: "gst", label: "GST summary", help: "Taxable value and tax by place of supply and rate, by HSN/SAC, credit notes, and net." },
   { value: "credit-notes", label: "Refunds & credit notes", help: "Refunds dated in the period, with the tax reversed on each." },
   { value: "attempts", label: "Payment attempts", help: "Every checkout that opened Razorpay: paid, failed (with Razorpay's reason), not completed, or paid without an order." },
-  { value: "payouts", label: "Razorpay payouts", help: "What Razorpay settled to the bank in the period, with fees and GST on fees, matched to invoices and credit notes. Fetched live from Razorpay." }
+  { value: "payouts", label: "Razorpay payouts", help: "What Razorpay settled to the bank in the period, with fees and GST on fees, matched to invoices and credit notes. Fetched live from Razorpay." },
+  { value: "product-tax", label: "Product tax codes", help: "Every product's HSN/SAC code and GST rate as checkout uses them, and how each combo's price is split. Not limited to the period." }
+];
+
+const PAYOUT_VIEWS = [
+  { value: "", label: "Each transaction" },
+  { value: "settlement", label: "Per settlement" },
+  { value: "day", label: "Daily" },
+  { value: "week", label: "Weekly" },
+  { value: "month", label: "Monthly" },
+  { value: "year", label: "Yearly (financial year)" }
 ];
 
 const WARNING_LABELS = {
@@ -227,11 +237,13 @@ function AdminFinancialDashboard() {
 
   // Reports are built on the server from the saved orders, so every download of a period matches
   const [reportType, setReportType] = useState("sales");
+  const [payoutView, setPayoutView] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   const downloadReport = async () => {
     setIsDownloading(true);
     try {
       const params = new URLSearchParams({ report: reportType, from: activePeriod.from, to: activePeriod.to });
+      if (reportType === "payouts" && payoutView) params.set("group", payoutView);
       const result = await downloadFromApi(`/api/orders/analytics/finance/export?${params}`, token, `DSG_${reportType}.csv`);
       if (result.rows === 0 && dialogAlert) {
         dialogAlert("The report was downloaded, but there is nothing in it for the selected period.");
@@ -453,6 +465,15 @@ function AdminFinancialDashboard() {
                     ))}
                   </select>
                 </label>
+                {reportType === "payouts" ? (
+                  <label className="fin-report-picker">
+                    <select value={payoutView} onChange={(e) => setPayoutView(e.target.value)} aria-label="Payout report view">
+                      {PAYOUT_VIEWS.map((v) => (
+                        <option key={v.value || "each"} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <button
                   type="button"
                   className="gstr-export-btn"

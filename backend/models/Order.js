@@ -384,7 +384,9 @@ const orderSchema = new mongoose.Schema(
       // true when the buyer is in the business's state (CGST + SGST), false for IGST
       isLocal: { type: Boolean, default: null },
       // true when lines have different GST rates (see each line's tax)
-      mixedRates: { type: Boolean, default: false }
+      mixedRates: { type: Boolean, default: false },
+      // Delivery fee split into taxable value and GST: { gross, taxable, tax, cgst, sgst, igst, parts }
+      delivery: { type: mongoose.Schema.Types.Mixed, default: null }
     }
   },
   { timestamps: true }

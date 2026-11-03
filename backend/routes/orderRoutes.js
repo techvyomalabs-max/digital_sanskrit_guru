@@ -76,8 +76,9 @@ const { billingGstFields } = require("../utils/gstin");
 const { generateInvoicePdfBuffer, generateCreditNotePdfBuffer } = require("../utils/invoicePdfGenerator");
 const { creditNoteRefunds } = require("../utils/invoiceData");
 const { REPORTS, buildFinanceReport, toCsv } = require("../utils/financeReports");
-const { ATTEMPT_HEADERS, PAYOUT_HEADERS, attemptRows, fetchSettledTransactions, payoutRows } = require("../utils/paymentReports");
-const ALL_FINANCE_REPORTS = { ...REPORTS, attempts: "Payment attempts", payouts: "Razorpay payouts" };
+const { ATTEMPT_HEADERS, PAYOUT_HEADERS, PAYOUT_GROUPS, PAYOUT_SUMMARY_HEADERS, attemptRows, fetchSettledTransactions, payoutRows, payoutSummaryRows } = require("../utils/paymentReports");
+const ALL_FINANCE_REPORTS = { ...REPORTS, attempts: "Payment attempts", payouts: "Razorpay payouts", "product-tax": "Product tax codes" };
+const { PRODUCT_TAX_HEADERS, productTaxRows } = require("../utils/productTaxReport");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, expandItemsForStock } = require("../utils/stock");
@@ -333,6 +334,8 @@ router.post("/calculate-totals", protect, async (req, res) => {
       gstPercent: totals.gstPercent,
       gstAmount: totals.gstAmount,
       deliveryCharge: totals.deliveryCharge,
+      // The delivery fee as paid (GST included); deliveryCharge above is its taxable value
+      deliveryFee: totals.deliveryFee,
       discount: totals.discount,
       total: totals.total,
       currency: totals.orderCurrency,
@@ -1024,6 +1027,8 @@ router.get("/analytics/sales", protect, admin, requireAdminPage("orders"), async
 });
 
 // Financial Analytics (Admin only)
+const istDayNow = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
 // Finance period from ?from=YYYY-MM-DD&to=YYYY-MM-DD (India dates, "to" inclusive; default this month).
 // Returns { fromStr, toStr, fromDate, toExclusiveDate } or { error }.
 function parseFinancePeriod(query = {}) {
@@ -1254,7 +1259,11 @@ router.get("/analytics/finance/export", protect, admin, requireAdminPage("orders
     const slug = `${period.fromStr}_to_${period.toStr}`;
     let result;
 
-    if (report === "attempts") {
+    if (report === "product-tax") {
+      // Every product as it is now (the period doesn't apply)
+      const products = await Product.find({ isDeleted: { $ne: true } }).populate("bundleItems.product").lean();
+      result = { filename: `DSG_product_tax_codes_${istDayNow()}.csv`, headers: PRODUCT_TAX_HEADERS, rows: productTaxRows(products) };
+    } else if (report === "attempts") {
       // Every checkout that opened Razorpay in the period, matched to its order
       const intents = await PaymentIntent.find({ createdAt: { $gte: fromDate, $lt: toExclusiveDate } })
         .populate("user", "name email")
@@ -1288,7 +1297,11 @@ router.get("/analytics/finance/export", protect, admin, requireAdminPage("orders
           .select("_id invoiceNumber paymentMeta.razorpayPaymentId paymentMeta.refunds")
           .lean()
         : [];
-      result = { filename: `DSG_razorpay_payouts_${slug}.csv`, headers: PAYOUT_HEADERS, rows: payoutRows(items, orders) };
+      // ?group=settlement|day|week|month|year adds the transactions up; without it, one row each
+      const group = String(req.query.group || "").trim();
+      result = PAYOUT_GROUPS[group]
+        ? { filename: `DSG_razorpay_payouts_by_${group}_${slug}.csv`, headers: PAYOUT_SUMMARY_HEADERS, rows: payoutSummaryRows(items, orders, group) }
+        : { filename: `DSG_razorpay_payouts_${slug}.csv`, headers: PAYOUT_HEADERS, rows: payoutRows(items, orders) };
     } else {
       const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
       const load = (filter) => Order.find(filter).populate("user", "name email").lean();

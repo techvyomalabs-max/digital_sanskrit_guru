@@ -11,6 +11,7 @@ import { formatDate, formatTime } from "../utils/date";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
+import { TAX_CATEGORIES } from "../utils/tax";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -2778,6 +2779,29 @@ function AdminAddProducts() {
                     </>
                   
                   <label className="admin-field">
+                    <span>Tax category</span>
+                    <select
+                      value={TAX_CATEGORIES.find((c) => c.code === hsnSac && String(c.rate) === gstRate)?.key || (hsnSac || gstRate ? "custom" : "")}
+                      onChange={(e) => {
+                        const picked = TAX_CATEGORIES.find((c) => c.key === e.target.value);
+                        if (picked) {
+                          setHsnSac(picked.code);
+                          setGstRate(String(picked.rate));
+                        } else if (e.target.value === "") {
+                          setHsnSac("");
+                          setGstRate("");
+                        }
+                      }}
+                    >
+                      <option value="">Automatic (guess from the product)</option>
+                      {TAX_CATEGORIES.map((c) => (
+                        <option key={c.key} value={c.key}>{`${c.label} – ${c.code}, ${c.rate === 0 ? "nil" : `${c.rate}%`}`}</option>
+                      ))}
+                      <option value="custom" disabled>Custom code or rate (set below)</option>
+                    </select>
+                    <small>Sets the code and rate below. For a combo, set them on each component product instead.</small>
+                  </label>
+                  <label className="admin-field">
                     <span>HSN/SAC code</span>
                     <input
                       type="text"
@@ -2787,12 +2811,12 @@ function AdminAddProducts() {
                       value={hsnSac}
                       onChange={(e) => setHsnSac(e.target.value.replace(/\D/g, "").slice(0, 8))}
                     />
-                    <small>Blank: 4901 for printed books, 9973 for digital, 8523 otherwise.</small>
+                    <small>Blank: guessed from the product (4901 printed book, 998433 digital, 8523 USB, 8518 audio device).</small>
                   </label>
                   <label className="admin-field">
                     <span>GST rate</span>
                     <select value={gstRate} onChange={(e) => setGstRate(e.target.value)}>
-                      <option value="">Automatic (store rate; 0% for printed books)</option>
+                      <option value="">Automatic (the rate for its code)</option>
                       {[0, 5, 12, 18, 28].map((rate) => (
                         <option key={rate} value={String(rate)}>{rate}%</option>
                       ))}
