@@ -8,7 +8,7 @@ import { getProductPriceDetails } from "../utils/productPricing";
 import { isOptionsParent, getOptionCount } from "../utils/productOptions";
 import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
-import { absoluteUrl } from "../utils/seo";
+import { productPath, productUrl } from "../utils/productLink";
 
 function getProductFormat(product) {
   if (isOptionsParent(product)) {
@@ -88,7 +88,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const handleShare = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const shareUrl = absoluteUrl(`/product/${product._id}`);
+    const shareUrl = productUrl(product);
     if (navigator.share) {
       navigator.share({
         title: product.name,
@@ -145,7 +145,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       </button>
       {copied && <span className="share-tooltip">Link copied!</span>}
 
-      <Link to={`/product/${product._id}`} className="product-image-wrap">
+      <Link to={productPath(product)} className="product-image-wrap">
         {product.image && (
           <div
             className="product-image-ambient-bg"
@@ -170,7 +170,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
           <span className="product-format-pill">{getProductFormat(product)}</span>
         </div>
 
-        <Link to={`/product/${product._id}`} className="product-title-link" title={product.name}>
+        <Link to={productPath(product)} className="product-title-link" title={product.name}>
           <h3 className="product-title">{product.name}</h3>
         </Link>
 
@@ -222,7 +222,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
         {variant !== "wishlist" && (
           <div className="product-actions">
-            <Link to={`/product/${product._id}`}>
+            <Link to={productPath(product)}>
               <button className="product-cta">{isOptionsParent(product) ? "Choose format" : "View Product"}</button>
             </Link>
           </div>

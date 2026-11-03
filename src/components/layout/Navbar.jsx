@@ -48,6 +48,7 @@ import { CategoryIcon, getCategoryIcon } from "../../utils/categoryIcons";
 import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
+import { productPath } from "../../utils/productLink";
 
 const SEARCH_SUGGESTION_DELAY_MS = 120;
 
@@ -374,7 +375,7 @@ function Navbar({ bannerActive = false }) {
       items.push({ type: "page", data: page, url: page.url });
     });
     (searchResults.matchingProducts || []).slice(0, 5).forEach((product) => {
-      items.push({ type: "product", data: product, url: `/product/${product._id}` });
+      items.push({ type: "product", data: product, url: productPath(product) });
     });
     return items;
   }, [searchResults]);
@@ -768,7 +769,7 @@ function Navbar({ bannerActive = false }) {
                               aria-selected={activeSuggestionIndex === idx}
                               className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
                               onMouseDown={() => {
-                                navigate(`/product/${product._id}`);
+                                navigate(productPath(product));
                                 setIsSearchFocused(false);
                               }}
                             >
