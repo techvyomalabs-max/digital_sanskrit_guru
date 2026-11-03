@@ -53,7 +53,9 @@ const FINANCE_REPORTS = [
   { value: "sales", label: "Master sales register", help: "One row per order: invoiced in the period, plus failed and unpaid orders placed in it." },
   { value: "lines", label: "Invoice line register", help: "One row per invoiced item, with HSN/SAC, GST rate and tax." },
   { value: "gst", label: "GST summary", help: "Taxable value and tax by place of supply and rate, by HSN/SAC, credit notes, and net." },
-  { value: "credit-notes", label: "Refunds & credit notes", help: "Refunds dated in the period, with the tax reversed on each." }
+  { value: "credit-notes", label: "Refunds & credit notes", help: "Refunds dated in the period, with the tax reversed on each." },
+  { value: "attempts", label: "Payment attempts", help: "Every checkout that opened Razorpay: paid, failed (with Razorpay's reason), not completed, or paid without an order." },
+  { value: "payouts", label: "Razorpay payouts", help: "What Razorpay settled to the bank in the period, with fees and GST on fees, matched to invoices and credit notes. Fetched live from Razorpay." }
 ];
 
 const WARNING_LABELS = {
