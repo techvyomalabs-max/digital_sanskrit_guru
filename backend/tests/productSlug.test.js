@@ -264,3 +264,19 @@ describe("link names from real product names", () => {
     assert.equal(byId.old, "krsnanandam-pendrive-only-for-indian-users-2");
   });
 });
+
+describe("matching old WordPress products by a looser name", () => {
+  it("matches when the names differ only in HTML tags or spacing", () => {
+    const plan = planSlugBackfill(
+      [{ _id: "p", name: "Shabda Dhaturupa Parichayah <h4>Study Material for the course</h4>" }],
+      [{ id: 5744, title: "Shabda Dhaturupa Parichayah<br><h4>Study Material for the course</h4></br>", slug: "shabda-dhaturupa-parichayahstudy-material" }]
+    );
+    assert.equal(plan.updates[0].source, "wordpress");
+    assert.equal(plan.updates[0].slug, "shabda-dhaturupa-parichayahstudy-material");
+  });
+
+  it("an old link with accents (ḥ) is stored so the old address still finds it", () => {
+    assert.equal(normalizeSlug("dhaturupaparicayah-dhaturupaparicayaḥ-paperback"), "dhaturupaparicayah-dhaturupaparicayah-paperback");
+    assert.equal(normalizeSlug("ramayana-ratnamala-ramaya%e1%b9%87aratnamala-book"), "ramayana-ratnamala-ramayanaratnamala-book");
+  });
+});

@@ -34,7 +34,15 @@ function planSlugBackfill(products = [], wpProducts = []) {
     if (!byName.has(key)) byName.set(key, []);
     byName.get(key).push(p);
   }
-  for (const list of byName.values()) list.sort((a, b) => preference(a) - preference(b));
+  // Looser match for names that differ only in HTML, punctuation or accents.
+  const byLooseName = new Map();
+  for (const p of products) {
+    const key = slugify(p.name, 500);
+    if (!key) continue;
+    if (!byLooseName.has(key)) byLooseName.set(key, []);
+    byLooseName.get(key).push(p);
+  }
+  for (const list of [...byName.values(), ...byLooseName.values()]) list.sort((a, b) => preference(a) - preference(b));
 
   const assigned = new Set();
   const updates = [];
@@ -43,7 +51,10 @@ function planSlugBackfill(products = [], wpProducts = []) {
 
   const sortedWp = [...wpProducts].sort((a, b) => Number(a.id) - Number(b.id));
   for (const wp of sortedWp) {
-    const candidates = byName.get(nameKey(wp.title));
+    const exact = byName.get(nameKey(wp.title));
+    const candidates = exact && exact.some((p) => !assigned.has(String(p._id)))
+      ? exact
+      : byLooseName.get(slugify(wp.title, 500)) || exact;
     if (!candidates) {
       unmatchedWp.push(wp);
       continue;

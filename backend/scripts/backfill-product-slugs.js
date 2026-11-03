@@ -12,8 +12,10 @@
  * Dry run by default (prints what it would do, writes nothing):
  *   node scripts/backfill-product-slugs.js
  *   node scripts/backfill-product-slugs.js --wp          (also read old WordPress names)
+ *   node scripts/backfill-product-slugs.js --wp-file data/wp-product-slugs.json
+ *                                                       (old names from a saved list instead of MySQL)
  * Write the changes:
- *   node scripts/backfill-product-slugs.js --wp --apply
+ *   node scripts/backfill-product-slugs.js --wp --apply   (or --wp-file ... --apply)
  *
  * Needs MONGO_URI in backend/.env. With --wp it also needs the local WordPress export
  * database: MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB (default wp_old_export).
@@ -28,6 +30,19 @@ const { planSlugBackfill } = require("../utils/productSlugBackfill");
 
 const APPLY = process.argv.includes("--apply");
 const USE_WP = process.argv.includes("--wp");
+const fileFlag = process.argv.indexOf("--wp-file");
+const WP_FILE = fileFlag > -1 ? process.argv[fileFlag + 1] : "";
+
+// Old WordPress link names saved as JSON: [{ "wpId": 23, "name": "...", "slug": "dhaturupaparicayah" }].
+function loadWordPressFile(file) {
+  const fs = require("fs");
+  const rows = JSON.parse(fs.readFileSync(path.resolve(file), "utf8"));
+  const withName = rows.filter((r) => r && r.name && r.slug);
+  rows
+    .filter((r) => r && !r.name)
+    .forEach((r) => console.log(`Old link with no product name in the file (set it by hand in Add Products): /product/${r.slug}/`));
+  return withName.map((r) => ({ id: Number(r.wpId), title: String(r.name), slug: String(r.slug) }));
+}
 
 async function loadWordPressProducts() {
   if (!process.env.MYSQL_PASSWORD) {
@@ -54,7 +69,7 @@ async function loadWordPressProducts() {
 async function main() {
   if (!process.env.MONGO_URI) throw new Error("MONGO_URI is missing in backend/.env");
 
-  const wpProducts = USE_WP ? await loadWordPressProducts() : [];
+  const wpProducts = WP_FILE ? loadWordPressFile(WP_FILE) : USE_WP ? await loadWordPressProducts() : [];
   await mongoose.connect(process.env.MONGO_URI);
 
   const products = await Product.find({})
