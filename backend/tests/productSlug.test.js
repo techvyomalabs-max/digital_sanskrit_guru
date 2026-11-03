@@ -197,7 +197,8 @@ describe("planSlugBackfill", () => {
         slug: "compendium",
         oldSlug: "a-bibliographic-compendium-of-bharatiya-arthasastra-parampara",
         source: "wordpress-old-link",
-        wpProductId: 101
+        wpProductId: 101,
+        status: ""
       }
     ]);
   });
@@ -273,6 +274,32 @@ describe("matching old WordPress products by a looser name", () => {
     );
     assert.equal(plan.updates[0].source, "wordpress");
     assert.equal(plan.updates[0].slug, "shabda-dhaturupa-parichayahstudy-material");
+  });
+
+  it("gives the old link to the live product, not a deleted copy with HTML in its name", () => {
+    const plan = planSlugBackfill(
+      [
+        { _id: "old", name: "Krsnanandam Pendrive<br>Only for Indian Users</br>", isDeleted: true },
+        { _id: "live", name: "Krsnanandam Pendrive Only for Indian Users" }
+      ],
+      [{ id: 900, title: "Krsnanandam Pendrive<br>Only for Indian Users</br>", slug: "krishna" }]
+    );
+    const byId = Object.fromEntries(plan.updates.map((u) => [u._id, u]));
+    assert.equal(byId.live.slug, "krishna");
+    assert.equal(byId.live.source, "wordpress");
+    assert.equal(byId.old.source, "generated");
+    assert.equal(byId.old.status, "deleted");
+  });
+
+  it("when both copies are live, the exact name keeps the old link", () => {
+    const plan = planSlugBackfill(
+      [
+        { _id: "clean", name: "Krsnanandam Pendrive Only for Indian Users" },
+        { _id: "exact", name: "Krsnanandam Pendrive<br>Only for Indian Users</br>" }
+      ],
+      [{ id: 900, title: "Krsnanandam Pendrive<br>Only for Indian Users</br>", slug: "krishna" }]
+    );
+    assert.equal(plan.updates.find((u) => u._id === "exact").slug, "krishna");
   });
 
   it("an old link with accents (ḥ) is stored so the old address still finds it", () => {

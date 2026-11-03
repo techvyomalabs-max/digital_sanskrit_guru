@@ -12,6 +12,13 @@ function uniqueFrom(base, taken) {
 }
 
 // Main products before format/option children, live before deleted, oldest first.
+function statusOf(p) {
+  if (p.isDeleted === true) return "deleted";
+  if (p.optionParent) return "format copy";
+  if (p.hideFromListings === true) return "hidden";
+  return "";
+}
+
 function preference(p) {
   return (p.optionParent ? 2 : 0) + (p.isDeleted === true ? 4 : 0) + (p.hideFromListings === true ? 1 : 0);
 }
@@ -51,10 +58,17 @@ function planSlugBackfill(products = [], wpProducts = []) {
 
   const sortedWp = [...wpProducts].sort((a, b) => Number(a.id) - Number(b.id));
   for (const wp of sortedWp) {
-    const exact = byName.get(nameKey(wp.title));
-    const candidates = exact && exact.some((p) => !assigned.has(String(p._id)))
-      ? exact
-      : byLooseName.get(slugify(wp.title, 500)) || exact;
+    // Same name, or a name that differs only in HTML/spacing/accents. Among those, a live,
+    // listed product wins over a deleted or hidden copy; on a tie the exact name wins.
+    const exact = byName.get(nameKey(wp.title)) || [];
+    const loose = byLooseName.get(slugify(wp.title, 500)) || [];
+    const pool = [...new Set([...exact, ...loose])];
+    const candidates = pool.length
+      ? pool
+          .map((p, i) => ({ p, rank: preference(p) * 2 + (exact.includes(p) ? 0 : 1), i }))
+          .sort((x, y) => x.rank - y.rank || x.i - y.i)
+          .map(({ p }) => p)
+      : null;
     if (!candidates) {
       unmatchedWp.push(wp);
       continue;
@@ -79,9 +93,9 @@ function planSlugBackfill(products = [], wpProducts = []) {
     const wpProductId = Number(wp.id) || undefined;
     if (candidate.slug) {
       // The product already has a new link name: keep it, and make the old link open it too.
-      updates.push({ _id: candidate._id, name: candidate.name, slug: candidate.slug, oldSlug: slug, source: "wordpress-old-link", wpProductId });
+      updates.push({ _id: candidate._id, name: candidate.name, slug: candidate.slug, oldSlug: slug, source: "wordpress-old-link", wpProductId, status: statusOf(candidate) });
     } else {
-      updates.push({ _id: candidate._id, name: candidate.name, slug, source: "wordpress", wpProductId });
+      updates.push({ _id: candidate._id, name: candidate.name, slug, source: "wordpress", wpProductId, status: statusOf(candidate) });
     }
   }
 
@@ -95,7 +109,7 @@ function planSlugBackfill(products = [], wpProducts = []) {
     if (p.slug) continue;
     const slug = uniqueFrom(slugify(p.name), taken);
     taken.add(slug);
-    updates.push({ _id: p._id, name: p.name, slug, source: "generated" });
+    updates.push({ _id: p._id, name: p.name, slug, source: "generated", status: statusOf(p) });
   }
 
   return { alreadySet: products.length - needing.length, updates, unmatchedWp, skippedWp };

@@ -89,7 +89,8 @@ async function main() {
     if (u.source === "wordpress-old-link") {
       console.log(`  [old link] /product/${u.oldSlug}  also opens  /product/${u.slug}   <- ${u.name}`);
     } else {
-      console.log(`  [${u.source === "wordpress" ? "old site" : "new     "}] /product/${u.slug}   <- ${u.name}`);
+      const note = u.status ? `   (${u.status})` : "";
+      console.log(`  [${u.source === "wordpress" ? "old site" : "new     "}] /product/${u.slug}   <- ${u.name}${note}`);
     }
   }
   if (plan.unmatchedWp.length) {
