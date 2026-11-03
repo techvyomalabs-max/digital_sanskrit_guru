@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import axios from "axios";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Truck, BookOpen, Zap, ShieldCheck } from "lucide-react";
+import { ArrowRight, BookOpen, Building2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, HandCoins, HandHeart, HeartHandshake, ShieldCheck, Truck, Zap } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import RecentlyViewed from "../components/RecentlyViewed";
 import RecommendedForYou from "../components/RecommendedForYou";
@@ -62,73 +62,12 @@ function getDisplayPrice(product, country) {
   return getProductPriceDetails(product, country);
 }
 
-const SPONSORS = [
-  {
-    id: "sanskrit-academy",
-    name: "Sanskrit Academy",
-    description: "Preserving Ancient Wisdom",
-    icon: (
-      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M32 12C28 24 16 36 16 48c0 8.8 7.2 12 16 12s16-3.2 16-12c0-12-12-24-16-36z" />
-        <path d="M32 20c-3 9-10 18-10 28 0 5 3 8 10 8s10-3 10-8c0-10-7-19-10-28z" />
-        <path d="M32 30c-2 6-6 12-6 18 0 3 2 4 6 4s6-1 6-4c0-6-4-12-6-18z" />
-        <circle cx="32" cy="52" r="2" fill="currentColor" />
-      </svg>
-    )
-  },
-  {
-    id: "vyoma-labs",
-    name: "Vyoma Linguistic Labs",
-    description: "Language Tech Research",
-    icon: (
-      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M32 8A24 24 0 1 0 56 32h-8A16 16 0 1 1 32 16V8z" />
-        <circle cx="32" cy="12" r="4" fill="currentColor" />
-        <circle cx="52" cy="32" r="4" fill="currentColor" />
-        <circle cx="32" cy="52" r="4" fill="currentColor" />
-        <circle cx="12" cy="32" r="4" fill="currentColor" />
-        <path d="M32 20v24M20 32h24" strokeWidth="2" strokeDasharray="3 3" />
-      </svg>
-    )
-  },
-  {
-    id: "veda-foundation",
-    name: "Veda Foundation",
-    description: "Vedic Heritage Safeguarding",
-    icon: (
-      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 48h40L44 60H20z" fill="currentColor" opacity="0.1" />
-        <path d="M12 48h40M16 54h32M20 60h24" />
-        <path d="M32 8c0 0 12 12 12 24a12 12 0 0 1-24 0C20 20 32 8 32 8z" />
-        <path d="M32 20c0 0 6 6 6 12a6 6 0 0 1-12 0C26 26 32 20 32 20z" />
-      </svg>
-    )
-  },
-  {
-    id: "indic-heritage",
-    name: "Indic Heritage Trust",
-    description: "Cultural Legacy Preservation",
-    icon: (
-      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 56h48M12 50h40M16 26h32" />
-        <path d="M18 26v24M28 26v24M36 26v24M46 26v24" />
-        <path d="M32 8L10 22h44z" fill="currentColor" opacity="0.1" />
-        <path d="M32 8L10 22v4h44v-4z" />
-      </svg>
-    )
-  },
-  {
-    id: "devavani-press",
-    name: "Devavani Press",
-    description: "Scholarly Publishing Partner",
-    icon: (
-      <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M32 50c-4-4-12-6-24-6v-30c12 0 20 2 24 6 4-4 12-6 24-6v30c-12 0-20 2-24 6z" />
-        <path d="M32 16v34" />
-        <path d="M44 14l8-8m-4 12l4-4" strokeWidth="2" />
-      </svg>
-    )
-  }
+// Shown in the Sponsors & Partners section; each opens the Support us form with that option chosen
+const SUPPORT_WAYS = [
+  { type: "sponsor", icon: BookOpen, title: "Sponsor", text: "Fund a book, course or learning tool" },
+  { type: "institution", icon: Building2, title: "Partner", text: "Schools, universities and organisations" },
+  { type: "donate", icon: HandCoins, title: "Donate", text: "Keep Sanskrit learning accessible" },
+  { type: "volunteer", icon: HeartHandshake, title: "Volunteer", text: "Teach, review, translate or build" }
 ];
 
 function Home() {
@@ -149,7 +88,6 @@ function Home() {
   const [showFestiveOffersSection, setShowFestiveOffersSection] = useState(true);
   const [activeHeroBannerIndex, setActiveHeroBannerIndex] = useState(0);
   const [showSecondarySections, setShowSecondarySections] = useState(false);
-  const [sponsorsList, setSponsorsList] = useState([]);
   const spotlightRef = useRef(null);
   const festiveRef = useRef(null);
   const bundleRef = useRef(null);
@@ -204,7 +142,6 @@ function Home() {
         setCatalogPreviewProducts(
           Array.isArray(response.data?.catalogPreviewProducts) ? response.data.catalogPreviewProducts : []
         );
-        setSponsorsList(Array.isArray(response.data?.sponsors) ? response.data.sponsors : []);
       } catch {
         if (!active) return;
         setHomeLoadFailed(true);
@@ -217,7 +154,6 @@ function Home() {
         setBundleProducts([]);
         setFestiveOfferProducts([]);
         setCatalogPreviewProducts([]);
-        setSponsorsList([]);
       } finally {
         if (!active) return;
         setIsRetryingHomeData(false);
@@ -959,83 +895,42 @@ function Home() {
         </section>
       </DeferredHomeSection>
 
-      {sponsorsList.length > 0 && (
-        <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading sponsors">
-          <section className="home-section home-deferred-section home-sponsors-section">
-            <div className="home-section-head">
-              <div>
-                <span className="home-section-kicker">Sponsors & Partners</span>
-                <h2>Supported By</h2>
-                <p>Our work is powered by the trust and sponsorship of these esteemed institutions.</p>
-              </div>
-            </div>
+      <DeferredHomeSection isReady={showSecondarySections} skeletonCount={2} label="Loading support section">
+        <section className="home-section home-deferred-section home-support-section" aria-labelledby="home-support-title">
+          <div className="home-support-copy">
+            <span className="home-section-kicker">Sponsors & Partners</span>
+            <h2 id="home-support-title">
+              <HandHeart size={28} aria-hidden="true" className="home-support-title-icon" />
+              Support Digital Sanskrit Guru
+            </h2>
+            <p>
+              We are looking for sponsors, institutions and volunteers who share our love for Sanskrit.
+              If you would like to help, we would love to hear from you.
+            </p>
+            <Link to="/support-us" className="home-support-cta-btn">
+              Support us
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+          </div>
 
-            <div className="home-sponsors-grid">
-              {sponsorsList.map((sponsor, idx) => {
-                const hasLogoImage = sponsor.logoUrl && sponsor.logoUrl.trim() !== "";
-
-                const sponsorNameLower = String(sponsor.name || "").toLowerCase();
-                const matchedPreset = SPONSORS.find(
-                  (preset) =>
-                    preset.id === sponsor.id ||
-                    sponsorNameLower.includes(preset.name.toLowerCase()) ||
-                    preset.name.toLowerCase().includes(sponsorNameLower)
-                );
-
-                const fallbackIcon = (
-                  <svg viewBox="0 0 64 64" className="home-sponsor-svg" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="10" y="14" width="44" height="36" rx="8" />
-                    <path d="M22 24h20M22 32h14" />
-                    <circle cx="42" cy="32" r="3" fill="currentColor" />
-                  </svg>
-                );
-
-                const logoElement = hasLogoImage ? (
-                  <img
-                    src={sponsor.logoUrl}
-                    alt={sponsor.name}
-                    className="home-sponsor-logo-img"
-                    width="64"
-                    height="64"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="home-sponsor-icon-wrapper">
-                    {matchedPreset ? matchedPreset.icon : fallbackIcon}
-                  </div>
-                );
-
-                const keyVal = sponsor.id || sponsor._id || idx;
-                const cardProps = {
-                  className: "home-sponsor-card"
-                };
-
-                const innerContent = (
-                  <>
-                    {logoElement}
-                    <strong className="home-sponsor-name">{sponsor.name}</strong>
-                    <span className="home-sponsor-desc">{sponsor.description}</span>
-                  </>
-                );
-
-                if (sponsor.websiteUrl) {
-                  return (
-                    <a key={keyVal} href={sponsor.websiteUrl} target="_blank" rel="noreferrer" {...cardProps}>
-                      {innerContent}
-                    </a>
-                  );
-                }
-
-                return (
-                  <div key={keyVal} {...cardProps}>
-                    {innerContent}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </DeferredHomeSection>
-      )}
+          <ul className="home-support-ways" aria-label="Ways to support">
+            {SUPPORT_WAYS.map((way) => {
+              const Icon = way.icon;
+              return (
+                <li key={way.type}>
+                  <Link to={`/support-us?type=${way.type}`} className="home-support-way">
+                    <span className="home-support-way-icon" aria-hidden="true"><Icon size={22} /></span>
+                    <span className="home-support-way-text">
+                      <strong>{way.title}</strong>
+                      <span>{way.text}</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      </DeferredHomeSection>
     </div>
   );
 }

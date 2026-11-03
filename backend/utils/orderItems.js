@@ -1,6 +1,20 @@
 const roundMoney = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const str = (v) => String(v || "").trim();
 
+const componentValue = (bp, bi) => {
+  const own = Number(bi?.price);
+  if (Number.isFinite(own) && own > 0) return roundMoney(own);
+  const linked = Number(bp?.price);
+  return Number.isFinite(linked) && linked > 0 ? roundMoney(linked) : 0;
+};
+
+const componentRate = (bp, bi) => {
+  for (const v of [bp?.gstRate, bi?.gstRate]) {
+    if (v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v))) return Number(v);
+  }
+  return null;
+};
+
 function normalizeOrderItem(product, item, pricing = {}) {
   const id = String(product?._id || product?.id || item?.product || "");
   const isDigital = product?.isDigital === true;
@@ -31,7 +45,13 @@ function normalizeOrderItem(product, item, pricing = {}) {
       externalAccessLabel: compLabel,
       accessManual: compAccessManual,
       webReaderLink: str(bp?.webReaderLink || bi?.webReaderLink),
-      kindleLink: str(bp?.kindleLink || bi?.kindleLink)
+      kindleLink: str(bp?.kindleLink || bi?.kindleLink),
+      // For splitting the combo's tax: the component's own tax settings and its value
+      // (the price set on the combo item, else the linked product's price)
+      category: str(bp?.category || bi?.category),
+      hsnSac: str(bp?.hsnSac || bi?.hsnSac),
+      gstRate: componentRate(bp, bi),
+      unitValue: componentValue(bp, bi)
     };
   });
 

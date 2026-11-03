@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import { fetchPublicCatalog } from "../../utils/productCatalog";
 import {
   House,
   Info,
@@ -306,13 +307,8 @@ function Navbar({ bannerActive = false }) {
   const loadCatalog = useCallback(() => {
     if (hasLoadedCatalog.current || isAdminRoute) return;
     hasLoadedCatalog.current = true;
-    axios
-      .get("/api/products")
-      .then((res) => {
-        if (Array.isArray(res.data)) {
-          setCatalogProducts(res.data);
-        }
-      })
+    fetchPublicCatalog()
+      .then(setCatalogProducts)
       .catch(() => {});
   }, [isAdminRoute]);
 

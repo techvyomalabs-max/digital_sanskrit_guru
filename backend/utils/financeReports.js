@@ -12,7 +12,7 @@
  * Amounts are in INR, converted at each order's own exchange rate.
  */
 
-const { buildInvoice, allocateRefund } = require("./invoiceData");
+const { buildInvoice, allocateRefund, summarize } = require("./invoiceData");
 const { getFxRate, buildInvoiceRow, buildCreditNoteRows, roundMoney } = require("./financeLedger");
 
 const REPORTS = {
@@ -80,8 +80,8 @@ const SALES_HEADERS = [
   "Order Status", "Payment Method", "Payment ID", "Customer Name", "Email", "Phone", "Business Name",
   "Customer GSTIN", "Supply Type", "Billing State", "Place Of Supply", "POS Code", "Tax Type",
   "Currency", "FX Rate To INR", "Order Total (Currency)", "Items Before Discount INR", "Discount INR",
-  "Taxable Value INR", "CGST INR", "SGST INR", "IGST INR", "Total Tax INR", "Delivery INR",
-  "Invoice Total INR", "Check Difference INR", "Refunded INR", "Refund Status", "Net Received INR"
+  "Taxable Value INR", "Delivery (Taxable) INR", "Total Taxable INR", "CGST INR", "SGST INR", "IGST INR",
+  "Total Tax INR", "Invoice Total INR", "Check Difference INR", "Refunded INR", "Refund Status", "Net Received INR"
 ];
 
 function salesRow(order, { user = null } = {}) {
@@ -116,14 +116,15 @@ function salesRow(order, { user = null } = {}) {
     money(a.gross),
     money(a.discount),
     money(a.taxable),
+    money(a.delivery),
+    money(a.taxable + a.delivery),
     money(a.cgst),
     money(a.sgst),
     money(a.igst),
     money(a.tax),
-    money(a.delivery),
     money(a.total),
-    // Taxable + tax + delivery should equal the invoice total (0.00, or a paisa of rounding on foreign currency)
-    money(a.taxable + a.tax + a.delivery - a.total),
+    // Base price + delivery + GST should equal the invoice total (0.00, or a paisa of rounding on foreign currency)
+    money(a.taxable + a.delivery + a.tax - a.total),
     money(refunded),
     String(order?.refundStatus || "Not Applicable"),
     money(sale ? a.total - refunded : 0)
@@ -134,42 +135,58 @@ function salesRow(order, { user = null } = {}) {
 
 const LINE_HEADERS = [
   "Invoice No", "Invoice Date", "Order Ref", "Supply Type", "Place Of Supply", "POS Code", "Customer GSTIN",
-  "Line", "Item", "Format", "HSN/SAC", "Qty", "Unit Price (Currency)", "Currency", "FX Rate To INR",
+  "Line", "Type", "Item", "Part Of Combo", "Format", "HSN/SAC", "Qty", "Unit Price (Currency)", "Currency", "FX Rate To INR",
   "Gross INR", "Discount INR", "Taxable Value INR", "GST Rate %", "CGST Rate %", "CGST INR",
   "SGST Rate %", "SGST INR", "IGST Rate %", "IGST INR", "Total Tax INR", "Line Total INR"
 ];
 
 function lineRows(order) {
   const inv = buildInvoice(order, { user: order?.user });
-  return inv.lines.map((l, i) => [
-    inv.invoiceNumber,
-    istDate(inv.invoiceDate),
-    inv.orderRef,
-    supplyType(inv),
-    inv.placeOfSupply.state,
-    inv.placeOfSupply.stateCode,
-    inv.buyer.gstin,
-    String(i + 1),
-    l.name,
-    l.format,
-    l.hsnSac,
-    String(l.quantity),
-    money(l.unitPrice),
-    inv.currency,
-    fxOf(order).toFixed(6),
-    money(inr(order, l.gross)),
-    money(inr(order, l.discount)),
-    money(inr(order, l.taxable)),
-    String(l.rate),
-    String(inv.isLocal ? l.rate / 2 : 0),
-    money(inr(order, l.cgst)),
-    String(inv.isLocal ? l.rate / 2 : 0),
-    money(inr(order, l.sgst)),
-    String(inv.isLocal || inv.isExport ? 0 : l.rate),
-    money(inr(order, l.igst)),
-    money(inr(order, l.tax)),
-    money(inr(order, l.total))
-  ]);
+  // One row per taxed piece: each item, each component of a combo, and each share of delivery
+  const rows = [];
+  inv.lines.forEach((l, i) => {
+    const pieces = l.parts
+      ? l.parts.map((p) => ({ ...p, type: "Combo component", combo: l.name, quantity: "", unitPrice: "", format: "" }))
+      : [{ ...l, type: "Item", combo: "" }];
+    for (const p of pieces) rows.push({ ...p, line: String(i + 1) });
+  });
+  for (const d of inv.delivery?.taxed ? inv.delivery.parts : []) {
+    rows.push({ ...d, type: "Delivery", name: "Delivery charges", combo: "", format: "", quantity: "", unitPrice: "", line: "" });
+  }
+  return rows.map((l) => {
+    const rate = Number(l.rate) || 0;
+    return [
+      inv.invoiceNumber,
+      istDate(inv.invoiceDate),
+      inv.orderRef,
+      supplyType(inv),
+      inv.placeOfSupply.state,
+      inv.placeOfSupply.stateCode,
+      inv.buyer.gstin,
+      l.line,
+      l.type,
+      l.name,
+      l.combo,
+      l.format || "",
+      l.hsnSac,
+      l.quantity === "" ? "" : String(l.quantity),
+      l.unitPrice === "" ? "" : money(l.unitPrice),
+      inv.currency,
+      fxOf(order).toFixed(6),
+      money(inr(order, l.gross)),
+      money(inr(order, l.discount)),
+      money(inr(order, l.taxable)),
+      String(rate),
+      String(inv.isLocal ? rate / 2 : 0),
+      money(inr(order, l.cgst)),
+      String(inv.isLocal ? rate / 2 : 0),
+      money(inr(order, l.sgst)),
+      String(inv.isLocal || inv.isExport ? 0 : rate),
+      money(inr(order, l.igst)),
+      money(inr(order, l.tax)),
+      money(inr(order, l.total))
+    ];
+  });
 }
 
 // ── Refunds and credit notes ────────────────────────────────────────────────
@@ -188,7 +205,8 @@ function creditNotes(order, settings, period) {
     const entry = refunds.find((r) => (cn.creditNoteNumber && r?.creditNoteNumber === cn.creditNoteNumber) || (cn.refundId && (r?.refundId === cn.refundId || r?.reference === cn.refundId)));
     const ratio = a.total > 0 ? Math.min(1, Math.max(0, cn.refundInr / a.total)) : 0;
     const allocation = allocateRefund(order, inv, inv.totals.grandTotal * ratio, entry?.itemIds);
-    const lines = allocation.lines.map((l) => ({
+    // Every reversed piece: items, combo components and delivery, each at its own code and rate
+    const lines = summarize(allocation.lines, allocation.delivery).units.map((l) => ({
       hsnSac: l.hsnSac,
       rate: l.rate,
       taxable: inr(order, l.taxable),
@@ -205,8 +223,8 @@ function creditNotes(order, settings, period) {
       cgst: sum("cgst"),
       sgst: sum("sgst"),
       igst: sum("igst"),
-      // The rest of the refund after the items (as on the credit note PDF)
-      deliveryShare: Math.max(0, roundMoney(cn.refundInr - sum("taxable") - sum("cgst") - sum("sgst") - sum("igst")))
+      // The part of the refund that was for delivery, GST included (as on the credit note PDF)
+      deliveryShare: inr(order, allocation.delivery.gross)
     };
   });
 }
@@ -265,7 +283,8 @@ function gstSummaryRows(paidOrders, notes) {
 
   for (const order of paidOrders) {
     const inv = buildInvoice(order, { user: order?.user });
-    for (const l of inv.lines) {
+    // Every taxed piece: items, combo components and delivery (under the code of what it carried)
+    for (const l of inv.units) {
       const li = {
         taxable: inr(order, l.taxable),
         cgst: inr(order, l.cgst),
@@ -273,16 +292,18 @@ function gstSummaryRows(paidOrders, notes) {
         igst: inr(order, l.igst)
       };
       const doc = inv.invoiceNumber || inv.orderRef;
-      add("1 Sales by place of supply and rate", [supplyType(inv), inv.placeOfSupply.state, inv.placeOfSupply.stateCode, "", l.rate], li, doc);
-      add("2 Sales by HSN/SAC and rate", ["", "", "", l.hsnSac, l.rate], li, doc);
-      add("4 Net (sales less credit notes) by rate", ["", "", "", "", l.rate], li, doc);
+      const rate = Number(l.rate) || 0;
+      add("1 Sales by place of supply and rate", [supplyType(inv), inv.placeOfSupply.state, inv.placeOfSupply.stateCode, "", rate], li, doc);
+      add("2 Sales by HSN/SAC and rate", ["", "", "", l.hsnSac, rate], li, doc);
+      add("4 Net (sales less credit notes) by rate", ["", "", "", "", rate], li, doc);
     }
   }
   for (const c of notes) {
     const doc = `${c.inv.invoiceNumber || c.inv.orderRef}/${c.cn.refundId || istDate(c.cn.refundDate)}`;
     for (const l of c.lines) {
-      add("3 Credit notes by place of supply and rate", [supplyType(c.inv), c.inv.placeOfSupply.state, c.inv.placeOfSupply.stateCode, "", l.rate], l, doc);
-      add("4 Net (sales less credit notes) by rate", ["", "", "", "", l.rate], l, doc, -1);
+      const rate = Number(l.rate) || 0;
+      add("3 Credit notes by place of supply and rate", [supplyType(c.inv), c.inv.placeOfSupply.state, c.inv.placeOfSupply.stateCode, "", rate], l, doc);
+      add("4 Net (sales less credit notes) by rate", ["", "", "", "", rate], l, doc, -1);
     }
   }
 

@@ -50,12 +50,14 @@ const AdminThemeSettings = lazy(() => import("./pages/AdminThemeSettings"));
 const AdminMarketing = lazy(() => import("./pages/AdminMarketing"));
 const AdminSecurityLogs = lazy(() => import("./pages/AdminSecurityLogs"));
 const AdminTrash = lazy(() => import("./pages/AdminTrash"));
+const AdminSupportRequests = lazy(() => import("./pages/AdminSupportRequests"));
 const AdminUnmatchedPayments = lazy(() => import("./pages/AdminUnmatchedPayments"));
 const WpArchiveDashboard = lazy(() => import("./pages/admin/WpArchiveDashboard"));
 const GuestBuy = lazy(() => import("./pages/GuestBuy"));
 const About = lazy(() => import("./pages/About"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Contact = lazy(() => import("./pages/Contact"));
+const SupportUs = lazy(() => import("./pages/SupportUs"));
 const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsAndConditions = lazy(() => import("./pages/TermsAndConditions"));
@@ -444,6 +446,14 @@ function App() {
             }
           />
           <Route
+            path="/admin/support-requests"
+            element={
+              <AdminRoute requiredPage="marketing">
+                <AdminSupportRequests />
+              </AdminRoute>
+            }
+          />
+          <Route
             path="/admin/security-logs"
             element={
               <AdminRoute requiredPage="security-logs">
@@ -472,6 +482,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/support-us" element={<SupportUs />} />
           <Route path="/shipping-refund-policy" element={<ShippingPolicy />} />
           <Route path="/refund-policy" element={<ShippingPolicy />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />

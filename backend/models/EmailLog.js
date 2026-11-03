@@ -18,6 +18,7 @@ const emailLogSchema = new mongoose.Schema(
         "password-reset",
         "gift-pass",
         "bulk-enquiry",
+        "support-interest",
         "welcome-credentials"
       ],
       default: "campaign"

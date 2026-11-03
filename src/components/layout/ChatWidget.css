@@ -648,3 +648,37 @@
     animation: none;
   }
 }
+
+/* Tablets: matches the smaller WhatsApp button below it (52px at bottom: 16px) */
+@media (min-width: 769px) and (max-width: 1180px) {
+  .chat-launcher-wrap {
+    right: 16px;
+    bottom: 80px;
+    width: 52px;
+    height: 52px;
+  }
+
+  .chat-launcher {
+    width: 52px;
+    height: 52px;
+  }
+
+  .chat-panel {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+/* Large phones and iPad mini portrait: stacked above the 52px WhatsApp button at 84px */
+@media (min-width: 600px) and (max-width: 768px) {
+  .chat-launcher-wrap {
+    bottom: 148px;
+    width: 52px;
+    height: 52px;
+  }
+
+  .chat-launcher {
+    width: 52px;
+    height: 52px;
+  }
+}

@@ -278,12 +278,12 @@ describe("item returns", () => {
     assert.equal(a.itemLevel, true);
     assert.deepEqual(a.lines.map((l) => l.total), [0, 450]);
     assert.equal(a.lines[0].tax, 0, "the 18% item is untouched");
-    assert.equal(a.deliveryShare, 0);
+    assert.equal(a.delivery.gross, 0);
 
     // Item and its delivery refunded together: the rest goes to delivery
     const withDelivery = allocateRefund(order, inv, 560, ["book1"]);
     assert.deepEqual(withDelivery.lines.map((l) => l.total), [0, 500]);
-    assert.equal(withDelivery.deliveryShare, 60);
+    assert.equal(withDelivery.delivery.gross, 60);
 
     // No items named: spread over the whole invoice as before
     const whole = allocateRefund(order, inv, 870, []);

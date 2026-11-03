@@ -72,7 +72,12 @@ function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewa
   );
 
   const itemsValue = round2(rawSelectedValue * (isNonInr ? fxRate : 1));
-  const rawDeliveryCharge = Number(order.deliveryCharge || 0);
+  // The delivery fee as paid: GST included when delivery is taxed (orders from November 2026),
+  // otherwise the delivery charge as recorded
+  const taxedDelivery = order.taxDetails?.delivery;
+  const rawDeliveryCharge = taxedDelivery && Number.isFinite(Number(taxedDelivery.gross))
+    ? Number(taxedDelivery.gross)
+    : Number(order.deliveryCharge || 0);
   const deliveryChargeInInr = round2(rawDeliveryCharge * (isNonInr ? fxRate : 1));
 
   // Delivery refund logic

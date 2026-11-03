@@ -12,6 +12,7 @@ import {
   PackagePlus,
   Ticket,
   Megaphone,
+  HandHeart,
   Palette,
   KeyRound,
   Zap,
@@ -56,6 +57,7 @@ const adminNavSections = [
     items: [
       { to: "/admin/coupons", label: "Coupons", icon: <Ticket size={17} />, pageKey: "coupons" },
       { to: "/admin/marketing", label: "Marketing", icon: <Megaphone size={17} />, pageKey: "marketing" },
+      { to: "/admin/support-requests", label: "Support Requests", icon: <HandHeart size={17} />, pageKey: "marketing" },
       { to: "/admin/theme", label: "Theme & Site", icon: <Palette size={17} />, pageKey: "theme" },
       { to: "/admin/security-logs", label: "Security Logs", icon: <KeyRound size={17} />, pageKey: "security-logs" }
     ]

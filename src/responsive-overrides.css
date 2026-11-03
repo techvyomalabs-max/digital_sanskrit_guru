@@ -101,10 +101,6 @@ img, video, iframe, embed, object {
     border-color: var(--site-link, #0284c7) !important;
   }
 
-  .home-sponsors-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px !important;
-  }
 }
 
 @media (max-width: 480px) {
@@ -719,7 +715,7 @@ select {
   .home-hero-spotlight-card,
   .home-banner,
   .home-stats-section,
-  .home-sponsors-section,
+  .home-support-section,
   .product-container,
   .product-details-section,
   .reviews-section,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, Lightbulb } from "lucide-react";
-import axios from "axios";
 import ProductCard from "./ProductCard";
+import { fetchPublicCatalog } from "../utils/productCatalog";
 import { getAIRecommendations, getRecentSearchQueries } from "../utils/recommendationEngine";
 import { useWishlist } from "../hooks/useWishlist";
 import { useCart } from "../hooks/useCart";
@@ -33,12 +33,9 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
     }
 
     let active = true;
-    axios
-      .get("/api/products")
-      .then((res) => {
-        if (active && Array.isArray(res.data)) {
-          setCatalog(res.data);
-        }
+    fetchPublicCatalog()
+      .then((products) => {
+        if (active) setCatalog(products);
       })
       .catch(() => {});
 
