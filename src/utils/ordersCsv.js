@@ -1,3 +1,4 @@
+import { getItemHsnSac } from "./tax.js";
 /**
  * src/utils/ordersCsv.js
  * Pure utility to generate Order CSV export in one-row-per-product format.
@@ -251,52 +252,9 @@ export function splitName(rawName) {
   };
 }
 
-/**
- * Helper to determine HSN/SAC code.
- * NOTE: This mirrors backend/utils/tax.js (getItemHsnSac), which the invoice uses,
- * so that billing codes match invoices. Orders saved with item.hsnSac use that code.
- */
-export function getItemHsnSac(item) {
-  if (item?.hsnSac) return String(item.hsnSac).trim();
-  const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
-  const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-
-  const isDigital =
-    category.includes("ebook") ||
-    category.includes("e-book") ||
-    category.includes("kindle") ||
-    category.includes("web version") ||
-    category.includes("web-version") ||
-    category.includes("flipbook") ||
-    name.includes("ebook") ||
-    name.includes("e-book") ||
-    name.includes("kindle") ||
-    name.includes("web version") ||
-    name.includes("web-version") ||
-    name.includes("flipbook") ||
-    name.includes("epub") ||
-    name.includes("pdf");
-
-  if (isDigital) {
-    return "9973";
-  }
-
-  const isPrintedBook =
-    category.includes("book") ||
-    category.includes("sanskrit") ||
-    category.includes("gita") ||
-    category.includes("scriptures") ||
-    category.includes("grammar") ||
-    category.includes("dharma") ||
-    category.includes("paperback") ||
-    name.includes("book") ||
-    name.includes("volume") ||
-    name.includes("vol.") ||
-    name.includes("hardcover") ||
-    name.includes("paperback");
-
-  return isPrintedBook ? "4901" : "8523";
-}
+// HSN/SAC code rules shared with checkout (same as backend/utils/tax.js, which the invoice uses).
+// Orders saved with item.hsnSac use that code.
+export { getItemHsnSac };
 
 export function getItemProductVariation(item) {
   if (!item) return "";

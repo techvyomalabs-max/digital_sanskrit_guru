@@ -116,7 +116,7 @@ function legacyLineTaxes(order, items, isLocal, isExport) {
       share = i === items.length - 1 ? roundMoney(discount - allocated) : roundMoney(discount * (grosses[i] / grossTotal));
       allocated = roundMoney(allocated + share);
     }
-    const rate = lineGstRate(it, { isInternational: isExport, storeRate });
+    const rate = lineGstRate(it, { isInternational: isExport, storeRate, codeRates: false });
     return lineTax({ gross: grosses[i], discount: share, rate, isLocal });
   });
 }
@@ -126,6 +126,73 @@ function addressLines(a = {}) {
   const cityLine = [a.city, a.state, a.pincode].map(text).filter((s) => s && !isPlaceholderState(s) && s !== "000000").join(", ");
   const country = text(a.country);
   return [street === "Digital Delivery" ? "" : street, cityLine, country].filter(Boolean);
+}
+
+const TAX_KEYS = ["gross", "discount", "taxable", "cgst", "sgst", "igst", "tax", "total"];
+
+/** One taxed piece (a line, a combo component or a share of delivery), amounts rounded. */
+function unitFrom(t = {}, name = "Item") {
+  const out = { name, hsnSac: text(t.hsnSac), rate: t.rate === null || t.rate === undefined ? null : Number(t.rate) };
+  for (const k of TAX_KEYS) out[k] = roundMoney(t[k]);
+  return out;
+}
+
+/** The same piece reduced to a share (0–1) of itself, as on a credit note. */
+function scaleUnit(u, ratio, isLocal) {
+  const taxable = roundMoney(u.taxable * ratio);
+  const tax = roundMoney(u.tax * ratio);
+  const cgst = isLocal ? roundMoney(tax / 2) : 0;
+  const sgst = isLocal ? roundMoney(tax - cgst) : 0;
+  return { ...u, gross: roundMoney(taxable + tax), discount: 0, taxable, cgst, sgst, igst: isLocal ? 0 : tax, tax, total: roundMoney(taxable + tax) };
+}
+
+/** A line reduced to a share of itself; a combo's components are each reduced the same way. */
+function scaleLine(l, ratio, isLocal) {
+  if (!l.parts) return scaleUnit(l, ratio, isLocal);
+  const parts = l.parts.map((p) => scaleUnit(p, ratio, isLocal));
+  const out = { ...l, parts };
+  for (const k of TAX_KEYS) out[k] = roundMoney(parts.reduce((a, p) => a + p[k], 0));
+  out.discount = 0;
+  return out;
+}
+
+/**
+ * Totals, tax by rate and every taxed piece of an invoice or credit note.
+ * totals.taxable = the items' taxable value; totals.deliveryCharge = delivery's taxable value
+ * (or, for older orders, the untaxed delivery charge); totals.tax includes GST on delivery.
+ * So: taxable + deliveryCharge + tax = grandTotal (base price + delivery + GST = total).
+ */
+function summarize(lines, delivery) {
+  const units = lines.flatMap((l) => (l.parts ? l.parts.map((p) => ({ ...p, combo: l.name })) : [{ ...l }]));
+  const deliveryUnits = delivery.parts.map((p) => ({ ...p, name: "Delivery charges", kind: "delivery" }));
+  const all = [...units, ...deliveryUnits];
+  const sum = (list, k) => roundMoney(list.reduce((a, u) => a + (Number(u[k]) || 0), 0));
+
+  const deliveryTaxable = delivery.taxed ? sum(deliveryUnits, "taxable") : delivery.gross;
+  const totals = {
+    gross: sum(lines, "gross"),
+    discount: sum(lines, "discount"),
+    taxable: sum(units, "taxable"),
+    cgst: sum(all, "cgst"),
+    sgst: sum(all, "sgst"),
+    igst: sum(all, "igst"),
+    tax: sum(all, "tax"),
+    deliveryCharge: deliveryTaxable,
+    deliveryGross: delivery.gross,
+    deliveryTax: delivery.taxed ? sum(deliveryUnits, "tax") : 0
+  };
+  totals.totalTaxable = roundMoney(totals.taxable + totals.deliveryCharge);
+  totals.grandTotal = roundMoney(totals.taxable + totals.tax + totals.deliveryCharge);
+
+  // Tax by rate, the way GST returns group it (delivery counted at the rate of what it carried)
+  const byRate = new Map();
+  for (const u of all) {
+    const rate = Number(u.rate) || 0;
+    const row = byRate.get(rate) || { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
+    for (const k of ["taxable", "cgst", "sgst", "igst", "tax"]) row[k] = roundMoney(row[k] + (Number(u[k]) || 0));
+    byRate.set(rate, row);
+  }
+  return { totals, rates: [...byRate.values()].sort((a, b) => a.rate - b.rate), units: all };
 }
 
 /**
@@ -154,45 +221,30 @@ function buildInvoice(order, { user = null, seller: fallbackSeller = null } = {}
   const lines = items.map((it, i) => {
     const t = taxes[i];
     const quantity = Math.max(1, Number(it?.quantity || 1));
+    const parts = Array.isArray(t.parts) && t.parts.length ? t.parts.map((p) => unitFrom(p, text(p.name) || "Item")) : null;
     return {
-      name: text(it?.name || it?.product?.name) || "Item",
+      ...unitFrom(t, text(it?.name || it?.product?.name) || "Item"),
       format: text(it?.format || it?.selectedFormatLabel),
-      hsnSac: text(it?.hsnSac) || lineCode(it),
+      // A combo shows its components' codes on their own rows
+      hsnSac: parts ? "" : text(it?.hsnSac) || lineCode(it),
       quantity,
       unitPrice: roundMoney(Number(it?.price || 0)),
-      gross: roundMoney(t.gross),
-      discount: roundMoney(t.discount),
-      taxable: roundMoney(t.taxable),
-      rate: Number(t.rate) || 0,
-      cgst: roundMoney(t.cgst),
-      sgst: roundMoney(t.sgst),
-      igst: roundMoney(t.igst),
-      tax: roundMoney(t.tax),
-      total: roundMoney(t.total)
+      parts
     };
   });
 
-  const sum = (key) => roundMoney(lines.reduce((a, l) => a + l[key], 0));
-  const deliveryCharge = roundMoney(Number(order?.deliveryCharge || 0));
-  const totals = {
-    gross: sum("gross"),
-    discount: sum("discount"),
-    taxable: sum("taxable"),
-    cgst: sum("cgst"),
-    sgst: sum("sgst"),
-    igst: sum("igst"),
-    tax: sum("tax"),
-    deliveryCharge
-  };
-  totals.grandTotal = roundMoney(totals.taxable + totals.tax + deliveryCharge);
+  // Delivery: taxed (orders from November 2026, split over the items delivered) or, for older
+  // orders, an untaxed amount outside the taxable value as it was charged then
+  const saved = order?.taxDetails?.delivery;
+  const delivery = saved && Number.isFinite(Number(saved.gross))
+    ? {
+        taxed: true,
+        gross: roundMoney(saved.gross),
+        parts: (Array.isArray(saved.parts) ? saved.parts : []).map((p) => unitFrom(p, "Delivery charges"))
+      }
+    : { taxed: false, gross: roundMoney(Number(order?.deliveryCharge || 0)), parts: [] };
 
-  // Tax by rate, the way GST returns group it
-  const byRate = new Map();
-  for (const l of lines) {
-    const row = byRate.get(l.rate) || { rate: l.rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
-    for (const k of ["taxable", "cgst", "sgst", "igst", "tax"]) row[k] = roundMoney(row[k] + l[k]);
-    byRate.set(l.rate, row);
-  }
+  const { totals, rates, units } = summarize(lines, delivery);
 
   const billing = order?.billing || {};
   const shipping = order?.shipping || order?.shippingAddress || {};
@@ -240,7 +292,9 @@ function buildInvoice(order, { user = null, seller: fallbackSeller = null } = {}
     isB2B: Boolean(buyerGstin),
     reverseCharge: false,
     lines,
-    rates: [...byRate.values()].sort((a, b) => a.rate - b.rate),
+    delivery,
+    units,
+    rates,
     totals,
     amountInWords: amountInWords(totals.grandTotal, currency)
   };
@@ -268,11 +322,12 @@ function creditNoteRefunds(order) {
 const itemRefundId = (it) => String(it?._id || it?.id || it?.product || "");
 
 /**
- * Splits a refund over the invoice lines.
+ * Splits a refund over the invoice.
  * - Returned items (itemIds given): the refund goes to those lines first, in proportion to
  *   what was invoiced for them, so only their GST rates are reduced; what is left is delivery.
- * - Whole order (no itemIds, or none match): spread over every line in proportion.
- * refundAmount is in the invoice's currency. Returns the reversed lines and the delivery share.
+ * - Whole order (no itemIds, or none match): spread over every line and delivery in proportion.
+ * A combo line is reduced component by component. refundAmount is in the invoice's currency.
+ * Returns { lines, delivery, itemLevel }: the reversed lines and the reversed delivery.
  */
 function allocateRefund(order, inv, refundAmount, itemIds = []) {
   const amount = Math.max(0, roundMoney(refundAmount));
@@ -291,16 +346,29 @@ function allocateRefund(order, inv, refundAmount, itemIds = []) {
     ratios = inv.lines.map(() => r);
   }
 
-  const lines = inv.lines.map((l, i) => {
-    const taxable = roundMoney(l.taxable * ratios[i]);
-    const tax = roundMoney(l.tax * ratios[i]);
-    const cgst = inv.isLocal ? roundMoney(tax / 2) : 0;
-    const sgst = inv.isLocal ? roundMoney(tax - cgst) : 0;
-    return { ...l, gross: roundMoney(taxable + tax), discount: 0, taxable, cgst, sgst, igst: inv.isLocal ? 0 : tax, tax, total: roundMoney(taxable + tax), returned: itemLevel ? selected[i] : true };
-  });
+  const lines = inv.lines.map((l, i) => ({ ...scaleLine(l, ratios[i], inv.isLocal), returned: itemLevel ? selected[i] : true }));
   const itemsTotal = lines.reduce((a, l) => a + l.total, 0);
   // Whatever is left of the refund after the items is the delivery share (never below zero)
-  return { lines, deliveryShare: Math.max(0, roundMoney(amount - itemsTotal)), itemLevel };
+  const deliveryAmount = Math.max(0, roundMoney(amount - itemsTotal));
+  return { lines, delivery: scaleDelivery(inv.delivery, deliveryAmount, inv.isLocal), itemLevel };
+}
+
+/** Delivery reduced to the amount refunded for it, GST reversed in proportion. */
+function scaleDelivery(delivery, amount, isLocal) {
+  if (!delivery?.taxed || !(delivery.gross > 0) || amount <= 0) {
+    return { taxed: false, gross: roundMoney(amount), parts: [] };
+  }
+  const ratio = Math.min(1, amount / delivery.gross);
+  const parts = delivery.parts.map((p) => scaleUnit(p, ratio, isLocal));
+  // Rounding (or anything above the delivery charge) stays with the last part, so it adds up exactly
+  const extra = roundMoney(amount - parts.reduce((a, p) => a + p.total, 0));
+  if (parts.length && extra !== 0) {
+    const last = parts[parts.length - 1];
+    last.taxable = roundMoney(last.taxable + extra);
+    last.gross = roundMoney(last.gross + extra);
+    last.total = roundMoney(last.total + extra);
+  }
+  return { taxed: true, gross: roundMoney(amount), parts };
 }
 
 /**
@@ -318,33 +386,14 @@ function buildCreditNote(order, refund, options = {}) {
   const allocation = allocateRefund(order, inv, refundAmount, refund?.itemIds);
   // Only the returned items are listed on an item return
   const lines = allocation.itemLevel ? allocation.lines.filter((l) => l.returned) : allocation.lines;
-  const sum = (key) => roundMoney(lines.reduce((a, l) => a + l[key], 0));
-  const taxable = sum("taxable");
-  const tax = sum("tax");
-  const deliveryCharge = allocation.deliveryShare;
-  const totals = {
-    gross: roundMoney(taxable + tax),
-    discount: 0,
-    taxable,
-    cgst: sum("cgst"),
-    sgst: sum("sgst"),
-    igst: sum("igst"),
-    tax,
-    deliveryCharge
-  };
-  totals.grandTotal = roundMoney(taxable + tax + deliveryCharge);
-
-  const byRate = new Map();
-  for (const l of lines) {
-    const row = byRate.get(l.rate) || { rate: l.rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
-    for (const k of ["taxable", "cgst", "sgst", "igst", "tax"]) row[k] = roundMoney(row[k] + l[k]);
-    byRate.set(l.rate, row);
-  }
+  const { totals, rates, units } = summarize(lines, allocation.delivery);
 
   return {
     ...inv,
     lines,
-    rates: [...byRate.values()].sort((a, b) => a.rate - b.rate),
+    delivery: allocation.delivery,
+    units,
+    rates,
     totals,
     amountInWords: amountInWords(totals.grandTotal, inv.currency),
     creditNote: {
@@ -360,4 +409,4 @@ function buildCreditNote(order, refund, options = {}) {
   };
 }
 
-module.exports = { buildInvoice, buildCreditNote, allocateRefund, creditNoteRefunds, amountInWords, integerToWords, placeOfSupply };
+module.exports = { buildInvoice, buildCreditNote, allocateRefund, summarize, creditNoteRefunds, amountInWords, integerToWords, placeOfSupply };

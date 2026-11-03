@@ -3,7 +3,7 @@ const { resolveDeliveryCharge, isDigitalItem } = require("./deliveryPricing");
 const { convertCurrencyAmount, normalizeCurrencyRates, resolveItemsCurrency, normalizeCurrencyCode } = require("./currency");
 const { getProductPriceDetails, isInternationalCountry } = require("./productPricing");
 const { normalizeOrderItem } = require("./orderItems");
-const { lineCode, lineGstRate, lineTax } = require("./tax");
+const { lineCode, lineGstRate, lineTax, comboParts, comboTax, taxUnits, deliveryTax } = require("./tax");
 const { validateCoupon } = require("./coupons");
 const { getSettlementCharge } = require("./paymentVerification");
 const { buildComponentsFromProduct, computeUpgradeCreditPerUnit } = require("./upgradePricing");
@@ -118,7 +118,8 @@ async function computeOrderTotals({
   applyComboWeights(normalizedItems, byId);
 
   const gstPercent = isInternational ? 0 : Math.min(50, Math.max(0, Number(settings?.gstPercent || 0)));
-  const deliveryCharge = roundMoney(toCcy(resolveDeliveryCharge(settings, shipping, normalizedItems)));
+  // The delivery fee the customer pays (GST included); split into taxable value and GST below
+  const deliveryFee = roundMoney(toCcy(resolveDeliveryCharge(settings, shipping, normalizedItems)));
 
   for (const it of normalizedItems) {
     const p = byId.get(String(it.product));
@@ -142,6 +143,10 @@ async function computeOrderTotals({
           amount: roundMoney(od.creditPerUnit * it.quantity)
         }));
         it.price = roundMoney(it.price - creditResult.creditPerUnit);
+        // Owned components aren't being sold again, so they take no share of the combo's tax
+        for (const bi of Array.isArray(it.bundleItems) ? it.bundleItems : []) {
+          if (bi?.isDigital === true && bi?.product && ownedSet.has(String(bi.product))) bi.owned = true;
+        }
       } else {
         it.upgradeCreditPerUnit = 0;
         it.upgradeCredit = 0;
@@ -172,7 +177,9 @@ async function computeOrderTotals({
   const priced = normalizedItems.map((it) => ({
     it,
     gross: roundMoney(it.price * it.quantity),
-    rate: lineGstRate(it, { isInternational, storeRate: gstPercent })
+    rate: lineGstRate(it, { isInternational, storeRate: gstPercent }),
+    // A combo is taxed by its components (each with its own code and rate)
+    parts: comboParts(it, { isInternational, storeRate: gstPercent })
   }));
 
   let coupon = { discount: 0, appliedCouponCode: "", eligibleIds: new Set() };
@@ -213,17 +220,26 @@ async function computeOrderTotals({
       allocated = roundMoney(allocated + share);
     }
     p.it.hsnSac = lineCode(p.it);
-    p.it.tax = lineTax({ gross: p.gross, discount: share, rate: p.rate, isLocal });
+    p.it.tax = p.parts
+      ? comboTax({ gross: p.gross, discount: share, parts: p.parts, isLocal })
+      : lineTax({ gross: p.gross, discount: share, rate: p.rate, isLocal });
   });
 
+  // Delivery is part of the taxable value: the fee is split over the physical items delivered
+  // and taxed at their rates (see utils/tax.js)
+  const units = normalizedItems.flatMap((it) => taxUnits(it));
+  const delivery = deliveryTax({ amount: deliveryFee, units, isLocal, isInternational });
+
+  // Base price + delivery + GST = total. Order totals are the sum of the lines (plus delivery),
+  // so they always match line by line.
   const sum = (key) => roundMoney(normalizedItems.reduce((acc, it) => acc + (Number(it.tax?.[key]) || 0), 0));
   const subtotal = sum("taxable");
-  const gstAmount = sum("tax");
+  const gstAmount = roundMoney(sum("tax") + delivery.tax);
+  const deliveryCharge = delivery.taxable;
   const total = roundMoney(subtotal + gstAmount + deliveryCharge);
 
-  // Order totals are the sum of the lines (so they always match line by line).
   // The % fields only describe a single-rate order; mixed rates are listed per line.
-  const lineRates = [...new Set(normalizedItems.map((it) => Number(it.tax?.rate) || 0))];
+  const lineRates = [...new Set([...units, ...delivery.parts].map((u) => Number(u.rate) || 0))];
   const singleRate = lineRates.length === 1 ? lineRates[0] : null;
   const taxDetails = {
     hsnCode: "4901",
@@ -231,11 +247,13 @@ async function computeOrderTotals({
     cgstPercent: isLocal && singleRate !== null ? singleRate / 2 : 0,
     sgstPercent: isLocal && singleRate !== null ? singleRate / 2 : 0,
     igstPercent: !isLocal && singleRate !== null ? singleRate : 0,
-    cgstAmount: sum("cgst"),
-    sgstAmount: sum("sgst"),
-    igstAmount: sum("igst"),
+    cgstAmount: roundMoney(sum("cgst") + delivery.cgst),
+    sgstAmount: roundMoney(sum("sgst") + delivery.sgst),
+    igstAmount: roundMoney(sum("igst") + delivery.igst),
     isLocal,
-    mixedRates: singleRate === null
+    mixedRates: singleRate === null,
+    // The delivery fee as paid (gross, GST included), its taxable value and GST, and how it was split
+    delivery
   };
 
   const fxRateToInr = orderCurrency === "INR" ? 1 : 1 / (rates[orderCurrency] || 1);
@@ -247,6 +265,7 @@ async function computeOrderTotals({
     isInternational,
     gstPercent,
     deliveryCharge,
+    deliveryFee,
     subtotal,
     gstAmount,
     discount: coupon.discount,

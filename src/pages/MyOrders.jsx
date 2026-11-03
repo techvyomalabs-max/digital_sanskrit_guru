@@ -824,7 +824,8 @@ function MyOrders() {
           const canContinuePayment = !isWpOrder && !isPaid && status !== "Delivered" && status !== "Cancelled";
           const canCancelOrder = !isWpOrder && status === "Pending";
           const shouldShowRefundStatus = refundStatus !== "Not Applicable";
-          const deliveryCharge = Number(order?.deliveryCharge || 0);
+          // The delivery fee as paid (GST included, for orders where delivery is taxed)
+          const deliveryCharge = Number(order?.taxDetails?.delivery?.gross ?? order?.deliveryCharge ?? 0);
 
           return (
             <div key={order._id} className="my-order-card">

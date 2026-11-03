@@ -655,15 +655,15 @@ function AdminOrderDetails() {
                 <article className="admin-order-details-card">
                   <h2>Payment summary</h2>
                   <div className="admin-order-summary-row">
-                    <span>Subtotal</span>
+                    <span>{order.taxDetails?.delivery ? "Items (before GST)" : "Subtotal"}</span>
                     <strong>{formatOrderDisplayCurrency(order, "subtotal", Number(order.subtotal || 0))}</strong>
                   </div>
                   <div className="admin-order-summary-row">
-                    <span>GST ({Number(order.gstPercent || 0)}%)</span>
+                    <span>{order.taxDetails?.delivery ? "GST (items and delivery)" : "GST"}</span>
                     <strong>{formatOrderDisplayCurrency(order, "gstAmount", Number(order.gstAmount || 0))}</strong>
                   </div>
                   <div className="admin-order-summary-row">
-                    <span>Delivery</span>
+                    <span>{order.taxDetails?.delivery ? "Delivery (before GST)" : "Delivery"}</span>
                     <strong>{formatOrderDisplayCurrency(order, "deliveryCharge", Number(order.deliveryCharge || 0))}</strong>
                   </div>
                   {Number(order.discount || 0) > 0 ? (

@@ -66,7 +66,7 @@ describe("finance reports", () => {
     assert.equal(col(h, l, "Supply Type"), "B2C");
     assert.equal(col(h, l, "Tax Type"), "CGST + SGST");
     assert.equal(col(h, l, "Invoice Total INR"), "1709.00");
-    assert.equal(col(h, l, "Delivery INR"), "60.00");
+    assert.equal(col(h, l, "Delivery (Taxable) INR"), "60.00", "older orders: delivery untaxed, as charged then");
     assert.equal(col(h, l, "Discount INR"), "100.00");
     assert.equal(col(h, b, "Supply Type"), "B2B");
     assert.equal(col(h, b, "Customer GSTIN"), "27AAPFU0939F1ZV");
@@ -85,7 +85,7 @@ describe("finance reports", () => {
     const r = buildFinanceReport("lines", { invoicedOrders: [local], period });
     const h = LINE_HEADERS;
     assert.equal(r.rows.length, 3);
-    assert.deepEqual(r.rows.map((row) => col(h, row, "HSN/SAC")), ["4901", "9973", "8523"]);
+    assert.deepEqual(r.rows.map((row) => col(h, row, "HSN/SAC")), ["4901", "998433", "8523"]);
     assert.deepEqual(r.rows.map((row) => col(h, row, "GST Rate %")), ["0", "18", "12"]);
     assert.equal(col(h, r.rows[1], "CGST Rate %"), "9");
     assert.equal(col(h, r.rows[1], "CGST INR"), "43.08");

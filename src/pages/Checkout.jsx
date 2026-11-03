@@ -43,54 +43,12 @@ import {
 import "./Checkout.css";
 import GstinFields from "../components/GstinFields";
 import { EMPTY_GSTIN, gstinPayload } from "../utils/gstin";
+import { getItemHsnSac, isComboItem, itemGstRate } from "../utils/tax";
 
 const getAddressLocationText = (item) => {
   return [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
 };
 
-const getItemHsnSac = (item) => {
-  if (item?.hsnSac) return String(item.hsnSac).trim();
-  const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
-  const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-
-  // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital =
-    category.includes("ebook") ||
-    category.includes("e-book") ||
-    category.includes("kindle") ||
-    category.includes("web version") ||
-    category.includes("web-version") ||
-    category.includes("flipbook") ||
-    name.includes("ebook") ||
-    name.includes("e-book") ||
-    name.includes("kindle") ||
-    name.includes("web version") ||
-    name.includes("web-version") ||
-    name.includes("flipbook") ||
-    name.includes("epub") ||
-    name.includes("pdf");
-
-  if (isDigital) {
-    return "9973"; // Digital products/services (18% GST)
-  }
-
-  // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook =
-    category.includes("book") ||
-    category.includes("sanskrit") ||
-    category.includes("gita") ||
-    category.includes("scriptures") ||
-    category.includes("grammar") ||
-    category.includes("dharma") ||
-    category.includes("paperback") ||
-    name.includes("book") ||
-    name.includes("volume") ||
-    name.includes("vol.") ||
-    name.includes("hardcover") ||
-    name.includes("paperback");
-
-  return isPrintedBook ? "4901" : "8523";
-};
 
 function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
   if (!Array.isArray(upgradeCreditItems)) return [];
@@ -564,15 +522,16 @@ function Checkout() {
 
   const totals = useMemo(() => {
     const total = Number(serverTotals.total || 0);
-    const deliveryCharge = Number(serverTotals.deliveryCharge || 0);
+    // The delivery fee as the customer pays it (GST included); deliveryCharge is its taxable value
+    const deliveryCharge = Number(serverTotals.deliveryFee ?? serverTotals.deliveryCharge ?? 0);
     const upgradeCredit = Number(serverTotals.upgradeCredit || 0);
     const discount = Number(serverTotals.discount || 0);
     const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
     return {
       subtotal: serverTotals.subtotal,
       gstAmount: serverTotals.gstAmount,
-      deliveryCharge: serverTotals.deliveryCharge,
-      grandTotal: roundMoney(serverTotals.subtotal + serverTotals.gstAmount + serverTotals.deliveryCharge),
+      deliveryCharge,
+      grandTotal: total,
       isInternational: isInternationalCountry(selectedAddress?.country),
       itemsInclGst
     };
@@ -1578,11 +1537,10 @@ function Checkout() {
               const qty = Math.max(1, Number(item.quantity || 1));
               const unitPrice = Number(getProductPriceDetails(item, selectedAddress?.country).price || 0);
               const lineTotal = roundMoney(unitPrice * qty);
-              const hsnSac = getItemHsnSac(item);
-              const defaultGstPercent = Number(charges.gstPercent || 0);
-              const gstRate = hsnSac === "4901" ? 0 : defaultGstPercent;
-              const gstAmount = roundMoney(lineTotal - (lineTotal / (1 + gstRate / 100)));
-              const isDigital = isDigitalItem(item);
+              const isInternationalSale = isInternationalCountry(selectedAddress?.country);
+              const combo = isComboItem(item);
+              const hsnSac = combo ? "" : getItemHsnSac(item);
+              const gstRate = itemGstRate(item, { isInternational: isInternationalSale, storeRate: Number(charges.gstPercent || 0) });
 
               return (
                 <div key={index} className="summary-item-wrapper">
@@ -1596,8 +1554,14 @@ function Checkout() {
                     <span>
                       {qty} × {formatResolvedPrice(getProductPriceDetails(item, selectedAddress?.country))}
                     </span>
-                    <span className="summary-item-hsn">HSN: {hsnSac}</span>
-                    <span className="summary-item-gst">GST: {gstRate}%</span>
+                    {combo ? (
+                      <span className="summary-item-gst">GST by component</span>
+                    ) : (
+                      <>
+                        <span className="summary-item-hsn">HSN/SAC: {hsnSac}</span>
+                        <span className="summary-item-gst">GST: {gstRate}%</span>
+                      </>
+                    )}
                   </div>
                 </div>
               );

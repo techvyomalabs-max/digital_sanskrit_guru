@@ -160,7 +160,99 @@ function payoutRows(items = [], orders = []) {
     });
 }
 
+// ── Payout summaries ─────────────────────────────────────────────────────────
+
+const PAYOUT_GROUPS = {
+  settlement: "Per settlement",
+  day: "Daily",
+  week: "Weekly",
+  month: "Monthly",
+  year: "Yearly (financial year)"
+};
+
+const PAYOUT_SUMMARY_HEADERS = [
+  "Period", "From", "To", "Settlements", "Settlement UTRs", "Payments", "Payments Amount", "Refunds",
+  "Refunds Amount", "Other Adjustments", "Fees (incl. GST)", "GST On Fees", "Net To Bank", "Currency", "Unmatched"
+];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The group a settled transaction falls in: { key, label, from, to } (India dates). */
+function payoutPeriod(it, group) {
+  const day = unixDate(it.settled_at);
+  if (group === "settlement") {
+    return { key: String(it.settlement_id || "(no settlement)"), label: String(it.settlement_id || "(no settlement)"), from: day, to: day };
+  }
+  if (group === "day") return { key: day, label: day, from: day, to: day };
+  if (group === "week") {
+    // Weeks run Monday to Sunday
+    const d = new Date(`${day}T00:00:00Z`);
+    const monday = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
+    const sunday = new Date(new Date(`${monday}T00:00:00Z`).getTime() + 6 * DAY_MS).toISOString().slice(0, 10);
+    return { key: monday, label: `Week of ${monday}`, from: monday, to: sunday };
+  }
+  if (group === "month") {
+    const [y, m] = day.split("-").map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return { key: day.slice(0, 7), label: `${MONTHS[m - 1]} ${y}`, from: `${day.slice(0, 7)}-01`, to: `${day.slice(0, 7)}-${String(last).padStart(2, "0")}` };
+  }
+  // Financial year, 1 April to 31 March
+  const y = Number(day.slice(0, 4));
+  const start = Number(day.slice(5, 7)) >= 4 ? y : y - 1;
+  return { key: String(start), label: `FY ${start}-${String((start + 1) % 100).padStart(2, "0")}`, from: `${start}-04-01`, to: `${start + 1}-03-31` };
+}
+
+/**
+ * Settled transactions added up per settlement, day, week, month or financial year.
+ * Net to bank = payments − refunds ± adjustments − fees. Amounts in currency units (₹).
+ */
+function payoutSummaryRows(items = [], orders = [], group = "settlement") {
+  const detail = payoutRows(items, orders);
+  const col = (row, name) => row[PAYOUT_HEADERS.indexOf(name)];
+  const sorted = [...items].sort((a, b) => (Number(a.settled_at) - Number(b.settled_at)) || String(a.settlement_id).localeCompare(String(b.settlement_id)) || (Number(a.created_at) - Number(b.created_at)));
+  const groups = new Map();
+  sorted.forEach((it, i) => {
+    const row = detail[i];
+    const period = payoutPeriod(it, group);
+    const g = groups.get(period.key) || {
+      ...period, settlements: new Set(), utrs: new Set(), payments: 0, paymentsAmount: 0, refunds: 0,
+      refundsAmount: 0, other: 0, fees: 0, feeTax: 0, net: 0, currencies: new Set(), unmatched: 0
+    };
+    if (it.settlement_id) g.settlements.add(String(it.settlement_id));
+    if (it.settlement_utr) g.utrs.add(String(it.settlement_utr));
+    g.currencies.add(String(it.currency || "INR"));
+    const amount = (Number(it.amount) || 0) / 100;
+    if (it.type === "payment") {
+      g.payments += 1;
+      g.paymentsAmount += amount;
+    } else if (it.type === "refund") {
+      g.refunds += 1;
+      g.refundsAmount += amount;
+    } else {
+      g.other += ((Number(it.credit) || 0) - (Number(it.debit) || 0)) / 100;
+    }
+    g.fees += (Number(it.fee) || 0) / 100;
+    g.feeTax += (Number(it.tax) || 0) / 100;
+    g.net += ((Number(it.credit) || 0) - (Number(it.debit) || 0)) / 100;
+    if (col(row, "Matched") === "No") g.unmatched += 1;
+    groups.set(period.key, g);
+  });
+  const two = (v) => (Math.round(v * 100) / 100).toFixed(2);
+  return [...groups.values()]
+    .sort((a, b) => a.from.localeCompare(b.from) || a.key.localeCompare(b.key))
+    .map((g) => [
+      g.label, g.from, g.to, String(g.settlements.size), [...g.utrs].join(" "), String(g.payments), two(g.paymentsAmount),
+      String(g.refunds), two(g.refundsAmount), two(g.other), two(g.fees), two(g.feeTax), two(g.net),
+      [...g.currencies].join(" "), String(g.unmatched)
+    ]);
+}
+
 module.exports = {
+  PAYOUT_GROUPS,
+  PAYOUT_SUMMARY_HEADERS,
+  payoutPeriod,
+  payoutSummaryRows,
   ATTEMPT_HEADERS,
   PAYOUT_HEADERS,
   attemptOutcome,

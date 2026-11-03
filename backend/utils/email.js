@@ -261,8 +261,8 @@ async function sendOrderConfirmation(order, user) {
   const summaryTableHtml = `
     <table>
       <tr><td>Subtotal</td><td style="text-align:right">${currencyStr} ${Number(order.subtotal || 0).toFixed(2)}</td></tr>
-      <tr><td>GST (${Number(order.gstPercent || 0)}%)</td><td style="text-align:right">${currencyStr} ${Number(order.gstAmount || 0).toFixed(2)}</td></tr>
-      <tr><td>Delivery</td><td style="text-align:right">${currencyStr} ${Number(order.deliveryCharge || 0).toFixed(2)}</td></tr>
+      <tr><td>GST</td><td style="text-align:right">${currencyStr} ${Number(order.gstAmount || 0).toFixed(2)}</td></tr>
+      <tr><td>Delivery${order.taxDetails?.delivery ? " (before GST)" : ""}</td><td style="text-align:right">${currencyStr} ${Number(order.deliveryCharge || 0).toFixed(2)}</td></tr>
       ${Number(order.discount || 0) > 0 ? `<tr><td>Discount</td><td style="text-align:right">- ${currencyStr} ${Number(order.discount || 0).toFixed(2)}</td></tr>` : ""}
       <tr><td><strong>Total</strong></td><td style="text-align:right"><strong>${currencyStr} ${Number(order.total || 0).toFixed(2)}</strong></td></tr>
     </table>`;
@@ -473,8 +473,11 @@ function buildShippedInvoiceHtml(order, user) {
 
   const shipping = order.shippingAddress || order.shipping || {};
   const customerState = String(shipping.state || "").trim();
-  const isIntrastate =
-    customerState.toLowerCase() === "karnataka" || customerState.toLowerCase() === "ka";
+  // CGST + SGST or IGST as charged at checkout (rates vary by item, so no single % is shown)
+  const savedLocal = order.taxDetails?.isLocal;
+  const isIntrastate = typeof savedLocal === "boolean"
+    ? savedLocal
+    : customerState.toLowerCase() === "karnataka" || customerState.toLowerCase() === "ka";
 
   const rows = items
     .map((item) => {
@@ -495,14 +498,14 @@ function buildShippedInvoiceHtml(order, user) {
     if (isIntrastate) {
       gstRow = `
         <tr>
-          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">CGST (9%) + SGST (9%):</td>
+          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">CGST + SGST (incl. on delivery):</td>
           <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${symbol}${gst.toFixed(2)}</td>
         </tr>
       `;
     } else {
       gstRow = `
         <tr>
-          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">IGST (18%):</td>
+          <td colspan="3" style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px; color: #64748b;">IGST (incl. on delivery):</td>
           <td style="text-align: right; padding: 6px 10px; border: 1px solid #e2e8f0; font-size: 12.5px;">${symbol}${gst.toFixed(2)}</td>
         </tr>
       `;
@@ -513,11 +516,11 @@ function buildShippedInvoiceHtml(order, user) {
     <div style="margin-top: 24px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; font-family: sans-serif;">
       <div style="background-color: #1e293b; color: #ffffff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">🧾 OFFICIAL TAX INVOICE COPY</span>
-        <span style="font-size: 12px; opacity: 0.85;">Invoice #${orderCode}</span>
+        <span style="font-size: 12px; opacity: 0.85;">Invoice ${escapeHtml(order.invoiceNumber || `#${orderCode}`)}</span>
       </div>
       
       <div style="padding: 14px 16px; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #475569; line-height: 1.5;">
-        <div style="margin-bottom: 4px;"><strong>Seller:</strong> Vyoma Linguistic Labs Foundation &nbsp;|&nbsp; <strong>GSTIN:</strong> 29AABTV0911M1ZE</div>
+        <div style="margin-bottom: 4px;"><strong>Seller:</strong> Vyoma Linguistic Labs Foundation &nbsp;|&nbsp; <strong>GSTIN:</strong> ${escapeHtml(order.sellerDetails?.gstin || "29AABTV0911M1ZE")}</div>
         <div><strong>Place of Supply:</strong> ${escapeHtml(customerState || "Karnataka")} &nbsp;|&nbsp; <strong>Payment Status:</strong> ${escapeHtml(order.paymentStatus || "Paid")} (${escapeHtml(order.paymentMethod || "Online")})</div>
       </div>
 

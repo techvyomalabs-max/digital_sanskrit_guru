@@ -111,10 +111,14 @@ describe("checkout saves each line's tax", () => {
       const sum = (k) => round(lines.reduce((a, it) => a + it.tax[k], 0));
 
       assert.deepEqual(lines.map((it) => it.tax.rate), [0, 18, 12]);
-      assert.deepEqual(lines.map((it) => it.hsnSac), ["4901", "9973", "852349"]);
+      assert.deepEqual(lines.map((it) => it.hsnSac), ["4901", "998433", "852349"]);
       assert.equal(res.subtotal, sum("taxable"));
-      assert.equal(res.gstAmount, sum("tax"));
-      assert.equal(res.total, round(sum("total") + res.deliveryCharge));
+      // GST on the items plus GST on delivery (delivery is part of the taxable value)
+      assert.equal(res.gstAmount, round(sum("tax") + res.taxDetails.delivery.tax));
+      assert.ok(res.taxDetails.delivery.tax > 0, "delivery of the 12% CD carries GST");
+      // Base price + delivery + GST = total; the delivery fee (GST included) is unchanged
+      assert.equal(res.total, round(sum("total") + res.deliveryFee));
+      assert.equal(res.total, round(res.subtotal + res.deliveryCharge + res.gstAmount));
       assert.equal(res.taxDetails.isLocal, state === "Karnataka");
       assert.equal(res.taxDetails.mixedRates, true);
       assert.equal(res.taxDetails.cgstAmount + res.taxDetails.sgstAmount > 0, state === "Karnataka");
@@ -197,7 +201,7 @@ describe("invoice", () => {
       shipping: { address: "1 Road", city: "Bengaluru", state: "Karnataka", country: "India" }
     });
     assert.equal(inv.lines[0].rate, 18);
-    assert.equal(inv.lines[0].hsnSac, "9973");
+    assert.equal(inv.lines[0].hsnSac, "998433");
     assert.equal(inv.totals.grandTotal, 327.78);
     assert.equal(inv.isLocal, true);
   });

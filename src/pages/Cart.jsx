@@ -40,50 +40,8 @@ import {
 } from "lucide-react";
 import "./Cart.css";
 import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
+import { itemGstRate } from "../utils/tax";
 
-const getItemHsnSac = (item) => {
-  if (item?.hsnSac) return String(item.hsnSac).trim();
-  const name = String(item?.name || item?.product?.name || "").trim().toLowerCase();
-  const category = String(item?.category || item?.product?.category || "").trim().toLowerCase();
-
-  // E-books, Kindle books, Web versions, and Digital formats are taxed at 18% GST
-  const isDigital =
-    category.includes("ebook") ||
-    category.includes("e-book") ||
-    category.includes("kindle") ||
-    category.includes("web version") ||
-    category.includes("web-version") ||
-    category.includes("flipbook") ||
-    name.includes("ebook") ||
-    name.includes("e-book") ||
-    name.includes("kindle") ||
-    name.includes("web version") ||
-    name.includes("web-version") ||
-    name.includes("flipbook") ||
-    name.includes("epub") ||
-    name.includes("pdf");
-
-  if (isDigital) {
-    return "9973"; // Digital products/services (18% GST)
-  }
-
-  // Exempt printed books: category or name based check (HSN Chapter 49)
-  const isPrintedBook =
-    category.includes("book") ||
-    category.includes("sanskrit") ||
-    category.includes("gita") ||
-    category.includes("scriptures") ||
-    category.includes("grammar") ||
-    category.includes("dharma") ||
-    category.includes("paperback") ||
-    name.includes("book") ||
-    name.includes("volume") ||
-    name.includes("vol.") ||
-    name.includes("hardcover") ||
-    name.includes("paperback");
-
-  return isPrintedBook ? "4901" : "8523";
-};
 
 function getMergedUpgradeOwnedDetails(upgradeCreditItems) {
   if (!Array.isArray(upgradeCreditItems)) return [];
@@ -515,7 +473,8 @@ function Cart() {
 
     if (token && !totalsError && cartItems.length > 0) {
       const total = Number(serverTotals.total || 0);
-      const deliveryCharge = Number(serverTotals.deliveryCharge || 0);
+      // The delivery fee as the customer pays it (GST included); deliveryCharge is its taxable value
+      const deliveryCharge = Number(serverTotals.deliveryFee ?? serverTotals.deliveryCharge ?? 0);
       const upgradeCredit = Number(serverTotals.upgradeCredit || 0);
       const discount = Number(serverTotals.discount || 0);
       const itemsInclGst = roundMoney(total - deliveryCharge + upgradeCredit + discount);
@@ -550,8 +509,7 @@ function Cart() {
         return;
       }
 
-      const hsnSac = getItemHsnSac(item);
-      const gstRate = hsnSac === "4901" ? 0 : defaultGstPercent;
+      const gstRate = itemGstRate(item, { storeRate: defaultGstPercent });
       const lineBase = Math.round((lineTotal / (1 + gstRate / 100)) * 100) / 100;
       const itemGst = Math.round((lineTotal - lineBase) * 100) / 100;
 
