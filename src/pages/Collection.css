@@ -708,3 +708,11 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Tablets: three cards per row instead of two oversized ones ─────────── */
+@media (min-width: 700px) and (max-width: 1200px) {
+  .collection-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}

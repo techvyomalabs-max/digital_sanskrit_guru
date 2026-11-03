@@ -45,7 +45,12 @@ if (typeof process.send === "function") {
   });
 }
 
+// Bumped on every product invalidation, so a background refresh that started
+// before an edit never puts the old data back
+let productCacheGeneration = 0;
+
 function invalidateProductCacheLocal() {
+  productCacheGeneration += 1;
   const keys = appCache.keys().filter((k) =>
     k.startsWith("products:") ||
     k.startsWith("home:") ||
@@ -94,4 +99,47 @@ async function cacheAside(key, ttl, fetch) {
   return data;
 }
 
-module.exports = { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside };
+// How long past its TTL an entry may still be served while it refreshes
+const STALE_SERVE_SECONDS = 60 * 60;
+const refreshesInFlight = new Map();
+
+function loadAndStore(key, ttl, fetch) {
+  if (refreshesInFlight.has(key)) return refreshesInFlight.get(key);
+  const generation = productCacheGeneration;
+  const promise = Promise.resolve()
+    .then(fetch)
+    .then((data) => {
+      if (data !== undefined && data !== null && generation === productCacheGeneration) {
+        appCache.set(key, { value: data, freshUntil: Date.now() + ttl * 1000 }, ttl + STALE_SERVE_SECONDS);
+      }
+      return data;
+    })
+    .finally(() => refreshesInFlight.delete(key));
+  refreshesInFlight.set(key, promise);
+  return promise;
+}
+
+/**
+ * Cache-aside that never makes a visitor wait for a refresh. After `ttl` seconds
+ * the old value is still returned (for up to STALE_SERVE_SECONDS more) while a
+ * fresh copy loads in the background. Product invalidation clears these entries
+ * like any other key, so the next request after an edit loads fresh data.
+ * Concurrent misses share one load.
+ *
+ * @param {string}   key    Cache key; use a prefix that invalidateProductCache() clears
+ * @param {number}   ttl    Seconds before a background refresh is started
+ * @param {Function} fetch  Async function that returns the fresh data
+ * @returns {Promise<any>}
+ */
+async function cacheStaleWhileRevalidate(key, ttl, fetch) {
+  const entry = appCache.get(key);
+  if (entry === undefined) return loadAndStore(key, ttl, fetch);
+  if (Date.now() >= entry.freshUntil) {
+    loadAndStore(key, ttl, fetch).catch((err) => {
+      console.error(`[Cache] Background refresh of ${key} failed:`, err?.message || err);
+    });
+  }
+  return entry.value;
+}
+
+module.exports = { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate };

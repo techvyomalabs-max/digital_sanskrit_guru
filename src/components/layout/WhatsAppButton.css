@@ -138,3 +138,24 @@
     right: 18px;
   }
 }
+
+/* Tablets: smaller and closer to the edge, so it covers less of the page */
+@media (min-width: 769px) and (max-width: 1180px) {
+  .whatsapp-float-container {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .whatsapp-float-button {
+    width: 52px;
+    height: 52px;
+  }
+}
+
+/* Large phones and iPad mini portrait: same smaller size above the bottom menu */
+@media (min-width: 600px) and (max-width: 768px) {
+  .whatsapp-float-button {
+    width: 52px;
+    height: 52px;
+  }
+}

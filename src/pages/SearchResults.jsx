@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Lightbulb, RefreshCw, WifiOff } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import axios from "axios";
+import { fetchPublicCatalog } from "../utils/productCatalog";
 import {
   Sparkles,
   Truck,
@@ -77,9 +77,8 @@ function SearchResults() {
   );
 
   useEffect(() => {
-    axios
-      .get("/api/products")
-      .then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
+    fetchPublicCatalog()
+      .then(setProducts)
       .catch(() => {
         setProducts([]);
         setLoadFailed(true);
