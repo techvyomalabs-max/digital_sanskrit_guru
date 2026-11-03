@@ -102,27 +102,41 @@ describe("Razorpay payouts report", () => {
     }];
     const rows = payoutRows(items, orders);
     const h = PAYOUT_HEADERS;
-    const byId = (id) => rows.find((r) => col(h, r, "Transaction ID") === id);
+    const byId = (id) => rows.find((r) => col(h, r, "entity_id") === id);
+    const net = (r) => Number(col(h, r, "credit")) - Number(col(h, r, "debit"));
+
+    // Razorpay's own report columns, in Razorpay's order, then our matching columns
+    assert.deepEqual(h.slice(0, 27), [
+      "entity_id", "type", "debit", "credit", "amount", "currency", "fee", "tax", "on_hold", "settled",
+      "created_at", "settled_at", "settlement_id", "description", "notes", "payment_id", "arn",
+      "settlement_utr", "order_id", "order_receipt", "method", "upi_flow", "card_network", "card_issuer",
+      "card_type", "dispute_id", "additional_utr"
+    ]);
+    assert.deepEqual(h.slice(27), ["Order Ref", "Invoice No", "Credit Note No", "Matched"]);
 
     const pay = byId("pay_1");
     assert.equal(col(h, pay, "Invoice No"), "DSG/2026-27/0001");
-    assert.equal(col(h, pay, "Fee (incl. GST)"), "23.60");
-    assert.equal(col(h, pay, "GST On Fee"), "3.60");
-    assert.equal(col(h, pay, "Net To Bank"), "976.40");
-    assert.equal(col(h, pay, "Settled Date"), "2026-11-04");
+    assert.equal(col(h, pay, "amount"), "1000.00", "rupees, not paise");
+    assert.equal(col(h, pay, "fee"), "23.60");
+    assert.equal(col(h, pay, "tax"), "3.60");
+    assert.equal(col(h, pay, "credit"), "976.40");
+    assert.equal(col(h, pay, "settled_at"), "04/11/2026 11:30:00", "India time");
+    assert.equal(col(h, pay, "settlement_utr"), "UTR1");
+    assert.equal(col(h, pay, "method"), "upi");
+    assert.equal(col(h, pay, "payment_id"), "", "Razorpay leaves payment_id empty on payments");
     assert.equal(col(h, pay, "Matched"), "Yes");
 
     const refund = byId("rfnd_1");
-    assert.equal(col(h, refund, "Payment ID"), "pay_1");
+    assert.equal(col(h, refund, "payment_id"), "pay_1");
     assert.equal(col(h, refund, "Credit Note No"), "CN/2026-27/0001");
     assert.equal(col(h, refund, "Invoice No"), "DSG/2026-27/0001");
-    assert.equal(col(h, refund, "Net To Bank"), "-450.00");
+    assert.equal(net(refund), -450);
 
     assert.equal(col(h, byId("pay_x"), "Matched"), "No", "a payment Razorpay settled that has no invoice here");
     assert.equal(col(h, byId("adj_1"), "Matched"), "n/a");
 
-    const net = rows.reduce((a, r) => a + Number(col(h, r, "Net To Bank")), 0);
-    assert.equal(Math.round(net * 100) / 100, 976.40 - 450 + 48.82 - 1);
+    const total = rows.reduce((a, r) => a + net(r), 0);
+    assert.equal(Math.round(total * 100) / 100, 976.40 - 450 + 48.82 - 1);
   });
 });
 

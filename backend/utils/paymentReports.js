@@ -70,11 +70,37 @@ function attemptRows(intents = [], ordersByRzpOrder = new Map()) {
 
 // ── Payouts (Razorpay settlements) ──────────────────────────────────────────
 
-const PAYOUT_HEADERS = [
-  "Settlement ID", "Settlement UTR", "Settled Date", "Type", "Transaction ID", "Payment ID",
-  "Razorpay Order ID", "Method", "Transaction Date", "Currency", "Amount", "Fee (incl. GST)",
-  "GST On Fee", "Credit", "Debit", "Net To Bank", "Order Ref", "Invoice No", "Credit Note No", "Matched"
+// Razorpay's own settlement report columns, in Razorpay's order (as finance downloads them from
+// the Razorpay dashboard), then four columns matching each line to our invoice or credit note.
+const RAZORPAY_COLUMNS = [
+  "entity_id", "type", "debit", "credit", "amount", "currency", "fee", "tax", "on_hold", "settled",
+  "created_at", "settled_at", "settlement_id", "description", "notes", "payment_id", "arn",
+  "settlement_utr", "order_id", "order_receipt", "method", "upi_flow", "card_network", "card_issuer",
+  "card_type", "dispute_id", "additional_utr"
 ];
+const MATCH_COLUMNS = ["Order Ref", "Invoice No", "Credit Note No", "Matched"];
+const PAYOUT_HEADERS = [...RAZORPAY_COLUMNS, ...MATCH_COLUMNS];
+const MONEY_COLUMNS = new Set(["debit", "credit", "amount", "fee", "tax"]);
+const TIME_COLUMNS = new Set(["created_at", "settled_at"]);
+
+/** A Unix time as Razorpay's dashboard shows it, in India time: DD/MM/YYYY HH:MM:SS. */
+function razorpayTime(sec) {
+  if (!sec) return "";
+  const d = new Date(Number(sec) * 1000 + 330 * 60 * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
+/** One Razorpay column's value: amounts in rupees (Razorpay sends paise), times in India time. */
+function razorpayValue(it, column) {
+  const v = it?.[column];
+  if (MONEY_COLUMNS.has(column)) return money(v);
+  if (TIME_COLUMNS.has(column)) return razorpayTime(v);
+  if (v === null || v === undefined) return "";
+  if (typeof v === "boolean") return v ? "1" : "0";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
 
 /** "YYYY-MM" months from one India date to another, inclusive. */
 function monthsBetween(fromStr, toStr) {
@@ -136,22 +162,7 @@ function payoutRows(items = [], orders = []) {
       // Matched: a payment to one of our invoices, or a refund to one of our credit notes
       const matched = type === "payment" ? Boolean(order?.invoiceNumber) : type === "refund" ? Boolean(refundHit) : false;
       return [
-        String(it.settlement_id || ""),
-        String(it.settlement_utr || ""),
-        unixDate(it.settled_at),
-        type,
-        String(it.entity_id || ""),
-        paymentId,
-        String(it.order_id || ""),
-        String(it.method || ""),
-        unixDate(it.created_at),
-        String(it.currency || "INR"),
-        money(it.amount),
-        money(it.fee),
-        money(it.tax),
-        money(it.credit),
-        money(it.debit),
-        money((Number(it.credit) || 0) - (Number(it.debit) || 0)),
+        ...RAZORPAY_COLUMNS.map((c) => razorpayValue(it, c)),
         orderRef(order),
         String(order?.invoiceNumber || ""),
         String(refundHit?.refund?.creditNoteNumber || ""),
@@ -255,6 +266,8 @@ module.exports = {
   payoutSummaryRows,
   ATTEMPT_HEADERS,
   PAYOUT_HEADERS,
+  RAZORPAY_COLUMNS,
+  razorpayTime,
   attemptOutcome,
   attemptRows,
   monthsBetween,
