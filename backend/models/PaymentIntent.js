@@ -72,6 +72,22 @@ const paymentIntentSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true
+    },
+    // Failed tries on this checkout (from Razorpay's payment.failed webhook). The customer may
+    // still pay successfully afterwards, in which case status moves on to captured/linked.
+    failedAttempts: {
+      type: Number,
+      default: 0
+    },
+    lastFailure: {
+      paymentId: { type: String, default: "" },
+      code: { type: String, default: "" },
+      description: { type: String, default: "" },
+      reason: { type: String, default: "" },
+      source: { type: String, default: "" },
+      step: { type: String, default: "" },
+      method: { type: String, default: "" },
+      at: { type: Date, default: null }
     }
   },
   { timestamps: true }

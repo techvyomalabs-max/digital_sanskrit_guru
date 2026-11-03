@@ -59,6 +59,7 @@ const {
 const { getTrackingDetails } = require("../utils/trackingService");
 const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
 const getRazorpayClient = require("../utils/razorpay");
+const PaymentIntent = require("../models/PaymentIntent");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
@@ -75,6 +76,8 @@ const { billingGstFields } = require("../utils/gstin");
 const { generateInvoicePdfBuffer, generateCreditNotePdfBuffer } = require("../utils/invoicePdfGenerator");
 const { creditNoteRefunds } = require("../utils/invoiceData");
 const { REPORTS, buildFinanceReport, toCsv } = require("../utils/financeReports");
+const { ATTEMPT_HEADERS, PAYOUT_HEADERS, attemptRows, fetchSettledTransactions, payoutRows } = require("../utils/paymentReports");
+const ALL_FINANCE_REPORTS = { ...REPORTS, attempts: "Payment attempts", payouts: "Razorpay payouts" };
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, expandItemsForStock } = require("../utils/stock");
@@ -1240,42 +1243,81 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
 router.get("/analytics/finance/export", protect, admin, requireAdminPage("orders"), async (req, res) => {
   try {
     const report = String(req.query.report || "").trim();
-    if (!REPORTS[report]) {
-      return res.status(400).json({ message: `Unknown report. Use one of: ${Object.keys(REPORTS).join(", ")}` });
+    if (!ALL_FINANCE_REPORTS[report]) {
+      return res.status(400).json({ message: `Unknown report. Use one of: ${Object.keys(ALL_FINANCE_REPORTS).join(", ")}` });
     }
     const period = parseFinancePeriod(req.query);
     if (period.error) {
       return res.status(400).json({ message: period.error });
     }
     const { fromDate, toExclusiveDate } = period;
+    const slug = `${period.fromStr}_to_${period.toStr}`;
+    let result;
 
-    const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
-    const load = (filter) => Order.find(filter).populate("user", "name email").lean();
+    if (report === "attempts") {
+      // Every checkout that opened Razorpay in the period, matched to its order
+      const intents = await PaymentIntent.find({ createdAt: { $gte: fromDate, $lt: toExclusiveDate } })
+        .populate("user", "name email")
+        .lean();
+      const rzpOrderIds = intents.map((i) => i.razorpayOrderId).filter(Boolean);
+      const orders = rzpOrderIds.length
+        ? await Order.find({ "paymentMeta.razorpayOrderId": { $in: rzpOrderIds } })
+          .select("_id invoiceNumber paymentStatus paymentMeta.razorpayOrderId paymentMeta.razorpayPaymentId billing.name billing.email shipping.name")
+          .lean()
+        : [];
+      const byRzpOrder = new Map(orders.map((o) => [String(o.paymentMeta?.razorpayOrderId), o]));
+      result = { filename: `DSG_payment_attempts_${slug}.csv`, headers: ATTEMPT_HEADERS, rows: attemptRows(intents, byRzpOrder) };
+    } else if (report === "payouts") {
+      // Settled by Razorpay in the period (live from Razorpay), matched to invoices and credit notes
+      let razorpay;
+      try {
+        razorpay = getRazorpayClient();
+      } catch {
+        return res.status(503).json({ message: "Razorpay is not set up on the server, so payouts can't be fetched." });
+      }
+      let items;
+      try {
+        items = await fetchSettledTransactions(razorpay, period);
+      } catch (rzpErr) {
+        console.error("[Finance] Razorpay settlement fetch failed:", rzpErr?.error?.description || rzpErr?.message || rzpErr);
+        return res.status(502).json({ message: `Razorpay didn't return the settlements: ${rzpErr?.error?.description || rzpErr?.message || "unknown error"}` });
+      }
+      const paymentIds = [...new Set(items.map((it) => (it.type === "payment" ? it.entity_id : it.payment_id)).filter(Boolean))];
+      const orders = paymentIds.length
+        ? await Order.find({ "paymentMeta.razorpayPaymentId": { $in: paymentIds } })
+          .select("_id invoiceNumber paymentMeta.razorpayPaymentId paymentMeta.refunds")
+          .lean()
+        : [];
+      result = { filename: `DSG_razorpay_payouts_${slug}.csv`, headers: PAYOUT_HEADERS, rows: payoutRows(items, orders) };
+    } else {
+      const settings = await StoreSettings.findOne().select("businessDetails warehouseLocation").lean();
+      const load = (filter) => Order.find(filter).populate("user", "name email").lean();
 
-    const needsInvoiced = report !== "credit-notes";
-    const [invoicedOrders, refundedOrders, periodOrders] = await Promise.all([
-      needsInvoiced ? load(invoicedInPeriodFilter(fromDate, toExclusiveDate)) : [],
-      report === "credit-notes" || report === "gst" ? load(refundedInPeriodFilter(fromDate, toExclusiveDate)) : [],
-      report === "sales"
-        ? load({ paymentStatus: { $in: ["Pending", "Failed"] }, createdAt: { $gte: fromDate, $lt: toExclusiveDate } })
-        : []
-    ]);
+      const needsInvoiced = report !== "credit-notes";
+      const [invoicedOrders, refundedOrders, periodOrders] = await Promise.all([
+        needsInvoiced ? load(invoicedInPeriodFilter(fromDate, toExclusiveDate)) : [],
+        report === "credit-notes" || report === "gst" ? load(refundedInPeriodFilter(fromDate, toExclusiveDate)) : [],
+        report === "sales"
+          ? load({ paymentStatus: { $in: ["Pending", "Failed"] }, createdAt: { $gte: fromDate, $lt: toExclusiveDate } })
+          : []
+      ]);
 
-    const result = buildFinanceReport(report, {
-      invoicedOrders,
-      refundedOrders,
-      periodOrders,
-      settings: settings || {},
-      period: { ...period, from: fromDate, to: toExclusiveDate }
-    });
+      result = buildFinanceReport(report, {
+        invoicedOrders,
+        refundedOrders,
+        periodOrders,
+        settings: settings || {},
+        period: { ...period, from: fromDate, to: toExclusiveDate }
+      });
+    }
 
     await logAdminAction({
       req,
       action: "finance-report-exported",
       entityType: "finance-report",
       entityId: report,
-      entityLabel: REPORTS[report],
-      summary: `Downloaded ${REPORTS[report]} for ${period.fromStr} to ${period.toStr} (${result.rows.length} rows)`,
+      entityLabel: ALL_FINANCE_REPORTS[report],
+      summary: `Downloaded ${ALL_FINANCE_REPORTS[report]} for ${period.fromStr} to ${period.toStr} (${result.rows.length} rows)`,
       details: { report, from: period.fromStr, to: period.toStr, rows: result.rows.length }
     });
 
