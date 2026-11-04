@@ -1,3 +1,5 @@
+import { SITE_URL } from "./seo.js";
+
 // Product page links: /product/<link name>, e.g. /product/bhagavad-gita-paperback.
 // Falls back to the product id when a product has no link name yet; the product page
 // then switches the address to the link name.
@@ -7,7 +9,8 @@ export function productPath(product) {
   return key ? `/product/${encodeURIComponent(key)}` : "/collection";
 }
 
-export function productUrl(product, origin = typeof window !== "undefined" ? window.location.origin : "") {
+// Full link for sharing. Always the live store's address, never a preview's.
+export function productUrl(product, origin = SITE_URL) {
   return `${origin}${productPath(product)}`;
 }
 

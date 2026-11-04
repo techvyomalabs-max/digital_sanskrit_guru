@@ -1544,6 +1544,7 @@ router.get("/:id", async (req, res) => {
         .select(PUBLIC_PRODUCT_EXCLUDE)
         .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
         .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("optionParent", "_id slug")
         .lean();
     }
 
@@ -1554,6 +1555,7 @@ router.get("/:id", async (req, res) => {
           .select(PUBLIC_PRODUCT_EXCLUDE)
           .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
           .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
           .lean();
       }
     }
@@ -1565,6 +1567,7 @@ router.get("/:id", async (req, res) => {
           .select(PUBLIC_PRODUCT_EXCLUDE)
           .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
           .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
           .lean();
       }
     }

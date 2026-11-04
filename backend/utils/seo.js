@@ -96,10 +96,14 @@ function escapeXml(value) {
   return escapeAttr(value).replace(/'/g, "&apos;");
 }
 
-/** The head tags for one request: canonical link (public pages) and robots meta. */
-function seoHeadTags({ pathname, hostname, siteUrl = getSeoSiteUrl() }) {
-  const canonicalPath = canonicalPathFor(pathname);
-  const indexable = Boolean(canonicalPath) && isProductionHost(hostname, siteUrl);
+/**
+ * The head tags for one request: canonical link (public pages) and robots meta.
+ * canonicalPath overrides the route rule (product pages use the current link
+ * name); noindex: true keeps the canonical but marks noindex, "hard" drops both.
+ */
+function seoHeadTags({ pathname, hostname, siteUrl = getSeoSiteUrl(), canonicalPath: override = "", noindex = false }) {
+  const canonicalPath = noindex === "hard" ? "" : override || canonicalPathFor(pathname);
+  const indexable = Boolean(canonicalPath) && !noindex && isProductionHost(hostname, siteUrl);
   const tags = [`<meta name="robots" content="${indexable ? "index, follow" : "noindex, follow"}" />`];
   if (canonicalPath) {
     const href = escapeAttr(`${siteUrl}${canonicalPath}`);
@@ -145,7 +149,7 @@ function toDateOnly(value) {
   return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : "";
 }
 
-/** products: [{ _id, updatedAt }] — listed, non-deleted main products only. */
+/** products: [{ _id, slug, updatedAt }] — listed, non-deleted main products only. */
 function buildSitemapXml({ products = [], siteUrl = getSeoSiteUrl(), today = new Date() } = {}) {
   const todayStr = toDateOnly(today);
   const entries = SITEMAP_STATIC_PATHS.map(({ path, changefreq, priority }) => ({
@@ -155,10 +159,10 @@ function buildSitemapXml({ products = [], siteUrl = getSeoSiteUrl(), today = new
     priority
   }));
   for (const product of products) {
-    const id = String(product?._id || "").trim();
-    if (!id) continue;
+    const key = String(product?.slug || product?._id || "").trim();
+    if (!key) continue;
     entries.push({
-      loc: `${siteUrl}/product/${encodeURIComponent(id)}`,
+      loc: `${siteUrl}/product/${encodeURIComponent(key)}`,
       lastmod: toDateOnly(product.updatedAt) || todayStr,
       changefreq: "weekly",
       priority: "0.8"

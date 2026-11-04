@@ -363,14 +363,18 @@ function Product() {
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
 
-  // A format page shares its main product's content, so it points search
-  // engines at the main product page
-  const seoParentId = product?.optionParent
-    ? String(product.optionParent?._id || product.optionParent).trim()
+  // Canonical is the product's current link name; a format page shares its
+  // main product's content, so it points search engines at the main product
+  const seoCanonicalPath = product
+    ? product.optionParent
+      ? productPath(typeof product.optionParent === "object" ? product.optionParent : { _id: product.optionParent })
+      : productPath(product)
     : "";
+  // Hidden products (not formats) are only reached by direct link
+  const seoNoindex = Boolean(product?.hideFromListings && !product?.optionParent);
   useEffect(() => {
-    applySeoTags(location.pathname, seoParentId ? `/product/${seoParentId}` : "");
-  }, [location.pathname, seoParentId]);
+    applySeoTags(location.pathname, seoCanonicalPath, { noindex: seoNoindex });
+  }, [location.pathname, seoCanonicalPath, seoNoindex]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1574,7 +1578,7 @@ function Product() {
 
         <div className="product-right">
           {optionParentId ? (
-            <Link to={`/product/${optionParentId}`} className="product-option-parent-link">
+            <Link to={productPath(typeof product.optionParent === "object" ? product.optionParent : { _id: optionParentId })} className="product-option-parent-link">
               Also available in other formats — See all formats
             </Link>
           ) : null}

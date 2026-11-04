@@ -13,7 +13,7 @@
 export const DEFAULT_SITE_URL = "https://digitalsanskritguru.com";
 
 export const SITE_URL = (
-  String(import.meta.env.VITE_SITE_URL || "").trim() || DEFAULT_SITE_URL
+  String(import.meta.env?.VITE_SITE_URL || "").trim() || DEFAULT_SITE_URL
 ).replace(/(?:\/#|\/|#)+$/, "");
 
 const SITE_HOST = (() => {
@@ -96,13 +96,14 @@ function setMetaProperty(property, content) {
 /**
  * Applies the canonical link, robots meta and og:url for the current route.
  * `canonicalOverride` lets a page point at a different public page
- * (for example a product format pointing at its main product).
+ * (for example a product format pointing at its main product);
+ * `noindex` keeps a page that is only reached by direct link out of search.
  */
-export function applySeoTags(pathname, canonicalOverride = "") {
+export function applySeoTags(pathname, canonicalOverride = "", { noindex = false } = {}) {
   if (typeof document === "undefined") return;
 
   const canonicalPath = canonicalOverride || canonicalPathFor(pathname);
-  const indexable = Boolean(canonicalPath) && isProductionHost();
+  const indexable = Boolean(canonicalPath) && !noindex && isProductionHost();
 
   const robots = upsertHeadElement('meta[name="robots"]', () => {
     const meta = document.createElement("meta");
