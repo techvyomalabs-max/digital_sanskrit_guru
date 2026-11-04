@@ -1202,14 +1202,17 @@ router.post("/reset-password", passwordResetLimiter, honeypotMiddleware, turnsti
   }
 });
 
-// Emails the signed-in user a link to set a password (Google sign-in accounts)
+// Emails the signed-in user a link to set a password (Google sign-in accounts).
+// Accounts linked to Google before hasLocalPassword existed are stored as true
+// even when the person never chose a password, so any Google-linked account may
+// use the link. It goes to the account's own email, like Forgot password does.
 router.post("/set-password-link", protect, passwordResetLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user);
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
-    if (user.hasLocalPassword !== false) {
+    if (user.hasLocalPassword !== false && !user.googleSub) {
       return res.status(400).json({ message: "Your account already has a password. Use the form to change it." });
     }
     await sendPasswordResetEmail(user);
