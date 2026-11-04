@@ -787,6 +787,11 @@ function MyAccount() {
   const pwdStrength = useMemo(() => getPasswordStrength(profilePassword), [profilePassword]);
   // Only an explicit false from /api/auth/me means "signed up with Google, no password"
   const isGoogleOnlyAccount = user?.hasLocalPassword === false;
+  // Older Google accounts are stored as having a password even when the person never
+  // chose one, so every Google-linked account is offered the emailed link first
+  const isGoogleLinked = isGoogleOnlyAccount || Boolean(user?.googleLinked);
+  const [useCurrentPasswordForm, setUseCurrentPasswordForm] = useState(false);
+  const showEmailLinkPanel = isGoogleLinked && !useCurrentPasswordForm;
 
   const userInitials = useMemo(() => {
     if (user?.name && user.name.trim()) {
@@ -837,6 +842,7 @@ function MyAccount() {
 
   const resetProfileForms = () => {
     setEditingSection(null);
+    setUseCurrentPasswordForm(false);
     setProfileName(user?.name || "");
     setProfileEmail(user?.email || "");
     if (user?.phone) {
@@ -1749,16 +1755,29 @@ function MyAccount() {
               )}
             </div>
 
-            {editingSection === "security" && isGoogleOnlyAccount ? (
+            {editingSection === "security" && showEmailLinkPanel ? (
               <div className="my-account-card-edit-form">
                 <div className="my-account-google-signin-note">
-                  <strong>You signed up with Google</strong>
-                  <p>
-                    Your account doesn't have a password, and you sign in with the
-                    &ldquo;Sign in with Google&rdquo; button. If you'd also like to sign in
-                    with your email address, we'll email a secure link to{" "}
-                    <strong>{user?.email}</strong> where you can set a password.
-                  </p>
+                  {isGoogleOnlyAccount ? (
+                    <>
+                      <strong>You signed up with Google</strong>
+                      <p>
+                        Your account doesn't have a password, and you sign in with the
+                        &ldquo;Sign in with Google&rdquo; button. If you'd also like to sign in
+                        with your email address, we'll email a secure link to{" "}
+                        <strong>{user?.email}</strong> where you can set a password.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <strong>Your account is linked to Google</strong>
+                      <p>
+                        You can keep signing in with the &ldquo;Sign in with Google&rdquo; button.
+                        To set or change the password for signing in with your email address,
+                        we'll email a secure link to <strong>{user?.email}</strong>.
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 {profileError && (
@@ -1785,6 +1804,19 @@ function MyAccount() {
                     Cancel
                   </button>
                 </div>
+
+                {!isGoogleOnlyAccount && (
+                  <button
+                    type="button"
+                    className="my-account-use-current-password-link"
+                    onClick={() => {
+                      setProfileError("");
+                      setUseCurrentPasswordForm(true);
+                    }}
+                  >
+                    I know my current password
+                  </button>
+                )}
               </div>
             ) : editingSection === "security" ? (
               <form onSubmit={handleSecuritySave} className="my-account-card-edit-form">
@@ -2023,7 +2055,7 @@ function MyAccount() {
                       <Lock size={12} />
                       {isOtpRequired
                         ? "WhatsApp 2-Step OTP Protected"
-                        : isGoogleOnlyAccount
+                        : isGoogleLinked
                           ? "Google Sign-In"
                           : "Password Protected"}
                     </span>

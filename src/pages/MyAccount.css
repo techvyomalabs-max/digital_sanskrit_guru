@@ -2739,3 +2739,20 @@
 
 
 
+
+/* Secondary option under the Google "email me a link" panel */
+.my-account-use-current-password-link {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 6px 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--site-link, #0f62b3);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
