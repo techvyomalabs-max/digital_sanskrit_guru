@@ -8,6 +8,7 @@ import WhatsAppButton from "./components/layout/WhatsAppButton";
 import ChatWidget from "./components/layout/ChatWidget";
 import { BackToTop, NetworkNotice, PageContent } from "./components/layout/SiteHelpers";
 import ErrorBoundary from "./components/common/ErrorBoundary";
+import SeoTags from "./components/common/SeoTags";
 import LoadingSpinner from "./components/common/LoadingSpinner";
 import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -260,6 +261,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <SeoTags />
       <AnalyticsTracker />
       <ScrollToTop />
       {isBannerActive && (

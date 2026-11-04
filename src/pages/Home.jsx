@@ -11,6 +11,7 @@ import { isKindleProduct } from "../utils/kindle";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Home.css";
 import { useDocumentMetadata, HOME_TITLE, DEFAULT_DESCRIPTION } from "../hooks/useDocumentMetadata";
+import { absoluteUrl } from "../utils/seo";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 
 const HOME_REQUEST_RETRY_DELAYS = [800, 1800];
@@ -259,8 +260,8 @@ function Home() {
       "@context": "https://schema.org",
       "@type": "OnlineStore",
       "name": "Digital Sanskrit Guru",
-      "url": window.location.origin,
-      "logo": `${window.location.origin}/logo.png`,
+      "url": absoluteUrl("/"),
+      "logo": absoluteUrl("/logo.png"),
       "description": "Premium Sanskrit scriptures, learning guides, grammatical studies, and traditional educational kits."
     };
 
