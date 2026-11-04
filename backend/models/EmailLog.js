@@ -19,10 +19,17 @@ const emailLogSchema = new mongoose.Schema(
         "gift-pass",
         "bulk-enquiry",
         "support-interest",
-        "welcome-credentials"
+        "welcome-credentials",
+        "access-granted",
+        "access-pending-admin",
+        "orphan-payment-admin",
+        "refund-update",
+        "return-status"
       ],
       default: "campaign"
     },
+    // Which SMTP server sent it: "transactional" or "marketing" (empty on older entries)
+    stream: { type: String, default: "" },
     orderId: { type: String, default: "" },
     productId: { type: String, default: "" },
     status: { type: String, enum: ["sent", "failed"], default: "sent" },

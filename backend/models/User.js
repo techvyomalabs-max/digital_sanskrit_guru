@@ -169,6 +169,14 @@ const userSchema = mongoose.Schema({
   marketingOptOutAt: {
     type: Date,
     default: null
+  },
+  // Mailmodo promotional list sync state (see services/mailmodoSync.js)
+  mailmodo: {
+    _id: false,
+    syncedAt: { type: Date, default: null },
+    removedAt: { type: Date, default: null },
+    removedReason: { type: String, enum: ["opt-out", "inactive", null], default: null },
+    lastError: { type: String, default: "" }
   }
 });
 
