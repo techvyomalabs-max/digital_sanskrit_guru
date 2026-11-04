@@ -56,6 +56,7 @@ import {
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import { formatDate } from "../utils/date";
 import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
+import { absoluteUrl, applySeoTags } from "../utils/seo";
 
 const AVATAR_PALETTES = [
   { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
@@ -360,6 +361,15 @@ function Product() {
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
+
+  // A format page shares its main product's content, so it points search
+  // engines at the main product page
+  const seoParentId = product?.optionParent
+    ? String(product.optionParent?._id || product.optionParent).trim()
+    : "";
+  useEffect(() => {
+    applySeoTags(location.pathname, seoParentId ? `/product/${seoParentId}` : "");
+  }, [location.pathname, seoParentId]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -685,7 +695,7 @@ function Product() {
 
   const handleShare = async () => {
     if (!product) return;
-    const shareUrl = `${window.location.origin}/product/${product._id}`;
+    const shareUrl = absoluteUrl(`/product/${product._id}`);
 
     // 1. Web Share API (Mobile & supported desktop browsers)
     if (navigator.share) {

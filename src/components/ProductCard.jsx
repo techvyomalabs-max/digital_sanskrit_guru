@@ -8,6 +8,7 @@ import { getProductPriceDetails } from "../utils/productPricing";
 import { isOptionsParent, getOptionCount } from "../utils/productOptions";
 import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
+import { absoluteUrl } from "../utils/seo";
 
 function getProductFormat(product) {
   if (isOptionsParent(product)) {
@@ -87,7 +88,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
   const handleShare = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const shareUrl = `${window.location.origin}/product/${product._id}`;
+    const shareUrl = absoluteUrl(`/product/${product._id}`);
     if (navigator.share) {
       navigator.share({
         title: product.name,

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import "./Breadcrumb.css";
+import { absoluteUrl } from "../../utils/seo";
 
 /**
  * Route dictionary for static segment labels & parent hierarchy
@@ -295,7 +296,7 @@ export default function Breadcrumb() {
         "@type": "ListItem",
         position: idx + 1,
         name: crumb.label,
-        item: `${window.location.origin}${crumb.path}`
+        item: absoluteUrl(crumb.path)
       }))
     };
 

@@ -979,7 +979,7 @@ async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId
 
     <p><strong>How to redeem your gift:</strong></p>
     <ol style="padding-left: 20px; margin-bottom: 24px;">
-      <li style="margin-bottom: 8px;">Create or log into your account at <a href="https://digital-sanskrit-guru.vercel.app" style="color: #2563eb; text-decoration: underline;">Digital Sanskrit Guru</a>.</li>
+      <li style="margin-bottom: 8px;">Create or log into your account at <a href="${siteLink("/")}" style="color: #2563eb; text-decoration: underline;">Digital Sanskrit Guru</a>.</li>
       <li style="margin-bottom: 8px;">Click on the <strong>🎟️ Redeem Gift Pass</strong> link in the top menu bar (or inside your library).</li>
       <li style="margin-bottom: 8px;">Enter the unique Gift Pass code shown above to unlock your copy!</li>
     </ol>

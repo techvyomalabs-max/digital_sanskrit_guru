@@ -12,6 +12,7 @@ import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
 import { TAX_CATEGORIES } from "../utils/tax";
+import { absoluteUrl } from "../utils/seo";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -360,7 +361,7 @@ function AdminAddProducts() {
   const [copiedProductId, setCopiedProductId] = useState("");
 
   const copyBuyLink = (productId) => {
-    const buyLink = `${window.location.origin}/buy/${productId}`;
+    const buyLink = absoluteUrl(`/buy/${productId}`);
     navigator.clipboard.writeText(buyLink).then(() => {
       setCopiedProductId(productId);
       setTimeout(() => setCopiedProductId(""), 2000);

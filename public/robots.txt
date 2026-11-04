@@ -1,7 +1,0 @@
-User-agent: *
-Disallow: /checkout
-Disallow: /cart
-Disallow: /admin
-Disallow: /my-account
-
-Sitemap: https://digital-sanskrit-guru.vercel.app/sitemap.xml
