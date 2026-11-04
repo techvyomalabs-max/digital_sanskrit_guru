@@ -6,7 +6,7 @@
  * 100% offline, zero external API dependencies, sub-millisecond execution.
  */
 
-import { foldText } from "./searchText.js";
+import { foldText, normalizeSanskrit } from "./searchText.js";
 
 const STOP_WORDS = new Set([
   "in", "for", "the", "and", "edition", "paperback", "ebook", "kindle",
@@ -255,6 +255,108 @@ export function getAIRecommendations(
   }
 
   return scoredCandidates.slice(0, limit);
+}
+
+const idOf = (item) =>
+  String((item && typeof item === "object" ? item._id || item.id : item) || "");
+
+// Edition, packaging and language words and fillers, which never identify a title
+const NON_TITLE_WORDS = new Set(
+  [
+    "paperback", "digital", "pendrive", "bulk", "purchase", "purchas", "festival", "offer",
+    "english", "hindi", "tamil", "kannada", "level", "levels", "volume", "learn",
+    "sanskrit", "samskrta", "samskrita", "from", "your", "through", "upto", "years"
+  ].map(normalizeSanskrit)
+);
+
+/** Normalized title words of a product name in order, with honorifics (Sri, Sriman, Srimad) removed. */
+const titleWordList = (name) =>
+  extractTopicTokens(name)
+    .map((t) => normalizeSanskrit(t).replace(/^(?:srimad|sriman|srimat|sri)(?=[a-z]{4}|$)/, ""))
+    .filter((t) => t.length >= 3 && !NON_TITLE_WORDS.has(t));
+
+/** Neighbouring title words joined ("Joy of Oneness" -> "joyoneness"), a word never with itself. */
+const titlePhrases = (words) =>
+  words.slice(1).map((w, i) => words[i] + w).filter((_, i) => words[i] !== words[i + 1]);
+
+/** Title words plus phrases, so "Bhagavad Gita" also matches "Bhagavadgita". */
+const titleWords = (name) => {
+  const words = titleWordList(name);
+  return [...new Set([...words, ...titlePhrases(words)])];
+};
+
+// Longer keywords also match compounds they start, e.g. "bhagavad" in "bhagavadgita"
+const hasTitleWord = (words, keyword) =>
+  words.some((w) => w === keyword || (keyword.length >= 5 && w.startsWith(keyword)));
+
+/**
+ * Products related to `product`, for its Related Products section: those whose names
+ * contain the product's title keyword (e.g. every "Narayaneeyam" product), or share a
+ * title phrase with it ("Vocabulary Builder"). The keyword is the first Sanskrit title word in the name
+ * (one written with diacritics somewhere in the catalogue, e.g. Nārāyaṇīyam), or else its
+ * first English title word; it is enough by itself only when it is a long Sanskrit word.
+ * Admin-picked, reverse-linked and combo products are listed first, but only when their
+ * names match too. Never returns the product itself or the same product twice.
+ *
+ * @param {Object} product - The product being viewed
+ * @param {Array} catalog - Full public product list
+ * @param {number} limit - Maximum number of products returned
+ */
+export function getRelatedProducts(product, catalog = [], limit = 8) {
+  const currentId = idOf(product);
+  if (!currentId) return [];
+
+  const list = Array.isArray(catalog) ? catalog.filter(Boolean) : [];
+  const byId = new Map(list.map((p) => [idOf(p), p]));
+  const seen = new Set([currentId]);
+  const results = [];
+
+  // Title keyword, derived from the current product's name
+  const named = byId.has(currentId) ? list : [...list, product];
+  const wordsById = new Map(named.map((p) => [idOf(p), titleWords(p?.name)]));
+  const wordCounts = new Map();
+  wordsById.forEach((words) => words.forEach((w) => wordCounts.set(w, (wordCounts.get(w) || 0) + 1)));
+  // Words in a large share of all names are too broad to be a title
+  const maxCount = Math.max(10, Math.floor(named.length * 0.25));
+  const iastWords = named
+    .flatMap((p) => String(p?.name || "").split(/[^\p{L}]+/u))
+    .filter((w) => w && foldText(w) !== w.toLowerCase())
+    .map(normalizeSanskrit);
+  const isSanskrit = (w) => w.length >= 4 && iastWords.some((iast) => iast.includes(w));
+  const ownWords = wordsById.get(currentId).filter((w) => wordCounts.get(w) <= maxCount);
+  const keyword = ownWords.find(isSanskrit) || ownWords[0];
+  if (!keyword) return [];
+  // A long Sanskrit title word (Narayaneeyam, Bhagavadgita) identifies the title by itself;
+  // short roots and English words (Gita, Shabda, Basic, Joy) need a shared title phrase too
+  const keywordAlone = isSanskrit(keyword) && keyword.length >= 6;
+  const ownPhrases = titlePhrases(titleWordList(product.name));
+  const isRelated = (words) =>
+    (keywordAlone && hasTitleWord(words, keyword)) ||
+    ownPhrases.some((phrase) => hasTitleWord(words, phrase));
+
+  const add = (item) => {
+    const id = idOf(item);
+    const resolved = byId.get(id) || item;
+    if (!id || seen.has(id) || !resolved || typeof resolved !== "object") return;
+    if (!isRelated(wordsById.get(id) || titleWords(resolved.name))) return;
+    seen.add(id);
+    results.push(resolved);
+  };
+  const relatedIds = (p) => (Array.isArray(p?.relatedProducts) ? p.relatedProducts.map(idOf) : []);
+  const bundleIds = (p) => (Array.isArray(p?.bundleItems) ? p.bundleItems.map((b) => idOf(b?.product)) : []);
+
+  // 1. Linked by the admin, in either direction
+  (Array.isArray(product.relatedProducts) ? product.relatedProducts : []).forEach(add);
+  list.filter((p) => relatedIds(p).includes(currentId)).forEach(add);
+
+  // 2. Items of this combo, and combos containing this product
+  bundleIds(product).forEach(add);
+  list.filter((p) => bundleIds(p).includes(currentId)).forEach(add);
+
+  // 3. Every other product whose name relates to this title (other formats of the same title)
+  list.forEach(add);
+
+  return results.slice(0, limit);
 }
 
 /**

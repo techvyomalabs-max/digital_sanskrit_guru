@@ -18,6 +18,8 @@ import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct 
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { fetchPublicCatalog } from "../utils/productCatalog";
+import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
 import {
@@ -791,11 +793,8 @@ function Product() {
           : null
       );
       setQty(found && found.productType === "bulk" ? 10 : 1);
-      setManagedRelatedProducts(
-        Array.isArray(found?.relatedProducts)
-          ? found.relatedProducts.filter((p) => String(p?._id || "") !== String(id)).slice(0, 8)
-          : []
-      );
+      // Filled from the catalog below, so that even admin picks must match the product's name
+      setManagedRelatedProducts([]);
 
       if (!found) {
         setRelatedProducts([]);
@@ -819,6 +818,21 @@ function Product() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Related Products: products whose names share this product's title keyword, from the
+  // shared catalog the search already loads
+  useEffect(() => {
+    if (!product?._id) return;
+    let cancelled = false;
+    fetchPublicCatalog()
+      .then((catalog) => {
+        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, 8));
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [product]);
 
   useEffect(() => {
     if (!product) return;
@@ -2372,7 +2386,7 @@ function Product() {
               </div>
             ))
           ) : (
-            <p className="related-empty">No related products added by admin.</p>
+            <p className="related-empty">No related products found.</p>
           )}
         </div>
       </div>
