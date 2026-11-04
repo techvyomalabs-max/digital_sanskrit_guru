@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import axios from "axios";
-import { SlidersHorizontal, ArrowUpDown, PackageSearch, RefreshCw, WifiOff, X } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, PackageSearch, RefreshCw, WifiOff, X, LayoutGrid } from "lucide-react";
+import { getCategoryIcon } from "../utils/categoryIcons";
 import ProductCard from "../components/ProductCard";
 import "./Collection.css";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
@@ -274,17 +275,6 @@ function Collection() {
   return (
     <div className="collection-page" ref={pageRootRef}>
       <section className="collection-shell">
-        <div className="collection-head">
-          <div>
-            <span className="collection-kicker">Catalog</span>
-            <h1>Browse the full collection</h1>
-            <p>Narrow down categories and shop faster with a cleaner filter flow.</p>
-          </div>
-          <Link to="/" className="collection-back-link">
-            Back to Home
-          </Link>
-        </div>
-
         <div className="collection-content">
           {isMobileFilterOpen ? (
             <button
@@ -304,18 +294,30 @@ function Collection() {
                 </button>
               </div>
 
-              <h3>Category</h3>
-              <div className="collection-device-row">
-                {categories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    className={selectedCategory === category ? "active" : ""}
-                    onClick={() => handleCategorySelect(category)}
-                  >
-                    {category} ({categoryCounts[category] || 0})
-                  </button>
-                ))}
+              <h3 className="collection-category-title">Categories</h3>
+              <div className="collection-device-row" role="list">
+                {categories.map((category) => {
+                  const Icon = category === "All" ? LayoutGrid : getCategoryIcon(category);
+                  const isActive = selectedCategory === category;
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      role="listitem"
+                      className={isActive ? "active" : ""}
+                      aria-current={isActive ? "true" : undefined}
+                      onClick={() => handleCategorySelect(category)}
+                    >
+                      <span className="collection-category-icon" aria-hidden="true">
+                        <Icon size={16} />
+                      </span>
+                      <span className="collection-category-name">
+                        {category === "All" ? "All products" : category}
+                      </span>
+                      <span className="collection-category-count">{categoryCounts[category] || 0}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <button type="button" className="collection-mobile-reset-btn" onClick={handleResetFilters}>
@@ -331,6 +333,18 @@ function Collection() {
               </button>
             </div>
           </aside>
+
+          <div className="collection-main-col">
+          <div className="collection-head">
+            <div>
+              <span className="collection-kicker">Catalog</span>
+              <h1>Browse the full collection</h1>
+              <p>Narrow down categories and shop faster with a cleaner filter flow.</p>
+            </div>
+            <Link to="/" className="collection-back-link">
+              Back to Home
+            </Link>
+          </div>
 
           <div className="collection-main">
             <div className="collection-mobile-toolbar">
@@ -468,6 +482,7 @@ function Collection() {
                 </button>
               </div>
             ) : null}
+          </div>
           </div>
         </div>
       </section>

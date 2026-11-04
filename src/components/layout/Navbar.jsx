@@ -100,6 +100,7 @@ function Navbar({ bannerActive = false }) {
   const [collectionCategoryCounts, setCollectionCategoryCounts] = useState({});
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
+  const categorySidebarCloseRef = useRef(null);
   const isAdminRoute = location.pathname.startsWith("/admin");
 
   const [storeIcons, setStoreIcons] = useState({
@@ -407,18 +408,23 @@ function Navbar({ bannerActive = false }) {
     );
   };
 
-  // Escape closes the "Browse by category" menu
+  // Category sidebar: Escape closes it, focus moves in and back, page scroll is locked
   useEffect(() => {
     if (!isCollectionFilterMenuOpen) return undefined;
+    const previouslyFocused = document.activeElement;
     const handleEscape = (event) => {
       if (event.key === "Escape") setIsCollectionFilterMenuOpen(false);
     };
     window.addEventListener("keydown", handleEscape);
-    // Lets CSS hide the floating chat/WhatsApp buttons over the menu on phones
+    // Lets CSS hide the floating chat/WhatsApp buttons and lock page scroll
     document.body.classList.add("category-menu-open");
+    categorySidebarCloseRef.current?.focus();
     return () => {
       window.removeEventListener("keydown", handleEscape);
       document.body.classList.remove("category-menu-open");
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     };
   }, [isCollectionFilterMenuOpen]);
 
@@ -969,24 +975,62 @@ function Navbar({ bannerActive = false }) {
               )}
             </div>
           </div>
-          {!isAdminRoute && isCollectionFilterMenuOpen ? (
-            <div className="navbar-collection-filter-menu" role="dialog" aria-label="Browse by category">
-              <div className="navbar-collection-filter-head">
-                <strong className="navbar-collection-filter-title">
-                  <LayoutGrid size={17} aria-hidden="true" />
-                  Browse by category
-                </strong>
+        </div>
+        {!isAdminRoute && isCollectionFilterMenuOpen && typeof document !== "undefined"
+          ? createPortal(
+          <div className="category-sidebar-root">
+            <button
+              type="button"
+              className="category-sidebar-backdrop"
+              aria-label="Close categories"
+              tabIndex={-1}
+              onClick={() => setIsCollectionFilterMenuOpen(false)}
+            />
+            <aside
+              className="category-sidebar"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="category-sidebar-title"
+            >
+              <div className="category-sidebar-top">
+                <span className="category-sidebar-greeting">
+                  <User size={20} aria-hidden="true" />
+                  {user ? `Hello, ${user.name}` : "Hello, Sign in"}
+                </span>
                 <button
                   type="button"
-                  className="navbar-collection-filter-all"
-                  onClick={() => openCollectionCategory("All")}
+                  ref={categorySidebarCloseRef}
+                  className="category-sidebar-close"
+                  aria-label="Close categories"
+                  onClick={() => setIsCollectionFilterMenuOpen(false)}
                 >
-                  View all
-                  {collectionCategoryCounts.All ? ` (${collectionCategoryCounts.All})` : ""}
-                  <ArrowRight size={15} aria-hidden="true" />
+                  <X size={22} aria-hidden="true" />
                 </button>
               </div>
+              <div className="category-sidebar-scroll">
+              <div className="navbar-collection-filter-head">
+                <strong className="navbar-collection-filter-title" id="category-sidebar-title">
+                  <LayoutGrid size={17} aria-hidden="true" />
+                  Shop by category
+                </strong>
+              </div>
               <div className="navbar-collection-filter-list">
+                <button
+                  type="button"
+                  className={`navbar-collection-filter-item is-all${location.pathname === "/collection" && !activeCollectionCategory ? " is-current" : ""}`}
+                  onClick={() => openCollectionCategory("All")}
+                >
+                  <span className="navbar-collection-filter-icon" aria-hidden="true">
+                    <Grid size={18} />
+                  </span>
+                  <span className="navbar-collection-filter-text">
+                    <span className="navbar-collection-filter-name">All products</span>
+                    {collectionCategoryCounts.All ? (
+                      <span className="navbar-collection-filter-count">{collectionCategoryCounts.All} items</span>
+                    ) : null}
+                  </span>
+                  <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
+                </button>
                 {collectionCategories
                   .filter((category) => category !== "All")
                   .map((category) => {
@@ -1012,21 +1056,43 @@ function Navbar({ bannerActive = false }) {
                             </span>
                           )}
                         </span>
+                        <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
                       </button>
                     );
                   })}
               </div>
-            </div>
-          ) : null}
-        </div>
-        {!isAdminRoute && isCollectionFilterMenuOpen ? (
-          <button
-            type="button"
-            className="navbar-collection-filter-backdrop"
-            aria-label="Close collection filters"
-            onClick={() => setIsCollectionFilterMenuOpen(false)}
-          />
-        ) : null}
+              <div className="navbar-collection-filter-head category-sidebar-section">
+                <strong className="navbar-collection-filter-title">
+                  <Sparkles size={17} aria-hidden="true" />
+                  Highlights
+                </strong>
+              </div>
+              <div className="navbar-collection-filter-list category-sidebar-links">
+                {[
+                  ["top-rated", "Top Rated"],
+                  ["new-arrivals", "New Arrivals"],
+                  ["budget-picks", "Budget Picks"]
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="navbar-collection-filter-item"
+                    onClick={() => {
+                      setIsCollectionFilterMenuOpen(false);
+                      handleSectionNav(key);
+                    }}
+                  >
+                    <span className="navbar-collection-filter-name">{label}</span>
+                    <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+              </div>
+            </aside>
+          </div>,
+          document.body
+        )
+          : null}
 
         {/* Saved Delivery Addresses Modal */}
         {isAddressModalOpen &&

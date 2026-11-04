@@ -133,36 +133,152 @@ html.banner-active .navbar {
   background: #ffffff;
 }
 
-.navbar-collection-filter-backdrop {
+/* ── "All" category sidebar (slides in from the left) ─────────────────── */
+
+body.category-menu-open {
+  overflow: hidden;
+}
+
+.category-sidebar-root {
   position: fixed;
   inset: 0;
-  z-index: 59;
-  border: none;
-  background: transparent;
+  z-index: 1200;
 }
 
-.navbar-collection-filter-menu {
+.category-sidebar-backdrop {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 32px;
-  width: min(580px, calc(100vw - 24px));
-  border: 1px solid var(--site-border);
-  border-radius: 16px;
-  background: var(--site-surface);
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
-  z-index: 70;
-  overflow: hidden;
-  animation: navbar-category-menu-in 0.16s ease-out;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+  animation: category-sidebar-fade 0.2s ease-out;
 }
 
-@keyframes navbar-category-menu-in {
+.category-sidebar {
+  --focus-ring: var(--site-link, #0f62b3);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(360px, calc(100vw - 56px));
+  display: flex;
+  flex-direction: column;
+  background: var(--site-surface);
+  color: var(--site-text);
+  box-shadow: 12px 0 40px rgba(15, 23, 42, 0.28);
+  animation: category-sidebar-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes category-sidebar-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes category-sidebar-fade {
   from {
     opacity: 0;
-    transform: translateY(-6px);
   }
   to {
     opacity: 1;
-    transform: none;
+  }
+}
+
+.category-sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 12px 10px 20px;
+  background: var(--site-header-bg, #0f172a);
+  color: var(--site-header-text, #ffffff);
+  flex-shrink: 0;
+}
+
+.category-sidebar-greeting {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-sidebar-greeting svg {
+  flex-shrink: 0;
+}
+
+.category-sidebar-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.category-sidebar-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.category-sidebar-close:focus-visible {
+  outline: 3px solid #ffd27a;
+  outline-offset: 2px;
+}
+
+.category-sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 16px;
+}
+
+.category-sidebar .navbar-collection-filter-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.category-sidebar-section {
+  border-top: 1px solid var(--site-border);
+  margin-top: 4px;
+}
+
+.category-sidebar-links .navbar-collection-filter-item {
+  min-height: 48px;
+  padding-left: 16px;
+}
+
+.navbar-collection-filter-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--site-text-soft);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.navbar-collection-filter-item:hover .navbar-collection-filter-chevron,
+.navbar-collection-filter-item.is-current .navbar-collection-filter-chevron {
+  color: var(--site-link);
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .category-sidebar,
+  .category-sidebar-backdrop {
+    animation: none;
   }
 }
 
@@ -216,12 +332,9 @@ html.banner-active .navbar {
 
 .navbar-collection-filter-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  max-height: min(72vh, 520px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 12px;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 10px;
 }
 
 .navbar-collection-filter-item {
@@ -2005,22 +2118,11 @@ html.banner-active .navbar {
     line-height: 28px;
   }
 
-  .navbar-collection-filter-menu {
-    width: min(420px, calc(100vw - 24px));
-    left: 12px;
-    right: auto;
-  }
-
-  .navbar-collection-filter-list {
-    grid-template-columns: 1fr;
-  }
 }
 
-@media (max-width: 768px) {
-  body.category-menu-open .chat-launcher-wrap,
-  body.category-menu-open .whatsapp-float-container {
-    display: none;
-  }
+body.category-menu-open .chat-launcher-wrap,
+body.category-menu-open .whatsapp-float-container {
+  display: none;
 }
 
 @media (max-width: 520px) {
