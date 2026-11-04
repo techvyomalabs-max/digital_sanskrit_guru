@@ -1,12 +1,111 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { MessageCircle, Phone, Mail, Video, MapPin, Briefcase } from "lucide-react";
-import { ORGANISATION_NAME, REGISTERED_OFFICE, WORKING_OFFICE } from "../utils/companyInfo";
+import {
+  MessageCircle,
+  Phone,
+  Mail,
+  MapPin,
+  Clock,
+  ArrowRight,
+  Package,
+  Gift,
+  MonitorPlay,
+  Newspaper,
+  Navigation
+} from "lucide-react";
+import { ORGANISATION_NAME, WORKING_OFFICE, formatAddressInline } from "../utils/companyInfo";
 import "./Contact.css";
+
+const SUPPORT_PHONE_DISPLAY = "+91 94808 65623";
+const SUPPORT_PHONE_DIAL = "+919480865623";
+const SUPPORT_EMAIL = "support@vyomalabs.in";
+const WORKING_HOURS = "10 AM – 7 PM India Time (Mon to Sat)";
+const WHATSAPP_URL = `https://wa.me/919480865623?text=${encodeURIComponent(
+  "Hello Vyoma Customer Seva Team, my name is "
+)}`;
+
+const CONTACT_METHODS = [
+  {
+    key: "whatsapp",
+    icon: MessageCircle,
+    title: "Text / WhatsApp",
+    value: SUPPORT_PHONE_DISPLAY,
+    meta: WORKING_HOURS,
+    desc: "Text to chat with the Vyoma Customer Seva Team. Please mention your name so we can save your contact details.",
+    action: { label: "Chat on WhatsApp", href: WHATSAPP_URL, external: true }
+  },
+  {
+    key: "call",
+    icon: Phone,
+    title: "Call Us",
+    value: SUPPORT_PHONE_DISPLAY,
+    meta: WORKING_HOURS,
+    desc: "We are great listeners! Give us a ring during our working hours to talk to a representative.",
+    action: { label: "Call now", href: `tel:${SUPPORT_PHONE_DIAL}` }
+  },
+  {
+    key: "email",
+    icon: Mail,
+    title: "Email Us",
+    value: SUPPORT_EMAIL,
+    meta: "Response time: within 3 working days",
+    desc: "Send us suggestions, general inquiries, or feedback. We respond to emails in the order they are received.",
+    action: { label: "Send an email", href: `mailto:${SUPPORT_EMAIL}` }
+  }
+];
+
+const EmailLink = () => <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>;
+
+const INQUIRIES = [
+  {
+    icon: Package,
+    title: "For Product Inquiries",
+    body: (
+      <>
+        Browse products in our <Link to="/collection">Master Catalog</Link>, or send an email to <EmailLink />.
+      </>
+    )
+  },
+  {
+    icon: Gift,
+    title: "Bulk & Gifting Inquiries",
+    body: (
+      <>
+        For bulk purchases or gifting options, email us at <EmailLink /> or call{" "}
+        <a href={`tel:${SUPPORT_PHONE_DIAL}`}>{SUPPORT_PHONE_DISPLAY}</a>.
+      </>
+    )
+  },
+  {
+    icon: MonitorPlay,
+    title: "For Online Demos",
+    body: (
+      <>
+        To book a customized demo, write to us at <EmailLink />. Our team will schedule an online demo with you within
+        24 working hours.
+      </>
+    )
+  },
+  {
+    icon: Newspaper,
+    title: "Press & Media Inquiries",
+    body: (
+      <>
+        Please direct all media and press inquiry emails to <EmailLink />.
+      </>
+    )
+  }
+];
+
+function directionsUrl(address) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    `${ORGANISATION_NAME}, ${formatAddressInline(address)}`
+  )}`;
+}
 
 function OfficeAddress({ address }) {
   return (
-    <p>
+    <address className="office-address">
       <strong>{ORGANISATION_NAME}</strong>
       {[...address.lines, address.country].map((line) => (
         <React.Fragment key={line}>
@@ -14,136 +113,97 @@ function OfficeAddress({ address }) {
           {line}
         </React.Fragment>
       ))}
-    </p>
+    </address>
   );
 }
 
 function Contact() {
   return (
     <div className="contact-page">
-      {/* Hero Section */}
       <section className="contact-hero">
         <h1>Contact Us</h1>
         <p className="contact-hero-subtitle">
           We’re always ready to help you on your Sanskrit study journey!
         </p>
+        <p className="contact-hero-hours">
+          <Clock size={16} aria-hidden="true" />
+          Customer Seva Team: {WORKING_HOURS}
+        </p>
       </section>
 
-      {/* Main Container */}
       <div className="contact-container">
-        {/* Core Contact Methods */}
-        <div className="contact-methods-grid">
-          {/* Card 1: Text / WhatsApp */}
-          <article className="contact-method-card">
-            <div className="contact-icon-wrap">
-              <MessageCircle size={24} />
-            </div>
-            <h3>Text / WhatsApp</h3>
-            <p className="contact-value">+91 94808 65623</p>
-            <p className="contact-hours">10 AM – 7 PM India Time (Mon to Sat)</p>
-            <p className="contact-desc">
-              Text to chat with the Vyoma Customer Seva Team. Please mention your name so we can save your contact details.
-            </p>
-          </article>
+        <section className="contact-methods-grid" aria-label="Ways to reach us">
+          {CONTACT_METHODS.map((method) => {
+            const Icon = method.icon;
+            return (
+              <article key={method.key} className={`contact-method-card contact-method-${method.key}`}>
+                <div className="contact-method-head">
+                  <span className="contact-icon-wrap">
+                    <Icon size={22} aria-hidden="true" />
+                  </span>
+                  <h2>{method.title}</h2>
+                </div>
+                <p className="contact-value">{method.value}</p>
+                <p className="contact-hours">
+                  <Clock size={15} aria-hidden="true" />
+                  <span>{method.meta}</span>
+                </p>
+                <p className="contact-desc">{method.desc}</p>
+                <a
+                  className="contact-action"
+                  href={method.action.href}
+                  {...(method.action.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                >
+                  {method.action.label}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </a>
+              </article>
+            );
+          })}
+        </section>
 
-          {/* Card 2: Call Us */}
-          <article className="contact-method-card">
-            <div className="contact-icon-wrap">
-              <Phone size={24} />
-            </div>
-            <h3>Call Us</h3>
-            <p className="contact-value">+91 94808 65623</p>
-            <p className="contact-hours">10 AM – 7 PM India Time (Mon to Sat)</p>
-            <p className="contact-desc">
-              We are great listeners! Give us a ring during our working hours to talk to a representative.
-            </p>
-          </article>
-
-          {/* Card 3: Email Us */}
-          <article className="contact-method-card">
-            <div className="contact-icon-wrap">
-              <Mail size={24} />
-            </div>
-            <h3>Email Us</h3>
-            <p className="contact-value">
-              <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>
-            </p>
-            <p className="contact-hours">Response time: within 3 working days</p>
-            <p className="contact-desc">
-              Send us suggestions, general inquiries, or feedback. We respond to emails in the order they are received.
-            </p>
-          </article>
-
-          {/* Card 4: Skype ID */}
-          <article className="contact-method-card">
-            <div className="contact-icon-wrap">
-              <Video size={24} />
-            </div>
-            <h3>Skype Chat</h3>
-            <p className="contact-value">Skype ID: Vyoma Labs</p>
-            <p className="contact-hours">10 AM – 7 PM India Time (Mon to Sat)</p>
-            <p className="contact-desc">
-              Ask your question right now with a member of the Customer Seva Team directly through Skype.
-            </p>
-          </article>
-        </div>
-
-        {/* Specific Inquiries Section */}
-        <section className="contact-inquiries-section">
-          <h2>Specialized Inquiries</h2>
+        <section className="contact-inquiries-section" aria-labelledby="contact-inquiries-title">
+          <h2 id="contact-inquiries-title">Specialized Inquiries</h2>
           <div className="inquiry-grid">
-            <div className="inquiry-card">
-              <h3>For Product Inquiries</h3>
-              <p>
-                Browse products in our <Link to="/collection">Master Catalog</Link>, or send an email to{" "}
-                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>.
-              </p>
-            </div>
-
-            <div className="inquiry-card">
-              <h3>Bulk & Gifting Inquiries</h3>
-              <p>
-                For bulk purchases or gifting options, email us at{" "}
-                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a> or call{" "}
-                <strong>+91 94808 65623</strong>.
-              </p>
-            </div>
-
-            <div className="inquiry-card">
-              <h3>For Online Demos</h3>
-              <p>
-                To book a customized demo, write to us. Our team will schedule an online demo with you within 24 working hours.
-              </p>
-            </div>
-
-            <div className="inquiry-card">
-              <h3>Press & Media Inquiries</h3>
-              <p>
-                Please direct all media and press inquiry emails to{" "}
-                <a href="mailto:support@vyomalabs.in">support@vyomalabs.in</a>.
-              </p>
-            </div>
+            {INQUIRIES.map((inquiry) => {
+              const Icon = inquiry.icon;
+              return (
+                <div key={inquiry.title} className="inquiry-card">
+                  <span className="inquiry-icon">
+                    <Icon size={20} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h3>{inquiry.title}</h3>
+                    <p>{inquiry.body}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
-        {/* Office Locations */}
-        <div className="contact-offices-section">
-          {/* Registered Office */}
+        <section className="contact-offices-section" aria-label="Our office">
           <article className="office-card">
-            <h2>
-              <MapPin size={20} /> {REGISTERED_OFFICE.title}
-            </h2>
-            <OfficeAddress address={REGISTERED_OFFICE} />
+            <div className="office-card-body">
+              <h2>
+                <span className="office-icon">
+                  <MapPin size={18} aria-hidden="true" />
+                </span>
+                {WORKING_OFFICE.title}
+              </h2>
+              <OfficeAddress address={WORKING_OFFICE} />
+            </div>
+            <div className="office-card-aside">
+              <p className="office-visit-note">
+                You can visit us during working hours, {WORKING_HOURS}, to buy products in person.
+              </p>
+              <a className="office-directions" href={directionsUrl(WORKING_OFFICE)} target="_blank" rel="noopener noreferrer">
+                <Navigation size={15} aria-hidden="true" />
+                Get directions
+              </a>
+            </div>
           </article>
-
-          {/* Working Office */}
-          <article className="office-card">
-            <h2>
-              <Briefcase size={20} /> {WORKING_OFFICE.title}
-            </h2>
-            <OfficeAddress address={WORKING_OFFICE} />
-          </article>
-        </div>
+        </section>
       </div>
     </div>
   );
