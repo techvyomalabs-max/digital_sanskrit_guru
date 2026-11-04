@@ -11,7 +11,7 @@ import {
   Info
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
-import { REGISTERED_OFFICE } from "../../utils/companyInfo";
+import { WORKING_OFFICE } from "../../utils/companyInfo";
 import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon, YoutubeIcon } from "../common/SocialIcons";
 import "./Footer.css";
 
@@ -37,13 +37,13 @@ function Footer() {
         <div className="footer-column">
           <div className="footer-col-header">
             <MapPin size={16} className="footer-col-icon" />
-            <h3>Registered Office</h3>
+            <h3>{WORKING_OFFICE.title}</h3>
           </div>
           <div className="footer-office-address">
-            {REGISTERED_OFFICE.lines.map((line) => (
+            {WORKING_OFFICE.lines.map((line) => (
               <p key={line}>{line}</p>
             ))}
-            <p className="footer-country-tag">{REGISTERED_OFFICE.country}</p>
+            <p className="footer-country-tag">{WORKING_OFFICE.country}</p>
           </div>
         </div>
 
