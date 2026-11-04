@@ -41,7 +41,7 @@ function loadWordPressFile(file) {
   rows
     .filter((r) => r && !r.name)
     .forEach((r) => console.log(`Old link with no product name in the file (set it by hand in Add Products): /product/${r.slug}/`));
-  return withName.map((r) => ({ id: Number(r.wpId), title: String(r.name), slug: String(r.slug) }));
+  return withName.map((r) => ({ id: Number(r.wpId), title: String(r.name), slug: String(r.slug), oldLinkOnly: r.oldLinkOnly === true }));
 }
 
 async function loadWordPressProducts() {
