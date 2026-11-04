@@ -793,11 +793,8 @@ function Product() {
           : null
       );
       setQty(found && found.productType === "bulk" ? 10 : 1);
-      setManagedRelatedProducts(
-        Array.isArray(found?.relatedProducts)
-          ? found.relatedProducts.filter((p) => String(p?._id || "") !== String(id)).slice(0, 8)
-          : []
-      );
+      // Filled from the catalog below, so that even admin picks must match the product's name
+      setManagedRelatedProducts([]);
 
       if (!found) {
         setRelatedProducts([]);
@@ -822,8 +819,8 @@ function Product() {
     loadData();
   }, [loadData]);
 
-  // Adds products related through combos, reverse admin links and other formats of the
-  // same title to the admin's picks, using the shared catalog the search already loads
+  // Related Products: products whose names share this product's title keyword, from the
+  // shared catalog the search already loads
   useEffect(() => {
     if (!product?._id) return;
     let cancelled = false;
