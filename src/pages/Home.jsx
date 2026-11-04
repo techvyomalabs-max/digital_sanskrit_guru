@@ -10,7 +10,7 @@ import { getProductPriceDetails, storePricingConfig } from "../utils/productPric
 import { isKindleProduct } from "../utils/kindle";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Home.css";
-import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
+import { useDocumentMetadata, HOME_TITLE, DEFAULT_DESCRIPTION } from "../hooks/useDocumentMetadata";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 
 const HOME_REQUEST_RETRY_DELAYS = [800, 1800];
@@ -71,7 +71,7 @@ const SUPPORT_WAYS = [
 ];
 
 function Home() {
-  useDocumentMetadata("Home", "Explore premium Sanskrit scriptures, linguistic studies, grammar learning books, and traditional educational kits.");
+  useDocumentMetadata(HOME_TITLE, DEFAULT_DESCRIPTION, { absolute: true });
   const { selectedAddress } = useDeliveryLocation();
 
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
