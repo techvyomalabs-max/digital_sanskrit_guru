@@ -6,7 +6,7 @@
  * 100% offline, zero external API dependencies, sub-millisecond execution.
  */
 
-import { foldText } from "./searchText.js";
+import { foldText, normalizeSanskrit } from "./searchText.js";
 
 const STOP_WORDS = new Set([
   "in", "for", "the", "and", "edition", "paperback", "ebook", "kindle",
@@ -255,6 +255,77 @@ export function getAIRecommendations(
   }
 
   return scoredCandidates.slice(0, limit);
+}
+
+const idOf = (item) =>
+  String((item && typeof item === "object" ? item._id || item.id : item) || "");
+
+/**
+ * Products related to `product`, for its Related Products section.
+ * Explicit links come first: the admin's picks on this product, products whose picks
+ * include it, and combos sharing items with it. Then other formats of the same title
+ * (e.g. the Audio Device and eBook of a book), matched on its distinctive name words.
+ * Never returns the product itself or the same product twice.
+ *
+ * @param {Object} product - The product being viewed
+ * @param {Array} catalog - Full public product list
+ * @param {number} limit - Maximum number of products returned
+ */
+export function getRelatedProducts(product, catalog = [], limit = 8) {
+  const currentId = idOf(product);
+  if (!currentId) return [];
+
+  const list = Array.isArray(catalog) ? catalog.filter(Boolean) : [];
+  const byId = new Map(list.map((p) => [idOf(p), p]));
+  const seen = new Set([currentId]);
+  const results = [];
+
+  const add = (item) => {
+    const id = idOf(item);
+    const resolved = byId.get(id) || item;
+    if (!id || seen.has(id) || !resolved || typeof resolved !== "object") return;
+    seen.add(id);
+    results.push(resolved);
+  };
+  const relatedIds = (p) => (Array.isArray(p?.relatedProducts) ? p.relatedProducts.map(idOf) : []);
+  const bundleIds = (p) => (Array.isArray(p?.bundleItems) ? p.bundleItems.map((b) => idOf(b?.product)) : []);
+
+  // 1. Linked by the admin, in either direction
+  (Array.isArray(product.relatedProducts) ? product.relatedProducts : []).forEach(add);
+  list.filter((p) => relatedIds(p).includes(currentId)).forEach(add);
+
+  // 2. Items of this combo, and combos containing this product
+  bundleIds(product).forEach(add);
+  list.filter((p) => bundleIds(p).includes(currentId)).forEach(add);
+
+  // 3. Same title in other formats. Format words are already dropped by extractTopicTokens,
+  //    and words found in many names ("sanskrit", "learn") are skipped as too broad.
+  const nameTokens = (p) => new Set(extractTopicTokens(p?.name).map(normalizeSanskrit));
+  const tokensById = new Map();
+  const tokenCounts = new Map();
+  for (const p of list) {
+    const tokens = nameTokens(p);
+    tokensById.set(idOf(p), tokens);
+    tokens.forEach((t) => tokenCounts.set(t, (tokenCounts.get(t) || 0) + 1));
+  }
+  const maxCount = Math.max(5, Math.floor(list.length * 0.25));
+  const ownTokens = [...nameTokens(product)].filter((t) => (tokenCounts.get(t) || 0) <= maxCount);
+
+  if (ownTokens.length > 0) {
+    const scored = [];
+    for (const p of list) {
+      if (seen.has(idOf(p))) continue;
+      const tokens = tokensById.get(idOf(p));
+      let score = 0;
+      for (const t of ownTokens) {
+        if (tokens.has(t)) score += 1 / tokenCounts.get(t);
+      }
+      if (score > 0) scored.push({ p, score });
+    }
+    scored.sort((a, b) => b.score - a.score).forEach(({ p }) => add(p));
+  }
+
+  return results.slice(0, limit);
 }
 
 /**

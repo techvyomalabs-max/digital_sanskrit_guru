@@ -18,6 +18,8 @@ import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct 
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { fetchPublicCatalog } from "../utils/productCatalog";
+import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
 import {
@@ -819,6 +821,21 @@ function Product() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Adds products related through combos, reverse admin links and other formats of the
+  // same title to the admin's picks, using the shared catalog the search already loads
+  useEffect(() => {
+    if (!product?._id) return;
+    let cancelled = false;
+    fetchPublicCatalog()
+      .then((catalog) => {
+        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, 8));
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [product]);
 
   useEffect(() => {
     if (!product) return;
@@ -2372,7 +2389,7 @@ function Product() {
               </div>
             ))
           ) : (
-            <p className="related-empty">No related products added by admin.</p>
+            <p className="related-empty">No related products found.</p>
           )}
         </div>
       </div>
