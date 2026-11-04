@@ -1,0 +1,115 @@
+.mailmodo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mailmodo-panel .mkt-stat-grid {
+  margin-bottom: 0;
+}
+
+.mailmodo-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mailmodo-intro {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.mailmodo-checks {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.mailmodo-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border, #e2e8f0);
+}
+
+.mailmodo-check.on {
+  color: #15803d;
+  background: color-mix(in srgb, #22c55e 10%, transparent);
+}
+
+.mailmodo-check.off {
+  color: var(--admin-muted, #64748b);
+}
+
+.mailmodo-check svg {
+  flex-shrink: 0;
+}
+
+.mailmodo-setup {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--admin-primary, #0284c7) 8%, transparent);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.mailmodo-setup p {
+  margin: 0 0 6px;
+}
+
+.mailmodo-setup ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.mailmodo-panel code {
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--admin-muted, #64748b) 14%, transparent);
+}
+
+.mailmodo-code {
+  overflow-wrap: anywhere;
+}
+
+.mailmodo-warn {
+  margin: 14px 0 0;
+  color: #b45309;
+}
+
+.mailmodo-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.mailmodo-test .mkt-field {
+  flex: 1 1 260px;
+  margin-bottom: 0;
+}
+
+.mailmodo-spin {
+  animation: mailmodo-spin 1s linear infinite;
+}
+
+@keyframes mailmodo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mailmodo-spin {
+    animation: none;
+  }
+}

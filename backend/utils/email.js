@@ -11,6 +11,7 @@ const EmailLog = require("../models/EmailLog");
 const { generateInvoicePdfBuffer } = require("./invoicePdfGenerator");
 const { buildUnsubscribeUrl } = require("./unsubscribe");
 const { siteLink } = require("./siteLinks");
+const { emailStreamForType, getSmtpConfig } = require("./emailStream");
 
 const EMAIL_ENABLED = String(process.env.EMAIL_ENABLED || "false").toLowerCase() === "true";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
@@ -43,14 +44,15 @@ function marketingExtras(user) {
   };
 }
 
-// ── Transporter ──────────────────────────────────────────────────────────────
+// ── Transporters (one per SMTP server, see utils/emailStream.js) ─────────────
 
-let transporter = null;
+const transporters = new Map();
 
-async function getTransporter() {
-  if (transporter) return transporter;
+async function getTransporter(config) {
+  const cacheKey = `${config.stream}:${config.host}:${config.port}:${config.user}`;
+  if (transporters.has(cacheKey)) return transporters.get(cacheKey);
 
-  let host = process.env.SMTP_HOST || "smtp.gmail.com";
+  let host = config.host;
   let tlsOptions = {};
 
   if (host === "smtp.gmail.com") {
@@ -67,13 +69,13 @@ async function getTransporter() {
     }
   }
 
-  transporter = nodemailer.createTransport({
+  const created = nodemailer.createTransport({
     host,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: Number(process.env.SMTP_PORT || 587) === 465,
+    port: config.port,
+    secure: config.port === 465,
     auth: {
-      user: process.env.SMTP_USER || "",
-      pass: process.env.SMTP_PASS || ""
+      user: config.user,
+      pass: config.pass
     },
     tls: tlsOptions,
     // Give up instead of hanging for minutes when the mail server doesn't answer
@@ -81,29 +83,31 @@ async function getTransporter() {
     greetingTimeout: 15000,
     socketTimeout: 30000
   });
-  return transporter;
+  transporters.set(cacheKey, created);
+  return created;
 }
 
 // ── Core send function ────────────────────────────────────────────────────────
 
-async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "", attachments = [], headers = {} }) {
-  const logEntry = { to, subject, type, orderId, productId, status: "sent", error: "" };
+async function sendEmail({ to, subject, html, type = "campaign", orderId = "", productId = "", attachments = [], headers = {}, stream = "" }) {
+  const smtp = getSmtpConfig(stream || emailStreamForType(type));
+  const logEntry = { to, subject, type, stream: smtp.stream, orderId, productId, status: "sent", error: "" };
 
   try {
     if (!EMAIL_ENABLED) {
-      console.log(`[Email DISABLED] Would send "${subject}" to ${to} (with ${attachments.length} attachment(s))`);
+      console.log(`[Email DISABLED] Would send "${subject}" to ${to} via ${smtp.stream} SMTP (with ${attachments.length} attachment(s))`);
       await EmailLog.create({ ...logEntry, status: "sent" });
       return { skipped: true };
     }
 
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    if (!smtp.user || !smtp.pass) {
       console.warn("[Email] SMTP credentials not configured.");
       await EmailLog.create({ ...logEntry, status: "failed", error: "SMTP not configured" });
       return { skipped: true };
     }
 
-    const senderAddress = process.env.SENDER_EMAIL || process.env.SMTP_USER;
-    const transporterInstance = await getTransporter();
+    const senderAddress = smtp.sender;
+    const transporterInstance = await getTransporter(smtp);
     const mailOptions = {
       from: `"${SITE_NAME}" <${senderAddress}>`,
       to,
@@ -946,13 +950,14 @@ async function sendBroadcastEmail({ subject, html, recipients = [] }) {
   return results;
 }
 
-async function sendTestEmail(to) {
+async function sendTestEmail(to, stream = "transactional") {
+  const label = stream === "marketing" ? "promotional" : "order and account";
   const html = htmlWrapper("Test Email", `
     <h2>✅ Email is working!</h2>
-    <p>This is a test email from <strong>${SITE_NAME}</strong>.</p>
+    <p>This is a test email from <strong>${SITE_NAME}</strong>, sent through the ${label} email server.</p>
     <p>If you received this, your email configuration is correct.</p>
   `);
-  return sendEmail({ to, subject: `Test Email — ${SITE_NAME}`, html, type: "test" });
+  return sendEmail({ to, subject: `Test Email — ${SITE_NAME}`, html, type: "test", stream });
 }
 
 async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId }) {

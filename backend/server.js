@@ -70,10 +70,12 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const marketingRoutes = require("./routes/marketingRoutes");
   const supportInterestRoutes = require("./routes/supportInterestRoutes");
   const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
+  const mailmodoWebhookRoutes = require("./routes/mailmodoWebhookRoutes");
   const trashRoutes = require("./routes/trashRoutes");
   const mediaRoutes = require("./routes/mediaRoutes");
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
+  const { initMailmodoScheduler } = require("./services/mailmodoSync");
   const { initPaymentReconciler } = require("./services/paymentReconciler");
   const { paymentWebhookHandler } = require("./routes/paymentWebhook");
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
@@ -217,6 +219,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/marketing", requireDatabase, marketingRoutes);
   app.use("/api/support-interest", requireDatabase, supportInterestRoutes);
   app.use("/api/unsubscribe", requireDatabase, unsubscribeRoutes);
+  app.use("/api/mailmodo", requireDatabase, mailmodoWebhookRoutes);
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/media", requireDatabase, mediaRoutes);
   app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
@@ -298,6 +301,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   initVapid();
   initWishlistScheduler();
   initPaymentReconciler();
+  initMailmodoScheduler();
 
   // Retry connection if disconnected
   setInterval(() => {
