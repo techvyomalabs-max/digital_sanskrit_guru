@@ -307,3 +307,48 @@ describe("matching old WordPress products by a looser name", () => {
     assert.equal(normalizeSlug("ramayana-ratnamala-ramaya%e1%b9%87aratnamala-book"), "ramayana-ratnamala-ramayanaratnamala-book");
   });
 });
+
+describe("old links that open a product which already has a main link", () => {
+  const live = { _id: "live", name: "Astadhyayi – Audio Device" };
+  const deletedCopy = { _id: "gone", name: "Astadhyayi – Audio Device", isDeleted: true };
+
+  it("adds a second old link to the live product instead of a deleted copy", () => {
+    const plan = planSlugBackfill([live, deletedCopy], [
+      { id: 10573, title: "Astadhyayi – Audio Device", slug: "astadhyayi-audio-device" },
+      { id: 11101, title: "Astadhyayi – Audio Device", slug: "astadhyayi-audio-device-festival-offer" }
+    ]);
+    const forLive = plan.updates.filter((u) => u._id === "live");
+    assert.deepEqual(forLive.map((u) => u.source).sort(), ["wordpress", "wordpress-old-link"]);
+    assert.equal(forLive.find((u) => u.source === "wordpress").slug, "astadhyayi-audio-device");
+    const oldLink = forLive.find((u) => u.source === "wordpress-old-link");
+    assert.equal(oldLink.oldSlug, "astadhyayi-audio-device-festival-offer");
+    assert.equal(oldLink.slug, "astadhyayi-audio-device", "shows the main link it opens");
+    assert.ok(!plan.updates.some((u) => u._id === "gone" && u.source !== "generated"));
+  });
+
+  it("an oldLinkOnly entry never becomes the main link, even when it comes first", () => {
+    const sss = { _id: "sss", name: "Saptaha Stotra Sangraha" };
+    const plan = planSlugBackfill([sss], [
+      { id: 566, title: "Saptaha Stotra Sangraha", slug: "saptah-stotra-sangrahah-kannada", oldLinkOnly: true },
+      { id: 6472, title: "Saptaha Stotra Sangraha", slug: "saptaha-stotra-sangrahah" }
+    ]);
+    assert.equal(plan.updates.find((u) => u.source === "wordpress").slug, "saptaha-stotra-sangrahah");
+    assert.equal(plan.updates.find((u) => u.source === "wordpress-old-link").oldSlug, "saptah-stotra-sangrahah-kannada");
+  });
+
+  it("an oldLinkOnly entry on a product with no old main link still gets a generated main link", () => {
+    const plan = planSlugBackfill([{ _id: "kit", name: "Learning Kit" }], [
+      { id: 1, title: "Learning Kit", slug: "old-kit", oldLinkOnly: true }
+    ]);
+    const generated = plan.updates.find((u) => u.source === "generated");
+    assert.equal(generated.slug, "learning-kit");
+    assert.equal(plan.updates.find((u) => u.source === "wordpress-old-link").slug, "learning-kit");
+  });
+
+  it("every entry in the saved WordPress list has a unique old link", () => {
+    const rows = require("../data/wp-product-slugs.json");
+    const slugs = rows.map((r) => normalizeSlug(r.slug));
+    assert.equal(new Set(slugs).size, slugs.length);
+    assert.ok(!slugs.includes("test"), "the old /product/test link is not used");
+  });
+});

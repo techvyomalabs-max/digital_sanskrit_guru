@@ -1,47 +1,47 @@
 [
  {
   "wpId": 23,
-  "name": "Dhaturupaparicayah (Dhāturūpaparicayaḥ)",
+  "name": "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ )",
   "slug": "dhaturupaparicayah"
  },
  {
   "wpId": 76,
-  "name": "Dhaturupaparicayah (Dhāturūpaparicayaḥ) -(Kindle Edition) eBook",
+  "name": "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ ) -(Kindle Edition) eBook",
   "slug": "dhaturupaparicayah-ebook"
  },
  {
   "wpId": 84,
-  "name": "Sanskrit Vocabulary Builder (Paperback)- Saṃskṛta Śabdasampadvardhinī",
+  "name": "Sanskrit Vocabulary Builder – Samskrita Shabda Sampadvardhini (Saṃskṛta Śabdasampadvardhinī) – Paperback",
   "slug": "sanskrit-vocabulary-builder"
  },
  {
   "wpId": 86,
-  "name": "Panchatantra Stories in Sanskrit (Saṃskṛtakathāmālikā Pañcatantrakathāḥ)",
+  "name": "Panchatantra Stories in Sanskrit (Saṃskṛtakathāmālikā Pañcatantrakathāḥ) – Web Version",
   "slug": "panchatantra-stories-sanskrit"
  },
  {
   "wpId": 91,
-  "name": "Starter’s Kit to Indian Culture",
+  "name": "Starter’s Kit to Indian Culture – Web Version",
   "slug": "starters-kit-to-indian-culture"
  },
  {
   "wpId": 99,
-  "name": "Śabdarūpasaṅgrahaḥ - (Sabdarupa Sangrahah)",
+  "name": "Shabdarupa Sangraha (Śabdarūpasaṅgrahaḥ) – Web Version",
   "slug": "sabdarupa-sangrahah"
  },
  {
   "wpId": 105,
-  "name": "Astadhyayi - Learn Advanced Grammar in Sanskrit (Aṣṭādhyāyī)",
+  "name": "Astadhyayi (Aṣṭādhyāyī) – Learn Advanced Grammar in Sanskrit – Web Audio",
   "slug": "astadhyayi-learn-advanced-grammar-sanskrit"
  },
  {
   "wpId": 110,
-  "name": "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) Paperback",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Paperback (English)",
   "slug": "saptah-stotra-sangrahah"
  },
  {
   "wpId": 120,
-  "name": "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) - (Kindle Edition) eBook",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Kindle Edition",
   "slug": "saptah-stotra-sangrahah-ebook"
  },
  {
@@ -51,12 +51,12 @@
  },
  {
   "wpId": 137,
-  "name": "Ramayana Ratnamala - (Rāmāyaṇaratnamālā)",
+  "name": "Ramayana Ratnamala (Rāmāyaṇaratnamālā) – Web Audio",
   "slug": "ramayana-ratnamala"
  },
  {
   "wpId": 145,
-  "name": "Yoga Sutra Paricayah - (Yogasūtraparicayaḥ)",
+  "name": "Yoga Sutra Parichaya (Yogasūtraparicayaḥ) – Web Version",
   "slug": "yoga-sutra-paricayah"
  },
  {
@@ -66,22 +66,22 @@
  },
  {
   "wpId": 162,
-  "name": "Sanskrit Vocabulary Builder - Part 1",
+  "name": "Sanskrit Vocabulary Builder – Part 1 – Web Version",
   "slug": "sanskrit-vocabulary-builder-part1"
  },
  {
   "wpId": 171,
-  "name": "Sanskrit Vocabulary Builder - Part 2",
+  "name": "Sanskrit Vocabulary Builder – Part 2 – Web Version",
   "slug": "sanskrit-vocabulary-builder-part2"
  },
  {
   "wpId": 179,
-  "name": "Learn Sanskrit Pronunciation Through Bhagavad Gita",
+  "name": "Learn Sanskrit Pronunciation Through Bhagavad Gita (Bhagavadgītā) – Web Audio",
   "slug": "sanskrit-pronunciation-bhagavadgita"
  },
  {
   "wpId": 184,
-  "name": "Master Samaasah",
+  "name": "Master Samasa (Samāsaḥ)",
   "slug": "master-samaasah"
  },
  {
@@ -91,7 +91,7 @@
  },
  {
   "wpId": 443,
-  "name": "Learn Sanskrit Shlokas and Appreciate Basic Importance",
+  "name": "Learn Sanskrit Shloka-s (Śloka-s) and Appreciate Basic Importance",
   "slug": "learn-basic-sanskrit-shlokas-understand"
  },
  {
@@ -116,13 +116,15 @@
  },
  {
   "wpId": 513,
-  "name": "All Products Bundle Web-version-old",
-  "slug": "all-products-bundle"
+  "name": "All Products Bundle Web-version",
+  "slug": "all-products-bundle",
+  "oldLinkOnly": true
  },
  {
   "wpId": 566,
-  "name": "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) (Kannada - ಕನ್ನಡ)",
-  "slug": "saptah-stotra-sangrahah-kannada"
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ)",
+  "slug": "saptah-stotra-sangrahah-kannada",
+  "oldLinkOnly": true
  },
  {
   "wpId": 579,
@@ -131,32 +133,32 @@
  },
  {
   "wpId": 580,
-  "name": "Nitya Prarthana Shloka - Enhance your energies through everyday prayers (Kindle Edition) eBook",
+  "name": "Nitya Prarthana Shloka (Nityaprārthanāśloka) – Enhance Your Energies Through Everyday Prayers – Kindle Edition",
   "slug": "nitya-prarthana-shloka"
  },
  {
   "wpId": 1653,
-  "name": "Shabdarupasangraha <br> Level 1 to 5<br>Book -Paperback",
+  "name": "Shabdarupa Sangraha (Śabdarūpasaṅgrahaḥ) – Levels 1–5 – Paperback",
   "slug": "shabdarupasangraha-level-1-to-5"
  },
  {
   "wpId": 2329,
-  "name": "Dhaturupaparicayah Digital-Flipbook",
+  "name": "Dhaturupa Parichaya (Dhāturūpaparicayaḥ) – Digital Flipbook",
   "slug": "dhaturupaparicayah-flipbook"
  },
  {
   "wpId": 2331,
-  "name": "Sabdarupasangraha Digital-Flipbook",
+  "name": "Shabdarupa Sangraha (Śabdarūpasaṅgrahaḥ) – Digital Flipbook",
   "slug": "sabdarupasaṅgrahaḥ-flipbook"
  },
  {
   "wpId": 2710,
-  "name": "Sanskrit Vocabulary Builder Digital-Flipbook",
+  "name": "Sanskrit Vocabulary Builder – Samskrita Shabda Sampadvardhini (Saṃskṛta Śabdasampadvardhinī) – Digital Flipbook",
   "slug": "sanskrit-vocabulary-builder-flipbook"
  },
  {
   "wpId": 2873,
-  "name": "Saptāhastotra Saṅgrahaḥ(ಕನ್ನಡ) Flipbook",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Kannada – Digital Flipbook",
   "slug": "saptahastotra-saṅgrahaḥಕನ್ನಡ-flipbook"
  },
  {
@@ -166,7 +168,7 @@
  },
  {
   "wpId": 3438,
-  "name": "Shabdarupa Sangrahah (Kindle Edition) eBook",
+  "name": "Shabdarupa Sangraha (Śabdarūpasaṅgrahaḥ) – Kindle Edition",
   "slug": "shabdarupa-sangrahah-kindle-edition"
  },
  {
@@ -296,7 +298,7 @@
  },
  {
   "wpId": 4487,
-  "name": "Saptāhastotra Saṅgrahaḥ(English) Flipbook",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – English – Digital Flipbook",
   "slug": "saptahastotra-saṅgrahaḥ-english"
  },
  {
@@ -311,7 +313,7 @@
  },
  {
   "wpId": 5000,
-  "name": "Sanatana Dharma (questions & answers) Flipbook",
+  "name": "Sanatana Dharma (Sanātanadharma) – Questions and Answers – Digital Flipbook",
   "slug": "sanatana-dharma-questions-answers-flipbook"
  },
  {
@@ -321,17 +323,17 @@
  },
  {
   "wpId": 5326,
-  "name": "Ramayana Ratnamala – (Rāmāyaṇaratnamālā) - book",
+  "name": "Ramayana Ratnamala (Rāmāyaṇaratnamālā) – Paperback",
   "slug": "ramayana-ratnamala-ramayaṇaratnamala-book"
  },
  {
   "wpId": 5334,
-  "name": "Ramayana Ratnamala – (Rāmāyaṇaratnamālā) - Flipbook",
+  "name": "Ramayana Ratnamala (Rāmāyaṇaratnamālā) – Digital Flipbook",
   "slug": "ramayana-ratnamala-ramayaṇaratnamala-flipbook"
  },
  {
   "wpId": 5395,
-  "name": "Adi Shankaracharya Pendrive<br>Only for Indian Users</br>",
+  "name": "Adi Shankaracharya (Ādi Śaṅkarācārya) – Pendrive",
   "slug": "adi-shankaracharya-pendrive"
  },
  {
@@ -341,27 +343,27 @@
  },
  {
   "wpId": 5477,
-  "name": "Krsnanandam Pendrive<br>Only for Indian Users</br>",
+  "name": "Krishnanandam (Kṛṣṇānandam) – Pendrive",
   "slug": "krishna"
  },
  {
   "wpId": 5744,
-  "name": "Shabda Dhaturupa Parichayah<br><h4>Study Material for the course Science of Sanskrit Sentence Construction - Level 2 (Batch 2)</h4></br>",
+  "name": "Shabda Dhaturupa Parichaya (Śabdadhāturūpaparicayaḥ) – Study Material for Science of Sanskrit Sentence Construction – Level 2 (Batch 2)",
   "slug": "shabda-dhaturupa-parichayahstudy-material-for-the-course-science-of-sanskrit-sentence-construction-level-3"
  },
  {
   "wpId": 6357,
-  "name": "Srimad Bhagavadgita (ŚRĪMADBHAGAVADGĪTĀ) - book<br>",
+  "name": "Srimad Bhagavadgita (Śrīmadbhagavadgītā) – Paperback",
   "slug": "srimad-bhagavadgita-srimadbhagavadgita"
  },
  {
   "wpId": 6465,
-  "name": "Dhaturupaparicayah (Dhāturūpaparicayaḥ) paperback",
+  "name": "Dhaturupa Paricaya (Dhāturūpaparicayaḥ) – Paperback",
   "slug": "dhaturupaparicayah-dhaturupaparicayaḥ-paperback"
  },
  {
   "wpId": 6472,
-  "name": "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ)",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ)",
   "slug": "saptaha-stotra-sangrahah-saptahastotra-saṅgrahaḥ"
  },
  {
@@ -381,17 +383,17 @@
  },
  {
   "wpId": 7481,
-  "name": "Literary Treasures of Kalidasa explained in Tamil",
+  "name": "Literary Treasures of Kalidasa (Kālidāsa) Explained in Tamil – Pendrive",
   "slug": "the-great-works-of-kalidasa"
  },
  {
   "wpId": 7587,
-  "name": "Bhagavad Gita - Flipbook",
+  "name": "Bhagavad Gita (Bhagavadgītā) – Digital Flipbook",
   "slug": "bhagavad-gita-flipbook"
  },
  {
   "wpId": 7676,
-  "name": "Nityaprarthana - Flipbook to learn the 53 selected shlokas",
+  "name": "Nitya Prarthana  (Nityaprārthanā Śloka-s) – 53 Selected Shloka-s – Digital Flipbook",
   "slug": "nityaprarthana-flipbook-to-learn-the-53-selected-shlokas"
  },
  {
@@ -401,7 +403,7 @@
  },
  {
   "wpId": 8204,
-  "name": "Sanatana Dharma in a nutshell (Tamil)",
+  "name": "Sanatana Dharma (Sanātanadharma) in a Nutshell – Tamil – Paperback",
   "slug": "sanatana-dharma-tamil-book"
  },
  {
@@ -411,27 +413,27 @@
  },
  {
   "wpId": 8390,
-  "name": "Timeless Gītā - Endless Bliss",
+  "name": "Timeless Gita (Gītā) – Endless Bliss – Paperback",
   "slug": "timeless-gita-endless-bliss"
  },
  {
   "wpId": 8400,
-  "name": "The Puzzle of Work - Joy - Evolution",
+  "name": "The Puzzle of Work – Joy – Evolution – Paperback",
   "slug": "the-puzzle-of-work-joy-evolution"
  },
  {
   "wpId": 8628,
-  "name": "Nāmarāmāyaṇam - नामरामायणम्",
+  "name": "Nama Ramayanam (Nāmarāmāyaṇam) – Paperback",
   "slug": "namaramayanam"
  },
  {
   "wpId": 8729,
-  "name": "Nāmarāmāyaṇam – नामरामायणम्  –  Flipbook",
+  "name": "Nama Ramayanam (Nāmarāmāyaṇam) – Digital Flipbook",
   "slug": "namaramayaṇam-नामरामायणम्-flipbook"
  },
  {
   "wpId": 8810,
-  "name": "Sanatana Dharma in a nutshell (English)",
+  "name": "Sanatana Dharma (Sanātanadharma) in a Nutshell – English – Paperback",
   "slug": "sanatana-dharma-in-a-nutshell-english"
  },
  {
@@ -441,7 +443,7 @@
  },
  {
   "wpId": 9110,
-  "name": "SRIRAMA JAPAYANTRAM - Chanting Audio Device with 13 Powerful Mahamantra-s",
+  "name": "Shri Rama Japa Yantram  – Chanting Audio Device with 13 Mahamantra-s (Śrīrāmajapayantram Mahāmantra-s)",
   "slug": "sri-rama-japayantram"
  },
  {
@@ -451,52 +453,52 @@
  },
  {
   "wpId": 9798,
-  "name": "The Joy of Oneness Book",
+  "name": "The Joy of Oneness – Paperback",
   "slug": "the-joy-of-oneness-book-2"
  },
  {
   "wpId": 9822,
-  "name": "श्रीमहावीरवैभवम् (रघुवीरगद्यम्)  –  Śrīmahāvīravaibhavam (Raghuvīragadyam)",
+  "name": "Shri Mahavira Vaibhavam (Śrīmahāvīravaibhavam) – Raghuvira Gadyam (Raghuvīragadyam) – Paperback",
   "slug": "श्रीमहावीरवैभवम्-रघुवीर"
  },
  {
   "wpId": 9869,
-  "name": "Timeless Gītā - Endless Bliss - Volume - 2",
+  "name": "Timeless Gita (Gītā) – Endless Bliss – Volume 2 – Paperback",
   "slug": "timeless-gita-endless-bliss-vol-2"
  },
  {
   "wpId": 9918,
-  "name": "सौन्दर्यलहरी - Soundaryalahari (Moolam in Devanagari for everyday parayana)",
+  "name": "Soundarya Lahari Moolam in devanagari for everyday parayana (Saundaryalaharī Mūlam in devanāgarī for everyday pārāyaṇa) – Paperback",
   "slug": "सौन्दर्यलहरी-saundaryalahari-moolam-in-devanagari-for-everyday-parayana"
  },
  {
   "wpId": 9933,
-  "name": "Experience the bliss of Bhakti and Vibhakti in Śrīmannārāyaṇīyam",
+  "name": "Experience the Bliss of Bhakti and Vibhakti in Sriman Narayaneeyam (Śrīmannārāyaṇīyam) – Paperback",
   "slug": "narayaneeyam-grammar"
  },
  {
   "wpId": 9938,
-  "name": "Nityaprarthana Book to learn the 53 selected shlokas",
+  "name": "Nitya Prarthana (Nityaprārthanā) – 53 Selected Shloka-s (Śloka-s) – Paperback",
   "slug": "nityaprarthana-book-to-learn-the-53-selected-shlokas"
  },
  {
   "wpId": 9976,
-  "name": "Sriman Narayaneeyam Companion: Book + Audio Combo",
+  "name": "Sriman Narayaneeyam (Śrīmannārāyaṇīyam) Companion – Book + Audio Combo",
   "slug": "srimannarayaṇiyam-book-srimannarayaṇiyam-audio-combo"
  },
  {
   "wpId": 9982,
-  "name": "Sriman Narayaneeyam Companion: Book + OTG Combo",
+  "name": "Sriman Narayaneeyam (Śrīmannārāyaṇīyam) Companion – Book + OTG Combo",
   "slug": "srimannarayaṇiyam-book-narayaneeyam-companionotg-combo"
  },
  {
   "wpId": 9987,
-  "name": "Sriman Narayaneeyam Companion: Book + Web Combo",
+  "name": "Sriman Narayaneeyam (Śrīmannārāyaṇīyam) Companion – Book + Web Combo",
   "slug": "srimannarayaṇiyam-book-narayaneeyam-companionweb"
  },
  {
   "wpId": 9990,
-  "name": "Sriman Narayaneeyam Companion: Book + OTG + Audio Device Combo",
+  "name": "Sriman Narayaneeyam (Śrīmannārāyaṇīyam) Companion – Book + OTG + Audio Device Combo",
   "slug": "srimannarayaṇiyam-book-narayaneeyam-companionotg-srimannarayaṇiyam-audio-device"
  },
  {
@@ -510,123 +512,118 @@
   "slug": "narayaneeyam-companionweb-version"
  },
  {
-  "wpId": 10029,
-  "name": "Complete Sriman Narayaneeyam Learning Kit",
-  "slug": "test"
- },
- {
   "wpId": 10065,
   "name": "Dhaturupaparicayah - 2 (Dhāturūpaparicayaḥ - 2) Paperback",
   "slug": "dhaturupaparicayah-2-paperback"
  },
  {
   "wpId": 10212,
-  "name": "Ramanavami Seva Offer",
+  "name": "Rama Navami (Rāmanavamī) Seva Offer",
   "slug": "ramanavami-offer"
  },
  {
   "wpId": 10559,
-  "name": "A Comprehensive Guide to Basic Sanskrit Grammar &amp; Composition Part 1 - Sounds of the Language and their Modification",
+  "name": "A Comprehensive Guide to Basic Sanskrit Grammar & Composition – Part 1 – Sounds of the Language and Their Modification – Paperback",
   "slug": "a-comprehensive-guide-to-basic-sanskrit-grammar-composition-main-book-and-exercise-book"
  },
  {
   "wpId": 10563,
-  "name": "संस्कारबीजानि संस्कृतगीतानि (Saṃskāra-Bījāni Saṃskṛta-Gītāni) - Sanskrit Rhymes for Little Minds",
+  "name": "Samskara Bijani Samskrita Gitani (Saṃskārabījāni Saṃskṛtagītāni) – Sanskrit Rhymes for Little Minds – Paperback",
   "slug": "संस्कारबीजानि-संस्कृतगी"
  },
  {
   "wpId": 10569,
-  "name": "Srimad Bhagavadgita Audio Device",
+  "name": "Srimad Bhagavadgita (Śrīmadbhagavadgītā) – Audio Device",
   "slug": "srimad-bhagavadgita-audio-device"
  },
  {
   "wpId": 10571,
-  "name": "Ramayana Ratnamala Audio Device",
+  "name": "Ramayana Ratnamala (Rāmāyaṇaratnamālā) – Audio Device",
   "slug": "ramayana-ratnamala-audio-device"
  },
  {
   "wpId": 10573,
-  "name": "Astadhyayi Audio Device",
+  "name": "Astadhyayi (Aṣṭādhyāyī) – Audio Device",
   "slug": "astadhyayi-audio-device"
  },
  {
   "wpId": 10577,
-  "name": "Saptaha Stotra Sangraha Audio Device",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Audio Device",
   "slug": "saptaha-stotra-sangraha-audio-device"
  },
  {
   "wpId": 10927,
-  "name": "श्रीमहावीरवैभवम् (रघुवीरगद्यम्) – Śrīmahāvīravaibhavam (Raghuvīragadyam) - Bulk Purchase",
+  "name": "Shri Mahavira Vaibhavam (Śrīmahāvīravaibhavam) – Raghuvira Gadyam (Raghuvīragadyam) – Paperback – Bulk Purchas",
   "slug": "श्रीमहावीरवैभवम्-रघुवी-2"
  },
  {
   "wpId": 10976,
-  "name": "Shabdarupasangraha Level 1 to 5 Book -Paperback - Bulk Purchase",
+  "name": "Shabdarupa Sangraha (Śabdarūpasaṅgrahaḥ) – Levels 1–5 – Paperback – Bulk Purchase",
   "slug": "shabdarupasangraha-level-1-to-5-book-paperback-bulk-purchase"
  },
  {
   "wpId": 10986,
-  "name": "Dhaturupaparicayah (Dhāturūpaparicayaḥ) paperback - Bulk Purchase",
+  "name": "Dhaturupa Parichaya (Dhāturūpaparicayaḥ) – Paperback – Bulk Purchase",
   "slug": "dhaturupaparicayah-dhaturupaparicayaḥ-paperback-bulk-purchase"
  },
  {
   "wpId": 10996,
-  "name": "Saptaha Stotra Sangrahah – (Saptāhastotra Saṅgrahaḥ) (Kannada – ಕನ್ನಡ) - Bulk Purchase",
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Kannada – Paperback – Bulk Purchase",
   "slug": "saptaha-stotra-sangrahah-saptahastotra-saṅgrahaḥ-kannada-ಕನ್ನಡ"
  },
  {
   "wpId": 11005,
-  "name": "Literary Treasures of Kalidasa explained in Tamil - Web version",
+  "name": "Literary Treasures of Kalidasa (Kālidāsa) Explained in Tamil – Web Version",
   "slug": "literary-treasures-of-kalidasa-explained-in-tamil-web-version"
  },
  {
   "wpId": 11008,
-  "name": "Sanatana Dharma in a nutshell (Tamil) - Bulk Order",
+  "name": "Sanatana Dharma (Sanātanadharma) in a Nutshell – Tamil – Paperback – Bulk Purchase",
   "slug": "sanatana-dharma-in-a-nutshell-tamil-bulk-order"
  },
  {
   "wpId": 11014,
-  "name": "Sanatana Dharma in a nutshell (English) - Bulk Order",
+  "name": "Sanatana Dharma (Sanātanadharma) in a Nutshell – English – Paperback – Bulk Purchase",
   "slug": "sanatana-dharma-in-a-nutshell-english-bulk-order"
  },
  {
   "wpId": 11020,
-  "name": "सौन्दर्यलहरी – Soundaryalahari (Moolam in Devanagari for everyday parayana) - Bulk Order",
+  "name": "Soundarya Lahari Moolam in devanagari for everyday parayana (Saundaryalaharī Mūlam in devanāgarī for everyday pārāyaṇa) – Paperback – Bulk Purchase",
   "slug": "सौन्दर्यलहरी-soundaryalahari-moolam-in-devanagari-for-everyday-parayana-bulk-order"
  },
  {
   "wpId": 11031,
-  "name": "Sanskrit Vocabulary Builder (Paperback)- Saṃskṛta Śabdasampadvardhinī - Bulk Purchase",
+  "name": "Sanskrit Vocabulary Builder – Samskrita Shabda Sampadvardhini (Saṃskṛta Śabdasampadvardhinī) – Paperback – Bulk Purchase",
   "slug": "sanskrit-vocabulary-builder-paperback-saṃskṛta-sabdasampadvardhini-bulk-purchase"
  },
  {
   "wpId": 11037,
-  "name": "Dhaturupaparicayah – 2 (Dhāturūpaparicayaḥ – 2) Paperback - Bulk Purchase",
+  "name": "Dhaturupa Parichaya (Dhāturūpaparicayaḥ) – Volume 2 – Paperback – Bulk Purchase",
   "slug": "dhaturupaparicayah-2-dhaturupaparicayaḥ-2-paperback-bulk-purchase"
  },
  {
   "wpId": 11043,
-  "name": "The Joy of Oneness Book - Bulk Purchase",
+  "name": "The Joy of Oneness – Paperback – Bulk Purchase",
   "slug": "the-joy-of-oneness-book-bulk-purchase"
  },
  {
   "wpId": 11050,
-  "name": "The Puzzle of Work - Joy - Evolution - Bulk Purchase",
+  "name": "The Puzzle of Work – Joy – Evolution – Paperback – Bulk Purchase",
   "slug": "the-puzzle-of-work-joy-evolution-bulk-purchase"
  },
  {
   "wpId": 11057,
-  "name": "(Saṃskāra-Bījāni Saṃskṛta-Gītāni) - Sanskrit Rhymes for Little Minds - Bulk Purchase",
+  "name": "Samskara Bijani Samskrita Gitani (Saṃskārabījāni Saṃskṛtagītāni) – Sanskrit Rhymes for Little Minds – Paperback – Bulk Purchase",
   "slug": "saṃskara-bijani-saṃskṛta-gitani-sanskrit-rhymes-for-little-minds-bulk-purchase"
  },
  {
   "wpId": 11063,
-  "name": "Timeless Gītā - Endless Bliss - Bulk Purchase",
+  "name": "Timeless Gita (Gītā) – Endless Bliss – Paperback – Bulk Purchase",
   "slug": "timeless-gita-endless-bliss-bulk-purchase"
  },
  {
   "wpId": 11071,
-  "name": "Timeless Gītā – Endless Bliss – Volume – 2 - Bulk Purchase",
+  "name": "Timeless Gita (Gītā) – Endless Bliss – Volume 2 – Paperback – Bulk Purchase",
   "slug": "timeless-gita-endless-bliss-volume-2-bulk-purchase"
  },
  {
@@ -636,7 +633,7 @@
  },
  {
   "wpId": 11092,
-  "name": "Experience the bliss of Bhakti and Vibhakti in Śrīmannārāyaṇīyam - Bulk Purchase",
+  "name": "Experience the Bliss of Bhakti and Vibhakti in Sriman Narayaneeyam (Śrīmannārāyaṇīyam) – Paperback – Bulk Purchase",
   "slug": "experience-the-bliss-of-bhakti-and-vibhakti-in-srimannarayaṇiyam-bulk-purchase"
  },
  {
@@ -646,23 +643,26 @@
  },
  {
   "wpId": 11099,
-  "name": "Saptaha Stotra Sangraha Audio Device - Festival Offer",
-  "slug": "saptaha-stotra-sangraha-audio-device-festival-offer"
+  "name": "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ) – Audio Device",
+  "slug": "saptaha-stotra-sangraha-audio-device-festival-offer",
+  "oldLinkOnly": true
  },
  {
   "wpId": 11101,
-  "name": "Astadhyayi Audio Device - Festival Offer",
-  "slug": "astadhyayi-audio-device-festival-offer"
+  "name": "Astadhyayi (Aṣṭādhyāyī) – Audio Device",
+  "slug": "astadhyayi-audio-device-festival-offer",
+  "oldLinkOnly": true
  },
  {
   "wpId": 11102,
-  "name": "Srimad Bhagavadgita Audio Device - Festival Offer",
+  "name": "Srimad Bhagavadgita (Śrīmadbhagavadgītā) – Audio Device - Festival Offer",
   "slug": "srimad-bhagavadgita-audio-device-festival-offer"
  },
  {
   "wpId": 11103,
-  "name": "Ramayana Ratnamala Audio Device - Festival Offer",
-  "slug": "ramayana-ratnamala-audio-device-festival-offer"
+  "name": "Ramayana Ratnamala (Rāmāyaṇaratnamālā) – Audio Device",
+  "slug": "ramayana-ratnamala-audio-device-festival-offer",
+  "oldLinkOnly": true
  },
  {
   "wpId": 11454,
@@ -671,42 +671,42 @@
  },
  {
   "wpId": 11456,
-  "name": "Experience the bliss of Bhakti and Vibhakti in Śrīmannārāyaṇīyam - Volume 2 (26 - 50 Daśaka-s)",
+  "name": "Experience the Bliss of Bhakti and Vibhakti in Sriman Narayaneeyam (Śrīmannārāyaṇīyam) – Volume 2 – Daśaka-s 26–50 – Paperback",
   "slug": "experience-the-bliss-of-bhakti-and-vibhakti-in-srimannarayaṇiyam-volume-2-26-50-dasaka-s"
  },
  {
   "wpId": 11457,
-  "name": "Sanatana Dharma - A Guidebook for Our Life Journey (English)",
+  "name": "Sanatana Dharma (Sanātanadharma) – A Guidebook for Our Life Journey – English – Paperback",
   "slug": "sanatana-dharma-a-guidebook-for-our-life-journey-english"
  },
  {
   "wpId": 11458,
-  "name": "Sriman Narayaneeyam - Moolam",
+  "name": "Sriman Narayaneeyam – Moolam  (Śrīmannārāyaṇīyam Mūlam) – Paperback",
   "slug": "sriman-narayaneeyam-moolam"
  },
  {
   "wpId": 11460,
-  "name": "Aacharyaprashasti",
+  "name": "Acharya Prashasti (Ācāryapraśasti) – Paperback",
   "slug": "aacharyaprashasti"
  },
  {
   "wpId": 11926,
-  "name": "Thoughts on Sandhyavandana – A Contemporary Perspective",
+  "name": "Thoughts on Sandhyavandana (Sandhyāvandana) – A Contemporary Perspective – Paperback",
   "slug": "thoughts-on-sandhyavandana-a-contemporary-perspective"
  },
  {
   "wpId": 12236,
-  "name": null,
+  "name": "Tarkasangraha",
   "slug": "tarka-sangraha-audioweb-version"
  },
  {
   "wpId": 12363,
-  "name": null,
+  "name": "Nityaprarthana Book to learn the 53 selected shlokas – Kannada",
   "slug": "nityaprarthana-book-to-learn-the-53-selected-shlokas-kannada"
  },
  {
   "wpId": 12369,
-  "name": null,
+  "name": "Nityaprarthana Book to learn the 53 selected shlokas – Hindi",
   "slug": "nityaprarthana-book-to-learn-the-53-selected-shlokas-hindi"
  },
  {

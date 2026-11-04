@@ -25,7 +25,8 @@ function preference(p) {
 
 /**
  * @param products   [{ _id, name, slug, slugHistory, optionParent, isDeleted, hideFromListings }]
- * @param wpProducts [{ id, title, slug }] from wp_posts (post_name is the old link name)
+ * @param wpProducts [{ id, title, slug, oldLinkOnly }] from wp_posts (post_name is the old link name);
+ *                   oldLinkOnly: the old link only opens the product, it never becomes its main link name
  */
 function planSlugBackfill(products = [], wpProducts = []) {
   const taken = new Set();
@@ -55,8 +56,21 @@ function planSlugBackfill(products = [], wpProducts = []) {
   const updates = [];
   const unmatchedWp = [];
   const skippedWp = [];
+  const oldLinks = [];
 
-  const sortedWp = [...wpProducts].sort((a, b) => Number(a.id) - Number(b.id));
+  // Adds an old link to a product that keeps (or will get) another main link name.
+  const addOldLink = (wp, product, slug) => {
+    if ((product.slugHistory || []).includes(slug) || product.slug === slug) return;
+    if (taken.has(slug)) {
+      skippedWp.push({ ...wp, reason: `link "${slug}" is already used by another product` });
+      return;
+    }
+    taken.add(slug);
+    oldLinks.push({ _id: product._id, name: product.name, oldSlug: slug, source: "wordpress-old-link", wpProductId: Number(wp.id) || undefined, status: statusOf(product) });
+  };
+
+  // Entries marked oldLinkOnly are handled last, so they never take a product's main link name.
+  const sortedWp = [...wpProducts].sort((a, b) => (a.oldLinkOnly ? 1 : 0) - (b.oldLinkOnly ? 1 : 0) || Number(a.id) - Number(b.id));
   for (const wp of sortedWp) {
     // Same name, or a name that differs only in HTML/spacing/accents. Among those, a live,
     // listed product wins over a deleted or hidden copy; on a tie the exact name wins.
@@ -73,17 +87,22 @@ function planSlugBackfill(products = [], wpProducts = []) {
       unmatchedWp.push(wp);
       continue;
     }
-    const candidate = candidates.find((p) => !assigned.has(String(p._id)));
-    if (!candidate) {
-      skippedWp.push({ ...wp, reason: "another old product with the same name already took this product" });
-      continue;
-    }
-    assigned.add(String(candidate._id));
     const slug = normalizeSlug(wp.slug);
     if (!slug) {
       skippedWp.push({ ...wp, reason: "no link name on the old site" });
       continue;
     }
+    // Only products as good as the best match qualify (a deleted copy never wins over a live
+    // product that already has a link). Otherwise the old link is added to the best match.
+    const best = preference(candidates[0]);
+    const candidate = wp.oldLinkOnly
+      ? null
+      : candidates.find((p) => preference(p) === best && !assigned.has(String(p._id)));
+    if (!candidate) {
+      addOldLink(wp, candidates[0], slug);
+      continue;
+    }
+    assigned.add(String(candidate._id));
     if (candidate.slug === slug || (candidate.slugHistory || []).includes(slug)) continue; // already works
     if (taken.has(slug)) {
       skippedWp.push({ ...wp, reason: `link "${slug}" is already used by another product` });
@@ -111,6 +130,11 @@ function planSlugBackfill(products = [], wpProducts = []) {
     taken.add(slug);
     updates.push({ _id: p._id, name: p.name, slug, source: "generated", status: statusOf(p) });
   }
+
+  // Old links show the main link name they open
+  const mainSlug = new Map(products.filter((p) => p.slug).map((p) => [String(p._id), p.slug]));
+  updates.forEach((u) => u.slug && mainSlug.set(String(u._id), u.slug));
+  oldLinks.forEach((u) => updates.push({ ...u, slug: mainSlug.get(String(u._id)) || "" }));
 
   return { alreadySet: products.length - needing.length, updates, unmatchedWp, skippedWp };
 }
