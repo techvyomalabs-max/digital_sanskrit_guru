@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const PRIVATE = ["webReaderLink", "digitalInstructions", "lastUpdatedByEmail", "deletedBy", "externalAccessLink", "externalAccessLabel"];
+const PRIVATE = ["slugHistory", "webReaderLink", "digitalInstructions", "lastUpdatedByEmail", "deletedBy", "externalAccessLink", "externalAccessLabel"];
 const PRIVATE_BUNDLE = ["webReaderLink", "externalAccessLink", "externalAccessLabel"];
 
 

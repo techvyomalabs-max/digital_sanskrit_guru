@@ -83,3 +83,71 @@ describe("seo utility", () => {
     assert.doesNotMatch(xml, /#\//);
   });
 });
+
+const { findProductForLink, resolveProductLink } = require("../utils/productLinkLookup");
+
+// Minimal stand-in for the Product model: findOne(filter).select().lean()
+function fakeProductModel(docs) {
+  const matches = (doc, filter) => Object.entries(filter).every(([k, v]) => {
+    if (k === "$or") return v.some((f) => matches(doc, f));
+    if (v && typeof v === "object" && "$ne" in v) return doc[k] !== v.$ne;
+    if (k === "slugHistory") return (doc.slugHistory || []).includes(v);
+    return String(doc[k]) === String(v);
+  });
+  return {
+    findOne(filter) {
+      const doc = docs.find((d) => matches(d, filter)) || null;
+      return { select: () => ({ lean: async () => doc }) };
+    }
+  };
+}
+
+describe("product link resolution", () => {
+  const PARENT_ID = "64b000000000000000000001";
+  const FORMAT_ID = "64b000000000000000000002";
+  const Product = fakeProductModel([
+    { _id: PARENT_ID, slug: "dhaturupa-parichaya", slugHistory: ["dhatu-rupa-old"], wpProductId: 4321 },
+    { _id: FORMAT_ID, slug: "dhaturupa-parichaya-usb", optionParent: PARENT_ID, hideFromListings: true },
+    { _id: "64b000000000000000000003", slug: "gone", isDeleted: true },
+    { _id: "64b000000000000000000004", slug: "private-bulk", hideFromListings: true }
+  ]);
+
+  it("serves the current link name with itself as canonical", async () => {
+    const r = resolveProductLink(await findProductForLink(Product, "dhaturupa-parichaya"), "dhaturupa-parichaya");
+    assert.deepEqual(r, { canonicalPath: "/product/dhaturupa-parichaya", noindex: false });
+  });
+
+  it("redirects ids, old site numbers and earlier names to the current link", async () => {
+    for (const key of [PARENT_ID, "4321", "dhatu-rupa-old"]) {
+      const r = resolveProductLink(await findProductForLink(Product, key), key);
+      assert.deepEqual(r, { redirect: "/product/dhaturupa-parichaya" }, key);
+    }
+  });
+
+  it("points a format at its main product and reports missing products", async () => {
+    const fmt = resolveProductLink(await findProductForLink(Product, "dhaturupa-parichaya-usb"), "dhaturupa-parichaya-usb");
+    assert.deepEqual(fmt, { canonicalPath: "/product/dhaturupa-parichaya", noindex: false });
+    assert.deepEqual(resolveProductLink(await findProductForLink(Product, "gone"), "gone"), { notFound: true });
+    assert.deepEqual(resolveProductLink(await findProductForLink(Product, "nothing-here"), "nothing-here"), { notFound: true });
+  });
+
+  it("keeps hidden non-format products out of search", async () => {
+    const r = resolveProductLink(await findProductForLink(Product, "private-bulk"), "private-bulk");
+    assert.equal(r.noindex, true);
+  });
+
+  it("uses the canonical override and noindex in the HTML", () => {
+    const { html, indexable } = injectSeoTags(HTML, { pathname: "/product/x", hostname: "digitalsanskritguru.com", siteUrl: SITE, canonicalPath: "/product/dhaturupa-parichaya" });
+    assert.equal(indexable, true);
+    assert.match(html, /href="https:\/\/digitalsanskritguru\.com\/product\/dhaturupa-parichaya"/);
+    const gone = injectSeoTags(HTML, { pathname: "/product/x", hostname: "digitalsanskritguru.com", siteUrl: SITE, noindex: "hard" });
+    assert.doesNotMatch(gone.html, /canonical/);
+    assert.match(gone.html, /noindex/);
+  });
+
+  it("lists products in the sitemap by link name", () => {
+    const xml = buildSitemapXml({ products: [{ _id: PARENT_ID, slug: "dhaturupa-parichaya" }], siteUrl: SITE });
+    assert.match(xml, /<loc>https:\/\/digitalsanskritguru\.com\/product\/dhaturupa-parichaya<\/loc>/);
+    assert.doesNotMatch(xml, new RegExp(PARENT_ID));
+  });
+});

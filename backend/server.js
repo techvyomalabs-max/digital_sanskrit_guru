@@ -249,7 +249,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
             isDeleted: { $ne: true },
             hideFromListings: { $ne: true },
             optionParent: null
-          }).select("_id updatedAt").lean();
+          }).select("_id slug updatedAt").lean();
         }
         xml = buildSitemapXml({ products });
         if (dbConnected) appCache.set(SITEMAP_CACHE_KEY, xml, 3600);
@@ -265,11 +265,51 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   // ── Static files (served after API routes) ─────────────────────────────────
   if (clientBuildExists) {
     const indexHtml = require("fs").readFileSync(path.join(DIST_DIR, "index.html"), "utf8");
-    const sendIndexHtml = (req, res) => {
-      const { html, indexable } = injectSeoTags(indexHtml, { pathname: req.path, hostname: req.hostname });
+    const { findProductForLink, resolveProductLink } = require("./utils/productLinkLookup");
+    const PRODUCT_PAGE = /^\/product\/([^/]+)\/?$/;
+
+    // Product pages: old ids, old site numbers and earlier link names get a
+    // permanent redirect to the current link name, and the canonical uses it
+    const resolveProductPage = async (key) => {
+      if (!dbConnected) return null;
+      const cacheKey = `seo:product:${key}`;
+      const { appCache } = require("./utils/cache");
+      let result = appCache.get(cacheKey);
+      if (!result) {
+        const Product = require("./models/Product");
+        result = resolveProductLink(await findProductForLink(Product, key), key);
+        appCache.set(cacheKey, result, 120);
+      }
+      return result;
+    };
+
+    const sendIndexHtml = async (req, res) => {
+      let seo = {};
+      let status = 200;
+      const productMatch = req.path.match(PRODUCT_PAGE);
+      if (productMatch) {
+        try {
+          const resolved = await resolveProductPage(productMatch[1]);
+          if (resolved?.redirect) {
+            const params = new URLSearchParams(req.query);
+            params.delete("v"); // old site added ?v=... to its links
+            const query = params.toString();
+            return res.redirect(301, `${resolved.redirect}${query ? `?${query}` : ""}`);
+          }
+          if (resolved?.notFound) {
+            seo = { noindex: "hard" };
+            status = 404;
+          } else if (resolved) {
+            seo = { canonicalPath: resolved.canonicalPath, noindex: resolved.noindex };
+          }
+        } catch (error) {
+          console.error("Product link lookup failed:", error?.message || error);
+        }
+      }
+      const { html, indexable } = injectSeoTags(indexHtml, { pathname: req.path, hostname: req.hostname, ...seo });
       res.setHeader("Cache-Control", "no-cache");
       if (!indexable) res.setHeader("X-Robots-Tag", "noindex, follow");
-      res.type("html").send(html);
+      res.status(status).type("html").send(html);
     };
 
     app.use(express.static(DIST_DIR, {

@@ -15,6 +15,7 @@ const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require(".
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
 const { normalizeProductTax } = require("../utils/productTax");
+const { normalizeSlug } = require("../utils/productSlug");
 const { categoryKey, isComboCategory } = require("../utils/categoryKey");
 const {
   normalizeOptionsInput,
@@ -361,11 +362,11 @@ const getAverageRating = (product) => {
 };
 
 const HOME_PRODUCT_SELECT =
-  "_id name image images category price internationalPrice internationalCountryPrices marketPrices stock " +
+  "_id name slug image images category price internationalPrice internationalCountryPrices marketPrices stock " +
   "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
-  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
+  "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
 
 const sortByNewest = (a, b) =>
   new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
@@ -855,6 +856,7 @@ router.post("/", protect, admin, (req, res, next) => {
       hsnSac: productTax.hsnSac,
       gstRate: productTax.gstRate,
       name,
+      ...(String(b.slug || "").trim() ? { slug: String(b.slug).trim() } : {}),
       price,
       internationalPrice,
       internationalCountryPrices,
@@ -923,6 +925,9 @@ router.post("/", protect, admin, (req, res, next) => {
     if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
       return res.status(400).json({ message: error.message });
     }
+    if (error?.name === "ValidationError" && error?.errors?.slug) {
+      return res.status(400).json({ message: error.errors.slug.message });
+    }
     const client = ["ValidationError", "CastError"].includes(error?.name);
     res.status(client ? 400 : 500).json({ message: "Failed to create product", ...(client ? { error: error.message } : {}) });
   }
@@ -946,6 +951,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     const previousFields = getProductAuditFields(product.toObject ? product.toObject() : product);
 
     product.name = req.body.name ?? product.name;
+    if (req.body.slug !== undefined && String(req.body.slug || "").trim()) {
+      product.slug = String(req.body.slug).trim();
+    }
     product.price = req.body.price !== undefined ? normalizeProductPrice(req.body.price, product.price) : product.price;
     product.internationalPrice =
       req.body.internationalPrice !== undefined
@@ -1106,6 +1114,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
       return res.status(400).json({ message: error.message });
     }
+    if (error?.name === "ValidationError" && error?.errors?.slug) {
+      return res.status(400).json({ message: error.errors.slug.message });
+    }
     res.status(500).json({ message: "Failed to update product", error: error.message });
   }
 });
@@ -1137,8 +1148,8 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
+      .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     return res.json(products);
   } catch (error) {
@@ -1170,8 +1181,8 @@ router.get("/", async (req, res) => {
             : { isDeleted: { $ne: true }, hideFromListings: { $ne: true } };
           const products = await Product.find(listFilter)
             .select(PUBLIC_PRODUCT_EXCLUDE)
-            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-            .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+            .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
             .lean();
           return products.map(toPublicProduct);
         }
@@ -1194,8 +1205,8 @@ router.get("/", async (req, res) => {
     const baseProducts = await cacheStaleWhileRevalidate("products:base:paged", TTL.PRODUCTS_LIST, async () => {
       const products = await Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
+        .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
       return products.map(toPublicProduct);
     });
@@ -1531,8 +1542,9 @@ router.get("/:id", async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(targetId)) {
       product = await Product.findById(targetId)
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+        .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("optionParent", "_id slug")
         .lean();
     }
 
@@ -1541,8 +1553,21 @@ router.get("/:id", async (req, res) => {
       if (!isNaN(numId)) {
         product = await Product.findOne({ wpProductId: numId, isDeleted: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
-          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-          .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+          .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
+          .lean();
+      }
+    }
+
+    if (!product) {
+      const slug = normalizeSlug(targetId);
+      if (slug) {
+        product = await Product.findOne({ $or: [{ slug }, { slugHistory: slug }], isDeleted: { $ne: true } })
+          .select(PUBLIC_PRODUCT_EXCLUDE)
+          .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+          .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
           .lean();
       }
     }
@@ -1552,8 +1577,8 @@ router.get("/:id", async (req, res) => {
     }
 
     // Try loading reviews from the new standalone collection
-    const reviewsCount = await Review.countDocuments({ product: req.params.id });
-    const latestReviews = await Review.find({ product: req.params.id })
+    const reviewsCount = await Review.countDocuments({ product: product._id });
+    const latestReviews = await Review.find({ product: product._id })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();
@@ -1580,7 +1605,7 @@ router.get("/:id", async (req, res) => {
       const optionDocs = optionIds.length
         ? await Product.find({ _id: { $in: optionIds }, isDeleted: { $ne: true } })
             .select(PUBLIC_PRODUCT_EXCLUDE)
-            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
             .lean()
         : [];
       const byId = new Map(optionDocs.map((d) => [String(d._id), d]));

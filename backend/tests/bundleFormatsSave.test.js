@@ -50,6 +50,14 @@ beforeEach(() => {
     await put(Product.hydrate(row));
     return { modifiedCount: 1 };
   });
+  // Link-name (slug) checks made by the Product model before saving.
+  const slugUser = (filter) => {
+    const [bySlug, byHistory] = filter.$or;
+    return [...store.values()].find((row) => idOf(row._id) !== idOf(filter._id.$ne) &&
+      (row.slug === bySlug.slug || (row.slugHistory || []).includes(byHistory.slugHistory))) || null;
+  };
+  mock.method(Product, "exists", async (filter) => (slugUser(filter) ? { _id: slugUser(filter)._id } : null));
+  mock.method(Product, "findOne", (filter) => ({ select() { return this; }, lean: async () => slugUser(filter) }));
   mock.method(Product, "updateMany", async (filter, update) => {
     let n = 0;
     for (const row of store.values()) {
