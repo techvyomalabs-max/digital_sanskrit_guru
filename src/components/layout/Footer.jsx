@@ -12,7 +12,16 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { REGISTERED_OFFICE } from "../../utils/companyInfo";
+import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon, YoutubeIcon } from "../common/SocialIcons";
 import "./Footer.css";
+
+const SOCIAL_LINKS = [
+  { name: "Facebook", href: "https://www.facebook.com/digitalsanskritguru", icon: FacebookIcon, color: "#1877f2" },
+  { name: "Instagram", href: "https://www.instagram.com/digital_sanskrit_guru/", icon: InstagramIcon, color: "#e1306c" },
+  { name: "X (Twitter)", href: "https://x.com/VyomaSanskrit", icon: XIcon, color: "#e2e8f0" },
+  { name: "LinkedIn", href: "https://www.linkedin.com/company/vyoma-linguistic-labs-foundation/", icon: LinkedinIcon, color: "#0a66c2" },
+  { name: "YouTube", href: "https://www.youtube.com/@vyoma-samskrta-pathasala", icon: YoutubeIcon, color: "#ff0033" }
+];
 
 function Footer() {
   const location = useLocation();
@@ -138,6 +147,29 @@ function Footer() {
 
       <div className="footer-bottom">
         <div className="footer-bottom-inner">
+          <nav className="footer-social" aria-label="Follow us on social media">
+            <span className="footer-social-label">Follow us</span>
+            <ul className="footer-social-list">
+              {SOCIAL_LINKS.map((social) => {
+                const Icon = social.icon;
+                return (
+                  <li key={social.name}>
+                    <a
+                      href={social.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="footer-social-link"
+                      style={{ "--social-color": social.color }}
+                      aria-label={`${social.name} (opens in a new tab)`}
+                      title={social.name}
+                    >
+                      <Icon size={20} aria-hidden="true" />
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
           <p>© {new Date().getFullYear()} Vyoma Linguistic Labs Foundation. All Rights Reserved.</p>
           <p className="footer-bottom-sub">Promoting authentic Sanskrit education, heritage literature & digital research.</p>
         </div>
