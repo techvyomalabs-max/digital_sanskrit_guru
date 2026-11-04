@@ -29,8 +29,27 @@ export function foldText(text) {
  * Phonetic and Sanskrit transliteration normalization:
  * Normalizes common variations in Romanized Sanskrit text.
  */
+// The search runs on every keystroke against every word of every product, so these
+// pure per-word transforms are memoised. Bounded so a long session can't grow them forever.
+const WORD_CACHE_LIMIT = 20000;
+const normalizeCache = new Map();
+const phoneticCache = new Map();
+
+function cached(cache, key, compute) {
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const value = compute(key);
+  if (cache.size >= WORD_CACHE_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
 export function normalizeSanskrit(text) {
   if (!text) return "";
+  return cached(normalizeCache, String(text), computeNormalizeSanskrit);
+}
+
+function computeNormalizeSanskrit(text) {
   const s = foldText(text);
 
   return s
@@ -57,6 +76,10 @@ export function normalizeSanskrit(text) {
  */
 export function sanskritPhoneticKey(text) {
   if (!text) return "";
+  return cached(phoneticCache, String(text), computeSanskritPhoneticKey);
+}
+
+function computeSanskritPhoneticKey(text) {
   let s = foldText(text);
 
   s = s
@@ -533,6 +556,52 @@ function isCategoryQuery(query, category) {
  * 10: Description-only match
  * 0: No match
  */
+// Folded product text depends only on the product, not the query, so it is built once
+// per product object and reused across keystrokes (rebuilt if those fields change).
+const productTextCache = new WeakMap();
+
+function getProductSearchText(product) {
+  const name = product?.name;
+  const category = product?.category;
+  const description = product?.description;
+  const aboutProduct = product?.aboutProduct;
+  const canCache = product !== null && typeof product === "object";
+
+  if (canCache) {
+    const hit = productTextCache.get(product);
+    if (
+      hit &&
+      hit.name === name &&
+      hit.category === category &&
+      hit.description === description &&
+      hit.aboutProduct === aboutProduct
+    ) {
+      return hit;
+    }
+  }
+
+  const foldedName = foldText(name);
+  const foldedCategory = foldText(category);
+  const foldedDesc = foldText(description);
+  const entry = {
+    name,
+    category,
+    description,
+    aboutProduct,
+    foldedName,
+    foldedCategory,
+    foldedAbout: foldText(aboutProduct),
+    compactedName: foldedName.replace(/\s+/g, ""),
+    nameWords: foldedName.split(" ").filter(Boolean),
+    catWords: foldedCategory.split(" ").filter(Boolean),
+    // Unique words only: repeats can't change a best-match result
+    descWords: [...new Set(foldedDesc.split(" ").filter(Boolean))]
+  };
+
+  if (canCache) productTextCache.set(product, entry);
+  return entry;
+}
+
 export function scoreProduct(product, query) {
   const foldedQuery = foldText(query);
   if (!foldedQuery) return 1;
@@ -540,20 +609,20 @@ export function scoreProduct(product, query) {
   const words = foldedQuery.split(" ").filter(Boolean);
   if (words.length === 0) return 1;
 
-  const foldedName = foldText(product?.name);
-  const foldedCategory = foldText(product?.category);
-  const foldedDesc = foldText(product?.description);
-  const foldedAbout = foldText(product?.aboutProduct);
+  const {
+    foldedName,
+    foldedCategory,
+    foldedAbout,
+    compactedName,
+    nameWords,
+    catWords,
+    descWords
+  } = getProductSearchText(product);
 
-  const compactedName = foldedName.replace(/\s+/g, "");
   const compactedQuery = foldedQuery.replace(/\s+/g, "");
   const compactedMatch = Boolean(
     compactedName && compactedQuery && compactedName.includes(compactedQuery)
   );
-
-  const nameWords = foldedName.split(" ").filter(Boolean);
-  const catWords = foldedCategory.split(" ").filter(Boolean);
-  const descWords = foldedDesc.split(" ").filter(Boolean);
 
   // Exact tier checks (highest precision)
   if (foldedName === foldedQuery) return 100;
@@ -613,7 +682,7 @@ export function scoreProduct(product, query) {
     }
 
     // Check aboutProduct as well
-    if (foldedAbout && foldText(foldedAbout).includes(w)) {
+    if (foldedAbout && foldedAbout.includes(w)) {
       continue;
     }
 

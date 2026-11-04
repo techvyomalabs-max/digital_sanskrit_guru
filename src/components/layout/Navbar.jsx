@@ -49,6 +49,27 @@ import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/se
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 
+const SEARCH_SUGGESTION_DELAY_MS = 120;
+
+const EMPTY_SEARCH_RESULTS = Object.freeze({
+  query: "",
+  effectiveQuery: "",
+  isAutoCorrected: false,
+  autoCorrection: null,
+  matchingCategories: [],
+  matchingPages: [],
+  matchingProducts: [],
+  totalProductsCount: 0,
+  totalResultsCount: 0
+});
+
+function runSuggestionSearch(trimmed, catalogProducts) {
+  if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
+    return { ...EMPTY_SEARCH_RESULTS, query: trimmed, effectiveQuery: trimmed };
+  }
+  return searchWebsite(trimmed, { catalogProducts, enableAutoCorrection: true });
+}
+
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
   "Web Version",
@@ -328,24 +349,21 @@ function Navbar({ bannerActive = false }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const searchResults = useMemo(() => {
+  // The suggestion search is CPU-heavy, so it runs on a short pause in typing rather
+  // than on every keystroke; the input itself always updates instantly.
+  const [suggestionQuery, setSuggestionQuery] = useState("");
+  useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
-      return {
-        query: trimmed,
-        effectiveQuery: trimmed,
-        isAutoCorrected: false,
-        autoCorrection: null,
-        matchingCategories: [],
-        matchingPages: [],
-        matchingProducts: [],
-        totalProductsCount: 0,
-        totalResultsCount: 0
-      };
-    }
+    const delay = trimmed.length < 2 ? 0 : SEARCH_SUGGESTION_DELAY_MS;
+    const timer = setTimeout(() => setSuggestionQuery(trimmed), delay);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-    return searchWebsite(trimmed, { catalogProducts, enableAutoCorrection: true });
-  }, [searchQuery, catalogProducts]);
+  const searchResults = useMemo(
+    () => runSuggestionSearch(suggestionQuery, catalogProducts),
+    [suggestionQuery, catalogProducts]
+  );
+  const isSuggestionPending = suggestionQuery !== searchQuery.trim();
 
   const navigableItems = useMemo(() => {
     const items = [];
@@ -386,7 +404,11 @@ function Navbar({ bannerActive = false }) {
       setActiveSuggestionIndex(-1);
       return;
     }
-    const query = (searchResults.effectiveQuery || searchQuery).trim();
+    // Enter pressed during the typing pause: search exactly what is in the box now
+    const latestResults = isSuggestionPending
+      ? runSuggestionSearch(searchQuery.trim(), catalogProducts)
+      : searchResults;
+    const query = (latestResults.effectiveQuery || searchQuery).trim();
     if (query) {
       recordSearchQuery(query);
     }
@@ -786,6 +808,7 @@ function Navbar({ bannerActive = false }) {
                         </div>
                       </div>
                     ) : (
+                      !isSuggestionPending &&
                       searchResults.matchingCategories.length === 0 && searchResults.matchingPages.length === 0 && (
                         <div className="navbar-search-dropdown-empty">
                           <p>No matching catalog products or website pages found for &ldquo;{searchQuery}&rdquo;</p>
