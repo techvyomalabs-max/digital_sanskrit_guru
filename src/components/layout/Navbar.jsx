@@ -55,6 +55,8 @@ const SEARCH_SUGGESTION_DELAY_MS = 120;
 const EMPTY_SEARCH_RESULTS = Object.freeze({
   query: "",
   effectiveQuery: "",
+  isIndicSearch: false,
+  detectedLanguage: null,
   isAutoCorrected: false,
   autoCorrection: null,
   matchingCategories: [],
@@ -409,9 +411,9 @@ function Navbar({ bannerActive = false }) {
     const latestResults = isSuggestionPending
       ? runSuggestionSearch(searchQuery.trim(), catalogProducts)
       : searchResults;
-    const query = (latestResults.effectiveQuery || searchQuery).trim();
-    if (query) {
-      recordSearchQuery(query);
+    const query = searchQuery.trim();
+    if (latestResults.effectiveQuery || query) {
+      recordSearchQuery((latestResults.effectiveQuery || query).trim());
     }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
@@ -653,6 +655,21 @@ function Navbar({ bannerActive = false }) {
 
                 {isSearchFocused && searchQuery.trim().length >= 2 && (
                   <div className="navbar-search-dropdown" role="listbox">
+                    {/* Multilingual Indic AI Recognition Banner */}
+                    {searchResults.isIndicSearch && searchResults.detectedLanguage && (
+                      <div className="navbar-search-multilingual-banner">
+                        <div className="navbar-search-multilingual-text">
+                          <span className="navbar-search-lang-pill">
+                            <Globe size={13} className="navbar-search-lang-icon" />
+                            {searchResults.detectedLanguage.name} Recognized
+                          </span>
+                          <span className="navbar-search-lang-detail">
+                            &ldquo;{searchResults.query}&rdquo; &rarr; <strong>{searchResults.effectiveQuery}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Auto-Correction Notice Banner */}
                     {searchResults.isAutoCorrected && searchResults.autoCorrection && (
                       <div className="navbar-search-autocorrect-banner">
