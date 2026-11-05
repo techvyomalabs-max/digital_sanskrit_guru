@@ -732,6 +732,55 @@ body.category-menu-open {
   }
 }
 
+/* Indic Multilingual AI Recognition Banner */
+.navbar-search-multilingual-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #fdf8f0;
+  border-bottom: 1px solid #fde68a;
+  font-size: 13px;
+}
+
+.navbar-search-multilingual-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--site-text, #0f172a);
+}
+
+.navbar-search-lang-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #d97706;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.navbar-search-lang-icon {
+  flex-shrink: 0;
+}
+
+.navbar-search-lang-detail {
+  font-size: 12.5px;
+  color: #334155;
+}
+
+.navbar-search-lang-detail strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
 /* Auto-Correction Notice Banner */
 .navbar-search-autocorrect-banner {
   display: flex;

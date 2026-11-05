@@ -16,7 +16,9 @@ import {
   Info,
   Shield,
   FileText,
-  Grid
+  Grid,
+  Globe,
+  Languages
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import "./Home.css";
@@ -136,6 +138,8 @@ function SearchResults() {
   const searchMatchedProducts = websiteSearch.matchingProducts;
   const isAutoCorrected = websiteSearch.isAutoCorrected;
   const effectiveQuery = websiteSearch.effectiveQuery;
+  const isIndicSearch = websiteSearch.isIndicSearch;
+  const detectedLanguage = websiteSearch.detectedLanguage;
   const matchingCategories = websiteSearch.matchingCategories;
   const matchingPages = websiteSearch.matchingPages;
 
@@ -245,6 +249,24 @@ function SearchResults() {
             )}
           </div>
         </div>
+
+        {isIndicSearch && detectedLanguage && (
+          <div className="search-results-multilingual-banner" role="status">
+            <div className="search-results-multilingual-content">
+              <span className="search-results-multilingual-badge">
+                <Globe size={14} /> {detectedLanguage.name} AI Search
+              </span>
+              <span className="search-results-multilingual-title">
+                Showing results for <strong>&ldquo;{effectiveQuery}&rdquo;</strong>
+              </span>
+            </div>
+            <div className="search-results-multilingual-actions">
+              <span>
+                Original query: &ldquo;{query}&rdquo; &bull; Recognized Script: <strong>{detectedLanguage.script} ({detectedLanguage.nativeName})</strong>
+              </span>
+            </div>
+          </div>
+        )}
 
         {isAutoCorrected && (
           <div className="search-results-autocorrect-banner" role="alert">
