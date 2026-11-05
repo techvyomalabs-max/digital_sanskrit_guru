@@ -114,7 +114,8 @@ describe("product link resolution", () => {
 
   it("serves the current link name with itself as canonical", async () => {
     const r = resolveProductLink(await findProductForLink(Product, "dhaturupa-parichaya"), "dhaturupa-parichaya");
-    assert.deepEqual(r, { canonicalPath: "/product/dhaturupa-parichaya", noindex: false });
+    assert.equal(r.canonicalPath, "/product/dhaturupa-parichaya");
+    assert.equal(r.noindex, false);
   });
 
   it("redirects ids, old site numbers and earlier names to the current link", async () => {
@@ -126,7 +127,8 @@ describe("product link resolution", () => {
 
   it("points a format at its main product and reports missing products", async () => {
     const fmt = resolveProductLink(await findProductForLink(Product, "dhaturupa-parichaya-usb"), "dhaturupa-parichaya-usb");
-    assert.deepEqual(fmt, { canonicalPath: "/product/dhaturupa-parichaya", noindex: false });
+    assert.equal(fmt.canonicalPath, "/product/dhaturupa-parichaya");
+    assert.equal(fmt.noindex, false);
     assert.deepEqual(resolveProductLink(await findProductForLink(Product, "gone"), "gone"), { notFound: true });
     assert.deepEqual(resolveProductLink(await findProductForLink(Product, "nothing-here"), "nothing-here"), { notFound: true });
   });
@@ -149,5 +151,83 @@ describe("product link resolution", () => {
     const xml = buildSitemapXml({ products: [{ _id: PARENT_ID, slug: "dhaturupa-parichaya" }], siteUrl: SITE });
     assert.match(xml, /<loc>https:\/\/digitalsanskritguru\.com\/product\/dhaturupa-parichaya<\/loc>/);
     assert.doesNotMatch(xml, new RegExp(PARENT_ID));
+  });
+});
+
+describe("link previews (WhatsApp, Facebook) for product pages", () => {
+  const { productShareInfo, plainText, absoluteAsset } = require("../utils/seo");
+  const fs = require("fs");
+  const path = require("path");
+  const SHELL = fs.readFileSync(path.join(__dirname, "../../index.html"), "utf8");
+  const meta = (html, attr, name) => {
+    const m = html.match(new RegExp(`<meta[^>]+${attr}="${name}"[^>]+content="([^"]*)"`, "i"));
+    return m ? m[1] : null;
+  };
+  const count = (html, re) => (html.match(re) || []).length;
+
+  const product = {
+    _id: "64b000000000000000000001",
+    slug: "dhaturupaparicayah",
+    name: "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ )",
+    description: "<p>Master the most important <strong>verb-forms</strong> &amp; their usage.&nbsp;A reference book for beginners.</p>",
+    image: "https://cdn.example.com/products/dhaturupa.jpg"
+  };
+
+  it("uses the product's name, a plain-text summary and its image", () => {
+    const share = productShareInfo(product);
+    assert.equal(share.title, "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ )");
+    assert.equal(share.description, "Master the most important verb-forms & their usage. A reference book for beginners.");
+    assert.equal(share.image, "https://cdn.example.com/products/dhaturupa.jpg");
+  });
+
+  it("puts them in the HTML the server sends, with the final product URL", () => {
+    const { html } = injectSeoTags(SHELL, {
+      pathname: "/product/dhaturupaparicayah", hostname: "digitalsanskritguru.com", siteUrl: SITE,
+      canonicalPath: "/product/dhaturupaparicayah", share: productShareInfo(product), assetOrigin: "https://digitalsanskritguru.com"
+    });
+    assert.equal(meta(html, "property", "og:title"), "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ ) | Digital Sanskrit Guru");
+    assert.equal(meta(html, "property", "og:description"), "Master the most important verb-forms &amp; their usage. A reference book for beginners.");
+    assert.equal(meta(html, "property", "og:image"), "https://cdn.example.com/products/dhaturupa.jpg");
+    assert.equal(meta(html, "property", "og:url"), "https://digitalsanskritguru.com/product/dhaturupaparicayah");
+    assert.equal(meta(html, "property", "og:type"), "product");
+    assert.equal(meta(html, "name", "twitter:title"), "Dhaturupa Parichaya (Dhāturūpa-paricayaḥ ) | Digital Sanskrit Guru");
+    assert.match(html, /<title>Dhaturupa Parichaya \(Dhāturūpa-paricayaḥ \) \| Digital Sanskrit Guru<\/title>/);
+    assert.equal(meta(html, "name", "description"), "Master the most important verb-forms &amp; their usage. A reference book for beginners.");
+    // Each tag once: the store-wide ones from index.html are replaced, not duplicated
+    assert.equal(count(html, /property="og:title"/g), 1);
+    assert.equal(count(html, /property="og:image"/g), 1);
+    assert.equal(count(html, /name="twitter:image"/g), 1);
+    assert.equal(count(html, /<title>/g), 1);
+  });
+
+  it("other pages keep the store title and get an absolute logo image", () => {
+    const { html } = injectSeoTags(SHELL, { pathname: "/", hostname: "digitalsanskritguru.com", siteUrl: SITE, assetOrigin: "https://digitalsanskritguru.com" });
+    assert.equal(meta(html, "property", "og:image"), "https://digitalsanskritguru.com/logo.png");
+    assert.match(meta(html, "property", "og:title"), /^Digital Sanskrit Guru/);
+    assert.equal(meta(html, "property", "og:url"), "https://digitalsanskritguru.com/");
+    assert.equal(count(html, /property="og:title"/g), 1);
+  });
+
+  it("makes relative product images absolute on this server; falls back to images[0], then the logo", () => {
+    assert.equal(absoluteAsset("/uploads/a.jpg", "http://3.111.27.167"), "http://3.111.27.167/uploads/a.jpg");
+    assert.equal(absoluteAsset("//cdn.x/a.jpg", "http://h"), "https://cdn.x/a.jpg");
+    assert.equal(productShareInfo({ name: "X", images: ["https://c/i.jpg"] }).image, "https://c/i.jpg");
+    const { html } = injectSeoTags(SHELL, { pathname: "/product/x", hostname: "h", siteUrl: SITE, canonicalPath: "/product/x", share: productShareInfo({ name: "X" }), assetOrigin: "http://3.111.27.167" });
+    assert.equal(meta(html, "property", "og:image"), "http://3.111.27.167/logo.png");
+  });
+
+  it("summary falls back to the About points, then to a sentence with the name, and is kept short", () => {
+    assert.equal(productShareInfo({ name: "Gita", aboutProduct: ["<b>Audio</b> device", "18 chapters"] }).description, "Audio device 18 chapters");
+    assert.equal(productShareInfo({ name: "Gita" }).description, "Gita from Digital Sanskrit Guru.");
+    const long = productShareInfo({ name: "L", description: "word ".repeat(100) }).description;
+    assert.ok(long.length <= 200 && long.endsWith("…"));
+    assert.equal(plainText("<script>x()</script>Hi&#39;s"), "Hi's");
+  });
+
+  it("product link lookup returns the preview details", async () => {
+    const Product = fakeProductModel([product]);
+    const r = resolveProductLink(await findProductForLink(Product, "dhaturupaparicayah"), "dhaturupaparicayah");
+    assert.equal(r.share.title, product.name);
+    assert.equal(r.share.image, product.image);
   });
 });

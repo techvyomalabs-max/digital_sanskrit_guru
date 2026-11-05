@@ -7,8 +7,10 @@
 
 const mongoose = require("mongoose");
 const { normalizeSlug } = require("./productSlug");
+const { productShareInfo } = require("./seo");
 
-const LOOKUP_SELECT = "_id slug optionParent isDeleted hideFromListings";
+// Also the name, description and image for link previews (WhatsApp, Facebook...)
+const LOOKUP_SELECT = "_id slug optionParent isDeleted hideFromListings name description aboutProduct image images";
 
 async function findProductForLink(Product, rawKey) {
   const key = String(rawKey || "").trim();
@@ -47,7 +49,8 @@ function linkKey(product) {
  * What the server should do for a product address:
  *   { notFound: true }                       — no such live product
  *   { redirect: "/product/<slug>" }          — old id / old name; move to the current link
- *   { canonicalPath: "/product/<slug>", noindex } — serve the page with this canonical
+ *   { canonicalPath: "/product/<slug>", noindex, share } — serve the page with this canonical
+ *                                                    and these link-preview details
  */
 function resolveProductLink(found, requestedKey) {
   if (!found?.product) return { notFound: true };
@@ -65,7 +68,7 @@ function resolveProductLink(found, requestedKey) {
   const canonicalKey = found.parent ? linkKey(found.parent) : currentKey;
   // Hidden products (not formats) are only reached by direct link: keep them out of search
   const noindex = found.product.hideFromListings === true && !found.parent;
-  return { canonicalPath: `/product/${encodeURIComponent(canonicalKey)}`, noindex };
+  return { canonicalPath: `/product/${encodeURIComponent(canonicalKey)}`, noindex, share: productShareInfo(found.product) };
 }
 
 module.exports = { findProductForLink, resolveProductLink };

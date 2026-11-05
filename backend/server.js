@@ -300,13 +300,15 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
             seo = { noindex: "hard" };
             status = 404;
           } else if (resolved) {
-            seo = { canonicalPath: resolved.canonicalPath, noindex: resolved.noindex };
+            seo = { canonicalPath: resolved.canonicalPath, noindex: resolved.noindex, share: resolved.share };
           }
         } catch (error) {
           console.error("Product link lookup failed:", error?.message || error);
         }
       }
-      const { html, indexable } = injectSeoTags(indexHtml, { pathname: req.path, hostname: req.hostname, ...seo });
+      // Relative image paths are files on this server, so link previews fetch them from here
+      const assetOrigin = `${req.protocol}://${req.get("host")}`;
+      const { html, indexable } = injectSeoTags(indexHtml, { pathname: req.path, hostname: req.hostname, assetOrigin, ...seo });
       res.setHeader("Cache-Control", "no-cache");
       if (!indexable) res.setHeader("X-Robots-Tag", "noindex, follow");
       res.status(status).type("html").send(html);
