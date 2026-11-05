@@ -235,4 +235,99 @@ describe("indicSearch & multilingual search engine", async () => {
       assert.ok(score >= 60, `Expected score >= 60, got ${score}`);
     });
   });
+
+  describe("5. Kannada & Indic Sanskrit Book Title Targeting", () => {
+    const bookCatalog = [
+      {
+        _id: "b-1",
+        name: "Dhaturupaparicayah (Dhāturūpaparicayaḥ)",
+        category: "Web Version",
+        description: "Comprehensive introduction to Sanskrit verbal roots and conjugations."
+      },
+      {
+        _id: "b-2",
+        name: "Śabdarūpasaṅgrahaḥ - (Sabdarupa Sangrahah)",
+        category: "Web Version",
+        description: "Compilation of Sanskrit noun declensions."
+      },
+      {
+        _id: "b-3",
+        name: "Yoga Sutra Paricayah - (Yogasūtraparicayaḥ)",
+        category: "Web Version",
+        description: "Patanjali yoga sutras with lucid commentary."
+      },
+      {
+        _id: "b-4",
+        name: "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) Paperback",
+        category: "Book - Paperback",
+        description: "Weekly Sanskrit stotras for daily spiritual chanting."
+      },
+      {
+        _id: "b-5",
+        name: "Ramayana Ratnamala - (Rāmāyaṇaratnamālā)",
+        category: "Web Version",
+        description: "Gems of Valmiki Ramayana shlokas."
+      },
+      {
+        _id: "b-6",
+        name: "Astadhyayi - Learn Advanced Grammar in Sanskrit (Aṣṭādhyāyī)",
+        category: "Web Version",
+        description: "Advanced Paninian sutras and vyakarana analysis."
+      }
+    ];
+
+    it("matches Kannada 'ಧಾತುರೂಪ ಪರಿಚಯ' to Dhaturupaparicayah with score >= 80", () => {
+      const res = searchWebsite("ಧಾತುರೂಪ ಪರಿಚಯ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Dhaturupaparicayah (Dhāturūpaparicayaḥ)");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada compound 'ಧಾತುರೂಪಪರಿಚಯಃ' to Dhaturupaparicayah", () => {
+      const res = searchWebsite("ಧಾತುರೂಪಪರಿಚಯಃ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Dhaturupaparicayah (Dhāturūpaparicayaḥ)");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada 'ಯೋಗ ಸೂತ್ರ' and 'ಯೋಗಸೂತ್ರ' to Yoga Sutra Paricayah without vowel distortion", () => {
+      const res1 = searchWebsite("ಯೋಗ ಸೂತ್ರ", { catalogProducts: bookCatalog });
+      assert.ok(res1.matchingProducts.length > 0);
+      assert.equal(res1.matchingProducts[0].name, "Yoga Sutra Paricayah - (Yogasūtraparicayaḥ)");
+      assert.ok(res1.matchingProducts[0]._score >= 80);
+
+      const res2 = searchWebsite("ಯೋಗಸೂತ್ರ", { catalogProducts: bookCatalog });
+      assert.ok(res2.matchingProducts.length > 0);
+      assert.equal(res2.matchingProducts[0].name, "Yoga Sutra Paricayah - (Yogasūtraparicayaḥ)");
+      assert.ok(res2.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada 'ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹ' to Saptaha Stotra Sangrahah without injecting extra words", () => {
+      const res = searchWebsite("ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Saptaha Stotra Sangrahah - (Saptāhastotra Saṅgrahaḥ) Paperback");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada 'ಶಬ್ದರೂಪ ಸಂಗ್ರಹ' to Śabdarūpasaṅgrahaḥ", () => {
+      const res = searchWebsite("ಶಬ್ದರೂಪ ಸಂಗ್ರಹ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Śabdarūpasaṅgrahaḥ - (Sabdarupa Sangrahah)");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada 'ರಾಮಾಯಣ ರತ್ನಮಾಲಾ' to Ramayana Ratnamala", () => {
+      const res = searchWebsite("ರಾಮಾಯಣ ರತ್ನಮಾಲಾ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Ramayana Ratnamala - (Rāmāyaṇaratnamālā)");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+
+    it("matches Kannada 'ಅಷ್ಟಾಧ್ಯಾಯಿ' to Astadhyayi with high relevance (>= 80)", () => {
+      const res = searchWebsite("ಅಷ್ಟಾಧ್ಯಾಯಿ", { catalogProducts: bookCatalog });
+      assert.ok(res.matchingProducts.length > 0);
+      assert.equal(res.matchingProducts[0].name, "Astadhyayi - Learn Advanced Grammar in Sanskrit (Aṣṭādhyāyī)");
+      assert.ok(res.matchingProducts[0]._score >= 80);
+    });
+  });
 });
