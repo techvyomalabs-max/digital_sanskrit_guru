@@ -544,11 +544,18 @@ function isCategoryQuery(query, category) {
   const fQuery = foldText(query);
   const fCat = foldText(category);
 
-  if (fCat === fQuery || fCat.includes(fQuery)) return true;
+  if (fCat === fQuery || fCat.startsWith(fQuery)) return true;
 
   for (const catDef of STORE_CATEGORIES) {
     if (foldText(catDef.name) === fCat) {
-      if (catDef.aliases.some((a) => foldText(a) === fQuery || fQuery.includes(foldText(a)))) {
+      if (
+        catDef.aliases.some(
+          (a) =>
+            foldText(a) === fQuery ||
+            fQuery === foldText(a) + "s" ||
+            foldText(a) === fQuery + "s"
+        )
+      ) {
         return true;
       }
     }
@@ -619,6 +626,14 @@ function getProductSearchText(product) {
 }
 
 export function scoreProduct(product, query, options = {}) {
+  // Direct exact & startsWith check first (supports products whose catalog title contains native Indic script)
+  const fQueryDirect = foldText(query);
+  if (fQueryDirect) {
+    const { foldedName: fNameDirect } = getProductSearchText(product);
+    if (fNameDirect === fQueryDirect) return 100;
+    if (fNameDirect.startsWith(fQueryDirect)) return 80;
+  }
+
   if (typeof query === "string" && !options?.skipIndic) {
     const indic = processIndicQuery(query);
     if (indic.isIndic) {
