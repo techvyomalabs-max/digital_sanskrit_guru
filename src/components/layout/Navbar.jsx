@@ -37,7 +37,8 @@ import {
   Truck,
   Gift,
   FileText,
-  Shield
+  Shield,
+  Mic
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
@@ -49,6 +50,7 @@ import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/se
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 import { productPath } from "../../utils/productLink";
+import VoiceSearchModal from "../common/VoiceSearchModal";
 
 const SEARCH_SUGGESTION_DELAY_MS = 120;
 
@@ -116,6 +118,7 @@ function Navbar({ bannerActive = false }) {
   const [catalogProducts, setCatalogProducts] = useState([]);
   const hasLoadedCatalog = useRef(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isVoiceSearchOpen, setIsVoiceSearchOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [addressToDelete, setAddressToDelete] = useState(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
@@ -418,6 +421,17 @@ function Navbar({ bannerActive = false }) {
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
 
+  const handleVoiceTranscript = (spokenQuery) => {
+    if (!spokenQuery) return;
+    const clean = spokenQuery.trim();
+    setSearchQuery(clean);
+    if (!hasLoadedCatalog.current) loadCatalog();
+    setIsSearchFocused(false);
+    setActiveSuggestionIndex(-1);
+    recordSearchQuery(clean);
+    navigate(`/search?q=${encodeURIComponent(clean)}`);
+  };
+
   const activeCollectionCategory =
     location.pathname === "/collection"
       ? String(new URLSearchParams(location.search).get("category") || "").trim()
@@ -646,6 +660,15 @@ function Navbar({ bannerActive = false }) {
                       <X size={16} />
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="navbar-search-mic-btn"
+                    aria-label="Search with voice"
+                    title="Search with voice (English, Hindi, Kannada, Tamil, etc.)"
+                    onClick={() => setIsVoiceSearchOpen(true)}
+                  >
+                    <Mic size={18} />
+                  </button>
                   <button type="submit" className="navbar-search-btn" aria-label="Search">
                     <span className="navbar-search-btn-icon" aria-hidden="true">
                       {renderIcon("search", storeIcons.search)}
@@ -845,6 +868,12 @@ function Navbar({ bannerActive = false }) {
                     )}
                   </div>
                 )}
+
+                <VoiceSearchModal
+                  isOpen={isVoiceSearchOpen}
+                  onClose={() => setIsVoiceSearchOpen(false)}
+                  onTranscript={handleVoiceTranscript}
+                />
               </div>
 
               <div className="navbar-right">
