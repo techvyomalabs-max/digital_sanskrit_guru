@@ -79,7 +79,10 @@ function computeNormalizeSanskrit(text) {
     .replace(/kh/g, "k")
     .replace(/gh/g, "g")
     .replace(/ch/g, "c")
-    .replace(/jh/g, "j");
+    .replace(/jh/g, "j")
+    .replace(/[mn](?=[pb])/g, "m")
+    .replace(/[mn](?=[tdkgcjs])/g, "n")
+    .replace(/h\b/g, "");
 }
 
 /**
@@ -665,6 +668,11 @@ export function scoreProduct(product, query, options = {}) {
 
   if (foldedName.includes(foldedQuery)) return 60;
 
+  // Unspaced compound title prefix match for multi-word queries (e.g. 'Dhaturupaparicayah' for 'dhaturupa paricaya')
+  if (words.length > 1 && compactedName && compactedQuery && compactedName.startsWith(compactedQuery)) {
+    return 80;
+  }
+
   if (nameWords.length > 0 && words.every((w) => nameWords.some((nw) => nw.startsWith(w)))) {
     return 50;
   }
@@ -680,6 +688,18 @@ export function scoreProduct(product, query, options = {}) {
   if (allWordsInNameOrCatExact) {
     return 25;
   }
+
+  // Sanskrit Transliteration & Normalized Title Matching
+  const normQuery = normalizeSanskrit(foldedQuery);
+  const normName = normalizeSanskrit(foldedName);
+  const normCompactedName = normName.replace(/\s+/g, "");
+  const normCompactedQuery = normQuery.replace(/\s+/g, "");
+
+  if (normName === normQuery) return 95;
+  if (normName.startsWith(normQuery)) return 80;
+  if (normCompactedName.startsWith(normCompactedQuery) && normCompactedQuery.length >= 4) return 80;
+  if (normName.includes(normQuery)) return 60;
+  if (normCompactedName.includes(normCompactedQuery) && normCompactedQuery.length >= 4) return 55;
 
   // Multi-word token inspection including typo tolerance, Sanskrit transliteration, and phonetics
   let allWordsMatched = true;
@@ -726,10 +746,8 @@ export function scoreProduct(product, query, options = {}) {
     return 15;
   }
 
-  // Fallback: Check if the entire folded query transliterates or fuzzily matches the title
-  const normQuery = normalizeSanskrit(foldedQuery);
-  const normName = normalizeSanskrit(foldedName);
-  if (normName && normQuery && (normName.includes(normQuery) || normQuery.includes(normName))) {
+  // Fallback: Check if the query contains the entire normalized product name
+  if (normName && normQuery && normQuery.includes(normName)) {
     return 20;
   }
 

@@ -37,32 +37,32 @@ export const SCRIPT_CONFIGS = [
 // Unified Brahmic phonetic mapping based on offset from script base
 const BRAHMIC_VOWELS = {
   0x05: "a",
-  0x06: "aa",
+  0x06: "a",
   0x07: "i",
-  0x08: "ee",
+  0x08: "i",
   0x09: "u",
-  0x0a: "oo",
+  0x0a: "u",
   0x0b: "ri",
   0x0e: "e",
-  0x0f: "ee",
+  0x0f: "e",
   0x10: "ai",
   0x12: "o",
-  0x13: "oo",
+  0x13: "o",
   0x14: "au"
 };
 
 const BRAHMIC_MATRAS = {
-  0x3e: "aa",
+  0x3e: "a",
   0x3f: "i",
-  0x40: "ee",
+  0x40: "i",
   0x41: "u",
-  0x42: "oo",
+  0x42: "u",
   0x43: "ri",
   0x46: "e",
-  0x47: "ee",
+  0x47: "e",
   0x48: "ai",
   0x4a: "o",
-  0x4b: "oo",
+  0x4b: "o",
   0x4c: "au"
 };
 
@@ -291,6 +291,7 @@ export function transliterateIndicToLatin(text) {
   // Post-processing phonetic cleanups for accurate English matching
   return out
     .toLowerCase()
+    .replace(/n(?=[pb])/g, "m")
     .replace(/aa/g, "a")
     .replace(/ee/g, "i")
     .replace(/oo/g, "u")
@@ -316,6 +317,52 @@ export function normalizeIndicWord(w) {
 }
 
 /**
+ * Sanskrit Compound (Samasa) Root Vocabulary.
+ * Used to intelligently separate unspaced Sanskrit titles (e.g. 'dhaturupaparicayah' -> 'dhaturupa paricayah').
+ */
+export const SANSKRIT_COMPOUND_ROOTS = [
+  "bhagavad", "gita", "gitam",
+  "dhaturupa", "shabdarupa", "sabdarupa",
+  "saptaha", "stotra", "stotram",
+  "sangraha", "sangrahah", "sangraham",
+  "paricaya", "paricayah", "parichaya",
+  "ramayana", "ratnamala",
+  "yoga", "sutra", "sutram",
+  "ashtadhyayi", "astadhyayi",
+  "panchatantra", "katha",
+  "shabdasampadvardhini", "sampadvardhini",
+  "sanskrit", "vyakarana", "vyakaranam",
+  "prarthana", "shloka", "shlokah", "nama",
+  "amarakosha", "tarkasangraha", "saundaryalahari"
+];
+SANSKRIT_COMPOUND_ROOTS.sort((a, b) => b.length - a.length);
+
+/**
+ * Splits unspaced Sanskrit compounds into constituent words for high-accuracy token matching.
+ */
+export function splitSanskritCompound(text) {
+  let remaining = String(text || "").toLowerCase().trim();
+  if (remaining.length < 5) return text;
+  const tokens = [];
+  while (remaining.length > 0) {
+    let matched = false;
+    for (const r of SANSKRIT_COMPOUND_ROOTS) {
+      if (remaining.startsWith(r)) {
+        tokens.push(r);
+        remaining = remaining.slice(r.length);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      tokens.push(remaining);
+      break;
+    }
+  }
+  return tokens.join(" ").trim();
+}
+
+/**
  * Comprehensive Cross-Lingual Knowledge Dictionary
  * Maps user search terms in Kannada, Hindi, Sanskrit, Tamil, Marathi, Telugu, Odia, Gujarati, Bengali
  * to canonical English store queries, categories, and entities.
@@ -335,6 +382,148 @@ export const MULTILINGUAL_LEXICON = {
   "डिजिटल संस्कृत गुरु": "digital sanskrit guru",
   "டிஜிட்டல் சமஸ்கிருத குரு": "digital sanskrit guru",
   "డిజిటల్ సంస్కృత గురు": "digital sanskrit guru",
+
+  // ==========================================
+  // STORE BOOK TITLES & POPULAR SANSKRIT WORKS
+  // ==========================================
+  // Dhaturupaparicayah
+  "ಧಾತುರೂಪ ಪರಿಚಯ": "dhaturupa paricaya",
+  "ಧಾತುರೂಪಪರಿಚಯಃ": "dhaturupa paricayah",
+  "ಧಾತುರೂಪ ಪರಿಚಯಃ": "dhaturupa paricayah",
+  "ಧಾತುರೂಪ ಪರಿಚಯ ೨": "dhaturupa paricaya 2",
+  "ಧಾತುರೂಪ ಪರಿಚಯ - ೨": "dhaturupa paricaya 2",
+  "धातुरूप परिचय": "dhaturupa paricaya",
+  "धातुरूपपरिचयः": "dhaturupa paricayah",
+  "धातुरूप परिचयः": "dhaturupa paricayah",
+  "धातुरूप परिचय - २": "dhaturupa paricaya 2",
+  "ಧಾತುರೂಪ": "dhaturupa",
+  "ಧಾತು ರೂಪ": "dhaturupa",
+  "धातुरूप": "dhaturupa",
+  "धातु रूप": "dhaturupa",
+
+  // Shabdarupasangrahah
+  "ಶಬ್ದರೂಪ ಸಂಗ್ರಹ": "shabdarupa sangraha",
+  "ಶಬ್ದರೂಪ ಸಂಗ್ರಹಃ": "shabdarupa sangrahah",
+  "ಶಬ್ದರೂಪಸಂಗ್ರಹಃ": "shabdarupa sangrahah",
+  "ಶಬ್ದ ರೂಪ ಸಂಗ್ರಹ": "shabdarupa sangraha",
+  "शब्दरूप संग्रह": "shabdarupa sangraha",
+  "शब्दरूपसंग्रहः": "shabdarupa sangrahah",
+  "शब्दरूप संग्रहः": "shabdarupa sangrahah",
+  "शब्द रूप संग्रह": "shabdarupa sangraha",
+  "ಶಬ್ದರೂಪ": "shabdarupa",
+  "ಶಬ್ದ ರೂಪ": "shabdarupa",
+  "शब्दरूप": "shabdarupa",
+  "शब्द रूप": "shabdarupa",
+
+  // Saptaha Stotra Sangrahah
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹ": "saptaha stotra sangraha",
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹಃ": "saptaha stotra sangrahah",
+  "ಸಪ್ತಾಹಸ್ತೋತ್ರಸಂಗ್ರಹಃ": "saptaha stotra sangrahah",
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ": "saptaha stotra",
+  "ಸಪ್ತಾಹಸ್ತೋತ್ರ": "saptaha stotra",
+  "सप्ताह स्तोत्र संग्रह": "saptaha stotra sangraha",
+  "सप्ताह स्तोत्र संग्रहः": "saptaha stotra sangrahah",
+  "सप्ताहस्तोत्रसंग्रहः": "saptaha stotra sangrahah",
+  "सप्ताह स्तोत्र": "saptaha stotra",
+  "सप्ताहस्तोत्र": "saptaha stotra",
+
+  // Ramayana Ratnamala
+  "ರಾಮಾಯಣ ರತ್ನಮಾಲಾ": "ramayana ratnamala",
+  "ರಾಮಾಯಣ ರತ್ನಮಾಲೆ": "ramayana ratnamala",
+  "ರಾಮಾಯಣರತ್ನಮಾಲಾ": "ramayana ratnamala",
+  "ರಾಮಾಯಣರತ್ನಮಾಲೆ": "ramayana ratnamala",
+  "रामायण रत्नमाला": "ramayana ratnamala",
+  "रामायणरत्नमाला": "ramayana ratnamala",
+
+  // Yoga Sutra Paricayah
+  "ಯೋಗ ಸೂತ್ರ": "yoga sutra",
+  "ಯೋಗಸೂತ್ರ": "yoga sutra",
+  "ಯೋಗ ಸೂತ್ರಗಳು": "yoga sutras",
+  "ಯೋಗ ಸೂತ್ರ ಪರಿಚಯ": "yoga sutra paricaya",
+  "ಯೋಗ ಸೂತ್ರ ಪರಿಚಯಃ": "yoga sutra paricayah",
+  "ಯೋಗಸೂತ್ರಪರಿಚಯಃ": "yoga sutra paricayah",
+  "ಯೋಗದರ್ಶನ": "yoga sutra",
+  "योग सूत्र": "yoga sutra",
+  "योगसूत्र": "yoga sutra",
+  "योग सूत्र परिचय": "yoga sutra paricaya",
+  "योग सूत्र परिचयः": "yoga sutra paricayah",
+  "योगसूत्रपरिचयः": "yoga sutra paricayah",
+  "योगदर्शन": "yoga sutra",
+
+  // Ashtadhyayi
+  "ಅಷ್ಟಾಧ್ಯಾಯಿ": "ashtadhyayi",
+  "ಅಷ್ಟಾಧ್ಯಾಯೀ": "ashtadhyayi",
+  "ಅಷ್ಟಾಧ್ಯಾಯೀ ಸೂತ್ರ": "ashtadhyayi sutra",
+  "अष्टाध्यायी": "ashtadhyayi",
+  "अष्टाध्यायी सूत्र": "ashtadhyayi sutra",
+
+  // Panchatantra
+  "ಪಂಚತಂತ್ರ": "panchatantra",
+  "ಪಂಚತಂತ್ರ ಕಥೆಗಳು": "panchatantra stories",
+  "ಸಂಸ್ಕೃತ ಕಥಾಮಾಲಿಕಾ": "samskrita kathamalika stories",
+  "पञ्चतन्त्र": "panchatantra",
+  "पंचतंत्र": "panchatantra",
+  "पंचतंत्र की कहानियां": "panchatantra stories",
+  "संस्कृत कथामालिका": "samskrita kathamalika stories",
+
+  // Shabdasampadvardhini (Vocabulary Builder)
+  "ಶಬ್ದಸಂಪದ್ವರ್ಧಿನೀ": "shabdasampadvardhini",
+  "ಶಬ್ದ ಸಂಪದ್ವರ್ಧಿನೀ": "shabdasampadvardhini",
+  "ಸಂಸ್ಕೃತ ಶಬ್ದಸಂಪದ್ವರ್ಧಿನೀ": "samskrta shabdasampadvardhini",
+  "ಸಂಸ್ಕೃತ ಶಬ್ದ ಸಂಪದ್ವರ್ಧಿನೀ": "samskrta shabdasampadvardhini",
+  "शब्दसम्पद्वर्धिनी": "shabdasampadvardhini",
+  "शब्द सम्पद वर्धिनी": "shabdasampadvardhini",
+  "संस्कृत शब्दसम्पद्वर्धिनी": "samskrta shabdasampadvardhini",
+
+  // Nitya Prarthana Shloka
+  "ನಿತ್ಯ ಪ್ರಾರ್ಥನಾ ಶ್ಲೋಕ": "nitya prarthana shloka",
+  "ನಿತ್ಯ ಪ್ರಾರ್ಥನೆ": "nitya prarthana shloka",
+  "ನಮಸ್ಕಾರ ಶ್ಲೋಕ": "prarthana shloka",
+  "नित्य प्रार्थना श्लोक": "nitya prarthana shloka",
+  "नित्य प्रार्थना": "nitya prarthana shloka",
+
+  // Nama Ramayana
+  "ನಾಮರಾಮಾಯಣ": "nama ramayana",
+  "ನಾಮರಾಮಾಯಣಂ": "nama ramayana",
+  "ನಾಮ ರಾಮಾಯಣ": "nama ramayana",
+  "नामरामायण": "nama ramayana",
+  "नामरामायणम्": "nama ramayana",
+  "नाम रामायण": "nama ramayana",
+
+  // Saundaryalahari & Amarakosha & Tarkasangraha
+  "ಸೌಂದರ್ಯಲಹರೀ": "saundarya lahari",
+  "ಸೌಂದರ್ಯ ಲಹರಿ": "saundarya lahari",
+  "सौन्दर्यलहरी": "saundarya lahari",
+  "सौंदर्य लहरी": "saundarya lahari",
+  "ಅಮರಕೋಶ": "amarakosha",
+  "ಅಮರಕೋಶಂ": "amarakosha",
+  "अमरकोश": "amarakosha",
+  "तर्कसंग्रह": "tarkasangraha",
+  "ತರ್ಕಸಂಗ್ರಹ": "tarkasangraha",
+  "ತರ್ಕ ಸಂಗ್ರಹ": "tarkasangraha",
+  "ಸಮಾಸ": "samasa",
+  "ಸಮಾಸಗಳು": "samasa compounds",
+  "समास": "samasa compounds",
+
+  // Common title subcomponents
+  "ಪರಿಚಯ": "paricaya",
+  "ಪರಿಚಯಃ": "paricayah",
+  "ಸಂಗ್ರಹ": "sangraha",
+  "ಸಂಗ್ರಹಃ": "sangrahah",
+  "ಸಪ್ತಾಹ": "saptaha",
+  "ರತ್ನಮಾಲಾ": "ratnamala",
+  "ರತ್ನಮಾಲೆ": "ratnamala",
+  "ಸೂತ್ರ": "sutra",
+  "ಸೂತ್ರಗಳು": "sutras",
+  "ಪ್ರಾರ್ಥನಾ": "prarthana",
+  "ಪ್ರಾರ್ಥನೆ": "prarthana",
+  "परिचय": "paricaya",
+  "परिचयः": "paricayah",
+  "संग्रह": "sangraha",
+  "संग्रहः": "sangrahah",
+  "सप्ताह": "saptaha",
+  "रत्नमाला": "ratnamala",
+  "सूत्र": "sutra",
 
   // ==========================================
   // 1. BHAGAVAD GITA
@@ -550,7 +739,7 @@ export const MULTILINGUAL_LEXICON = {
   // ==========================================
   // 5. CHANTING, STOTRAS, SHLOKAS & SUKTAMS
   // ==========================================
-  "ಸ್ತೋತ್ರ": "stotra chanting",
+  "ಸ್ತೋತ್ರ": "stotra",
   "ಶ್ಲೋಕ": "shloka",
   "ಮಂತ್ರ": "mantra",
   "ಸೂಕ್ತಂ": "suktam",
@@ -559,8 +748,8 @@ export const MULTILINGUAL_LEXICON = {
   "ಲಲಿತಾ ಸಹಸ್ರನಾಮ": "lalitha sahasranama",
   "ಪಾರಾಯಣ": "chanting",
 
-  "स्तोत्र": "stotra chanting",
-  "स्तोत्रम्": "stotra chanting",
+  "स्तोत्र": "stotra",
+  "स्तोत्रम्": "stotra",
   "श्लोक": "shloka",
   "मंत्र": "mantra",
   "सूक्त": "suktam",
@@ -570,31 +759,31 @@ export const MULTILINGUAL_LEXICON = {
   "पारायण": "chanting",
   "आरती": "aarti chanting",
 
-  "ஸ்தோத்திரம்": "stotra chanting",
+  "ஸ்தோத்திரம்": "stotra",
   "சுலோகம்": "shloka",
   "மந்திரம்": "mantra",
   "சூக்தம்": "suktam",
   "சகஸ்ரநாமம்": "sahasranama",
 
-  "స్తోత్రం": "stotra chanting",
+  "స్తోత్రం": "stotra",
   "శ్లోకం": "shloka",
   "మంత్రం": "mantra",
   "సూక్తం": "suktam",
   "సహస్రనామం": "sahasranama",
 
-  "સ્તોત્ર": "stotra chanting",
+  "સ્તોત્ર": "stotra",
   "શ્લોક": "shloka",
   "મંત્ર": "mantra",
   "સૂક્ત": "suktam",
   "સહસ્રનામ": "sahasranama",
 
-  "স্তোত্র": "stotra chanting",
+  "স্তোত্র": "stotra",
   "শ্লোক": "shloka",
   "মন্ত্র": "mantra",
   "সূক্ত": "suktam",
   "সহস্রনাম": "sahasranama",
 
-  "ସ୍ତୋତ୍ର": "stotra chanting",
+  "ସ୍ତୋତ୍ର": "stotra",
   "ଶ୍ଳୋକ": "shloka",
   "ମନ୍ତ୍ର": "mantra",
   "ସୂକ୍ତ": "suktam",
@@ -898,22 +1087,11 @@ export function processIndicQuery(query) {
   const transliteratedFull = transliterateIndicToLatin(cleaned);
   let canonicalQuery = matchedCanonicalWords.join(" ").trim();
 
-  // 3. Compound word detection if query has no spaces (e.g. 'ಭಗವದ್ಗೀತಾ', 'ಸಂಸ್ಕೃತವ್ಯಾಕರಣ')
+  // 3. Compound word detection if query has no spaces or is a joined compound
   if (!hadLexiconHit && words.length === 1) {
-    if (transliteratedFull.includes("bhagavad") && transliteratedFull.includes("gita")) {
-      canonicalQuery = "bhagavad gita";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("sanskrit") && (transliteratedFull.includes("vyakaran") || transliteratedFull.includes("grammar"))) {
-      canonicalQuery = "sanskrit grammar";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("dhatu") && transliteratedFull.includes("rupa")) {
-      canonicalQuery = "dhaturupa";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("ashta") && (transliteratedFull.includes("dhyay") || transliteratedFull.includes("dyay"))) {
-      canonicalQuery = "ashtadhyayi";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("pancha") && transliteratedFull.includes("tantra")) {
-      canonicalQuery = "panchatantra";
+    const splitCompound = splitSanskritCompound(transliteratedFull);
+    if (splitCompound && splitCompound !== transliteratedFull) {
+      canonicalQuery = splitCompound;
       hadLexiconHit = true;
     } else {
       canonicalQuery = transliteratedFull;
