@@ -88,6 +88,7 @@ const { processGatewayRefund, previewRefund, RefundError } = require("../utils/r
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
 const { buildInvoiceRow, buildCreditNoteRows, summarize } = require("../utils/financeLedger");
+const { orderReferenceConditions } = require("../utils/orderSearch");
 const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
 const jwt = require("jsonwebtoken");
 
@@ -816,9 +817,8 @@ router.get("/", protect, admin, requireAdminPage("orders"), async (req, res) => 
         { "items.name": { $regex: safeSearch, $options: "i" } }
       ];
 
-      if (mongoose.Types.ObjectId.isValid(searchText)) {
-        conditions.push({ _id: searchText });
-      }
+      // Order ID (full or the short #A66A7B form) and invoice number
+      conditions.push(...orderReferenceConditions(searchText));
 
       if (userIds.length > 0) {
         conditions.push({ user: { $in: userIds } });

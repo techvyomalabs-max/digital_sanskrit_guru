@@ -34,7 +34,14 @@ export const ORDER_CSV_HEADERS = [
   "Currency",
   "Item Cost",
   "Order Total Tax Amount",
-  "Order Total Amount"
+  "Order Total Amount",
+  // Per line, as charged at checkout (the same figures as the tax invoice):
+  // Line Amount = Item Cost x Quantity - Line Discount; Basic Value = Line Amount - Line Tax
+  "Line Discount",
+  "GST Rate %",
+  "Line Tax Amount",
+  "Basic Value (Before GST)",
+  "Line Amount (Incl. GST)"
 ];
 
 // Mapping of all Indian states and Union Territories to their 2-letter postal/GST codes
@@ -305,6 +312,63 @@ export function formatMoney(val) {
   return num.toFixed(2);
 }
 
+const round2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
+/** GST-inclusive line split into discount, tax and basic value (same rule as backend lineTax). */
+function splitLine(gross, discount, rate) {
+  const net = Math.max(0, round2(gross - discount));
+  const taxable = round2(net / (1 + rate / 100));
+  return { discount: round2(discount), rate, tax: round2(net - taxable), taxable, total: net };
+}
+
+/**
+ * Tax figures for each item of an order, the way the tax invoice works them out:
+ * the tax saved on each line at checkout; for older orders saved without it, the line's
+ * share of the coupon discount and the product's GST rate (store rate if the order had GST).
+ */
+export function orderLineTaxes(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const allSaved = items.length > 0 && items.every((it) => it?.tax && Number.isFinite(Number(it.tax.taxable)));
+  if (allSaved) {
+    return items.map((it) => {
+      const t = it.tax;
+      const parts = Array.isArray(t.parts) ? t.parts : [];
+      const rates = parts.length
+        ? [...new Set(parts.map((p) => Number(p.rate) || 0))]
+        : [Number(t.rate) || 0];
+      return {
+        discount: round2(t.discount),
+        rate: rates.join("/"),
+        tax: round2(t.tax),
+        taxable: round2(t.taxable),
+        total: round2(t.total)
+      };
+    });
+  }
+
+  const country = String(order?.shipping?.country || order?.billing?.country || "").trim();
+  const isInternational = country !== "" && resolveCountryCode(country) !== "IN";
+  const storeRate = Number(order?.gstAmount) > 0 ? Number(order?.gstPercent || 0) : 0;
+  const grosses = items.map((it) => round2(Number(it?.price || 0) * Math.max(1, Number(it?.quantity || 1))));
+  const grossTotal = grosses.reduce((a, b) => a + b, 0);
+  const discount = Math.max(0, Number(order?.discount || 0));
+  let allocated = 0;
+  return items.map((it, i) => {
+    let share = 0;
+    if (discount > 0 && grossTotal > 0) {
+      share = i === items.length - 1 ? round2(discount - allocated) : round2(discount * (grosses[i] / grossTotal));
+      allocated = round2(allocated + share);
+    }
+    const own = it?.gstRate;
+    const rate = isInternational
+      ? 0
+      : own !== null && own !== undefined && own !== "" && Number.isFinite(Number(own))
+        ? Number(own)
+        : storeRate;
+    return splitLine(grosses[i], share, rate);
+  });
+}
+
 export function resolveOrderStatus(order, { getStatus, getPaymentStatus } = {}) {
   if (!order) return "";
 
@@ -425,10 +489,16 @@ export function buildOrdersCsv(orders = [], options = {}) {
         escapeCsvCell(currency, false),
         escapeCsvCell("", true),  // Item Cost
         escapeCsvCell(taxAmount, true),
-        escapeCsvCell(totalAmount, true)
+        escapeCsvCell(totalAmount, true),
+        escapeCsvCell("", true), // Line Discount
+        escapeCsvCell("", false), // GST Rate %
+        escapeCsvCell("", true), // Line Tax Amount
+        escapeCsvCell("", true), // Basic Value
+        escapeCsvCell("", true) // Line Amount
       ];
       lines.push(row.join(","));
     } else {
+      const lineTaxes = orderLineTaxes(order);
       items.forEach((item, itemIndex) => {
         const isFirst = itemIndex === 0;
         const includeTotals = !config.orderTotalsOnFirstRowOnly || isFirst;
@@ -440,6 +510,7 @@ export function buildOrdersCsv(orders = [], options = {}) {
           item?.quantity !== undefined && item?.quantity !== null ? item.quantity : 1;
         const productVariation = getItemProductVariation(item);
         const itemCost = formatMoney(item?.price ?? 0);
+        const line = lineTaxes[itemIndex];
 
         const row = [
           escapeCsvCell(orderNumber, false),
@@ -463,7 +534,12 @@ export function buildOrdersCsv(orders = [], options = {}) {
           escapeCsvCell(currency, false),
           escapeCsvCell(itemCost, true),
           escapeCsvCell(includeTotals ? taxAmount : "", true),
-          escapeCsvCell(includeTotals ? totalAmount : "", true)
+          escapeCsvCell(includeTotals ? totalAmount : "", true),
+          escapeCsvCell(formatMoney(line.discount), true),
+          escapeCsvCell(String(line.rate), false),
+          escapeCsvCell(formatMoney(line.tax), true),
+          escapeCsvCell(formatMoney(line.taxable), true),
+          escapeCsvCell(formatMoney(line.total), true)
         ];
         lines.push(row.join(","));
       });

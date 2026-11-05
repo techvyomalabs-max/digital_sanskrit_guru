@@ -18,7 +18,8 @@ describe("ordersCsv utility (pure)", async () => {
       "Address 1&2 (Billing), City (Billing), State Code (Billing), Country Code (Billing), " +
       "Email (Billing), Phone (Billing), Product Name, billing code, Category, Quantity, " +
       "Product Variation, Cart Discount Amount, Order Shipping Amount, Currency, Item Cost, " +
-      "Order Total Tax Amount, Order Total Amount";
+      "Order Total Tax Amount, Order Total Amount, Line Discount, GST Rate %, Line Tax Amount, " +
+      "Basic Value (Before GST), Line Amount (Incl. GST)";
 
     const expectedHeaders = expectedHeaderStr.split(", ");
     assert.deepEqual(ORDER_CSV_HEADERS, expectedHeaders);
@@ -306,5 +307,61 @@ describe("ordersCsv utility (pure)", async () => {
     assert.equal(row[15], "\"Includes: Grammar Vol 1 x1; Workbook x2\"");
     assert.equal(row[18], "\"USD\"");
     assert.equal(row[19], "\"75.00\"");
+  });
+});
+
+describe("orders CSV: tax and basic value per line", async () => {
+  const { buildOrdersCsv, orderLineTaxes, ORDER_CSV_HEADERS } = await import("../../src/utils/ordersCsv.js");
+  const col = (name) => ORDER_CSV_HEADERS.indexOf(name);
+  const cells = (line) => line.split(",").map((c) => c.replace(/^"|"$/g, ""));
+
+  it("uses the tax saved on each line at checkout", () => {
+    const order = {
+      _id: "6aec0ec4adba49d272a66a7b",
+      invoiceNumber: "DSG/2026-27/0002",
+      items: [
+        { name: "Web Version", price: 118, quantity: 2, tax: { gross: 236, discount: 0, taxable: 200, rate: 18, tax: 36, total: 236 } },
+        { name: "Paperback", price: 99, quantity: 1, tax: { gross: 99, discount: 0, taxable: 99, rate: 0, tax: 0, total: 99 } }
+      ]
+    };
+    const rows = buildOrdersCsv([order]).slice(1).split("\r\n").slice(1).map(cells);
+    assert.equal(rows[0][col("Line Tax Amount")], "36.00");
+    assert.equal(rows[0][col("Basic Value (Before GST)")], "200.00");
+    assert.equal(rows[0][col("Line Amount (Incl. GST)")], "236.00");
+    assert.equal(rows[0][col("GST Rate %")], "18");
+    assert.equal(rows[1][col("Basic Value (Before GST)")], "99.00");
+    assert.equal(rows[1][col("Line Tax Amount")], "0.00");
+  });
+
+  it("basic value = item cost x quantity - discount - tax", () => {
+    const [line] = orderLineTaxes({ items: [{ price: 118, quantity: 3, tax: { discount: 54, taxable: 254.24, tax: 45.76, total: 300, rate: 18 } }] });
+    assert.equal(Math.round((118 * 3 - line.discount - line.tax) * 100) / 100, line.taxable);
+  });
+
+  it("shows each rate of a combo's components", () => {
+    const [line] = orderLineTaxes({
+      items: [{ price: 500, quantity: 1, tax: { discount: 0, taxable: 450, tax: 50, total: 500, parts: [{ rate: 0 }, { rate: 18 }, { rate: 18 }] } }]
+    });
+    assert.equal(line.rate, "0/18");
+  });
+
+  it("works out older orders saved without line tax: discount share and the product's rate", () => {
+    const lines = orderLineTaxes({
+      discount: 30,
+      gstAmount: 10,
+      gstPercent: 18,
+      shipping: { country: "India" },
+      items: [{ price: 118, quantity: 1, gstRate: 18 }, { price: 200, quantity: 1 }]
+    });
+    assert.equal(lines[0].discount + lines[1].discount, 30);
+    assert.equal(lines[0].rate, 18);
+    assert.equal(lines[1].rate, 18, "store rate when the order had GST");
+    for (const l of lines) assert.equal(Math.round((l.taxable + l.tax) * 100) / 100, l.total);
+  });
+
+  it("no GST on older orders shipped outside India", () => {
+    const [line] = orderLineTaxes({ gstAmount: 5, gstPercent: 18, shipping: { country: "United States" }, items: [{ price: 20, quantity: 1, gstRate: 18 }] });
+    assert.equal(line.tax, 0);
+    assert.equal(line.taxable, 20);
   });
 });
