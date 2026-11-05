@@ -1,10 +1,14 @@
 "use strict";
 
 const crypto = require("crypto");
-const { S3Client } = require("@aws-sdk/client-s3");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { createPresignedPost } = require("@aws-sdk/s3-presigned-post");
 
-const ALLOWED_KINDS = ["product", "banner", "site"];
+// "return-evidence": customers' photos of a damaged or defective item (see orderRoutes). These
+// are private: stored under <prefix>/private/..., never given a public link, and only shown
+// through the API to the order's owner and admins.
+const ALLOWED_KINDS = ["product", "banner", "site", "return-evidence"];
+const PRIVATE_KINDS = new Set(["return-evidence"]);
 
 const ALLOWED_TYPES = {
   "image/jpeg": "jpg",
@@ -67,8 +71,9 @@ function buildObjectKey({ prefix, kind, contentType } = {}) {
 
   const cleanPrefix = typeof prefix === "string" ? prefix.replace(/^\/+|\/+$/g, "") : "";
   const uuid = crypto.randomUUID();
+  const folder = PRIVATE_KINDS.has(kind) ? `private/${kind}` : kind;
 
-  return cleanPrefix ? `${cleanPrefix}/${kind}/${uuid}.${ext}` : `${kind}/${uuid}.${ext}`;
+  return cleanPrefix ? `${cleanPrefix}/${folder}/${uuid}.${ext}` : `${folder}/${uuid}.${ext}`;
 }
 
 /**
@@ -125,7 +130,8 @@ async function createPresignedUpload({ kind, contentType } = {}) {
     Expires: 300
   });
 
-  const publicUrl = `${config.mediaCdnUrl}/${key}`;
+  // Private files get no public link; they are read back through the API
+  const publicUrl = PRIVATE_KINDS.has(kind) ? null : `${config.mediaCdnUrl}/${key}`;
 
   return {
     url: presigned.url,
@@ -135,7 +141,40 @@ async function createPresignedUpload({ kind, contentType } = {}) {
   };
 }
 
+/**
+ * True when a storage key is one of our private return-evidence uploads
+ * (<prefix>/private/return-evidence/<uuid>.<ext>), so a customer can't attach anything else.
+ */
+function isReturnEvidenceKey(key, config = getMediaConfig()) {
+  if (typeof key !== "string") return false;
+  const base = `${config?.prefix ? `${config.prefix}/` : ""}private/return-evidence/`;
+  if (!key.startsWith(base)) return false;
+  return /^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(key.slice(base.length));
+}
+
+/** Reads a private stored file: { body (stream), contentType, contentLength }. */
+async function getPrivateObject(key) {
+  const config = getMediaConfig();
+  if (!config.configured) {
+    const err = new Error("Image storage is not configured yet.");
+    err.status = 503;
+    throw err;
+  }
+  const s3Client = new S3Client({
+    region: config.region,
+    credentials: {
+      accessKeyId: (process.env.AWS_ACCESS_KEY_ID || "").trim(),
+      secretAccessKey: (process.env.AWS_SECRET_ACCESS_KEY || "").trim()
+    }
+  });
+  const out = await s3Client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+  return { body: out.Body, contentType: out.ContentType || "application/octet-stream", contentLength: out.ContentLength };
+}
+
 module.exports = {
+  isReturnEvidenceKey,
+  getPrivateObject,
+  PRIVATE_KINDS,
   getMediaConfig,
   ALLOWED_KINDS,
   ALLOWED_TYPES,

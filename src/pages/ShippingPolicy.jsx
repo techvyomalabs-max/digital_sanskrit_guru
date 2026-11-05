@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Truck, RotateCcw, ShieldCheck, Mail, Phone, HelpCircle, Clock, CheckCircle2, MapPin, Zap } from "lucide-react";
+import { Truck, RotateCcw, ShieldCheck, Mail, Phone, HelpCircle, Clock, CheckCircle2, MapPin, Zap, Camera, Building2 } from "lucide-react";
+import { SELLER_INFO } from "../utils/companyInfo";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import "./ShippingPolicy.css";
 
@@ -70,11 +71,11 @@ function ShippingPolicy() {
               <ul className="policy-list">
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
-                  <span><strong>24-Hour Window:</strong> You can cancel an order until it has been processed by calling our customer care within <strong>24 hours</strong> of placing the order (includes sale items).</span>
+                  <span><strong>Before Dispatch:</strong> You can cancel an order from <Link to="/my-orders" className="contact-link">My Orders</Link> (or by calling customer care) any time before it is shipped, including sale items.</span>
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
-                  <span><strong>Cancellation Credit:</strong> For valid cancellations, the amount paid will be credited back into your account (excluding processing fee) within <strong>1-week time</strong>, depending on your card issuer’s policies.</span>
+                  <span><strong>Full Refund:</strong> An order cancelled before dispatch is refunded <strong>in full</strong>, including delivery charges, with no processing fee kept. Once our team approves it, the refund goes back to your original payment method, usually within <strong>1 week</strong> depending on your bank.</span>
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
@@ -94,7 +95,7 @@ function ShippingPolicy() {
             </div>
             <div className="policy-card-body">
               <p className="policy-text">
-                You have <strong>15 calendar days</strong> to return a physical item from the date you received it.
+                You have <strong>7 calendar days</strong> to return a physical item from the date you received it.
               </p>
               <ul className="policy-list">
                 <li>
@@ -108,6 +109,40 @@ function ShippingPolicy() {
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
                   <span><strong>Proof of Purchase:</strong> You must provide the receipt or valid proof of purchase.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          {/* Card: Damaged or defective items */}
+          <section className="policy-card" id="damaged-items">
+            <div className="policy-card-header">
+              <div className="card-icon-wrap">
+                <Camera size={22} className="card-icon" />
+              </div>
+              <h2>Damaged or Defective Items</h2>
+            </div>
+            <div className="policy-card-body">
+              <ul className="policy-list">
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Photo Evidence:</strong> Raise a return from <Link to="/my-orders" className="contact-link">My Orders</Link>, choose “Damaged or defective product received” and add photos of the damage.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Items up to ₹300:</strong> No need to send the item back. Based on your photos we will refund or replace it, and you can keep the damaged item.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Items above ₹300:</strong> Please post the item to our office (return postage is paid by the customer). Once it reaches us we will refund or replace it.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Delivery Charges Included:</strong> A refund for a damaged or defective item includes its share of the delivery charges.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Replacements:</strong> If the item is out of stock, we will refund it instead.</span>
                 </li>
               </ul>
             </div>
@@ -135,6 +170,14 @@ function ShippingPolicy() {
                   <CheckCircle2 size={16} className="list-icon" />
                   <span><strong>Bank Timeline:</strong> Credit will reflect in your account within a certain number of days according to your card issuer/bank's policies.</span>
                 </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>No Deductions:</strong> We do not keep payment-gateway or processing fees from refunds.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Invoices & Credit Notes:</strong> Your GST tax invoice is issued when your order is dispatched (digital products: when access is given); until then you can download an order summary. A refund on an invoiced order comes with a GST credit note.</span>
+                </li>
               </ul>
             </div>
           </section>
@@ -151,6 +194,21 @@ function ShippingPolicy() {
             </p>
             <p className="special-note">
               <em>Note: Guarantee is void if failure is caused by improper usage, liquid ingress, accident, external fire, natural disaster, excessive shock, normal wear and tear, or environmental damage not attributable to product failure.</em>
+            </p>
+          </div>
+        </section>
+
+        {/* Seller, GST registration and Grievance Officer (placeholders until confirmed) */}
+        <section className="policy-special-box" id="seller-grievance">
+          <div className="special-head">
+            <h3><Building2 size={18} className="ui-inline-icon" aria-hidden="true" />Seller & Grievance Officer</h3>
+          </div>
+          <div className="special-body">
+            <p><strong>Selling entity:</strong> {SELLER_INFO.sellingEntity}</p>
+            <p><strong>GST-registered entity:</strong> {SELLER_INFO.gstEntity} (GSTIN: {SELLER_INFO.gstin})</p>
+            <p>
+              <strong>Grievance Officer:</strong> {SELLER_INFO.grievanceOfficer.name}, {SELLER_INFO.grievanceOfficer.email},{" "}
+              {SELLER_INFO.grievanceOfficer.phone}. Complaints are acknowledged within 48 hours and resolved within 30 days.
             </p>
           </div>
         </section>

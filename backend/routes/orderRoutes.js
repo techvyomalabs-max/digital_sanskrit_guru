@@ -30,6 +30,7 @@ const {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
   sendRefundStatusUpdate,
+  sendReplacementShipped,
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
   sendWelcomeCredentialsEmail,
@@ -43,7 +44,9 @@ const {
   isReturnOverdue,
   checkRefundReceipt,
   restockableItems,
-  deriveOrderRefundStatus
+  deriveOrderRefundStatus,
+  damageClaimPlan,
+  replacementEligibility
 } = require("../utils/returnPolicy");
 const {
   sendPushToUser,
@@ -58,6 +61,8 @@ const {
 
 const { getTrackingDetails } = require("../utils/trackingService");
 const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require("../utils/spamFilter");
+const rateLimit = require("express-rate-limit");
+const { perWorker } = require("../utils/workerCount");
 const getRazorpayClient = require("../utils/razorpay");
 const PaymentIntent = require("../models/PaymentIntent");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
@@ -75,16 +80,19 @@ const { normalizeOrderItem } = require("../utils/orderItems");
 const { billingGstFields } = require("../utils/gstin");
 const { generateInvoicePdfBuffer, generateCreditNotePdfBuffer } = require("../utils/invoicePdfGenerator");
 const { creditNoteRefunds } = require("../utils/invoiceData");
+const { NOT_INVOICED_STATES, isInvoiceDue } = require("../utils/invoiceTiming");
+const { buildAdvancesReport } = require("../utils/advancesReport");
+const { createPresignedUpload, isReturnEvidenceKey, getMediaConfig, getPrivateObject } = require("../utils/mediaPresign");
 const { REPORTS, buildFinanceReport, toCsv } = require("../utils/financeReports");
 const { ATTEMPT_HEADERS, PAYOUT_HEADERS, PAYOUT_GROUPS, PAYOUT_SUMMARY_HEADERS, attemptRows, fetchSettledTransactions, payoutRows, payoutSummaryRows } = require("../utils/paymentReports");
 const ALL_FINANCE_REPORTS = { ...REPORTS, attempts: "Payment attempts", payouts: "Razorpay payouts", "product-tax": "Product tax codes" };
 const { PRODUCT_TAX_HEADERS, productTaxRows } = require("../utils/productTaxReport");
 const { toMinorUnits, resolveItemsCurrency } = require("../utils/currency");
 const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../utils/orderTotals");
-const { reserveStockForOrder, releaseStockForOrder, incrementStock, expandItemsForStock } = require("../utils/stock");
+const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
-const { processGatewayRefund, previewRefund, RefundError } = require("../utils/refunds");
+const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
 const { buildInvoiceRow, buildCreditNoteRows, summarize } = require("../utils/financeLedger");
@@ -1070,11 +1078,13 @@ function parseFinancePeriod(query = {}) {
   return { fromStr, toStr, fromDate, toExclusiveDate };
 }
 
-// Paid orders invoiced in the period (by invoice date; older orders without one by order date)
+// Paid orders invoiced in the period (by invoice date; older orders without one by order date).
+// Orders not invoiced yet (awaiting dispatch) or never invoiced (cancelled first) are left out.
 const invoicedInPeriodFilter = (fromDate, toExclusiveDate) => {
   const periodRange = { $gte: fromDate, $lt: toExclusiveDate };
   return {
     paymentStatus: { $in: ["Paid", "Refunded"] },
+    invoiceState: { $nin: NOT_INVOICED_STATES },
     $or: [
       { invoiceIssuedAt: periodRange },
       { invoiceIssuedAt: null, createdAt: periodRange }
@@ -1083,9 +1093,11 @@ const invoicedInPeriodFilter = (fromDate, toExclusiveDate) => {
 };
 
 // Orders with refunds that may be dated in the period
+// (a refund on an order that was never invoiced has no GST to reverse, so it is left out)
 const refundedInPeriodFilter = (fromDate, toExclusiveDate) => ({
   paymentStatus: { $in: ["Paid", "Refunded"] },
   refundedAmountInInr: { $gt: 0 },
+  invoiceState: { $nin: NOT_INVOICED_STATES },
   $or: [
     { "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } },
     { "paymentMeta.refunds.0": { $exists: false }, updatedAt: { $gte: fromDate, $lt: toExclusiveDate } }
@@ -1226,6 +1238,29 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
       }
     }
 
+    // Advances (paid, not invoiced yet), advances refunded in the period, and orders invoiced
+    // at payment under the old rule that still haven't shipped
+    const advanceFields = "_id user shipping billing total totalInInr status paymentStatus createdAt invoiceNumber invoiceIssuedAt shippedAt items paymentMeta.refunds";
+    const [awaitingOrders, refundedAdvanceOrders, legacyInvoicedOrders] = await Promise.all([
+      Order.find({ paymentStatus: "Paid", invoiceState: "awaiting" }).select(advanceFields).populate("user", "name").limit(2000).lean(),
+      Order.find({ invoiceState: "not-required", "paymentMeta.refunds.at": { $gte: fromDate, $lt: toExclusiveDate } })
+        .select(advanceFields).limit(2000).lean(),
+      Order.find({
+        paymentStatus: "Paid",
+        status: "Pending",
+        shippedAt: null,
+        invoiceNumber: { $exists: true, $ne: "" },
+        invoiceState: { $in: ["", null] }
+      }).select(advanceFields).populate("user", "name").limit(2000).lean()
+    ]);
+    const advances = buildAdvancesReport({
+      awaiting: awaitingOrders,
+      refunded: refundedAdvanceOrders,
+      legacy: legacyInvoicedOrders,
+      from: fromDate,
+      to: toExclusiveDate
+    });
+
     res.json({
       success: true,
       period: { from: fromStr, to: toStr },
@@ -1234,7 +1269,8 @@ router.get("/analytics/finance", protect, admin, requireAdminPage("orders"), asy
       monthlyTrends,
       invoices: invoiceRows,
       creditNotes,
-      warnings
+      warnings,
+      advances
     });
   } catch (err) {
     console.error("Financial analytics error:", err);
@@ -1668,6 +1704,12 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       return res.status(409).json({ message: "Access was already granted." });
     }
 
+    // A digital-only order is invoiced once all its access is given; the direct update above
+    // skips the save hook that issues it, so save once more when it is now due
+    if (!updated.invoiceNumber && isInvoiceDue(updated)) {
+      await updated.save();
+    }
+
     const grantedItems = grantResult.grantedIndexes.map((idx) => updated.items[idx]);
     const itemNames = grantedItems.map((it) => it?.name || "Item");
     const entityLabel = String(updated.invoiceNumber || updated._id || "");
@@ -1962,11 +2004,31 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
     return res.status(400).json({ message: "Returns are only available for delivered paid items within 7 days." });
   }
 
+  const reason = String(req.body?.reason || "").trim();
+  // Damaged/defective up to ₹300: refund or replacement on the customer's photos, item kept;
+  // above ₹300: posted back to the office (at the customer's cost) first
+  const damage = damageClaimPlan(item, reason);
+  // Photo storage keys from the private upload (never public links)
+  const rawPhotos = Array.isArray(req.body?.photos) ? req.body.photos : [];
+  if (rawPhotos.length > MAX_RETURN_PHOTOS) {
+    return res.status(400).json({ message: `Add at most ${MAX_RETURN_PHOTOS} photos.` });
+  }
+  if (rawPhotos.some((key) => !isReturnEvidenceKey(key))) {
+    return res.status(400).json({ message: "One of the photos could not be used. Please upload it again." });
+  }
+  // Photos are the evidence for a damage claim (required whenever photo uploads are available)
+  if (damage.damaged && rawPhotos.length === 0 && getMediaConfig().configured) {
+    return res.status(400).json({ message: "Please add at least one photo of the damaged item." });
+  }
   item.returnRequest = {
     status: "Requested",
     requestedAt: new Date(),
     resolvedAt: null,
-    reason: String(req.body?.reason || "").trim()
+    reason,
+    damaged: damage.damaged,
+    damageValueInInr: damage.valueInInr,
+    keepItem: damage.keepItem,
+    photoKeys: rawPhotos
   };
   order.refundStatus = deriveOrderRefundStatus(order);
 
@@ -1976,6 +2038,141 @@ router.put("/:id/items/:itemId/return-request", protect, async (req, res) => {
   notifyAdminsOfRefundRequest(updated, "return");
 
   res.json(serializeOrderForOwner(updated, req.user));
+});
+
+const MAX_RETURN_PHOTOS = 3;
+
+// Customers upload photos of a damaged item straight to storage; a few per hour is plenty
+const returnPhotoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: perWorker(20),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `return-photo:${String(req.user || "")}`,
+  message: { message: "Too many photo uploads. Please try again later." }
+});
+
+// POST /api/orders/:id/items/:itemId/return-photos/presign — an upload slot for one photo of
+// a damaged item, for the customer who owns the order
+router.post("/:id/items/:itemId/return-photos/presign", protect, returnPhotoLimiter, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+    const order = await Order.findById(req.params.id).select("user status paymentStatus items deliveredAt").lean();
+    if (!order || String(order.user) !== String(req.user)) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+    const item = getOrderItemById(order, req.params.itemId);
+    if (!item || !isPhysicalItem(item)) {
+      return res.status(400).json({ message: "Photos can only be added for physical items." });
+    }
+    const upload = await createPresignedUpload({ kind: "return-evidence", contentType: String(req.body?.contentType || "") });
+    return res.json(upload);
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    return res.status(status).json({ message: status === 500 ? "Could not prepare the photo upload." : err.message });
+  }
+});
+
+// GET /api/orders/:id/items/:itemId/return-photos/:n — the n-th damage photo (1 = first),
+// streamed from private storage to the order's owner or an admin with the Orders page
+router.get("/:id/items/:itemId/return-photos/:n", protect, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+    const order = await Order.findById(req.params.id).select("user items").lean();
+    if (!order) return res.status(404).json({ message: "Photo not found" });
+    if (String(order.user) !== String(req.user)) {
+      const viewer = await User.findById(req.user).select("isAdmin adminLevel allowedPages").lean();
+      const pages = Array.isArray(viewer?.allowedPages) ? viewer.allowedPages : [];
+      const canSeeOrders = Boolean(viewer?.isAdmin) && (Number(viewer.adminLevel) === 1 || pages.includes("orders"));
+      if (!canSeeOrders) return res.status(404).json({ message: "Photo not found" });
+    }
+    const item = getOrderItemById(order, req.params.itemId);
+    const keys = Array.isArray(item?.returnRequest?.photoKeys) ? item.returnRequest.photoKeys : [];
+    const n = Number(req.params.n);
+    const key = Number.isInteger(n) && n >= 1 ? keys[n - 1] : null;
+    if (!key || !isReturnEvidenceKey(key)) return res.status(404).json({ message: "Photo not found" });
+
+    const file = await getPrivateObject(key);
+    res.set({
+      "Content-Type": file.contentType,
+      "Cache-Control": "private, max-age=300",
+      "X-Content-Type-Options": "nosniff",
+      ...(file.contentLength ? { "Content-Length": String(file.contentLength) } : {})
+    });
+    if (typeof file.body?.pipe === "function") {
+      file.body.pipe(res);
+      return undefined;
+    }
+    return res.send(Buffer.from(await file.body.transformToByteArray()));
+  } catch (err) {
+    const status = Number(err?.status) || (err?.name === "NoSuchKey" ? 404 : 500);
+    return res.status(status).json({ message: status === 404 ? "Photo not found" : "Could not load the photo." });
+  }
+});
+
+// PUT /api/orders/:id/items/:itemId/replacement (ADMIN) — send a replacement for a damaged or
+// defective item instead of refunding it. Up to ₹300 the customer keeps the damaged one; above
+// that it must have been received back. Needs stock; when it's out of stock, refund instead.
+router.put("/:id/items/:itemId/replacement", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    const actor = await getAdminActorSnapshot(req.user);
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    const item = getOrderItemById(order, req.params.itemId);
+    if (!item) return res.status(404).json({ message: "Order item not found" });
+
+    const check = replacementEligibility(order, item);
+    if (!check.ok) return res.status(400).json({ message: check.message });
+
+    const stockItems = expandItemsForStock([item]);
+    const outOfStock = stockItems.length ? await decrementStock(stockItems) : [];
+    if (outOfStock.length) {
+      return res.status(409).json({ message: `Out of stock: ${outOfStock.join(", ")}. Refund the item instead.` });
+    }
+
+    const courierPartner = String(req.body?.courierPartner || "").trim().slice(0, 60);
+    const trackingId = String(req.body?.trackingId || "").trim().slice(0, 80);
+    item.returnRequest.status = "Replaced";
+    item.returnRequest.resolvedAt = new Date();
+    item.returnRequest.replacement = {
+      sentAt: new Date(),
+      by: actor.email,
+      courierPartner,
+      trackingId
+    };
+    order.refundStatus = deriveOrderRefundStatus(order);
+    order.markModified("items");
+    order.lastUpdatedByName = actor.name;
+    order.lastUpdatedByEmail = actor.email;
+    order.lastUpdatedAt = new Date();
+    const updated = await order.save();
+
+    await logAdminAction({
+      req,
+      action: "order-replacement-sent",
+      entityType: "order-item-return",
+      entityId: `${String(updated._id)}:${String(req.params.itemId)}`,
+      entityLabel: String(updated.invoiceNumber || updated._id),
+      summary: `Sent a replacement for "${item.name || "item"}" on order ${String(updated._id).slice(-6)}`,
+      details: { courierPartner, trackingId, keptDamagedItem: Boolean(item.returnRequest.keepItem) }
+    });
+
+    res.json(updated);
+
+    fireNotifications(async () => {
+      const populatedOrder = await Order.findById(updated._id).populate("user", "name email").lean();
+      if (!populatedOrder?.user) return;
+      await sendReplacementShipped(updated, populatedOrder.user, item);
+    });
+    return undefined;
+  } catch (err) {
+    console.error("[Replacement] Failed:", err.message);
+    return res.status(500).json({ message: "Failed to send the replacement." });
+  }
 });
 
 router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), async (req, res) => {
@@ -2013,6 +2210,69 @@ router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), asyn
   });
 
   res.json(quote);
+});
+
+// PUT /api/orders/:id/approve-cancellation-refund (ADMIN)
+// A paid order cancelled before it shipped: the admin approves and the customer gets the full
+// amount back through Razorpay (items + delivery, no gateway fee kept). This is the way to
+// refund cancellations; refunds should not be made from the Razorpay website.
+router.put("/:id/approve-cancellation-refund", protect, admin, requireAdminPage("orders"), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+    const order = await Order.findById(req.params.id).lean();
+    const eligibility = cancellationRefundEligibility(order);
+    if (!eligibility.ok) {
+      return res.status(order ? 400 : 404).json({ message: eligibility.message });
+    }
+
+    const actor = await getAdminActorSnapshot(req.user);
+    const previousRefundStatus = String(order.refundStatus || "").trim() || "Pending";
+    const forceManual = Boolean(req.body?.forceManual);
+    const result = await processGatewayRefund({
+      orderId: req.params.id,
+      refundAmount: eligibility.amount,
+      reason: "Cancelled before dispatch: full refund",
+      actor,
+      isManualOnly: forceManual,
+      forceManual
+    });
+
+    await logAdminAction({
+      req,
+      action: "order-cancellation-refund-approved",
+      entityType: "order",
+      entityId: String(order._id),
+      entityLabel: String(result.order.invoiceNumber || order._id),
+      summary: `Approved full cancellation refund of ₹${result.refundAmount} for order ${String(order._id).slice(-6)}`,
+      details: {
+        previousRefundStatus,
+        nextRefundStatus: result.refundStatus,
+        refundAmount: result.refundAmount,
+        razorpayRefundId: result.razorpayRefundId,
+        method: result.razorpayRefundId ? "razorpay" : "manual"
+      }
+    });
+
+    res.json(result.order);
+
+    fireNotifications(async () => {
+      const populatedOrder = await Order.findById(order._id).populate("user", "name email").lean();
+      if (!populatedOrder?.user) return;
+      await sendRefundStatusUpdate(result.order, populatedOrder.user, result.refundStatus, {
+        lines: [{ label: "Full refund (order cancelled before dispatch)", amount: result.refundAmount }],
+        refundAmount: result.refundAmount
+      });
+    });
+    return undefined;
+  } catch (err) {
+    if (err instanceof RefundError) {
+      return res.status(err.statusCode).json({ message: err.message, canForceManual: Boolean(err.details?.canForceManual) });
+    }
+    console.error("[CancellationRefund] Failed:", err.message);
+    return res.status(500).json({ message: "Failed to process the refund." });
+  }
 });
 
 router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), async (req, res) => {
@@ -2828,19 +3088,16 @@ function sendPdf(res, pdf, number) {
   return res.send(pdf);
 }
 
-// GET /api/orders/:id/invoice — the GST tax invoice PDF (the same one that is emailed).
-// The customer who placed the order, once it is paid; or an admin with the Orders page
-// (who gets an "Order summary, not a tax invoice" for unpaid orders).
+// GET /api/orders/:id/invoice — the order's document PDF: the GST tax invoice once it is issued
+// (the same one that is emailed), and until then a printable "Order summary" that says it is
+// not a tax invoice. For the customer who placed the order, or an admin with the Orders page.
 router.get("/:id/invoice", protect, async (req, res) => {
   try {
     const found = await loadOrderForDocument(req, res);
     if (!found) return undefined;
-    const { order, isOwner, user, seller } = found;
-    if (isOwner && (!order.invoiceNumber || !["Paid", "Refunded"].includes(order.paymentStatus))) {
-      return res.status(409).json({ message: "The invoice is available once the payment is received." });
-    }
+    const { order, user, seller } = found;
     const pdf = await generateInvoicePdfBuffer(order, user, seller);
-    return sendPdf(res, pdf, order.invoiceNumber || `order-${String(order._id).slice(-8).toUpperCase()}`);
+    return sendPdf(res, pdf, order.invoiceNumber || `Order-Summary-${String(order._id).slice(-8).toUpperCase()}`);
   } catch (err) {
     console.error("[OrderRoutes] Invoice PDF failed:", err.message);
     return res.status(500).json({ message: "Unable to create the invoice right now." });

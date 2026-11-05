@@ -604,3 +604,23 @@ body.admin-dark .admin-bundle-tag-external {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* Cancelled before dispatch: one-click full refund */
+.admin-order-cancel-refund {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.admin-order-cancel-refund p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+}

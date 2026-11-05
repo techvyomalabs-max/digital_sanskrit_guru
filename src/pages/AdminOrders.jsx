@@ -22,6 +22,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import AdminSidebar from "../components/admin/AdminSidebar";
+import ReturnPhotos from "../components/admin/ReturnPhotos";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
 import { buildOrdersCsv } from "../utils/ordersCsv";
@@ -439,6 +440,31 @@ function AdminOrders() {
       setPageMessage("Return request updated successfully.");
     } catch (err) {
       setPageMessage(err?.response?.data?.message || "Unable to update the return request.");
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
+  // Damaged/defective item: send a replacement instead of a refund (needs stock)
+  const sendReplacement = async (orderId, itemId, itemName) => {
+    const trackingId = await prompt({
+      title: "Send replacement",
+      message: `A replacement for "${itemName}" will be sent and taken from stock. Enter the courier tracking ID (optional):`,
+      placeholder: "Tracking ID",
+      confirmText: "Send replacement"
+    });
+    if (trackingId === null) return;
+    setUpdatingOrderId(orderId);
+    try {
+      await axios.put(
+        `/api/orders/${orderId}/items/${itemId}/replacement`,
+        { courierPartner: "Delhivery", trackingId: String(trackingId || "").trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await loadOrders();
+      setPageMessage("Replacement sent. The customer has been emailed.");
+    } catch (err) {
+      setPageMessage(err?.response?.data?.message || "Unable to send the replacement.");
     } finally {
       setUpdatingOrderId("");
     }
@@ -1557,6 +1583,52 @@ function AdminOrders() {
                                         ) : null}
                                         {item?.returnRequest?.adminReason ? (
                                           <p className="admin-status-note">Admin note: {item.returnRequest.adminReason}</p>
+                                        ) : null}
+
+                                        {/* Damaged/defective claim: keep-or-return rule, the customer's photos, refund or replacement */}
+                                        {item?.returnRequest?.damaged ? (
+                                          <div className="admin-damage-claim">
+                                            <p className={`admin-damage-badge ${item.returnRequest.keepItem ? "is-keep" : "is-return"}`}>
+                                              {item.returnRequest.keepItem
+                                                ? "Damaged · up to ₹300: refund or replace on photos, customer keeps it"
+                                                : "Damaged · over ₹300: customer posts it back (at their cost) first"}
+                                            </p>
+                                            <ReturnPhotos
+                                              orderId={order._id}
+                                              itemId={itemId}
+                                              count={Array.isArray(item.returnRequest.photoKeys) ? item.returnRequest.photoKeys.length : 0}
+                                              token={token}
+                                            />
+                                            {item.returnRequest.replacement?.sentAt ? (
+                                              <p className="admin-status-note" style={{ color: "#166534", fontWeight: 600 }}>
+                                                Replacement sent{item.returnRequest.replacement.trackingId ? ` (tracking ${item.returnRequest.replacement.trackingId})` : ""}
+                                              </p>
+                                            ) : null}
+                                            {canUpdateOrders &&
+                                            ((item.returnRequest.keepItem && ["Requested", "Approved"].includes(returnStatus)) ||
+                                              returnStatus === "Received") ? (
+                                              <div className="admin-return-actions" style={{ marginTop: "6px" }}>
+                                                {item.returnRequest.keepItem && returnStatus !== "Received" ? (
+                                                  <button
+                                                    type="button"
+                                                    className="status-action-btn"
+                                                    disabled={updatingOrderId === order._id}
+                                                    onClick={() => setRefundModalState({ isOpen: true, order, itemId })}
+                                                  >
+                                                    Refund (customer keeps it)…
+                                                  </button>
+                                                ) : null}
+                                                <button
+                                                  type="button"
+                                                  className="status-action-btn"
+                                                  disabled={updatingOrderId === order._id}
+                                                  onClick={() => void sendReplacement(order._id, itemId, item?.name || "item")}
+                                                >
+                                                  Send replacement…
+                                                </button>
+                                              </div>
+                                            ) : null}
+                                          </div>
                                         ) : null}
 
                                         {/* Requested: Approve / Reject */}

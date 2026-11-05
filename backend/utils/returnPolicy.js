@@ -5,6 +5,29 @@
 
 const RETURN_OVERDUE_DAYS = 14;
 
+/**
+ * Damaged or defective items: one worth up to this much (price x quantity, in rupees) needs no
+ * physical return; the customer's photos are the evidence and they get a refund or a replacement
+ * and keep the item. One worth more is sent back to the office (return postage paid by the
+ * customer) before the refund or replacement.
+ */
+const DAMAGE_KEEP_LIMIT_INR = 300;
+
+function isDamageReason(reason) {
+  return /damaged|defective/i.test(String(reason || ""));
+}
+
+/** For a return request: is it a damage claim, the item's value, and may the customer keep it. */
+function damageClaimPlan(item, reason) {
+  const damaged = isDamageReason(reason);
+  const valueInInr = Math.round((Number(item?.price) || 0) * Math.max(1, Number(item?.quantity) || 1) * 100) / 100;
+  return {
+    damaged,
+    valueInInr,
+    keepItem: damaged && valueInInr <= DAMAGE_KEEP_LIMIT_INR
+  };
+}
+
 function isPhysicalItem(item) {
   return item?.isDigital !== true;
 }
@@ -41,6 +64,8 @@ function checkRefundReceipt({ order, itemIds, isSuperAdmin, waive, waiveReason }
 
   const blockedItems = targetItems.filter((item) => {
     if (!isPhysicalItem(item)) return false;
+    // A damaged item under the keep limit is refunded without coming back
+    if (item?.returnRequest?.keepItem === true) return false;
     return item?.returnRequest?.status !== "Received";
   });
 
@@ -96,11 +121,41 @@ function deriveOrderRefundStatus(order) {
   if (itemsWithReturn.length > 0 && itemsWithReturn.every((it) => it.returnRequest.status === "Rejected")) {
     return "Rejected";
   }
+  // Every claim settled by a replacement (or rejected): nothing is owed back
+  if (
+    itemsWithReturn.length > 0 &&
+    itemsWithReturn.some((it) => it.returnRequest.status === "Replaced") &&
+    itemsWithReturn.every((it) => ["Replaced", "Rejected"].includes(it.returnRequest.status))
+  ) {
+    return "Not Applicable";
+  }
 
   return currentRefundStatus;
 }
 
+/**
+ * Whether an admin can send a replacement for an item: it must be a damaged/defective claim
+ * that hasn't been settled, and (above the keep limit) the damaged item must be back.
+ */
+function replacementEligibility(order, item) {
+  const rr = item?.returnRequest || {};
+  if (!isPhysicalItem(item)) return { ok: false, message: "Only physical items can be replaced." };
+  if (!rr.damaged) return { ok: false, message: "Replacements are for damaged or defective items." };
+  if (["Refunded", "Replaced", "Rejected"].includes(rr.status)) {
+    return { ok: false, message: `This claim is already ${String(rr.status).toLowerCase()}.` };
+  }
+  if (rr.keepItem !== true && rr.status !== "Received") {
+    return { ok: false, message: `Items over ₹${DAMAGE_KEEP_LIMIT_INR} must be received back at the office before a replacement is sent.` };
+  }
+  if (String(order?.status || "") === "Cancelled") return { ok: false, message: "This order is cancelled." };
+  return { ok: true };
+}
+
 module.exports = {
+  replacementEligibility,
+  DAMAGE_KEEP_LIMIT_INR,
+  isDamageReason,
+  damageClaimPlan,
   RETURN_OVERDUE_DAYS,
   isPhysicalItem,
   isReturnOverdue,

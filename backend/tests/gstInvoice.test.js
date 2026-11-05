@@ -284,8 +284,12 @@ describe("GET /api/orders/:id/invoice", () => {
     assert.equal(res.body.subarray(0, 5).toString(), "%PDF-");
   });
 
-  it("waits for payment, and hides other people's orders", async () => {
-    assert.equal((await call(ids.owner, { ...paid, paymentStatus: "Pending", invoiceNumber: undefined })).status, 409);
+  it("gives the customer an order summary until the invoice is issued, and hides other people's orders", async () => {
+    // Paid but not shipped yet: no tax invoice, so the customer gets the printable order summary
+    const awaiting = await call(ids.owner, { ...paid, invoiceNumber: undefined });
+    assert.equal(awaiting.status, 200);
+    assert.match(awaiting.disposition, /Order-Summary-/);
+    assert.equal((await call(ids.owner, { ...paid, paymentStatus: "Pending", invoiceNumber: undefined })).status, 200);
     assert.equal((await call(ids.other, paid)).status, 404);
     assert.equal((await call(ids.staff, paid)).status, 404, "staff without the Orders page");
   });
@@ -294,6 +298,6 @@ describe("GET /api/orders/:id/invoice", () => {
     assert.equal((await call(ids.admin, paid)).status, 200);
     const unpaid = await call(ids.admin, { ...paid, paymentStatus: "Pending", invoiceNumber: undefined });
     assert.equal(unpaid.status, 200, "admins get the order summary");
-    assert.match(unpaid.disposition, /order-/);
+    assert.match(unpaid.disposition, /Order-Summary-/);
   });
 });

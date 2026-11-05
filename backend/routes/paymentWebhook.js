@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const WebhookEvent = require("../models/WebhookEvent");
 const PaymentIntent = require("../models/PaymentIntent");
 const Order = require("../models/Order");
+const { recordWebhookRefund } = require("../utils/refunds");
 
 /**
  * Pure helper to verify Razorpay webhook HMAC-SHA256 signature
@@ -150,6 +151,19 @@ async function paymentWebhookHandler(req, res) {
         if (payment && payment.order_id) {
           await recordFailedPayment(payment);
         }
+      }
+
+      // A refund finished at Razorpay (including ones made from the Razorpay dashboard):
+      // record it on the order so it gets a GST credit note. Already-recorded refunds are skipped.
+      if (body?.event === "refund.processed") {
+        const refund = body?.payload?.refund?.entity;
+        const result = await recordWebhookRefund(refund);
+        if (result.action === "review") {
+          console.warn(`[Webhook] Refund ${refund?.id} on payment ${refund?.payment_id} needs admin review: ${result.reason}`);
+        } else if (result.action === "recorded") {
+          console.log(`[Webhook] Recorded refund ${refund?.id} on order ${result.orderId} (credit note ${result.creditNoteNumber || "pending"})`);
+        }
+        return res.status(200).json({ ok: true, refund: result.action, reason: result.reason || undefined });
       }
 
       return res.status(200).json({ ok: true });

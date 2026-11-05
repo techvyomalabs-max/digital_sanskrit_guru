@@ -653,6 +653,39 @@ async function sendOrderStatusUpdate(order, user, newStatus) {
   });
 }
 
+/** A replacement for a damaged/defective item is on its way. */
+async function sendReplacementShipped(order, user, item) {
+  const to = String(user?.email || "").trim().toLowerCase();
+  if (!to) return undefined;
+  const replacement = item?.returnRequest?.replacement || {};
+  const courier = String(replacement.courierPartner || "").trim();
+  const trackingId = String(replacement.trackingId || "").trim();
+  const tracking = trackingId
+    ? `<p><strong>Courier:</strong> ${escapeHtml(courier || "Courier")}<br/><strong>Tracking ID:</strong> <code>${escapeHtml(trackingId)}</code>${
+        courier ? `<br/><a href="${getCourierTrackingUrl(courier, trackingId)}" target="_blank">Track your replacement</a>` : ""
+      }</p>`
+    : "";
+  const keepNote = item?.returnRequest?.keepItem
+    ? "<p>You don't need to send the damaged item back.</p>"
+    : "";
+  const html = htmlWrapper("Your replacement is on its way", `
+    <h2>Your replacement is on its way</h2>
+    <p>Hi <strong>${escapeHtml(String(user?.name || "Customer"))}</strong>,</p>
+    <p>We're sorry your <strong>${escapeHtml(String(item?.name || "item"))}</strong> arrived damaged. A replacement has been sent to you at no extra cost.</p>
+    ${tracking}
+    ${keepNote}
+    <p><strong>Order ID:</strong> ${escapeHtml(String(order?._id || "").slice(-8).toUpperCase())}</p>
+    <a class="cta" href="${siteLink("/my-orders")}">View My Orders</a>
+  `);
+  return sendEmail({
+    to,
+    subject: `Your replacement is on its way — ${SITE_NAME}`,
+    html,
+    type: "status-update",
+    orderId: String(order?._id || "")
+  });
+}
+
 async function sendRefundStatusUpdate(order, user, refundStatus, options = {}) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return;
@@ -1372,6 +1405,7 @@ async function sendAccessPendingAdminAlert(order, pendingItems, customer) {
 }
 
 module.exports = {
+  sendReplacementShipped,
   sendEmail,
   sendOrderConfirmation,
   sendOrderStatusUpdate,
