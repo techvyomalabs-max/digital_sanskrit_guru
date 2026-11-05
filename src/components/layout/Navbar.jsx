@@ -48,12 +48,15 @@ import { CategoryIcon, getCategoryIcon } from "../../utils/categoryIcons";
 import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
+import { productPath } from "../../utils/productLink";
 
 const SEARCH_SUGGESTION_DELAY_MS = 120;
 
 const EMPTY_SEARCH_RESULTS = Object.freeze({
   query: "",
   effectiveQuery: "",
+  isIndicSearch: false,
+  detectedLanguage: null,
   isAutoCorrected: false,
   autoCorrection: null,
   matchingCategories: [],
@@ -374,7 +377,7 @@ function Navbar({ bannerActive = false }) {
       items.push({ type: "page", data: page, url: page.url });
     });
     (searchResults.matchingProducts || []).slice(0, 5).forEach((product) => {
-      items.push({ type: "product", data: product, url: `/product/${product._id}` });
+      items.push({ type: "product", data: product, url: productPath(product) });
     });
     return items;
   }, [searchResults]);
@@ -408,9 +411,9 @@ function Navbar({ bannerActive = false }) {
     const latestResults = isSuggestionPending
       ? runSuggestionSearch(searchQuery.trim(), catalogProducts)
       : searchResults;
-    const query = (latestResults.effectiveQuery || searchQuery).trim();
-    if (query) {
-      recordSearchQuery(query);
+    const query = searchQuery.trim();
+    if (latestResults.effectiveQuery || query) {
+      recordSearchQuery((latestResults.effectiveQuery || query).trim());
     }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
@@ -652,6 +655,21 @@ function Navbar({ bannerActive = false }) {
 
                 {isSearchFocused && searchQuery.trim().length >= 2 && (
                   <div className="navbar-search-dropdown" role="listbox">
+                    {/* Multilingual Indic AI Recognition Banner */}
+                    {searchResults.isIndicSearch && searchResults.detectedLanguage && (
+                      <div className="navbar-search-multilingual-banner">
+                        <div className="navbar-search-multilingual-text">
+                          <span className="navbar-search-lang-pill">
+                            <Globe size={13} className="navbar-search-lang-icon" />
+                            {searchResults.detectedLanguage.name} Recognized
+                          </span>
+                          <span className="navbar-search-lang-detail">
+                            &ldquo;{searchResults.query}&rdquo; &rarr; <strong>{searchResults.effectiveQuery}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Auto-Correction Notice Banner */}
                     {searchResults.isAutoCorrected && searchResults.autoCorrection && (
                       <div className="navbar-search-autocorrect-banner">
@@ -768,7 +786,7 @@ function Navbar({ bannerActive = false }) {
                               aria-selected={activeSuggestionIndex === idx}
                               className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
                               onMouseDown={() => {
-                                navigate(`/product/${product._id}`);
+                                navigate(productPath(product));
                                 setIsSearchFocused(false);
                               }}
                             >

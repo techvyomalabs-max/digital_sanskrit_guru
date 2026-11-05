@@ -237,3 +237,37 @@ describe("legacyRedirects utility (pure)", () => {
     });
   });
 });
+
+describe("old WordPress pages and categories", () => {
+  const map = buildRedirectMap(require("../config/legacyRedirects.json"));
+  const go = (path, search = "") => resolveRedirect(map, path, search)?.location || null;
+
+  it("sends old pages with no new page of the same name to the right place", () => {
+    assert.equal(go("/launch/"), "/");
+    assert.equal(go("/m-learning/"), "/collection");
+    assert.equal(go("/7428-2/"), "/");
+    assert.equal(go("/home/"), "/");
+  });
+
+  it("leaves old pages that exist on the new store alone", () => {
+    for (const path of ["/about", "/contact", "/faq", "/cart", "/checkout", "/privacy-policy", "/shipping-refund-policy"]) {
+      assert.equal(go(path), null, path);
+    }
+  });
+
+  it("sends old category pages to the matching collection filter", () => {
+    assert.equal(go("/product-category/book-paperback/"), "/collection?category=Book%20-%20Paperback");
+    assert.equal(go("/product-category/book-paperback/festival-offer/"), "/collection?category=Festival%20Offer");
+    assert.equal(go("/product-category/webversion/"), "/collection?category=Web%20Version");
+    assert.equal(go("/product-category/ebook/"), "/collection?category=E-Book%20-%20Kindle");
+    assert.equal(go("/product-category/cd/audio-cd/"), "/collection");
+  });
+
+  it("keeps tracking parameters on a target that already has a query", () => {
+    assert.equal(
+      go("/product-category/combo/", "?utm_source=fb&orderby=price"),
+      "/collection?category=Combo&utm_source=fb"
+    );
+    assert.equal(go("/shop/", "?utm_source=fb"), "/collection?utm_source=fb");
+  });
+});

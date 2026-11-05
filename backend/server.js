@@ -228,9 +228,92 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   // ── Legacy URL & trailing-slash redirects ─────────────────────────────────
   app.use(createRedirectMiddleware(legacyRedirectMap));
 
+  // ── robots.txt & sitemap.xml (built from SITE_URL and the live catalog) ────
+  const { injectSeoTags, buildRobotsTxt, buildSitemapXml } = require("./utils/seo");
+  const SITEMAP_CACHE_KEY = "seo:sitemap";
+
+  app.get("/robots.txt", (req, res) => {
+    res.type("text/plain").setHeader("Cache-Control", "public, max-age=3600");
+    res.send(buildRobotsTxt({ hostname: req.hostname }));
+  });
+
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const { appCache } = require("./utils/cache");
+      let xml = appCache.get(SITEMAP_CACHE_KEY);
+      if (!xml) {
+        let products = [];
+        if (dbConnected) {
+          const Product = require("./models/Product");
+          products = await Product.find({
+            isDeleted: { $ne: true },
+            hideFromListings: { $ne: true },
+            optionParent: null
+          }).select("_id slug updatedAt").lean();
+        }
+        xml = buildSitemapXml({ products });
+        if (dbConnected) appCache.set(SITEMAP_CACHE_KEY, xml, 3600);
+      }
+      res.type("application/xml").setHeader("Cache-Control", "public, max-age=3600");
+      res.send(xml);
+    } catch (error) {
+      console.error("Sitemap build failed:", error?.message || error);
+      res.status(500).type("text/plain").send("Sitemap unavailable");
+    }
+  });
+
   // ── Static files (served after API routes) ─────────────────────────────────
   if (clientBuildExists) {
+    const indexHtml = require("fs").readFileSync(path.join(DIST_DIR, "index.html"), "utf8");
+    const { findProductForLink, resolveProductLink } = require("./utils/productLinkLookup");
+    const PRODUCT_PAGE = /^\/product\/([^/]+)\/?$/;
+
+    // Product pages: old ids, old site numbers and earlier link names get a
+    // permanent redirect to the current link name, and the canonical uses it
+    const resolveProductPage = async (key) => {
+      if (!dbConnected) return null;
+      const cacheKey = `seo:product:${key}`;
+      const { appCache } = require("./utils/cache");
+      let result = appCache.get(cacheKey);
+      if (!result) {
+        const Product = require("./models/Product");
+        result = resolveProductLink(await findProductForLink(Product, key), key);
+        appCache.set(cacheKey, result, 120);
+      }
+      return result;
+    };
+
+    const sendIndexHtml = async (req, res) => {
+      let seo = {};
+      let status = 200;
+      const productMatch = req.path.match(PRODUCT_PAGE);
+      if (productMatch) {
+        try {
+          const resolved = await resolveProductPage(productMatch[1]);
+          if (resolved?.redirect) {
+            const params = new URLSearchParams(req.query);
+            params.delete("v"); // old site added ?v=... to its links
+            const query = params.toString();
+            return res.redirect(301, `${resolved.redirect}${query ? `?${query}` : ""}`);
+          }
+          if (resolved?.notFound) {
+            seo = { noindex: "hard" };
+            status = 404;
+          } else if (resolved) {
+            seo = { canonicalPath: resolved.canonicalPath, noindex: resolved.noindex };
+          }
+        } catch (error) {
+          console.error("Product link lookup failed:", error?.message || error);
+        }
+      }
+      const { html, indexable } = injectSeoTags(indexHtml, { pathname: req.path, hostname: req.hostname, ...seo });
+      res.setHeader("Cache-Control", "no-cache");
+      if (!indexable) res.setHeader("X-Robots-Tag", "noindex, follow");
+      res.status(status).type("html").send(html);
+    };
+
     app.use(express.static(DIST_DIR, {
+      index: false,            // "/" goes to sendIndexHtml so it gets its SEO tags
       maxAge: "7d",            // cache static assets for 7 days in browser
       etag: true,
       lastModified: true,
@@ -246,10 +329,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       }
     }));
 
-    app.get(/^\/(?!api).*/, (req, res) => {
-      res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(path.join(DIST_DIR, "index.html"));
-    });
+    app.get(/^\/(?!api).*/, sendIndexHtml);
   } else {
     app.get("/", (req, res) => {
       res.send(`API is running (worker ${process.pid})`);

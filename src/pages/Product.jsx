@@ -18,6 +18,8 @@ import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct 
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { fetchPublicCatalog } from "../utils/productCatalog";
+import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import DOMPurify from "dompurify";
 import {
@@ -54,6 +56,8 @@ import {
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import { formatDate } from "../utils/date";
 import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
+import { applySeoTags } from "../utils/seo";
+import { productPath, productUrl } from "../utils/productLink";
 
 const AVATAR_PALETTES = [
   { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
@@ -358,6 +362,19 @@ function Product() {
   const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   useDocumentMetadata(product?.name, htmlToPlainText(product?.description, 160));
+
+  // Canonical is the product's current link name; a format page shares its
+  // main product's content, so it points search engines at the main product
+  const seoCanonicalPath = product
+    ? product.optionParent
+      ? productPath(typeof product.optionParent === "object" ? product.optionParent : { _id: product.optionParent })
+      : productPath(product)
+    : "";
+  // Hidden products (not formats) are only reached by direct link
+  const seoNoindex = Boolean(product?.hideFromListings && !product?.optionParent);
+  useEffect(() => {
+    applySeoTags(location.pathname, seoCanonicalPath, { noindex: seoNoindex });
+  }, [location.pathname, seoCanonicalPath, seoNoindex]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -683,7 +700,7 @@ function Product() {
 
   const handleShare = async () => {
     if (!product) return;
-    const shareUrl = `${window.location.origin}/product/${product._id}`;
+    const shareUrl = productUrl(product);
 
     // 1. Web Share API (Mobile & supported desktop browsers)
     if (navigator.share) {
@@ -759,7 +776,14 @@ function Product() {
     return fallback ? [fallback] : [];
   };
 
+  // Set when the address is switched to the product's link name, so the same product isn't loaded twice.
+  const switchedToSlugRef = useRef("");
+
   const loadData = useCallback(async () => {
+    if (switchedToSlugRef.current && switchedToSlugRef.current === id) {
+      switchedToSlugRef.current = "";
+      return;
+    }
     try {
       setLoading(true);
       setRelatedProducts([]);
@@ -771,6 +795,18 @@ function Product() {
       const galleryImages = found ? getGalleryImages(found) : [];
 
       setProduct(found);
+      // Old links (/product/<id>, old site numbers, earlier link names) move to the current link name.
+      if (found?.slug) {
+        const params = new URLSearchParams(window.location.search);
+        const hadCacheParam = params.has("v"); // old site added ?v=... to its links
+        params.delete("v");
+        const target = productPath(found);
+        if (decodeURIComponent(window.location.pathname) !== decodeURIComponent(target) || hadCacheParam) {
+          if (found.slug !== id) switchedToSlugRef.current = found.slug;
+          const query = params.toString();
+          navigate(`${target}${query ? `?${query}` : ""}${window.location.hash}`, { replace: true });
+        }
+      }
       if (found) {
         setReviews(found.reviews || []);
         setHasMoreReviews((found.reviewsCount || 0) > (found.reviews?.length || 0));
@@ -791,11 +827,8 @@ function Product() {
           : null
       );
       setQty(found && found.productType === "bulk" ? 10 : 1);
-      setManagedRelatedProducts(
-        Array.isArray(found?.relatedProducts)
-          ? found.relatedProducts.filter((p) => String(p?._id || "") !== String(id)).slice(0, 8)
-          : []
-      );
+      // Filled from the catalog below, so that even admin picks must match the product's name
+      setManagedRelatedProducts([]);
 
       if (!found) {
         setRelatedProducts([]);
@@ -804,9 +837,9 @@ function Product() {
 
       setLoading(false);
 
-      const recRes = await axios.get(`/api/products/recommend/${id}`).catch(() => ({ data: [] }));
+      const recRes = await axios.get(`/api/products/recommend/${found._id}`).catch(() => ({ data: [] }));
       const recommended = Array.isArray(recRes.data) ? recRes.data : [];
-      setRelatedProducts(recommended.filter((p) => p?._id !== id).slice(0, 4));
+      setRelatedProducts(recommended.filter((p) => String(p?._id) !== String(found._id)).slice(0, 4));
     } catch {
       setProduct(null);
       setManagedRelatedProducts([]);
@@ -814,11 +847,26 @@ function Product() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Related Products: products whose names share this product's title keyword, from the
+  // shared catalog the search already loads
+  useEffect(() => {
+    if (!product?._id) return;
+    let cancelled = false;
+    fetchPublicCatalog()
+      .then((catalog) => {
+        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, 8));
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [product]);
 
   useEffect(() => {
     if (!product) return;
@@ -925,7 +973,7 @@ function Product() {
     try {
       setSubmittingReview(true);
       await axios.post(
-        `/api/products/${id}/reviews`,
+        `/api/products/${product?._id || id}/reviews`,
         { rating: Number(rating), comment: comment.trim() },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -958,7 +1006,7 @@ function Product() {
     setIsLoadingMoreReviews(true);
     try {
       const response = await axios.get(
-        `/api/products/${id}/reviews?skip=${reviews.length}&limit=10`
+        `/api/products/${product?._id || id}/reviews?skip=${reviews.length}&limit=10`
       );
       const newReviews = response.data;
       if (Array.isArray(newReviews) && newReviews.length > 0) {
@@ -1530,7 +1578,7 @@ function Product() {
 
         <div className="product-right">
           {optionParentId ? (
-            <Link to={`/product/${optionParentId}`} className="product-option-parent-link">
+            <Link to={productPath(typeof product.optionParent === "object" ? product.optionParent : { _id: optionParentId })} className="product-option-parent-link">
               Also available in other formats — See all formats
             </Link>
           ) : null}
@@ -1878,7 +1926,7 @@ function Product() {
                     </div>
 
                     {includedProduct?._id ? (
-                      <Link to={`/product/${includedProduct._id}`} className="bundle-view-link">
+                      <Link to={productPath(includedProduct)} className="bundle-view-link">
                         View item →
                       </Link>
                     ) : null}
@@ -2368,11 +2416,11 @@ function Product() {
                 </div>
                 <h4>{p.name}</h4>
                 <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={`/product/${p._id}`} className="view-btn">View Product</Link>
+                <Link to={productPath(p)} className="view-btn">View Product</Link>
               </div>
             ))
           ) : (
-            <p className="related-empty">No related products added by admin.</p>
+            <p className="related-empty">No related products found.</p>
           )}
         </div>
       </div>
@@ -2395,7 +2443,7 @@ function Product() {
                 </div>
                 <h4>{p.name}</h4>
                 <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={`/product/${p._id}`} className="view-btn">View Product</Link>
+                <Link to={productPath(p)} className="view-btn">View Product</Link>
               </div>
             ))
           ) : (

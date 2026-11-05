@@ -11,7 +11,9 @@ import { isKindleProduct } from "../utils/kindle";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import "./Home.css";
 import { useDocumentMetadata, HOME_TITLE, DEFAULT_DESCRIPTION } from "../hooks/useDocumentMetadata";
+import { absoluteUrl } from "../utils/seo";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import { productPath } from "../utils/productLink";
 
 const HOME_REQUEST_RETRY_DELAYS = [800, 1800];
 
@@ -259,8 +261,8 @@ function Home() {
       "@context": "https://schema.org",
       "@type": "OnlineStore",
       "name": "Digital Sanskrit Guru",
-      "url": window.location.origin,
-      "logo": `${window.location.origin}/logo.png`,
+      "url": absoluteUrl("/"),
+      "logo": absoluteUrl("/logo.png"),
       "description": "Premium Sanskrit scriptures, learning guides, grammatical studies, and traditional educational kits."
     };
 
@@ -570,7 +572,7 @@ function Home() {
               <LoadingSpinner text="Loading new arrivals..." minHeight="160px" />
             ) : (
               newArrivals.map((product) => (
-                <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
+                <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
                       <div
@@ -626,7 +628,7 @@ function Home() {
               <LoadingSpinner text="Loading budget picks..." minHeight="160px" />
             ) : (
               budgetPicks.map((product) => (
-                <Link key={product._id} to={`/product/${product._id}`} className="home-mini-card">
+                <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
                       <div

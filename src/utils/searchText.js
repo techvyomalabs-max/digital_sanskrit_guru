@@ -11,6 +11,19 @@
  */
 
 import { htmlToPlainText } from "./plainText.js";
+import {
+  detectIndicScript,
+  transliterateIndicToLatin,
+  processIndicQuery,
+  MULTILINGUAL_LEXICON
+} from "./indicSearch.js";
+
+export {
+  detectIndicScript,
+  transliterateIndicToLatin,
+  processIndicQuery,
+  MULTILINGUAL_LEXICON
+};
 
 export function stripHtml(text) {
   return htmlToPlainText(text);
@@ -602,7 +615,20 @@ function getProductSearchText(product) {
   return entry;
 }
 
-export function scoreProduct(product, query) {
+export function scoreProduct(product, query, options = {}) {
+  if (typeof query === "string" && !options?.skipIndic) {
+    const indic = processIndicQuery(query);
+    if (indic.isIndic) {
+      const sCanonical = scoreProduct(product, indic.canonicalQuery, { skipIndic: true });
+      if (sCanonical > 0) return sCanonical;
+      if (indic.transliteratedQuery && indic.transliteratedQuery !== indic.canonicalQuery) {
+        const sTranslit = scoreProduct(product, indic.transliteratedQuery, { skipIndic: true });
+        if (sTranslit > 0) return sTranslit;
+      }
+      return 0;
+    }
+  }
+
   const foldedQuery = foldText(query);
   if (!foldedQuery) return 1;
 
@@ -1037,6 +1063,8 @@ export function searchWebsite(query, options = {}) {
     return {
       query: rawQuery,
       effectiveQuery: rawQuery,
+      isIndicSearch: false,
+      detectedLanguage: null,
       isAutoCorrected: false,
       autoCorrection: null,
       matchingCategories: [],
@@ -1047,23 +1075,39 @@ export function searchWebsite(query, options = {}) {
     };
   }
 
+  // 0. Multilingual Indic Language Recognition
+  const indicResult = processIndicQuery(rawQuery);
+  const isIndicSearch = Boolean(indicResult.isIndic);
+  const detectedLanguage = isIndicSearch ? {
+    name: indicResult.language,
+    script: indicResult.script,
+    nativeName: indicResult.nativeName,
+    originalQuery: rawQuery,
+    canonicalQuery: indicResult.canonicalQuery,
+    transliteratedQuery: indicResult.transliteratedQuery,
+    displayBadge: indicResult.displayBadge
+  } : null;
+
+  // For Indic queries, the canonical English/Sanskrit text is our primary search target
+  const queryToSearch = isIndicSearch ? indicResult.canonicalQuery : rawQuery;
+
   // 1. Check raw product matches
   const rawScored = [];
   if (Array.isArray(catalogProducts)) {
     for (const p of catalogProducts) {
-      const s = scoreProduct(p, rawQuery);
+      const s = scoreProduct(p, queryToSearch);
       if (s > 0) {
         rawScored.push({ ...p, _score: s });
       }
     }
   }
 
-  // 2. Evaluate auto-correction
-  const correction = autoCorrectQuery(rawQuery, catalogProducts);
-  let effectiveQuery = rawQuery;
+  // 2. Evaluate auto-correction (only for non-Indic queries or if requested)
+  const correction = autoCorrectQuery(queryToSearch, catalogProducts);
+  let effectiveQuery = queryToSearch;
   let isAutoCorrected = false;
 
-  if (enableAutoCorrection && correction.hasCorrection) {
+  if (!isIndicSearch && enableAutoCorrection && correction.hasCorrection) {
     const correctionScored = [];
     if (Array.isArray(catalogProducts)) {
       for (const p of catalogProducts) {
@@ -1090,23 +1134,32 @@ export function searchWebsite(query, options = {}) {
   }
 
   // 3. Search Categories using effective query
-  const matchingCategories = searchCategories(effectiveQuery, catalogProducts);
+  let matchingCategories = searchCategories(effectiveQuery, catalogProducts);
+  if (isIndicSearch && matchingCategories.length === 0 && indicResult.transliteratedQuery) {
+    matchingCategories = searchCategories(indicResult.transliteratedQuery, catalogProducts);
+  }
 
   // 4. Search Website Pages & Services using effective query
-  const matchingPages = searchPages(effectiveQuery);
+  let matchingPages = searchPages(effectiveQuery);
+  if (isIndicSearch && matchingPages.length === 0 && indicResult.transliteratedQuery) {
+    matchingPages = searchPages(indicResult.transliteratedQuery);
+  }
 
   // 5. Retrieve ranked products using effective query
   const finalProducts = [];
   if (Array.isArray(catalogProducts)) {
     for (const p of catalogProducts) {
-      const s = scoreProduct(p, effectiveQuery);
+      let s = scoreProduct(p, effectiveQuery);
+      if (isIndicSearch && s === 0 && indicResult.transliteratedQuery) {
+        s = scoreProduct(p, indicResult.transliteratedQuery);
+      }
       if (s > 0) {
         let matchReason = "Product Title Match";
         const fCat = foldText(p?.category);
         const fQuery = foldText(effectiveQuery);
         if (fCat === fQuery || fCat.includes(fQuery)) {
           matchReason = `Category: ${p?.category}`;
-        } else if (scoreProduct(p, effectiveQuery) === 10) {
+        } else if (s === 10) {
           matchReason = "Description Match";
         }
 
@@ -1123,6 +1176,8 @@ export function searchWebsite(query, options = {}) {
   return {
     query: rawQuery,
     effectiveQuery,
+    isIndicSearch,
+    detectedLanguage,
     isAutoCorrected,
     autoCorrection: isAutoCorrected ? {
       original: rawQuery,

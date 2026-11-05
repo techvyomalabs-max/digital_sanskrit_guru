@@ -2,6 +2,7 @@
 
 
 const mongoose = require("mongoose");
+const { assignProductSlug } = require("../utils/productSlug");
 
 const reviewSchema = new mongoose.Schema({
   user: String,
@@ -196,6 +197,21 @@ const productSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true
+    },
+
+    // Link name used in the product URL: /product/<slug>. Filled in automatically from the name.
+    slug: {
+      type: String,
+      trim: true
+    },
+    // Earlier link names, so old shared links keep opening this product.
+    slugHistory: {
+      type: [String],
+      default: undefined
+    },
+    // ID of the product on the old WordPress site.
+    wpProductId: {
+      type: Number
     },
 
     price: {
@@ -495,5 +511,20 @@ productSchema.index({ rating: -1 });
 
 // 7. Popularity / total views sort
 productSchema.index({ views: -1 });
+
+// 8. Product links: /product/<slug>, plus old link names
+productSchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { slug: { $type: "string" } } });
+productSchema.index({ slugHistory: 1 });
+productSchema.index({ wpProductId: 1 }, { sparse: true });
+
+productSchema.post("init", function rememberSlug() {
+  this.$locals.savedSlug = this.slug || "";
+});
+
+// Gives every product a unique link name. A link name chosen by an admin is checked;
+// the previous one is kept in slugHistory so shared links still work.
+productSchema.pre("validate", async function assignSlug() {
+  await assignProductSlug(this, this.constructor);
+});
 
 module.exports = mongoose.model("Product", productSchema);
