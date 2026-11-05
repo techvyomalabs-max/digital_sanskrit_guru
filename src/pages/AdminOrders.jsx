@@ -980,7 +980,7 @@ function AdminOrders() {
                 <input
                   id="orders-search-input"
                   type="text"
-                  placeholder="Search by Order ID, customer name, email, product..."
+                  placeholder="Search by order ID (#A66A7B), invoice no., customer, email, product..."
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   aria-label="Search orders"
