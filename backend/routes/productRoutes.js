@@ -1432,9 +1432,9 @@ router.get("/recommend/:productId", async (req, res) => {
       });
     });
 
+    // Every product bought together with this one, most often first
     const sortedIds = Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
       .map((entry) => entry[0]);
 
     let products = [];
@@ -1449,33 +1449,19 @@ router.get("/recommend/:productId", async (req, res) => {
     const rank = new Map(sortedIds.map((id, index) => [id, index]));
     products.sort((a, b) => (rank.get(String(a._id)) ?? 999) - (rank.get(String(b._id)) ?? 999));
 
-    // Fallback 1: Same category
-    if (products.length < 4 && category) {
+    // Then every other product in the same category, newest first
+    if (category) {
       const existingIds = products.map((p) => String(p._id));
       existingIds.push(productId);
 
-      const categoryFallback = await Product.find({
+      const sameCategory = await Product.find({
         category: category,
         _id: { $nin: existingIds },
         isDeleted: { $ne: true },
         hideFromListings: { $ne: true }
-      }).limit(4 - products.length);
+      }).sort({ createdAt: -1 });
 
-      products = [...products, ...categoryFallback];
-    }
-
-    // Fallback 2: Any random recent products
-    if (products.length < 4) {
-      const existingIds = products.map((p) => String(p._id));
-      existingIds.push(productId);
-
-      const anyFallback = await Product.find({
-        _id: { $nin: existingIds },
-        isDeleted: { $ne: true },
-        hideFromListings: { $ne: true }
-      }).sort({ createdAt: -1 }).limit(4 - products.length);
-
-      products = [...products, ...anyFallback];
+      products = [...products, ...sameCategory];
     }
 
     const ranked = products.map((product) => ({
