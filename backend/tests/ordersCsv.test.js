@@ -12,24 +12,6 @@ describe("ordersCsv utility (pure)", async () => {
     ORDER_CSV_HEADERS
   } = await import("../../src/utils/ordersCsv.js");
 
-  it("header text matches spec character for character", () => {
-    const expectedHeaderStr =
-      "Order Number, Order Status, Order Date, First Name (Billing), Last Name (Billing), " +
-      "Address 1&2 (Billing), City (Billing), State Code (Billing), Country Code (Billing), " +
-      "Email (Billing), Phone (Billing), Product Name, billing code, Category, Quantity, " +
-      "Product Variation, Cart Discount Amount, Order Shipping Amount, Currency, Item Cost, " +
-      "Order Total Tax Amount, Order Total Amount, Line Discount, GST Rate %, Line Tax Amount, " +
-      "Basic Value (Before GST), Line Amount (Incl. GST)";
-
-    const expectedHeaders = expectedHeaderStr.split(", ");
-    assert.deepEqual(ORDER_CSV_HEADERS, expectedHeaders);
-
-    const csv = buildOrdersCsv([]);
-    const firstLine = csv.slice(1).split("\r\n")[0]; // slice off BOM
-    const headerCells = firstLine.split(",").map((c) => c.replace(/^"|"$/g, ""));
-    assert.deepEqual(headerCells, expectedHeaders);
-  });
-
   it("prepends the UTF-8 BOM (\\uFEFF)", () => {
     const csv = buildOrdersCsv([]);
     assert.equal(csv.startsWith("\uFEFF"), true);
@@ -156,182 +138,109 @@ describe("ordersCsv utility (pure)", async () => {
     assert.equal(resolveOrderStatus(orderF2, { getStatus, getPaymentStatus }), "Cancelled");
   });
 
-  it("handles order number modes (invoiceNumber default with fallback, and shortCode)", () => {
-    const orderWithInvoice = {
-      _id: "661234567890abcdef123456",
-      invoiceNumber: "INV-2026-001"
-    };
-    const orderWithoutInvoice = {
-      _id: "661234567890abcdef654321"
-    };
+});
 
-    // Default mode: invoiceNumber (uses invoiceNumber if present, fallback to slice(-6))
-    const csvDefault1 = buildOrdersCsv([orderWithInvoice]);
-    assert.match(csvDefault1, /"INV-2026-001"/);
+describe("orders CSV layout (matches the order page summary)", async () => {
+  const { buildOrdersCsv, ORDER_CSV_HEADERS, orderSummary } = await import("../../src/utils/ordersCsv.js");
+  const col = (name) => {
+    const i = ORDER_CSV_HEADERS.indexOf(name);
+    assert.ok(i >= 0, `column ${name}`);
+    return i;
+  };
+  const rowsOf = (orders, opts) =>
+    buildOrdersCsv(orders, opts).slice(1).split("\r\n").slice(1).map((l) => l.split(",").map((c) => c.replace(/^"|"$/g, "")));
 
-    const csvDefault2 = buildOrdersCsv([orderWithoutInvoice]);
-    assert.match(csvDefault2, /"654321"/);
+  // The example from the order page: Subtotal 218.64 + GST 30.36 + Delivery 28.32 = 277.32
+  const example = {
+    _id: "6aec0ec4adba49d272a66a7b",
+    invoiceNumber: "DSG/2026-27/0003",
+    createdAt: "2026-11-05T05:06:00Z",
+    status: "Pending",
+    paymentStatus: "Paid",
+    billing: { name: "Manjushree RJ", email: "m@example.com", phone: "8147682335", city: "Bengaluru", state: "Karnataka", country: "India" },
+    currencyDisplay: { currency: "INR", amount: 277.32 },
+    subtotal: 218.64, gstAmount: 30.36, deliveryCharge: 28.32, discount: 0, total: 277.32,
+    items: [
+      { name: "Saptaha Stotra Sangraha", category: "Book - Paperback", hsnSac: "4901", price: 99, quantity: 1,
+        tax: { discount: 0, taxable: 99, rate: 0, tax: 0, total: 99 } },
+      { name: "Web Version", category: "Web Version", hsnSac: "998433", price: 150, quantity: 1,
+        tax: { discount: 0, taxable: 119.64, rate: 18, tax: 30.36, total: 150 } }
+    ]
+  };
 
-    // shortCode mode: always slice(-6)
-    const csvShortCode = buildOrdersCsv([orderWithInvoice], {
-      config: { orderNumberMode: "shortCode" }
-    });
-    assert.match(csvShortCode, /"123456"/);
+  it("has clear, grouped column names", () => {
+    assert.deepEqual(ORDER_CSV_HEADERS.slice(0, 5), ["Invoice No", "Order ID", "Order Date (IST)", "Order Status", "Payment Status"]);
+    for (const h of ["Subtotal (Excl. GST)", "Discount", "Coupon Code", "GST", "Delivery", "Order Total", "Order Total INR"]) col(h);
+    const csv = buildOrdersCsv([]);
+    assert.equal(csv.slice(1).split("\r\n")[0].split(",").length, ORDER_CSV_HEADERS.length);
   });
 
-  it("prints order-level totals on the first row only and blanks them on subsequent rows", () => {
-    const sampleOrder = {
-      _id: "661234567890abcdef123456",
-      invoiceNumber: "INV-2026-089",
-      status: "Delivered",
-      paymentStatus: "Paid",
-      createdAt: "2026-10-16T10:30:00.000Z",
-      billing: {
-        name: "Abhishek Rao",
-        address: "123 Temple Road",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        email: "abhishek@example.com",
-        phone: "+919988776655"
-      },
-      discount: 50,
-      deliveryCharge: 80,
-      gstAmount: 18,
-      total: 1048,
-      items: [
-        {
-          name: "Sanskrit Grammar Book",
-          category: "Books",
-          quantity: 1,
-          price: 500
-        },
-        {
-          name: "Gita Study Guide",
-          category: "Scriptures",
-          quantity: 2,
-          price: 250
-        }
-      ]
-    };
-
-    const csv = buildOrdersCsv([sampleOrder], {
-      getStatus: (o) => o.status,
-      getPaymentStatus: (o) => o.paymentStatus
-    });
-    const lines = csv.slice(1).split("\r\n"); // Remove BOM and split
-    assert.equal(lines.length, 3); // 1 header + 2 items
-
-    const row1 = lines[1].split(",");
-    const row2 = lines[2].split(",");
-
-    // Row 1 checks:
-    // Order Number (invoiceNumber mode default)
-    assert.equal(row1[0], "\"INV-2026-089\"");
-    // Status
-    assert.equal(row1[1], "\"Delivered\"");
-    // Names
-    assert.equal(row1[3], "\"Abhishek\"");
-    assert.equal(row1[4], "\"Rao\"");
-    // State Code & Country Code
-    assert.equal(row1[7], "\"KA\"");
-    assert.equal(row1[8], "\"IN\"");
-    // Phone (not prefixed by formula guard)
-    assert.equal(row1[10], "\"+919988776655\"");
-    // Product 1
-    assert.equal(row1[11], "\"Sanskrit Grammar Book\"");
-    assert.equal(row1[12], "\"4901\""); // Book HSN
-    assert.equal(row1[14], "\"1\""); // Qty
-    // Order Totals present on row 1
-    assert.equal(row1[16], "\"50.00\""); // Cart Discount
-    assert.equal(row1[17], "\"80.00\""); // Shipping
-    assert.equal(row1[18], "\"INR\"");   // Currency
-    assert.equal(row1[19], "\"500.00\""); // Item Cost
-    assert.equal(row1[20], "\"18.00\""); // Tax
-    assert.equal(row1[21], "\"1048.00\""); // Total
-
-    // Row 2 checks:
-    // Same Order Number and customer info
-    assert.equal(row2[0], "\"INV-2026-089\"");
-    assert.equal(row2[11], "\"Gita Study Guide\"");
-    assert.equal(row2[12], "\"4901\"");
-    assert.equal(row2[14], "\"2\"");
-    assert.equal(row2[19], "\"250.00\"");
-    // Order Totals blanked on row 2
-    assert.equal(row2[16], "\"\"");
-    assert.equal(row2[17], "\"\"");
-    assert.equal(row2[18], "\"INR\"");
-    assert.equal(row2[20], "\"\"");
-    assert.equal(row2[21], "\"\"");
+  it("shows the order summary exactly as on the order page", () => {
+    const [row] = rowsOf([example]);
+    assert.equal(row[col("Subtotal (Excl. GST)")], "218.64");
+    assert.equal(row[col("GST")], "30.36");
+    assert.equal(row[col("Delivery")], "28.32");
+    assert.equal(row[col("Order Total")], "277.32");
+    assert.equal(row[col("Discount")], "0.00");
+    const s = orderSummary(example);
+    assert.equal(Math.round((s.subtotal + s.gst + s.delivery) * 100) / 100, s.total, "subtotal + GST + delivery = total");
   });
 
-  it("handles combo / bundle variation string correctly and resolves US state", () => {
-    const bundleOrder = {
-      _id: "661234567890abcdef999999",
-      invoiceNumber: "INV-2026-999",
-      paymentStatus: "Paid",
-      createdAt: "2026-10-16T12:00:00.000Z",
-      billing: {
-        name: "John Doe",
-        state: "California",
-        country: "United States"
-      },
-      currencyDisplay: { currency: "USD" },
-      total: 75.0,
-      items: [
-        {
-          name: "Sanskrit Starter Combo",
-          productType: "bundle",
-          category: "Combo",
-          quantity: 1,
-          price: 75.0,
-          bundleItems: [
-            { name: "Grammar Vol 1", quantity: 1 },
-            { name: "Workbook", quantity: 2 }
-          ]
-        }
-      ]
-    };
+  it("item subtotals add up to the order subtotal, item GST to the items' GST", () => {
+    const rows = rowsOf([example]);
+    const sum = (h) => Math.round(rows.reduce((a, r) => a + Number(r[col(h)]), 0) * 100) / 100;
+    assert.equal(sum("Item Subtotal (Excl. GST)"), 218.64);
+    assert.equal(sum("Item GST"), 30.36);
+    assert.equal(rows[1][col("GST Rate %")], "18");
+  });
 
-    const csv = buildOrdersCsv([bundleOrder], {
-      getStatus: () => "Completed",
-      getPaymentStatus: () => "Paid"
-    });
-    const lines = csv.slice(1).split("\r\n");
-    const row = lines[1].split(",");
+  it("prints the summary on the first row of each order only; order and customer on every row", () => {
+    const rows = rowsOf([example]);
+    assert.equal(rows[1][col("Order Total")], "");
+    assert.equal(rows[1][col("Subtotal (Excl. GST)")], "");
+    assert.equal(rows[1][col("Invoice No")], "DSG/2026-27/0003");
+    assert.equal(rows[1][col("Customer Name")], "Manjushree RJ");
+  });
 
-    assert.equal(row[0], "\"INV-2026-999\"");
-    assert.equal(row[8], "\"US\"");
-    assert.equal(row[7], "\"CA\""); // California mapped to CA
-    assert.equal(row[11], "\"Sanskrit Starter Combo\"");
-    assert.equal(row[15], "\"Includes: Grammar Vol 1 x1; Workbook x2\"");
-    assert.equal(row[18], "\"USD\"");
-    assert.equal(row[19], "\"75.00\"");
+  it("shows the discount separately, with the coupon code", () => {
+    const [row] = rowsOf([{ ...example, discount: 25, couponCode: "DIWALI10", subtotal: 193.64, total: 252.32 }]);
+    assert.equal(row[col("Discount")], "25.00");
+    assert.equal(row[col("Coupon Code")], "DIWALI10");
+    assert.equal(row[col("Subtotal (Excl. GST)")], "193.64");
+  });
+
+  it("uses the invoice number and the short order ID shown on the Orders page", () => {
+    const [row] = rowsOf([example]);
+    assert.equal(row[col("Invoice No")], "DSG/2026-27/0003");
+    assert.equal(row[col("Order ID")], "#A66A7B");
+    const [unpaid] = rowsOf([{ ...example, invoiceNumber: "", paymentStatus: "Failed" }]);
+    assert.equal(unpaid[col("Invoice No")], "");
+    assert.equal(unpaid[col("Payment Status")], "Failed");
+  });
+
+  it("gives the summary in INR at the order's own rate for foreign-currency orders", () => {
+    const [row] = rowsOf([{
+      _id: "x1", subtotal: 10, gstAmount: 0, deliveryCharge: 0, discount: 0, total: 10, totalInInr: 840, fxRateToInr: 84,
+      currencyDisplay: { currency: "USD", amount: 10 },
+      items: [{ name: "Web", price: 10, quantity: 1, tax: { discount: 0, taxable: 10, rate: 0, tax: 0, total: 10 } }]
+    }]);
+    assert.equal(row[col("Currency")], "USD");
+    assert.equal(row[col("Order Total")], "10.00");
+    assert.equal(row[col("FX Rate To INR")], "84.000000");
+    assert.equal(row[col("Subtotal (Excl. GST) INR")], "840.00");
+    assert.equal(row[col("Order Total INR")], "840.00");
+  });
+
+  it("an order with no items still gets one row with its summary", () => {
+    const rows = rowsOf([{ ...example, items: [] }]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0][col("Order Total")], "277.32");
+    assert.equal(rows[0][col("Product Name")], "");
   });
 });
 
 describe("orders CSV: tax and basic value per line", async () => {
-  const { buildOrdersCsv, orderLineTaxes, ORDER_CSV_HEADERS } = await import("../../src/utils/ordersCsv.js");
-  const col = (name) => ORDER_CSV_HEADERS.indexOf(name);
-  const cells = (line) => line.split(",").map((c) => c.replace(/^"|"$/g, ""));
-
-  it("uses the tax saved on each line at checkout", () => {
-    const order = {
-      _id: "6aec0ec4adba49d272a66a7b",
-      invoiceNumber: "DSG/2026-27/0002",
-      items: [
-        { name: "Web Version", price: 118, quantity: 2, tax: { gross: 236, discount: 0, taxable: 200, rate: 18, tax: 36, total: 236 } },
-        { name: "Paperback", price: 99, quantity: 1, tax: { gross: 99, discount: 0, taxable: 99, rate: 0, tax: 0, total: 99 } }
-      ]
-    };
-    const rows = buildOrdersCsv([order]).slice(1).split("\r\n").slice(1).map(cells);
-    assert.equal(rows[0][col("Line Tax Amount")], "36.00");
-    assert.equal(rows[0][col("Basic Value (Before GST)")], "200.00");
-    assert.equal(rows[0][col("Line Amount (Incl. GST)")], "236.00");
-    assert.equal(rows[0][col("GST Rate %")], "18");
-    assert.equal(rows[1][col("Basic Value (Before GST)")], "99.00");
-    assert.equal(rows[1][col("Line Tax Amount")], "0.00");
-  });
+  const { orderLineTaxes } = await import("../../src/utils/ordersCsv.js");
 
   it("basic value = item cost x quantity - discount - tax", () => {
     const [line] = orderLineTaxes({ items: [{ price: 118, quantity: 3, tax: { discount: 54, taxable: 254.24, tax: 45.76, total: 300, rate: 18 } }] });
