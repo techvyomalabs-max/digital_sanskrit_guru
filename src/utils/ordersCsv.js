@@ -7,41 +7,62 @@ import { getItemHsnSac } from "./tax.js";
 
 export const FORMAT_CONFIG = {
   orderTotalsOnFirstRowOnly: true,
-  orderNumberMode: "invoiceNumber", // "invoiceNumber" (default) | "shortCode"
   dateFormat: "DD-MM-YYYY HH:mm", // 24h IST
   variationMode: "bundleOrFormat"
 };
 
+/**
+ * Columns, in groups:
+ *   Order    – invoice and order references, date, status
+ *   Customer – billing name, contact and address
+ *   Item     – one row per product, with its own GST split
+ *   Summary  – the order summary exactly as on the order page (first row of each order):
+ *              Subtotal (Excl. GST) + GST + Delivery = Order Total.
+ *              The subtotal is after discount; the Discount column shows how much was taken off.
+ *   INR      – the summary in INR at the order's own exchange rate (as in the finance reports)
+ */
 export const ORDER_CSV_HEADERS = [
-  "Order Number",
+  // Order
+  "Invoice No",
+  "Order ID",
+  "Order Date (IST)",
   "Order Status",
-  "Order Date",
-  "First Name (Billing)",
-  "Last Name (Billing)",
-  "Address 1&2 (Billing)",
-  "City (Billing)",
-  "State Code (Billing)",
-  "Country Code (Billing)",
-  "Email (Billing)",
-  "Phone (Billing)",
+  "Payment Status",
+  // Customer
+  "Customer Name",
+  "Email",
+  "Phone",
+  "Address",
+  "City",
+  "State Code",
+  "Country Code",
+  // Item
   "Product Name",
-  "billing code",
   "Category",
+  "Format / Includes",
+  "HSN/SAC",
   "Quantity",
-  "Product Variation",
-  "Cart Discount Amount",
-  "Order Shipping Amount",
-  "Currency",
-  "Item Cost",
-  "Order Total Tax Amount",
-  "Order Total Amount",
-  // Per line, as charged at checkout (the same figures as the tax invoice):
-  // Line Amount = Item Cost x Quantity - Line Discount; Basic Value = Line Amount - Line Tax
-  "Line Discount",
+  "Unit Price (Incl. GST)",
+  "Item Discount",
   "GST Rate %",
-  "Line Tax Amount",
-  "Basic Value (Before GST)",
-  "Line Amount (Incl. GST)"
+  "Item Subtotal (Excl. GST)",
+  "Item GST",
+  "Item Total (Incl. GST)",
+  // Summary (as on the order page)
+  "Currency",
+  "Subtotal (Excl. GST)",
+  "Discount",
+  "Coupon Code",
+  "GST",
+  "Delivery",
+  "Order Total",
+  // INR
+  "FX Rate To INR",
+  "Subtotal (Excl. GST) INR",
+  "Discount INR",
+  "GST INR",
+  "Delivery INR",
+  "Order Total INR"
 ];
 
 // Mapping of all Indian states and Union Territories to their 2-letter postal/GST codes
@@ -369,6 +390,51 @@ export function orderLineTaxes(order) {
   });
 }
 
+/**
+ * The order's exchange rate to INR, as the finance reports use it: 1 for INR orders, else the
+ * rate saved at payment, else the saved INR total / total, else 1.
+ */
+export function orderFxToInr(order) {
+  const currency = String(order?.currencyDisplay?.currency || "INR").trim().toUpperCase();
+  if (!currency || currency === "INR") return 1;
+  const fx = Number(order?.fxRateToInr);
+  if (Number.isFinite(fx) && fx > 0) return fx;
+  const totalInInr = Number(order?.totalInInr);
+  const total = Number(order?.total);
+  if (Number.isFinite(totalInInr) && totalInInr > 0 && Number.isFinite(total) && total > 0) return totalInInr / total;
+  return 1;
+}
+
+/**
+ * The order summary as the order page shows it: Subtotal (Excl. GST) + GST + Delivery = Total,
+ * with the discount (already taken off the subtotal) shown on its own.
+ */
+export function orderSummary(order) {
+  const gst =
+    order?.gstAmount !== undefined && order?.gstAmount !== null
+      ? Number(order.gstAmount) || 0
+      : Number(order?.taxDetails?.cgstAmount || 0) + Number(order?.taxDetails?.sgstAmount || 0) + Number(order?.taxDetails?.igstAmount || 0);
+  const summary = {
+    subtotal: round2(order?.subtotal),
+    discount: round2(order?.discount),
+    gst: round2(gst),
+    delivery: round2(order?.deliveryCharge),
+    total: round2(order?.total)
+  };
+  const fx = orderFxToInr(order);
+  const inr = (v) => round2((Number(v) || 0) * fx);
+  const savedInr = Number(order?.totalInInr);
+  summary.fx = fx;
+  summary.inr = {
+    subtotal: inr(summary.subtotal),
+    discount: inr(summary.discount),
+    gst: inr(summary.gst),
+    delivery: inr(summary.delivery),
+    total: Number.isFinite(savedInr) && savedInr > 0 ? round2(savedInr) : inr(summary.total)
+  };
+  return summary;
+}
+
 export function resolveOrderStatus(order, { getStatus, getPaymentStatus } = {}) {
   if (!order) return "";
 
@@ -417,135 +483,80 @@ export function buildOrdersCsv(orders = [], options = {}) {
   const getStatus = options?.getStatus || ((order) => order?.status || "");
   const getPaymentStatus = options?.getPaymentStatus || ((order) => order?.paymentStatus || "");
   const config = { ...FORMAT_CONFIG, ...(options?.config || {}) };
+  const text = (v) => escapeCsvCell(v ?? "", false);
+  const num = (v) => escapeCsvCell(v === "" ? "" : formatMoney(v), true);
 
   const lines = [ORDER_CSV_HEADERS.map((h) => escapeCsvCell(h, false)).join(",")];
 
   for (const order of orders) {
     if (!order) continue;
 
-    const orderNumber =
-      config.orderNumberMode === "shortCode"
-        ? String(order._id || "").slice(-6).toUpperCase()
-        : order.invoiceNumber
-          ? String(order.invoiceNumber)
-          : String(order._id || "").slice(-6).toUpperCase();
-
-    const orderStatus = resolveOrderStatus(order, { getStatus, getPaymentStatus });
-    const orderDate = formatIstDateTime(order.createdAt);
-
+    const shortId = `#${String(order._id || "").slice(-6).toUpperCase()}`;
     const billing = order.billing || {};
     const shipping = order.shipping || {};
     const user = order.user || {};
-
-    const rawFullName = billing.name || shipping.name || user.name || "";
-    const { firstName, lastName } = splitName(rawFullName);
-
-    const address = billing.address || shipping.address || "";
-    const city = billing.city || shipping.city || "";
-    const stateCode = resolveStateCode(billing.state || shipping.state || "");
-    const countryCode = resolveCountryCode(billing.country || shipping.country || "");
-    const email = billing.email || user.email || "";
-    const phone = billing.phone || shipping.phone || "";
-
     const items = Array.isArray(order.items) ? order.items : [];
-    const currency = String(
-      order.currencyDisplay?.currency ||
-      (items[0]?.currency) ||
-      "INR"
-    ).toUpperCase();
+    const currency = String(order.currencyDisplay?.currency || items[0]?.currency || "INR").toUpperCase();
+    const summary = orderSummary(order);
 
-    const discountAmount = formatMoney(order.discount ?? 0);
-    const shippingAmount = formatMoney(order.deliveryCharge ?? 0);
-    const taxAmount = formatMoney(
-      order.gstAmount !== undefined && order.gstAmount !== null
-        ? order.gstAmount
-        : Number(order?.taxDetails?.cgstAmount || 0) +
-          Number(order?.taxDetails?.sgstAmount || 0) +
-          Number(order?.taxDetails?.igstAmount || 0)
-    );
-    const totalAmount = formatMoney(order.total ?? 0);
+    const orderCells = [
+      text(order.invoiceNumber ? String(order.invoiceNumber) : ""),
+      text(shortId),
+      text(formatIstDateTime(order.createdAt)),
+      text(resolveOrderStatus(order, { getStatus, getPaymentStatus })),
+      text(getPaymentStatus(order) || order.paymentStatus || ""),
+      text(billing.name || shipping.name || user.name || ""),
+      text(billing.email || user.email || ""),
+      text(billing.phone || shipping.phone || ""),
+      text(billing.address || shipping.address || ""),
+      text(billing.city || shipping.city || ""),
+      text(resolveStateCode(billing.state || shipping.state || "")),
+      text(resolveCountryCode(billing.country || shipping.country || ""))
+    ];
+    const summaryCells = (show) => [
+      text(currency),
+      num(show ? summary.subtotal : ""),
+      num(show ? summary.discount : ""),
+      text(show ? order.couponCode || "" : ""),
+      num(show ? summary.gst : ""),
+      num(show ? summary.delivery : ""),
+      num(show ? summary.total : ""),
+      escapeCsvCell(show ? summary.fx.toFixed(6) : "", true),
+      num(show ? summary.inr.subtotal : ""),
+      num(show ? summary.inr.discount : ""),
+      num(show ? summary.inr.gst : ""),
+      num(show ? summary.inr.delivery : ""),
+      num(show ? summary.inr.total : "")
+    ];
 
     if (items.length === 0) {
-      // Orders with no items get one row with blank product columns
-      const row = [
-        escapeCsvCell(orderNumber, false),
-        escapeCsvCell(orderStatus, false),
-        escapeCsvCell(orderDate, false),
-        escapeCsvCell(firstName, false),
-        escapeCsvCell(lastName, false),
-        escapeCsvCell(address, false),
-        escapeCsvCell(city, false),
-        escapeCsvCell(stateCode, false),
-        escapeCsvCell(countryCode, false),
-        escapeCsvCell(email, false),
-        escapeCsvCell(phone, false),
-        escapeCsvCell("", false), // Product Name
-        escapeCsvCell("", false), // billing code
-        escapeCsvCell("", false), // Category
-        escapeCsvCell("", true),  // Quantity
-        escapeCsvCell("", false), // Product Variation
-        escapeCsvCell(discountAmount, true),
-        escapeCsvCell(shippingAmount, true),
-        escapeCsvCell(currency, false),
-        escapeCsvCell("", true),  // Item Cost
-        escapeCsvCell(taxAmount, true),
-        escapeCsvCell(totalAmount, true),
-        escapeCsvCell("", true), // Line Discount
-        escapeCsvCell("", false), // GST Rate %
-        escapeCsvCell("", true), // Line Tax Amount
-        escapeCsvCell("", true), // Basic Value
-        escapeCsvCell("", true) // Line Amount
-      ];
-      lines.push(row.join(","));
-    } else {
-      const lineTaxes = orderLineTaxes(order);
-      items.forEach((item, itemIndex) => {
-        const isFirst = itemIndex === 0;
-        const includeTotals = !config.orderTotalsOnFirstRowOnly || isFirst;
-
-        const productName = item?.name || "";
-        const billingCode = getItemHsnSac(item);
-        const category = item?.category || "";
-        const quantity =
-          item?.quantity !== undefined && item?.quantity !== null ? item.quantity : 1;
-        const productVariation = getItemProductVariation(item);
-        const itemCost = formatMoney(item?.price ?? 0);
-        const line = lineTaxes[itemIndex];
-
-        const row = [
-          escapeCsvCell(orderNumber, false),
-          escapeCsvCell(orderStatus, false),
-          escapeCsvCell(orderDate, false),
-          escapeCsvCell(firstName, false),
-          escapeCsvCell(lastName, false),
-          escapeCsvCell(address, false),
-          escapeCsvCell(city, false),
-          escapeCsvCell(stateCode, false),
-          escapeCsvCell(countryCode, false),
-          escapeCsvCell(email, false),
-          escapeCsvCell(phone, false),
-          escapeCsvCell(productName, false),
-          escapeCsvCell(billingCode, false),
-          escapeCsvCell(category, false),
-          escapeCsvCell(quantity, true),
-          escapeCsvCell(productVariation, false),
-          escapeCsvCell(includeTotals ? discountAmount : "", true),
-          escapeCsvCell(includeTotals ? shippingAmount : "", true),
-          escapeCsvCell(currency, false),
-          escapeCsvCell(itemCost, true),
-          escapeCsvCell(includeTotals ? taxAmount : "", true),
-          escapeCsvCell(includeTotals ? totalAmount : "", true),
-          escapeCsvCell(formatMoney(line.discount), true),
-          escapeCsvCell(String(line.rate), false),
-          escapeCsvCell(formatMoney(line.tax), true),
-          escapeCsvCell(formatMoney(line.taxable), true),
-          escapeCsvCell(formatMoney(line.total), true)
-        ];
-        lines.push(row.join(","));
-      });
+      const blankItem = Array(11).fill(text(""));
+      lines.push([...orderCells, ...blankItem, ...summaryCells(true)].join(","));
+      continue;
     }
+
+    const lineTaxes = orderLineTaxes(order);
+    items.forEach((item, itemIndex) => {
+      const line = lineTaxes[itemIndex];
+      const showSummary = !config.orderTotalsOnFirstRowOnly || itemIndex === 0;
+      const quantity = item?.quantity !== undefined && item?.quantity !== null ? item.quantity : 1;
+      const itemCells = [
+        text(item?.name || ""),
+        text(item?.category || ""),
+        text(getItemProductVariation(item)),
+        text(getItemHsnSac(item)),
+        escapeCsvCell(quantity, true),
+        num(item?.price ?? 0),
+        num(line.discount),
+        text(String(line.rate)),
+        num(line.taxable),
+        num(line.tax),
+        num(line.total)
+      ];
+      lines.push([...orderCells, ...itemCells, ...summaryCells(showSummary)].join(","));
+    });
   }
 
-  // Prepend UTF-8 BOM (\uFEFF) for proper Excel UTF-8 decoding
+  // UTF-8 BOM (\uFEFF) so Excel reads the file as UTF-8
   return "\uFEFF" + lines.join("\r\n");
 }
