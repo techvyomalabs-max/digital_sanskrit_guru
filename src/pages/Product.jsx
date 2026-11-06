@@ -839,7 +839,7 @@ function Product() {
 
       const recRes = await axios.get(`/api/products/recommend/${found._id}`).catch(() => ({ data: [] }));
       const recommended = Array.isArray(recRes.data) ? recRes.data : [];
-      setRelatedProducts(recommended.filter((p) => String(p?._id) !== String(found._id)).slice(0, 4));
+      setRelatedProducts(recommended.filter((p) => String(p?._id) !== String(found._id)));
     } catch {
       setProduct(null);
       setManagedRelatedProducts([]);
@@ -860,7 +860,8 @@ function Product() {
     let cancelled = false;
     fetchPublicCatalog()
       .then((catalog) => {
-        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, 8));
+        // Every product that matches (no limit)
+        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, Infinity));
       })
       .catch(() => { });
     return () => {
