@@ -1,6 +1,9 @@
 const axios = require("axios");
 const StoreSettings = require("../models/StoreSettings");
 
+// Meta Graph API version. Override with WHATSAPP_GRAPH_VERSION when Meta retires this one.
+const GRAPH_API_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v23.0";
+
 /**
  * Clean phone number for WhatsApp Graph API (must include country code without + or spaces)
  */
@@ -60,7 +63,7 @@ async function sendWhatsAppOrderConfirmation(order) {
       }
     };
 
-    const url = `https://graph.facebook.com/v19.0/${ws.metaPhoneNumberId}/messages`;
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${ws.metaPhoneNumberId}/messages`;
     const response = await axios.post(url, payload, {
       headers: {
         Authorization: `Bearer ${ws.metaAccessToken}`,
@@ -104,7 +107,7 @@ async function sendWhatsAppOtp(phone, otp) {
       return { success: false, error: "WhatsApp OTP delivery is not configured." };
     }
 
-    const url = `https://graph.facebook.com/v19.0/${ws.metaPhoneNumberId}/messages`;
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${ws.metaPhoneNumberId}/messages`;
     const templatePayload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
