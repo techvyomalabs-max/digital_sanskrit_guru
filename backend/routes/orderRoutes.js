@@ -1890,17 +1890,37 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     if (isDuplicatePaymentIdError(err)) {
       return res.status(409).json({ message: "This payment reference has already been applied to another order." });
     }
-    throw err;
+    if (!verifiedPayment) throw err;
+    // The money was taken but the order couldn't be updated: say so, and log it for reconciling.
+    console.error("[Order] Payment verified but order save failed", {
+      orderId: String(order._id),
+      razorpayPaymentId,
+      error: err?.stack || err?.message || err
+    });
+    return res.status(500).json({
+      message: "Your payment was received, but we couldn't update the order. Please don't pay again — our team will confirm it shortly.",
+      code: "ORDER_UPDATE_FAILED_AFTER_PAYMENT",
+      razorpayPaymentId
+    });
   }
 
   if (rawPaymentStatus === "Paid") {
-    const stockRes = await reserveStockForOrder(updated._id);
-    if (stockRes && !stockRes.ok) {
-      console.warn(`[Order] Oversold warning for order ${updated._id}:`, stockRes.outOfStock);
-      await Order.updateOne({ _id: updated._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
+    // The order is already saved as paid, so a problem here must not fail the request.
+    try {
+      const stockRes = await reserveStockForOrder(updated._id);
+      if (stockRes && !stockRes.ok) {
+        console.warn(`[Order] Oversold warning for order ${updated._id}:`, stockRes.outOfStock);
+        await Order.updateOne({ _id: updated._id }, { $set: { stockIssue: true, stockIssueDetails: stockRes.outOfStock } });
+      }
+    } catch (stockErr) {
+      console.error(`[Order] Stock reservation failed for paid order ${updated._id}:`, stockErr?.stack || stockErr);
     }
-    const issued = await issueGiftPassesForOrder(updated._id);
-    emailIssuedGiftPasses(updated, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
+    try {
+      const issued = await issueGiftPassesForOrder(updated._id);
+      emailIssuedGiftPasses(updated, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
+    } catch (passErr) {
+      console.error(`[GiftPass] Issuing passes failed for paid order ${updated._id}:`, passErr?.stack || passErr);
+    }
   }
 
   if (!isOwner && isAdmin) {

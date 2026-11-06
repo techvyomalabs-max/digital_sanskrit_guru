@@ -47,6 +47,7 @@ describe("Order invoice number on save", () => {
       seen.push(filter._id);
       return Promise.resolve({ _id: filter._id, seq: 7 });
     });
+    mock.method(Order, "exists", () => Promise.resolve(null));
     const order = new Order({ items: [], total: 100, paymentStatus: "Paid" });
     await Order.schema.s.hooks.execPre("save", order, []);
     assert.match(order.invoiceNumber, /^DSG\/\d{4}-\d{2}\/0007$/);
@@ -73,6 +74,29 @@ describe("Order invoice number on save", () => {
     const old = new Order({ items: [], total: 100, paymentStatus: "Paid", invoiceNumber: "DSG-2026-0412" });
     await Order.schema.s.hooks.execPre("save", old, []);
     assert.equal(old.invoiceNumber, "DSG-2026-0412");
+    mock.restoreAll();
+  });
+
+  it("skips past numbers already used when the counter has fallen behind", async () => {
+    const { mock } = require("node:test");
+    const mongoose = require("mongoose");
+    const Order = require("../models/Order");
+    const Counter = mongoose.model("Counter");
+    const fy = financialYearOf(new Date()).label;
+    const used = new Set([`DSG/${fy}/0003`, `DSG/${fy}/0004`, `DSG/${fy}/0012`]);
+    let seq = 2; // behind: 3, 4 and 12 are already taken
+    mock.method(Counter, "findByIdAndUpdate", (filter) => Promise.resolve({ _id: filter._id, seq: ++seq }));
+    mock.method(Counter, "updateOne", (_f, update) => {
+      seq = Math.max(seq, update.$max.seq);
+      return Promise.resolve({});
+    });
+    mock.method(Order, "exists", (q) => Promise.resolve(used.has(q.invoiceNumber) ? { _id: "x" } : null));
+    mock.method(Order, "find", () => ({
+      select: () => ({ lean: () => Promise.resolve([...used].map((invoiceNumber) => ({ invoiceNumber }))) })
+    }));
+    const order = new Order({ items: [], total: 100, paymentStatus: "Paid" });
+    await Order.schema.s.hooks.execPre("save", order, []);
+    assert.equal(order.invoiceNumber, `DSG/${fy}/0013`);
     mock.restoreAll();
   });
 });

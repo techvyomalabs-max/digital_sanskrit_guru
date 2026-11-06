@@ -21,6 +21,7 @@ function mockCounters() {
     seqs.set(filter._id, seq);
     return Promise.resolve({ _id: filter._id, seq });
   });
+  mock.method(Order, "exists", () => Promise.resolve(null));
   return asked;
 }
 

@@ -612,8 +612,8 @@ function MyOrders() {
             });
             await loadOrders();
             showToast("Payment successful! Order is confirmed.", "success");
-          } catch {
-            setPageMessage("Unable to finalize payment.");
+          } catch (finalizeErr) {
+            setPageMessage(finalizeErr?.response?.data?.message || "Unable to finalize payment.");
           }
         },
         theme: {

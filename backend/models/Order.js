@@ -458,6 +458,28 @@ function nextNumber(counterId) {
   ).then((counter) => counter.seq);
 }
 
+/**
+ * Next unused invoice number for the year of `now`. If the counter has fallen behind the
+ * numbers already given out (e.g. a copied or restored database), it is moved past the
+ * highest one in use instead of handing out a duplicate, which would fail the save.
+ */
+async function nextFreeInvoiceNumber(OrderModel, now) {
+  const counterId = invoiceCounterId(now);
+  const prefix = formatInvoiceNumber(now, 1).slice(0, -4); // "DSG/2026-27/"
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const number = formatInvoiceNumber(now, await nextNumber(counterId));
+    if (!(await OrderModel.exists({ invoiceNumber: number }))) return number;
+
+    const highest = await OrderModel.find({ invoiceNumber: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\d+$` } })
+      .select("invoiceNumber")
+      .lean();
+    const maxSeq = highest.reduce((max, o) => Math.max(max, Number(String(o.invoiceNumber).slice(prefix.length)) || 0), 0);
+    console.warn(`[Invoice] Counter ${counterId} was behind (gave ${number}); moving it to ${maxSeq}`);
+    await Counter.updateOne({ _id: counterId }, { $max: { seq: maxSeq } }, { upsert: true });
+  }
+  throw new Error(`Could not find a free invoice number for ${counterId}`);
+}
+
 orderSchema.pre("save", async function() {
   const self = this;
   const now = new Date();
@@ -472,7 +494,7 @@ orderSchema.pre("save", async function() {
     // GST invoice number by financial year in India time, e.g. DSG/2026-27/0001.
     // Each financial year has its own counter, so the number restarts at 0001 every 1 April.
     self.invoiceIssuedAt = now;
-    self.invoiceNumber = formatInvoiceNumber(now, await nextNumber(invoiceCounterId(now)));
+    self.invoiceNumber = await nextFreeInvoiceNumber(self.constructor, now);
   }
 
   // Each refund recorded gets a credit note number from its own series, in the order the
