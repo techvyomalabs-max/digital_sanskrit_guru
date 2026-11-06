@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { fetchPublicCatalog } from "../../utils/productCatalog";
@@ -50,7 +50,7 @@ import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/se
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
 import { productPath } from "../../utils/productLink";
-import VoiceSearchModal from "../common/VoiceSearchModal";
+const VoiceSearchModal = lazy(() => import("../common/VoiceSearchModal"));
 
 const SEARCH_SUGGESTION_DELAY_MS = 120;
 
@@ -869,11 +869,15 @@ function Navbar({ bannerActive = false }) {
                   </div>
                 )}
 
-                <VoiceSearchModal
-                  isOpen={isVoiceSearchOpen}
-                  onClose={() => setIsVoiceSearchOpen(false)}
-                  onTranscript={handleVoiceTranscript}
-                />
+                {isVoiceSearchOpen && (
+                  <Suspense fallback={null}>
+                    <VoiceSearchModal
+                      isOpen={isVoiceSearchOpen}
+                      onClose={() => setIsVoiceSearchOpen(false)}
+                      onTranscript={handleVoiceTranscript}
+                    />
+                  </Suspense>
+                )}
               </div>
 
               <div className="navbar-right">
