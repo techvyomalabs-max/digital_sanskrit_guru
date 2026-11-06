@@ -42,7 +42,9 @@ export default function VoiceSearchModal({ isOpen, onClose, onTranscript }) {
   const [isSupported, setIsSupported] = useState(true);
 
   const recognitionRef = useRef(null);
-  const isManuallyStoppedRef = useRef(false);
+  const switchTimeoutRef = useRef(null);
+  const selectedLangRef = useRef(selectedLang);
+  selectedLangRef.current = selectedLang;
 
   // Check speech recognition support
   const getSpeechRecognition = useCallback(() => {
@@ -50,118 +52,153 @@ export default function VoiceSearchModal({ isOpen, onClose, onTranscript }) {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
   }, []);
 
+  // Safely stop existing recognition and detach all event listeners
   const stopListening = useCallback(() => {
-    isManuallyStoppedRef.current = true;
+    if (switchTimeoutRef.current) {
+      clearTimeout(switchTimeoutRef.current);
+      switchTimeoutRef.current = null;
+    }
     if (recognitionRef.current) {
+      const rec = recognitionRef.current;
+      recognitionRef.current = null;
+      // Strip listeners before aborting so no abort error fires into state
+      rec.onstart = null;
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
       try {
-        recognitionRef.current.abort();
+        rec.abort();
       } catch {
         // ignore
       }
-      recognitionRef.current = null;
     }
     setIsListening(false);
   }, []);
 
-  const startListening = useCallback((langCode) => {
-    stopListening();
-    setErrorMessage("");
-    setTranscript("");
-    setInterimTranscript("");
+  const startListening = useCallback(
+    (langCode) => {
+      stopListening();
+      setErrorMessage("");
+      setTranscript("");
+      setInterimTranscript("");
 
-    const SpeechRecognition = getSpeechRecognition();
-    if (!SpeechRecognition) {
-      setIsSupported(false);
-      setErrorMessage("Voice search is not supported by your browser. Please use Chrome, Edge, or a Web Speech-enabled browser.");
-      return;
-    }
+      const SpeechRecognition = getSpeechRecognition();
+      if (!SpeechRecognition) {
+        setIsSupported(false);
+        setErrorMessage(
+          "Voice search is not supported by your browser. Please use Chrome, Edge, or a Web Speech-enabled browser."
+        );
+        return;
+      }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      isManuallyStoppedRef.current = false;
+      try {
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
 
-      // Select proper language code for speech engine
-      const langConfig = VOICE_LANGUAGES.find((l) => l.code === langCode);
-      recognition.lang = langConfig?.speechCode || langCode || "en-IN";
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+        // Select proper language code for speech engine
+        const langConfig = VOICE_LANGUAGES.find((l) => l.code === langCode);
+        recognition.lang = langConfig?.speechCode || langCode || "en-IN";
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => {
-        setIsListening(true);
-        setErrorMessage("");
-      };
+        recognition.onstart = () => {
+          setIsListening(true);
+          setErrorMessage("");
+        };
 
-      recognition.onresult = (event) => {
-        let currentInterim = "";
-        let finalTrans = "";
+        recognition.onresult = (event) => {
+          let currentInterim = "";
+          let finalTrans = "";
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const item = event.results[i];
-          if (item.isFinal) {
-            finalTrans += item[0].transcript;
-          } else {
-            currentInterim += item[0].transcript;
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const item = event.results[i];
+            if (item.isFinal) {
+              finalTrans += item[0].transcript;
+            } else {
+              currentInterim += item[0].transcript;
+            }
           }
-        }
 
-        if (currentInterim) {
-          setInterimTranscript(currentInterim);
-        }
+          if (currentInterim) {
+            setInterimTranscript(currentInterim);
+          }
 
-        if (finalTrans) {
-          const clean = finalTrans.trim();
-          setTranscript(clean);
-          setInterimTranscript("");
+          if (finalTrans) {
+            const clean = finalTrans.trim();
+            setTranscript(clean);
+            setInterimTranscript("");
+            setIsListening(false);
+            if (clean && onTranscript) {
+              setTimeout(() => {
+                onTranscript(clean);
+                onClose();
+              }, 500);
+            }
+          }
+        };
+
+        recognition.onerror = (event) => {
+          // 'aborted' is expected when switching languages, stopping, or closing
+          if (event.error === "aborted") {
+            return;
+          }
+
           setIsListening(false);
-          // Automatically trigger search on final speech
-          if (clean && onTranscript) {
-            setTimeout(() => {
-              onTranscript(clean);
-              onClose();
-            }, 500);
+          if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            setErrorMessage(
+              "Microphone permission was denied. Please allow microphone access in your browser settings to use voice search."
+            );
+          } else if (event.error === "no-speech") {
+            setErrorMessage("No speech was detected. Please tap the microphone and try speaking again.");
+          } else if (event.error === "network") {
+            setErrorMessage("Network connection error with speech service. Please check your internet connection.");
+          } else if (event.error === "language-not-supported") {
+            setErrorMessage("Voice recognition for this language is not supported in this browser. Please try Hindi or English.");
+          } else {
+            setErrorMessage(`Speech recognition error (${event.error}). Please try again.`);
           }
-        }
-      };
+        };
 
-      recognition.onerror = (event) => {
-        if (isManuallyStoppedRef.current) return;
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognition.start();
+      } catch (err) {
         setIsListening(false);
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          setErrorMessage("Microphone permission was denied. Please allow microphone access in your browser settings to use voice search.");
-        } else if (event.error === "no-speech") {
-          setErrorMessage("No speech was detected. Please tap the microphone and try speaking again.");
-        } else if (event.error === "network") {
-          setErrorMessage("Network connection error with speech service. Please check your internet connection.");
-        } else {
-          setErrorMessage(`Speech recognition error (${event.error}). Please try again.`);
-        }
-      };
+        setErrorMessage("Could not start microphone. Please check permissions and try again.");
+      }
+    },
+    [getSpeechRecognition, stopListening, onTranscript, onClose]
+  );
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognition.start();
-    } catch (err) {
-      setIsListening(false);
-      setErrorMessage("Could not start microphone. Please check permissions and try again.");
-    }
-  }, [getSpeechRecognition, stopListening, onTranscript, onClose]);
-
-  // Handle language change
+  // Seamless language change with debounced restart
   const handleLangChange = (langCode) => {
+    if (langCode === selectedLang && isListening) return;
+
     setSelectedLang(langCode);
+    selectedLangRef.current = langCode;
     try {
       localStorage.setItem("dsg_voice_search_lang", langCode);
     } catch {
       // ignore
     }
-    startListening(langCode);
+
+    // Stop existing session cleanly
+    stopListening();
+    setErrorMessage("");
+    setTranscript("");
+    setInterimTranscript("");
+
+    // Small delay allows the browser's speech recognition engine to fully release the audio device
+    // before starting the new session in the selected language
+    switchTimeoutRef.current = setTimeout(() => {
+      startListening(langCode);
+    }, 120);
   };
 
-  // Start voice recognition when modal opens
+  // Start voice recognition ONLY when modal opens / closes (not on language changes)
   useEffect(() => {
     if (isOpen) {
       const SpeechRecognition = getSpeechRecognition();
@@ -171,14 +208,14 @@ export default function VoiceSearchModal({ isOpen, onClose, onTranscript }) {
         return;
       }
       setIsSupported(true);
-      startListening(selectedLang);
+      startListening(selectedLangRef.current);
     } else {
       stopListening();
     }
     return () => {
       stopListening();
     };
-  }, [isOpen, selectedLang, getSpeechRecognition, startListening, stopListening]);
+  }, [isOpen, getSpeechRecognition, startListening, stopListening]);
 
   // Close on Escape key
   useEffect(() => {
@@ -268,7 +305,7 @@ export default function VoiceSearchModal({ isOpen, onClose, onTranscript }) {
 
           <p className="voice-search-status-label">
             {isListening ? (
-              "Say a book name, topic, or format..."
+              `Listening in ${currentLangObj.native}... Say a book or format`
             ) : errorMessage ? (
               "Tap microphone to try again"
             ) : (
@@ -294,7 +331,7 @@ export default function VoiceSearchModal({ isOpen, onClose, onTranscript }) {
           </div>
         )}
 
-        {/* Language Selector Chips */}
+        {/* Language Selector Section */}
         <div className="voice-search-languages-section">
           <div className="voice-search-lang-header">
             <Globe size={13} className="voice-search-globe-icon" />
