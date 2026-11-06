@@ -679,29 +679,6 @@ body.category-menu-open {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.navbar-search-mic-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--site-text-soft, #64748b);
-  padding: 0 11px;
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
-}
-
-.navbar-search-mic-btn:hover {
-  color: var(--site-button-bg, #d97706);
-  background: rgba(217, 119, 6, 0.08);
-  transform: scale(1.08);
-}
-
-.navbar-search-mic-btn:active {
-  transform: scale(0.95);
-}
-
 .navbar-search-btn {
   display: inline-flex;
   align-items: center;
