@@ -12,6 +12,9 @@ const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
 const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
 const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload, getPushStatus } = require("../utils/webPush");
+const { getMailmodoStatus, runMailmodoSync } = require("../services/mailmodoSync");
+const { logAdminAction } = require("../utils/adminAudit");
+const { isMarketingSmtpConfigured } = require("../utils/emailStream");
 
 const router = express.Router();
 
@@ -375,8 +378,15 @@ router.post("/test-email", async (req, res) => {
   try {
     const to = String(req.body?.to || process.env.ADMIN_EMAIL || "").trim();
     if (!to) return res.status(400).json({ message: "Email address required." });
-    await sendTestEmail(to);
-    res.json({ message: `Test email sent to ${to}.` });
+    const stream = req.body?.stream === "marketing" ? "marketing" : "transactional";
+    if (stream === "marketing" && !isMarketingSmtpConfigured()) {
+      return res.status(400).json({ message: "The promotional email server isn't set up yet, so promotions use the main server." });
+    }
+    const result = await sendTestEmail(to, stream);
+    if (result?.error) {
+      return res.status(502).json({ message: `Test email failed: ${result.error}` });
+    }
+    res.json({ message: `Test email sent to ${to} through the ${stream === "marketing" ? "promotional" : "main"} server.` });
   } catch {
     res.status(500).json({ message: "Failed to send test email." });
   }
@@ -408,6 +418,48 @@ router.post("/trigger-wishlist-nudges", async (_req, res) => {
     res.json({ message: "Wishlist nudge execution completed.", result });
   } catch (err) {
     res.status(500).json({ message: `Failed to execute wishlist nudges: ${err.message}` });
+  }
+});
+
+// ── GET /api/marketing/mailmodo/status ───────────────────────────────────────
+// Mailmodo connection state, list counts and the last sync result
+router.get("/mailmodo/status", async (_req, res) => {
+  try {
+    res.json({ ...(await getMailmodoStatus()), marketingSmtpConfigured: isMarketingSmtpConfigured() });
+  } catch {
+    res.status(500).json({ message: "Failed to load Mailmodo status." });
+  }
+});
+
+// ── POST /api/marketing/mailmodo/sync ────────────────────────────────────────
+// Start a sync now. full=true also refreshes customers already on the list.
+router.post("/mailmodo/sync", async (req, res) => {
+  try {
+    const status = await getMailmodoStatus();
+    if (!status.configured) {
+      return res.status(400).json({ message: "Mailmodo isn't set up. Add MAILMODO_API_KEY and MAILMODO_LIST_NAME to the server settings." });
+    }
+    if (status.running) {
+      return res.status(409).json({ message: "A Mailmodo sync is already running." });
+    }
+
+    const full = req.body?.full === true;
+    await logAdminAction({
+      req,
+      action: "mailmodo.sync",
+      entityType: "marketing",
+      entityId: "mailmodo",
+      entityLabel: status.listName,
+      summary: full ? "Started a full Mailmodo contact sync" : "Started a Mailmodo contact sync"
+    });
+
+    // Large lists take a while, so run in the background; the page polls the status
+    res.status(202).json({ message: "Mailmodo sync started." });
+    runMailmodoSync({ full, trigger: "admin" }).catch((err) => {
+      console.error("[Marketing] Mailmodo sync error:", err.message);
+    });
+  } catch {
+    res.status(500).json({ message: "Failed to start Mailmodo sync." });
   }
 });
 

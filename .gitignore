@@ -55,3 +55,6 @@ backend/test-*.js
 
 # Local MongoDB data
 mongodb_data/
+
+# Local mock catalog
+public/products.json

@@ -3,6 +3,7 @@ const rateLimit = require("express-rate-limit");
 const User = require("../models/User");
 const { verifyUnsubscribe } = require("../utils/unsubscribe");
 const { perWorker } = require("../utils/workerCount");
+const { syncOptOutToMailmodo } = require("../services/mailmodoSync");
 
 const router = express.Router();
 
@@ -131,6 +132,11 @@ router.post("/", async (req, res) => {
       { _id: u },
       { $set: { marketingOptOut: true, marketingOptOutAt: new Date() } }
     );
+
+    // Unsubscribe them in Mailmodo too; if that fails the next sync retries
+    syncOptOutToMailmodo(u).catch((err) => {
+      console.warn("[Unsubscribe] Mailmodo opt-out sync failed:", err.message);
+    });
 
     return res.status(200).send(
       renderPage({

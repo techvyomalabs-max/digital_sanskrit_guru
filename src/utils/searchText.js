@@ -11,6 +11,19 @@
  */
 
 import { htmlToPlainText } from "./plainText.js";
+import {
+  detectIndicScript,
+  transliterateIndicToLatin,
+  processIndicQuery,
+  MULTILINGUAL_LEXICON
+} from "./indicSearch.js";
+
+export {
+  detectIndicScript,
+  transliterateIndicToLatin,
+  processIndicQuery,
+  MULTILINGUAL_LEXICON
+};
 
 export function stripHtml(text) {
   return htmlToPlainText(text);
@@ -29,8 +42,27 @@ export function foldText(text) {
  * Phonetic and Sanskrit transliteration normalization:
  * Normalizes common variations in Romanized Sanskrit text.
  */
+// The search runs on every keystroke against every word of every product, so these
+// pure per-word transforms are memoised. Bounded so a long session can't grow them forever.
+const WORD_CACHE_LIMIT = 20000;
+const normalizeCache = new Map();
+const phoneticCache = new Map();
+
+function cached(cache, key, compute) {
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const value = compute(key);
+  if (cache.size >= WORD_CACHE_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
 export function normalizeSanskrit(text) {
   if (!text) return "";
+  return cached(normalizeCache, String(text), computeNormalizeSanskrit);
+}
+
+function computeNormalizeSanskrit(text) {
   const s = foldText(text);
 
   return s
@@ -47,7 +79,10 @@ export function normalizeSanskrit(text) {
     .replace(/kh/g, "k")
     .replace(/gh/g, "g")
     .replace(/ch/g, "c")
-    .replace(/jh/g, "j");
+    .replace(/jh/g, "j")
+    .replace(/[mn](?=[pb])/g, "m")
+    .replace(/[mn](?=[tdkgcjs])/g, "n")
+    .replace(/h\b/g, "");
 }
 
 /**
@@ -57,6 +92,10 @@ export function normalizeSanskrit(text) {
  */
 export function sanskritPhoneticKey(text) {
   if (!text) return "";
+  return cached(phoneticCache, String(text), computeSanskritPhoneticKey);
+}
+
+function computeSanskritPhoneticKey(text) {
   let s = foldText(text);
 
   s = s
@@ -505,11 +544,18 @@ function isCategoryQuery(query, category) {
   const fQuery = foldText(query);
   const fCat = foldText(category);
 
-  if (fCat === fQuery || fCat.includes(fQuery)) return true;
+  if (fCat === fQuery || fCat.startsWith(fQuery)) return true;
 
   for (const catDef of STORE_CATEGORIES) {
     if (foldText(catDef.name) === fCat) {
-      if (catDef.aliases.some((a) => foldText(a) === fQuery || fQuery.includes(foldText(a)))) {
+      if (
+        catDef.aliases.some(
+          (a) =>
+            foldText(a) === fQuery ||
+            fQuery === foldText(a) + "s" ||
+            foldText(a) === fQuery + "s"
+        )
+      ) {
         return true;
       }
     }
@@ -533,27 +579,94 @@ function isCategoryQuery(query, category) {
  * 10: Description-only match
  * 0: No match
  */
-export function scoreProduct(product, query) {
+// Folded product text depends only on the product, not the query, so it is built once
+// per product object and reused across keystrokes (rebuilt if those fields change).
+const productTextCache = new WeakMap();
+
+function getProductSearchText(product) {
+  const name = product?.name;
+  const category = product?.category;
+  const description = product?.description;
+  const aboutProduct = product?.aboutProduct;
+  const canCache = product !== null && typeof product === "object";
+
+  if (canCache) {
+    const hit = productTextCache.get(product);
+    if (
+      hit &&
+      hit.name === name &&
+      hit.category === category &&
+      hit.description === description &&
+      hit.aboutProduct === aboutProduct
+    ) {
+      return hit;
+    }
+  }
+
+  const foldedName = foldText(name);
+  const foldedCategory = foldText(category);
+  const foldedDesc = foldText(description);
+  const entry = {
+    name,
+    category,
+    description,
+    aboutProduct,
+    foldedName,
+    foldedCategory,
+    foldedAbout: foldText(aboutProduct),
+    compactedName: foldedName.replace(/\s+/g, ""),
+    nameWords: foldedName.split(" ").filter(Boolean),
+    catWords: foldedCategory.split(" ").filter(Boolean),
+    // Unique words only: repeats can't change a best-match result
+    descWords: [...new Set(foldedDesc.split(" ").filter(Boolean))]
+  };
+
+  if (canCache) productTextCache.set(product, entry);
+  return entry;
+}
+
+export function scoreProduct(product, query, options = {}) {
+  // Direct exact & startsWith check first (supports products whose catalog title contains native Indic script)
+  const fQueryDirect = foldText(query);
+  if (fQueryDirect) {
+    const { foldedName: fNameDirect } = getProductSearchText(product);
+    if (fNameDirect === fQueryDirect) return 100;
+    if (fNameDirect.startsWith(fQueryDirect)) return 80;
+  }
+
+  if (typeof query === "string" && !options?.skipIndic) {
+    const indic = processIndicQuery(query);
+    if (indic.isIndic) {
+      const sCanonical = scoreProduct(product, indic.canonicalQuery, { skipIndic: true });
+      if (sCanonical > 0) return sCanonical;
+      if (indic.transliteratedQuery && indic.transliteratedQuery !== indic.canonicalQuery) {
+        const sTranslit = scoreProduct(product, indic.transliteratedQuery, { skipIndic: true });
+        if (sTranslit > 0) return sTranslit;
+      }
+      return 0;
+    }
+  }
+
   const foldedQuery = foldText(query);
   if (!foldedQuery) return 1;
 
   const words = foldedQuery.split(" ").filter(Boolean);
   if (words.length === 0) return 1;
 
-  const foldedName = foldText(product?.name);
-  const foldedCategory = foldText(product?.category);
-  const foldedDesc = foldText(product?.description);
-  const foldedAbout = foldText(product?.aboutProduct);
+  const {
+    foldedName,
+    foldedCategory,
+    foldedAbout,
+    compactedName,
+    nameWords,
+    catWords,
+    descWords
+  } = getProductSearchText(product);
 
-  const compactedName = foldedName.replace(/\s+/g, "");
   const compactedQuery = foldedQuery.replace(/\s+/g, "");
   const compactedMatch = Boolean(
     compactedName && compactedQuery && compactedName.includes(compactedQuery)
   );
-
-  const nameWords = foldedName.split(" ").filter(Boolean);
-  const catWords = foldedCategory.split(" ").filter(Boolean);
-  const descWords = foldedDesc.split(" ").filter(Boolean);
 
   // Exact tier checks (highest precision)
   if (foldedName === foldedQuery) return 100;
@@ -570,6 +683,11 @@ export function scoreProduct(product, query) {
 
   if (foldedName.includes(foldedQuery)) return 60;
 
+  // Unspaced compound title prefix match for multi-word queries (e.g. 'Dhaturupaparicayah' for 'dhaturupa paricaya')
+  if (words.length > 1 && compactedName && compactedQuery && compactedName.startsWith(compactedQuery)) {
+    return 80;
+  }
+
   if (nameWords.length > 0 && words.every((w) => nameWords.some((nw) => nw.startsWith(w)))) {
     return 50;
   }
@@ -585,6 +703,18 @@ export function scoreProduct(product, query) {
   if (allWordsInNameOrCatExact) {
     return 25;
   }
+
+  // Sanskrit Transliteration & Normalized Title Matching
+  const normQuery = normalizeSanskrit(foldedQuery);
+  const normName = normalizeSanskrit(foldedName);
+  const normCompactedName = normName.replace(/\s+/g, "");
+  const normCompactedQuery = normQuery.replace(/\s+/g, "");
+
+  if (normName === normQuery) return 95;
+  if (normName.startsWith(normQuery)) return 80;
+  if (normCompactedName.startsWith(normCompactedQuery) && normCompactedQuery.length >= 4) return 80;
+  if (normName.includes(normQuery)) return 60;
+  if (normCompactedName.includes(normCompactedQuery) && normCompactedQuery.length >= 4) return 55;
 
   // Multi-word token inspection including typo tolerance, Sanskrit transliteration, and phonetics
   let allWordsMatched = true;
@@ -613,7 +743,7 @@ export function scoreProduct(product, query) {
     }
 
     // Check aboutProduct as well
-    if (foldedAbout && foldText(foldedAbout).includes(w)) {
+    if (foldedAbout && foldedAbout.includes(w)) {
       continue;
     }
 
@@ -631,10 +761,8 @@ export function scoreProduct(product, query) {
     return 15;
   }
 
-  // Fallback: Check if the entire folded query transliterates or fuzzily matches the title
-  const normQuery = normalizeSanskrit(foldedQuery);
-  const normName = normalizeSanskrit(foldedName);
-  if (normName && normQuery && (normName.includes(normQuery) || normQuery.includes(normName))) {
+  // Fallback: Check if the query contains the entire normalized product name
+  if (normName && normQuery && normQuery.includes(normName)) {
     return 20;
   }
 
@@ -968,6 +1096,8 @@ export function searchWebsite(query, options = {}) {
     return {
       query: rawQuery,
       effectiveQuery: rawQuery,
+      isIndicSearch: false,
+      detectedLanguage: null,
       isAutoCorrected: false,
       autoCorrection: null,
       matchingCategories: [],
@@ -978,23 +1108,39 @@ export function searchWebsite(query, options = {}) {
     };
   }
 
+  // 0. Multilingual Indic Language Recognition
+  const indicResult = processIndicQuery(rawQuery);
+  const isIndicSearch = Boolean(indicResult.isIndic);
+  const detectedLanguage = isIndicSearch ? {
+    name: indicResult.language,
+    script: indicResult.script,
+    nativeName: indicResult.nativeName,
+    originalQuery: rawQuery,
+    canonicalQuery: indicResult.canonicalQuery,
+    transliteratedQuery: indicResult.transliteratedQuery,
+    displayBadge: indicResult.displayBadge
+  } : null;
+
+  // For Indic queries, the canonical English/Sanskrit text is our primary search target
+  const queryToSearch = isIndicSearch ? indicResult.canonicalQuery : rawQuery;
+
   // 1. Check raw product matches
   const rawScored = [];
   if (Array.isArray(catalogProducts)) {
     for (const p of catalogProducts) {
-      const s = scoreProduct(p, rawQuery);
+      const s = scoreProduct(p, queryToSearch);
       if (s > 0) {
         rawScored.push({ ...p, _score: s });
       }
     }
   }
 
-  // 2. Evaluate auto-correction
-  const correction = autoCorrectQuery(rawQuery, catalogProducts);
-  let effectiveQuery = rawQuery;
+  // 2. Evaluate auto-correction (only for non-Indic queries or if requested)
+  const correction = autoCorrectQuery(queryToSearch, catalogProducts);
+  let effectiveQuery = queryToSearch;
   let isAutoCorrected = false;
 
-  if (enableAutoCorrection && correction.hasCorrection) {
+  if (!isIndicSearch && enableAutoCorrection && correction.hasCorrection) {
     const correctionScored = [];
     if (Array.isArray(catalogProducts)) {
       for (const p of catalogProducts) {
@@ -1021,23 +1167,32 @@ export function searchWebsite(query, options = {}) {
   }
 
   // 3. Search Categories using effective query
-  const matchingCategories = searchCategories(effectiveQuery, catalogProducts);
+  let matchingCategories = searchCategories(effectiveQuery, catalogProducts);
+  if (isIndicSearch && matchingCategories.length === 0 && indicResult.transliteratedQuery) {
+    matchingCategories = searchCategories(indicResult.transliteratedQuery, catalogProducts);
+  }
 
   // 4. Search Website Pages & Services using effective query
-  const matchingPages = searchPages(effectiveQuery);
+  let matchingPages = searchPages(effectiveQuery);
+  if (isIndicSearch && matchingPages.length === 0 && indicResult.transliteratedQuery) {
+    matchingPages = searchPages(indicResult.transliteratedQuery);
+  }
 
   // 5. Retrieve ranked products using effective query
   const finalProducts = [];
   if (Array.isArray(catalogProducts)) {
     for (const p of catalogProducts) {
-      const s = scoreProduct(p, effectiveQuery);
+      let s = scoreProduct(p, effectiveQuery);
+      if (isIndicSearch && s === 0 && indicResult.transliteratedQuery) {
+        s = scoreProduct(p, indicResult.transliteratedQuery);
+      }
       if (s > 0) {
         let matchReason = "Product Title Match";
         const fCat = foldText(p?.category);
         const fQuery = foldText(effectiveQuery);
         if (fCat === fQuery || fCat.includes(fQuery)) {
           matchReason = `Category: ${p?.category}`;
-        } else if (scoreProduct(p, effectiveQuery) === 10) {
+        } else if (s === 10) {
           matchReason = "Description Match";
         }
 
@@ -1054,6 +1209,8 @@ export function searchWebsite(query, options = {}) {
   return {
     query: rawQuery,
     effectiveQuery,
+    isIndicSearch,
+    detectedLanguage,
     isAutoCorrected,
     autoCorrection: isAutoCorrected ? {
       original: rawQuery,

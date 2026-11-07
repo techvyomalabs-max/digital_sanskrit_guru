@@ -34,7 +34,7 @@ input:focus-visible,
   --focus-ring: #ffd27a;
 }
 
-.navbar-collection-filter-menu,
+.category-sidebar,
 .navbar-search-dropdown,
 .navbar-search-wrap {
   --focus-ring: var(--site-link, #0f62b3);

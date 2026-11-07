@@ -12,6 +12,8 @@ import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
 import { TAX_CATEGORIES } from "../utils/tax";
+import { absoluteUrl } from "../utils/seo";
+import { slugPreview } from "../utils/productLink";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -360,7 +362,7 @@ function AdminAddProducts() {
   const [copiedProductId, setCopiedProductId] = useState("");
 
   const copyBuyLink = (productId) => {
-    const buyLink = `${window.location.origin}/buy/${productId}`;
+    const buyLink = absoluteUrl(`/buy/${productId}`);
     navigator.clipboard.writeText(buyLink).then(() => {
       setCopiedProductId(productId);
       setTimeout(() => setCopiedProductId(""), 2000);
@@ -385,6 +387,8 @@ function AdminAddProducts() {
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   // Tax for this product: blank = automatic (printed books 0%, everything else the store GST rate)
   const [hsnSac, setHsnSac] = useState("");
+  // Product link name (/product/<slug>); blank = made from the product name
+  const [slug, setSlug] = useState("");
   const [gstRate, setGstRate] = useState("");
   const [digitalType, setDigitalType] = useState("Web Version");
   const [digitalDelivery, setDigitalDelivery] = useState("onsite");
@@ -757,6 +761,7 @@ function AdminAddProducts() {
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setHsnSac("");
+    setSlug("");
     setGstRate("");
     setDigitalType("Web Version");
     setEditingDigitalTypeName("");
@@ -809,6 +814,7 @@ function AdminAddProducts() {
       skipOwnershipRules,
       hsnSac,
       gstRate,
+      slug,
       digitalType,
       digitalDelivery,
       externalAccessLink,
@@ -1770,6 +1776,7 @@ function AdminAddProducts() {
       skipOwnershipRules: productType === "bundle" ? skipOwnershipRules : false,
       hsnSac: hsnSac.trim(),
       gstRate: gstRate === "" ? null : Number(gstRate),
+      slug: slug.trim(),
       digitalType,
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
       externalAccessLink: isEligibleForExternal && digitalDelivery === "external" ? externalAccessLink.trim() : "",
@@ -1907,6 +1914,7 @@ function AdminAddProducts() {
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setHsnSac(String(product.hsnSac || ""));
+    setSlug(String(product.slug || ""));
     setGstRate(product.gstRate === null || product.gstRate === undefined ? "" : String(product.gstRate));
     setDigitalType(product.digitalType || "Web Version");
     setDigitalDelivery(product.digitalDelivery || "onsite");
@@ -2651,6 +2659,19 @@ function AdminAddProducts() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                     />
+                  </label>
+                  <label className="admin-field">
+                    <span>Product Link</span>
+                    <input
+                      placeholder={slugPreview(name) || "made from the product name"}
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value)}
+                      spellCheck={false}
+                    />
+                    <small>
+                      /product/{slugPreview(slug) || slugPreview(name) || "…"} · Leave blank to make it from the name.
+                      If you change it, the old link still opens this product.
+                    </small>
                   </label>
                   <label className="admin-field">
                     <span>Product Type</span>

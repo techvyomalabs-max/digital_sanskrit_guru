@@ -190,9 +190,12 @@ function resolveRedirect(map, pathname, search) {
   if (map.has(normalized)) {
     const to = map.get(normalized);
     const tracking = keepTrackingParams(search);
+    // A target that already has a query (/collection?category=…) gets the
+    // tracking parameters added with "&"
+    const joined = tracking && to.includes("?") ? `&${tracking.slice(1)}` : tracking;
     return {
       status: 301,
-      location: `${to}${tracking}`
+      location: `${to}${joined}`
     };
   }
 

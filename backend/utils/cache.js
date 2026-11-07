@@ -142,4 +142,17 @@ async function cacheStaleWhileRevalidate(key, ttl, fetch) {
   return entry.value;
 }
 
-module.exports = { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate };
+/**
+ * set() with a ceiling on how many keys may share a prefix. Keys built from request
+ * input (page, sort, category...) could otherwise grow without limit if someone sends
+ * endless variations; past the ceiling the value is simply not cached.
+ */
+function setBounded(key, value, ttl, { prefix, maxKeys }) {
+  if (!appCache.has(key)) {
+    const count = appCache.keys().reduce((n, k) => (k.startsWith(prefix) ? n + 1 : n), 0);
+    if (count >= maxKeys) return false;
+  }
+  return appCache.set(key, value, ttl);
+}
+
+module.exports = { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate, setBounded };

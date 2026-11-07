@@ -21,6 +21,11 @@ const PAYMENT_SOURCES = {
   update: "Updated"
 };
 
+const chipClass = (prefix, value) =>
+  `admin-order-chip ${prefix}-${String(value || "").trim().toLowerCase().replace(/\s+/g, "-")}`;
+
+const RETURN_STATUS_HIDDEN = new Set(["", "not requested"]);
+
 function AdminOrderDetails() {
   const { id } = useParams();
   const { token, user } = useAuth();
@@ -29,6 +34,7 @@ function AdminOrderDetails() {
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isUpdatingRefund, setIsUpdatingRefund] = useState(false);
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [isGrantAccessModalOpen, setIsGrantAccessModalOpen] = useState(false);
   const [pageMessage, setPageMessage] = useState("");
@@ -80,6 +86,7 @@ function AdminOrderDetails() {
       })
       .then((res) => {
         setOrder(res.data || null);
+        setPageMessage("");
       })
       .catch((err) => {
         setPageMessage(err?.response?.data?.message || "Unable to reload order.");
@@ -93,7 +100,9 @@ function AdminOrderDetails() {
   const isOrderPaid = String(order?.paymentStatus || "").toLowerCase() === "paid";
   const isOrderCancelled = String(order?.status || "").toLowerCase() === "cancelled";
   const isOrderRefunded = String(order?.refundStatus || "").toLowerCase() === "refunded";
-  const showPendingAccessCard = pendingItems.length > 0 && isOrderPaid && !isOrderCancelled && !isOrderRefunded;
+  const isOrderActiveForAccess = isOrderPaid && !isOrderCancelled && !isOrderRefunded;
+  const showPendingAccessCard = pendingItems.length > 0 && isOrderActiveForAccess;
+  const orderCurrency = order?.currencyDisplay?.currency || "INR";
 
   const updateRefundStatus = async (newRefundStatus, forceManual = false) => {
     if (!order?._id) return;
@@ -154,7 +163,7 @@ function AdminOrderDetails() {
         confirmText: "Submit"
       })) ?? "";
 
-    setIsUpdatingRefund(true);
+    setIsMarkingPaid(true);
     setPageMessage("");
     try {
       const res = await axios.put(
@@ -172,7 +181,7 @@ function AdminOrderDetails() {
       const errMsg = err?.response?.data?.message || "Failed to update payment status.";
       setPageMessage(errMsg);
     } finally {
-      setIsUpdatingRefund(false);
+      setIsMarkingPaid(false);
     }
   };
 
@@ -304,11 +313,11 @@ function AdminOrderDetails() {
 
               <article className="admin-order-details-card">
                 <span className="admin-order-details-label">Order status</span>
-                <strong className={`admin-order-chip status-${displayOrderStatus.toLowerCase()}`}>
+                <strong className={chipClass("status", displayOrderStatus)}>
                   {displayOrderStatus}
                 </strong>
                 <p>Placed on {formatDateTime(order.createdAt)}</p>
-                {displayOrderStatus === "Delivered" && order.deliveredAt && (
+                {displayOrderStatus.toLowerCase() === "delivered" && order.deliveredAt && (
                   <p style={{ marginTop: '4px', fontWeight: '600', color: '#16a34a' }}>
                     Delivered on {formatDateTime(order.deliveredAt)}
                   </p>
@@ -327,21 +336,21 @@ function AdminOrderDetails() {
                       type="button"
                       className="admin-order-details-btn"
                       style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                      disabled={isUpdatingRefund}
+                      disabled={isMarkingPaid || isUpdatingRefund}
                       onClick={handleManualMarkPaid}
                     >
-                      {isUpdatingRefund ? "Updating..." : "Mark Paid"}
+                      {isMarkingPaid ? "Updating..." : "Mark Paid"}
                     </button>
                   )}
                 </div>
-                <strong className={`admin-order-chip payment-${displayPaymentStatus.toLowerCase()}`}>
+                <strong className={chipClass("payment", displayPaymentStatus)}>
                   {displayPaymentStatus}
                 </strong>
                 {displayRefundStatus !== "Not Applicable" || displayOrderStatus === "Cancelled" ? (
                   <div className="admin-order-details-refund-control-wrap">
                     <div className="admin-order-details-refund-header">
                       <span>Refund Status:</span>
-                      <strong className={`admin-order-chip refund-${displayRefundStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <strong className={chipClass("refund", displayRefundStatus)}>
                         {displayRefundStatus}
                       </strong>
                     </div>
@@ -367,6 +376,11 @@ function AdminOrderDetails() {
                         >
                           <option value="Pending">Pending</option>
                           <option value="Processing">Processing</option>
+                          {displayRefundStatus === "Partially Refunded" ? (
+                            <option value="Partially Refunded" disabled>
+                              Partially Refunded
+                            </option>
+                          ) : null}
                           <option value="Refunded">Refunded</option>
                           <option value="Rejected">Rejected</option>
                           <option value="Not Applicable">Not Applicable</option>
@@ -463,7 +477,7 @@ function AdminOrderDetails() {
                       {order.paymentMeta.refunds.map((rf, idx) => (
                         <div key={rf.refundId || rf.creditNoteNumber || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-                            <span>₹{((Number(rf.amountMinor) || 0) / 100).toFixed(2)}</span>
+                            <span>{formatCurrencyExact((Number(rf.amountMinor) || 0) / 100, rf.currency || "INR")}</span>
                             <span style={{ textTransform: "capitalize", color: rf.method === "manual" ? "#b45309" : "#4f46e5" }}>
                               {rf.method === "manual" ? "Manual" : "Razorpay"}
                             </span>
@@ -565,7 +579,31 @@ function AdminOrderDetails() {
                               }
                             </p>
                           )}
-                          <p>Qty: {Math.max(1, Number(item?.quantity || 1))}</p>
+                          <p>
+                            Qty: {Math.max(1, Number(item?.quantity || 1))}
+                            {Math.max(1, Number(item?.quantity || 1)) > 1
+                              ? ` × ${formatCurrencyExact(Number(item?.price || 0), item?.currency || orderCurrency)} each`
+                              : ""}
+                          </p>
+                          {!RETURN_STATUS_HIDDEN.has(String(item?.returnRequest?.status || "").trim().toLowerCase()) && (
+                            <div className="admin-order-item-return">
+                              <span className={`admin-order-item-return-badge return-${String(item.returnRequest.status).trim().toLowerCase().replace(/\s+/g, "-")}`}>
+                                Return: {item.returnRequest.status}
+                              </span>
+                              {item.returnRequest.requestedAt ? (
+                                <span className="admin-order-item-return-meta">
+                                  Requested {formatDateTime(item.returnRequest.requestedAt)}
+                                  {item.returnRequest.resolvedAt ? ` · Resolved ${formatDateTime(item.returnRequest.resolvedAt)}` : ""}
+                                </span>
+                              ) : null}
+                              {item.returnRequest.reason ? (
+                                <span className="admin-order-item-return-meta">Customer reason: {item.returnRequest.reason}</span>
+                              ) : null}
+                              {item.returnRequest.adminReason ? (
+                                <span className="admin-order-item-return-meta">Admin note: {item.returnRequest.adminReason}</span>
+                              ) : null}
+                            </div>
+                          )}
                           {item.accessManual === true && (
                             <div style={{ marginTop: "8px" }}>
                               {!item.accessGrantedAt ? (
@@ -603,7 +641,12 @@ function AdminOrderDetails() {
                             </div>
                           )}
                         </div>
-                        <span>{formatCurrencyExact(Number(item?.price || 0), item?.currency || order?.currencyDisplay?.currency || "INR")}</span>
+                        <span>
+                          {formatCurrencyExact(
+                            Number(item?.price || 0) * Math.max(1, Number(item?.quantity || 1)),
+                            item?.currency || orderCurrency
+                          )}
+                        </span>
                       </div>
                     ))
                   ) : (
@@ -616,7 +659,16 @@ function AdminOrderDetails() {
                 <article className="admin-order-details-card">
                   <h2>Shipping</h2>
                   {Array.isArray(order?.items) && order.items.length > 0 && order.items.every(isDigitalLikeItem) ? (
-                    pendingItems.length > 0 ? (
+                    !isOrderActiveForAccess ? (
+                      <div className="admin-order-shipping-digital-inactive">
+                        Digital order. No physical shipping required.{" "}
+                        {isOrderCancelled
+                          ? "Order is cancelled, so no access is active."
+                          : isOrderRefunded
+                            ? "Order is refunded, so no access is active."
+                            : "Access starts once payment is completed."}
+                      </div>
+                    ) : pendingItems.length > 0 ? (
                       <div className="admin-order-shipping-digital-pending">
                         Digital order: waiting for our team to grant access. No physical shipping required.
                       </div>

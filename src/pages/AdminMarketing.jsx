@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Mail, Bell, Users, AlertTriangle, FileText, Handshake, CheckCircle2, XCircle, Hourglass, Palette, Save, Rocket, Smartphone, Building2, Gift, Heart, Lightbulb } from "lucide-react";
+import { BarChart3, Mail, Bell, Users, AlertTriangle, FileText, Handshake, CheckCircle2, XCircle, Hourglass, Palette, Save, Rocket, Smartphone, Building2, Gift, Heart, Lightbulb, Send } from "lucide-react";
 import axios from "axios";
 import { enablePushNotifications, pushUnsupportedReason } from "../utils/pushSubscription";
 import AdminSidebar from "../components/admin/AdminSidebar";
+import MailmodoPanel from "../components/admin/MailmodoPanel";
 import { useAuth } from "../hooks/useAuth";
 import { uploadImageDataUrl } from "../utils/mediaUpload";
 import "./AdminMarketing.css";
@@ -15,11 +16,12 @@ const TABS = [
   { label: "Customer Segments", icon: Users },
   { label: "Low-Stock Alerts", icon: AlertTriangle },
   { label: "Order Email Draft", icon: FileText },
-  { label: "Sponsors", icon: Handshake }
+  { label: "Sponsors", icon: Handshake },
+  { label: "Mailmodo", icon: Send }
 ];
 
 function AdminMarketing() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
 
   // ── Sponsors state ────────────────────────────────────────────────────────
@@ -1587,6 +1589,13 @@ function AdminMarketing() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Tab 7: Mailmodo ── */}
+        {activeTab === 7 && (
+          <div className="mkt-section">
+            <MailmodoPanel getAuthHeaders={getAuthHeaders} defaultTestEmail={user?.email || ""} />
           </div>
         )}
       </main>

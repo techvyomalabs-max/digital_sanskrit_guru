@@ -37,7 +37,10 @@ import {
   Truck,
   Gift,
   FileText,
-  Shield
+  Shield,
+  Pencil,
+  Star,
+  MoreHorizontal
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useCart } from "../../hooks/useCart";
@@ -48,6 +51,30 @@ import { CategoryIcon, getCategoryIcon } from "../../utils/categoryIcons";
 import { scoreProduct, getSearchSuggestion, searchWebsite } from "../../utils/searchText";
 import { recordSearchQuery } from "../../utils/recommendationEngine";
 import "./Navbar.css";
+import { productPath } from "../../utils/productLink";
+
+const SEARCH_SUGGESTION_DELAY_MS = 120;
+
+const EMPTY_SEARCH_RESULTS = Object.freeze({
+  query: "",
+  effectiveQuery: "",
+  isIndicSearch: false,
+  detectedLanguage: null,
+  isAutoCorrected: false,
+  autoCorrection: null,
+  matchingCategories: [],
+  matchingPages: [],
+  matchingProducts: [],
+  totalProductsCount: 0,
+  totalResultsCount: 0
+});
+
+function runSuggestionSearch(trimmed, catalogProducts) {
+  if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
+    return { ...EMPTY_SEARCH_RESULTS, query: trimmed, effectiveQuery: trimmed };
+  }
+  return searchWebsite(trimmed, { catalogProducts, enableAutoCorrection: true });
+}
 
 const DEFAULT_COLLECTION_CATEGORIES = [
   "All",
@@ -67,6 +94,17 @@ const DEFAULT_COLLECTION_CATEGORIES = [
 
 const getAddressLocationText = (item) =>
   [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
+
+/** The address on one line, adding city/state/PIN/country only when the address doesn't already say them. */
+const getAddressDisplayText = (item) => {
+  const line = String(item?.address || "").trim().replace(/\s*,\s*/g, ", ");
+  const lower = line.toLowerCase();
+  const extra = [item?.city, item?.state, item?.pincode, item?.country]
+    .map((part) => String(part || "").trim())
+    .filter((part) => part && !lower.includes(part.toLowerCase()))
+    .map((part) => (part === part.toLowerCase() ? part.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : part));
+  return [line, ...extra].filter(Boolean).join(", ");
+};
 
 function Navbar({ bannerActive = false }) {
   const { user, logout } = useAuth();
@@ -93,6 +131,27 @@ function Navbar({ bannerActive = false }) {
   const hasLoadedCatalog = useRef(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+  // Which saved address has its ⋯ menu open, and whether it opens upwards (near the bottom of the list)
+  const [addressMenu, setAddressMenu] = useState(null);
+
+  useEffect(() => {
+    if (!addressMenu) return undefined;
+    const close = (event) => {
+      if (event.type === "keydown" && event.key !== "Escape") return;
+      if (event.type === "mousedown" && event.target.closest?.(".navbar-address-more")) return;
+      setAddressMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [addressMenu]);
+
+  useEffect(() => {
+    if (!isAddressModalOpen) setAddressMenu(null);
+  }, [isAddressModalOpen]);
   const [addressToDelete, setAddressToDelete] = useState(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [isCollectionFilterMenuOpen, setIsCollectionFilterMenuOpen] = useState(false);
@@ -100,6 +159,7 @@ function Navbar({ bannerActive = false }) {
   const [collectionCategoryCounts, setCollectionCategoryCounts] = useState({});
   const [showAttachedBar, setShowAttachedBar] = useState(true);
   const hasLoadedCollectionCategories = useRef(false);
+  const categorySidebarCloseRef = useRef(null);
   const isAdminRoute = location.pathname.startsWith("/admin");
 
   const [storeIcons, setStoreIcons] = useState({
@@ -327,24 +387,21 @@ function Navbar({ bannerActive = false }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const searchResults = useMemo(() => {
+  // The suggestion search is CPU-heavy, so it runs on a short pause in typing rather
+  // than on every keystroke; the input itself always updates instantly.
+  const [suggestionQuery, setSuggestionQuery] = useState("");
+  useEffect(() => {
     const trimmed = searchQuery.trim();
-    if (!trimmed || trimmed.length < 2 || catalogProducts.length === 0) {
-      return {
-        query: trimmed,
-        effectiveQuery: trimmed,
-        isAutoCorrected: false,
-        autoCorrection: null,
-        matchingCategories: [],
-        matchingPages: [],
-        matchingProducts: [],
-        totalProductsCount: 0,
-        totalResultsCount: 0
-      };
-    }
+    const delay = trimmed.length < 2 ? 0 : SEARCH_SUGGESTION_DELAY_MS;
+    const timer = setTimeout(() => setSuggestionQuery(trimmed), delay);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-    return searchWebsite(trimmed, { catalogProducts, enableAutoCorrection: true });
-  }, [searchQuery, catalogProducts]);
+  const searchResults = useMemo(
+    () => runSuggestionSearch(suggestionQuery, catalogProducts),
+    [suggestionQuery, catalogProducts]
+  );
+  const isSuggestionPending = suggestionQuery !== searchQuery.trim();
 
   const navigableItems = useMemo(() => {
     const items = [];
@@ -355,7 +412,7 @@ function Navbar({ bannerActive = false }) {
       items.push({ type: "page", data: page, url: page.url });
     });
     (searchResults.matchingProducts || []).slice(0, 5).forEach((product) => {
-      items.push({ type: "product", data: product, url: `/product/${product._id}` });
+      items.push({ type: "product", data: product, url: productPath(product) });
     });
     return items;
   }, [searchResults]);
@@ -385,9 +442,13 @@ function Navbar({ bannerActive = false }) {
       setActiveSuggestionIndex(-1);
       return;
     }
-    const query = (searchResults.effectiveQuery || searchQuery).trim();
-    if (query) {
-      recordSearchQuery(query);
+    // Enter pressed during the typing pause: search exactly what is in the box now
+    const latestResults = isSuggestionPending
+      ? runSuggestionSearch(searchQuery.trim(), catalogProducts)
+      : searchResults;
+    const query = searchQuery.trim();
+    if (latestResults.effectiveQuery || query) {
+      recordSearchQuery((latestResults.effectiveQuery || query).trim());
     }
     navigate(query ? `/search?q=${encodeURIComponent(query)}` : "/collection");
   };
@@ -407,18 +468,23 @@ function Navbar({ bannerActive = false }) {
     );
   };
 
-  // Escape closes the "Browse by category" menu
+  // Category sidebar: Escape closes it, focus moves in and back, page scroll is locked
   useEffect(() => {
     if (!isCollectionFilterMenuOpen) return undefined;
+    const previouslyFocused = document.activeElement;
     const handleEscape = (event) => {
       if (event.key === "Escape") setIsCollectionFilterMenuOpen(false);
     };
     window.addEventListener("keydown", handleEscape);
-    // Lets CSS hide the floating chat/WhatsApp buttons over the menu on phones
+    // Lets CSS hide the floating chat/WhatsApp buttons and lock page scroll
     document.body.classList.add("category-menu-open");
+    categorySidebarCloseRef.current?.focus();
     return () => {
       window.removeEventListener("keydown", handleEscape);
       document.body.classList.remove("category-menu-open");
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     };
   }, [isCollectionFilterMenuOpen]);
 
@@ -624,6 +690,21 @@ function Navbar({ bannerActive = false }) {
 
                 {isSearchFocused && searchQuery.trim().length >= 2 && (
                   <div className="navbar-search-dropdown" role="listbox">
+                    {/* Multilingual Indic AI Recognition Banner */}
+                    {searchResults.isIndicSearch && searchResults.detectedLanguage && (
+                      <div className="navbar-search-multilingual-banner">
+                        <div className="navbar-search-multilingual-text">
+                          <span className="navbar-search-lang-pill">
+                            <Globe size={13} className="navbar-search-lang-icon" />
+                            {searchResults.detectedLanguage.name} Recognized
+                          </span>
+                          <span className="navbar-search-lang-detail">
+                            &ldquo;{searchResults.query}&rdquo; &rarr; <strong>{searchResults.effectiveQuery}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Auto-Correction Notice Banner */}
                     {searchResults.isAutoCorrected && searchResults.autoCorrection && (
                       <div className="navbar-search-autocorrect-banner">
@@ -740,7 +821,7 @@ function Navbar({ bannerActive = false }) {
                               aria-selected={activeSuggestionIndex === idx}
                               className={`navbar-search-dropdown-item ${activeSuggestionIndex === idx ? "active" : ""}`}
                               onMouseDown={() => {
-                                navigate(`/product/${product._id}`);
+                                navigate(productPath(product));
                                 setIsSearchFocused(false);
                               }}
                             >
@@ -780,6 +861,7 @@ function Navbar({ bannerActive = false }) {
                         </div>
                       </div>
                     ) : (
+                      !isSuggestionPending &&
                       searchResults.matchingCategories.length === 0 && searchResults.matchingPages.length === 0 && (
                         <div className="navbar-search-dropdown-empty">
                           <p>No matching catalog products or website pages found for &ldquo;{searchQuery}&rdquo;</p>
@@ -969,24 +1051,62 @@ function Navbar({ bannerActive = false }) {
               )}
             </div>
           </div>
-          {!isAdminRoute && isCollectionFilterMenuOpen ? (
-            <div className="navbar-collection-filter-menu" role="dialog" aria-label="Browse by category">
-              <div className="navbar-collection-filter-head">
-                <strong className="navbar-collection-filter-title">
-                  <LayoutGrid size={17} aria-hidden="true" />
-                  Browse by category
-                </strong>
+        </div>
+        {!isAdminRoute && isCollectionFilterMenuOpen && typeof document !== "undefined"
+          ? createPortal(
+          <div className="category-sidebar-root">
+            <button
+              type="button"
+              className="category-sidebar-backdrop"
+              aria-label="Close categories"
+              tabIndex={-1}
+              onClick={() => setIsCollectionFilterMenuOpen(false)}
+            />
+            <aside
+              className="category-sidebar"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="category-sidebar-title"
+            >
+              <div className="category-sidebar-top">
+                <span className="category-sidebar-greeting">
+                  <User size={20} aria-hidden="true" />
+                  {user ? `Hello, ${user.name}` : "Hello, Sign in"}
+                </span>
                 <button
                   type="button"
-                  className="navbar-collection-filter-all"
-                  onClick={() => openCollectionCategory("All")}
+                  ref={categorySidebarCloseRef}
+                  className="category-sidebar-close"
+                  aria-label="Close categories"
+                  onClick={() => setIsCollectionFilterMenuOpen(false)}
                 >
-                  View all
-                  {collectionCategoryCounts.All ? ` (${collectionCategoryCounts.All})` : ""}
-                  <ArrowRight size={15} aria-hidden="true" />
+                  <X size={22} aria-hidden="true" />
                 </button>
               </div>
+              <div className="category-sidebar-scroll">
+              <div className="navbar-collection-filter-head">
+                <strong className="navbar-collection-filter-title" id="category-sidebar-title">
+                  <LayoutGrid size={17} aria-hidden="true" />
+                  Shop by category
+                </strong>
+              </div>
               <div className="navbar-collection-filter-list">
+                <button
+                  type="button"
+                  className={`navbar-collection-filter-item is-all${location.pathname === "/collection" && !activeCollectionCategory ? " is-current" : ""}`}
+                  onClick={() => openCollectionCategory("All")}
+                >
+                  <span className="navbar-collection-filter-icon" aria-hidden="true">
+                    <Grid size={18} />
+                  </span>
+                  <span className="navbar-collection-filter-text">
+                    <span className="navbar-collection-filter-name">All products</span>
+                    {collectionCategoryCounts.All ? (
+                      <span className="navbar-collection-filter-count">{collectionCategoryCounts.All} items</span>
+                    ) : null}
+                  </span>
+                  <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
+                </button>
                 {collectionCategories
                   .filter((category) => category !== "All")
                   .map((category) => {
@@ -1012,21 +1132,43 @@ function Navbar({ bannerActive = false }) {
                             </span>
                           )}
                         </span>
+                        <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
                       </button>
                     );
                   })}
               </div>
-            </div>
-          ) : null}
-        </div>
-        {!isAdminRoute && isCollectionFilterMenuOpen ? (
-          <button
-            type="button"
-            className="navbar-collection-filter-backdrop"
-            aria-label="Close collection filters"
-            onClick={() => setIsCollectionFilterMenuOpen(false)}
-          />
-        ) : null}
+              <div className="navbar-collection-filter-head category-sidebar-section">
+                <strong className="navbar-collection-filter-title">
+                  <Sparkles size={17} aria-hidden="true" />
+                  Highlights
+                </strong>
+              </div>
+              <div className="navbar-collection-filter-list category-sidebar-links">
+                {[
+                  ["top-rated", "Top Rated"],
+                  ["new-arrivals", "New Arrivals"],
+                  ["budget-picks", "Budget Picks"]
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="navbar-collection-filter-item"
+                    onClick={() => {
+                      setIsCollectionFilterMenuOpen(false);
+                      handleSectionNav(key);
+                    }}
+                  >
+                    <span className="navbar-collection-filter-name">{label}</span>
+                    <ChevronRight size={18} className="navbar-collection-filter-chevron" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+              </div>
+            </aside>
+          </div>,
+          document.body
+        )
+          : null}
 
         {/* Saved Delivery Addresses Modal */}
         {isAddressModalOpen &&
@@ -1073,117 +1215,116 @@ function Navbar({ bannerActive = false }) {
                     className="navbar-address-current-location-btn"
                     onClick={handleUseCurrentLocationRedirect}
                   >
-                    <span className="navbar-location-gps-icon"><LocateFixed size={20} aria-hidden="true" /></span>
-                    <div className="navbar-location-btn-text">
-                      <strong>Use Current Location</strong>
-                      <span>Detect automatically using device GPS</span>
-                    </div>
+                    <span className="navbar-location-gps-icon"><LocateFixed size={18} aria-hidden="true" /></span>
+                    <span className="navbar-location-btn-text">
+                      <strong>Use my current location</strong>
+                      <span>Detect automatically with GPS</span>
+                    </span>
+                    <ChevronRight size={18} className="navbar-location-chevron" aria-hidden="true" />
                   </button>
                 </div>
               )}
 
               {addresses.length > 0 ? (
-                <div className="navbar-address-options">
+                <div className="navbar-address-options" role="radiogroup" aria-label="Saved addresses">
                   {addresses.map((item, index) => {
                     const isSelected = selectedIndex === index;
+                    const fullAddress = getAddressDisplayText(item);
+                    const labelText = item.label === "Work" || item.label === "Other" ? item.label : "Home";
+                    const menuOpen = addressMenu?.index === index;
+                    const who = item.name || "this address";
+                    const chooseAddress = () => {
+                      selectAddress(index);
+                      setIsAddressModalOpen(false);
+                    };
                     return (
-                      <article
+                      <div
                         key={`${item.name}-${item.pincode}-${index}`}
-                        className={`navbar-address-option ${isSelected ? "active" : ""}`}
-                        onClick={() => {
-                          selectAddress(index);
-                          setIsAddressModalOpen(false);
+                        className={`navbar-address-option ${isSelected ? "active" : ""} ${menuOpen ? "menu-open" : ""}`}
+                        role="radio"
+                        aria-checked={isSelected}
+                        tabIndex={0}
+                        onClick={chooseAddress}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            chooseAddress();
+                          }
                         }}
                       >
-                        <div className="navbar-address-option-top">
-                          <div className="navbar-address-radio">
-                            <span
-                              className={`navbar-address-custom-radio ${isSelected ? "checked" : ""
-                                }`}
-                            >
-                              {isSelected ? <Check size={14} strokeWidth={3} aria-hidden="true" /> : ""}
-                            </span>
-                            <strong className="navbar-address-user-name">
-                              {item.name || "Address"}
-                            </strong>
+                        <span className={`navbar-address-radio-dot ${isSelected ? "checked" : ""}`} aria-hidden="true" />
+
+                        <div className="navbar-address-body">
+                          <div className="navbar-address-line1">
+                            <strong className="navbar-address-user-name">{item.name || "Address"}</strong>
+                            <span className="navbar-address-label-text">· {labelText}</span>
+                            {item.isDefault ? <span className="navbar-address-badge default">Default</span> : null}
                           </div>
-                          <div className="navbar-address-tags">
-                            {item.isDefault ? (
-                              <span className="navbar-address-badge default">Default</span>
-                            ) : null}
-                            <span className="navbar-address-badge label">
-                              {item.label === "Work"
-                                ? <><Building2 size={12} className="ui-inline-icon" aria-hidden="true" />Work</>
-                                : item.label === "Other"
-                                  ? <><Pin size={12} className="ui-inline-icon" aria-hidden="true" />Other</>
-                                  : <><House size={12} className="ui-inline-icon" aria-hidden="true" />Home</>}
-                            </span>
-                          </div>
+                          <p className="navbar-address-text" title={fullAddress}>
+                            {fullAddress || "Location details not available"}
+                          </p>
                         </div>
 
-                        {item.phone ? (
-                          <div className="navbar-address-phone">
-                            <span><Phone size={12} className="ui-inline-icon" aria-hidden="true" />{item.phone}</span>
-                          </div>
-                        ) : null}
-
-                        <p className="navbar-address-text">{item.address}</p>
-                        <p className="navbar-address-subtext">
-                          {getAddressLocationText(item) || "Location details not available"}
-                        </p>
-
-                        <div
-                          className="navbar-address-option-footer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="navbar-address-select-status">
-                            {isSelected ? (
-                              <span className="navbar-address-selected-badge">
-                                <Check size={13} className="ui-inline-icon" aria-hidden="true" />Delivering to this address
-                              </span>
-                            ) : (
+                        <div className="navbar-address-more" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="navbar-address-more-btn"
+                            aria-label={`More options for ${who}`}
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
+                            onClick={(event) => {
+                              if (menuOpen) {
+                                setAddressMenu(null);
+                                return;
+                              }
+                              const list = event.currentTarget.closest(".navbar-address-options");
+                              const btn = event.currentTarget.getBoundingClientRect();
+                              const bottom = list ? list.getBoundingClientRect().bottom : window.innerHeight;
+                              setAddressMenu({ index, up: btn.bottom + 140 > bottom });
+                            }}
+                          >
+                            <MoreHorizontal size={18} aria-hidden="true" />
+                          </button>
+                          {menuOpen ? (
+                            <div className={`navbar-address-menu ${addressMenu.up ? "up" : ""}`} role="menu">
                               <button
                                 type="button"
-                                className="navbar-address-deliver-btn"
+                                role="menuitem"
                                 onClick={() => {
-                                  selectAddress(index);
-                                  setIsAddressModalOpen(false);
+                                  setAddressMenu(null);
+                                  handleOpenEditAddressForm(index);
                                 }}
                               >
-                                Deliver here
+                                <Pencil size={14} aria-hidden="true" />Edit
                               </button>
-                            )}
-                          </div>
-
-                          <div className="navbar-address-meta-actions">
-                            <button
-                              type="button"
-                              className="navbar-address-btn-text"
-                              onClick={() => handleOpenEditAddressForm(index)}
-                            >
-                              Edit
-                            </button>
-
-                            {!item.isDefault ? (
+                              {!item.isDefault ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setAddressMenu(null);
+                                    setDefaultAddress(index);
+                                  }}
+                                >
+                                  <Star size={14} aria-hidden="true" />Make default
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
-                                className="navbar-address-btn-text"
-                                onClick={() => setDefaultAddress(index)}
+                                role="menuitem"
+                                className="danger"
+                                onClick={() => {
+                                  setAddressMenu(null);
+                                  setAddressToDelete({ index, address: item });
+                                }}
                               >
-                                Set as default
+                                <Trash2 size={14} aria-hidden="true" />Delete
                               </button>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              className="navbar-address-btn-text danger"
-                              onClick={() => setAddressToDelete({ index, address: item })}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                            </div>
+                          ) : null}
                         </div>
-                      </article>
+                      </div>
                     );
                   })}
                 </div>

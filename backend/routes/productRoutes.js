@@ -10,11 +10,13 @@ const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
-const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate } = require("../utils/cache");
+const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate, setBounded } = require("../utils/cache");
+const { productListQuery } = require("../utils/productListQuery");
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
 const { normalizeProductTax } = require("../utils/productTax");
+const { normalizeSlug } = require("../utils/productSlug");
 const { categoryKey, isComboCategory } = require("../utils/categoryKey");
 const {
   normalizeOptionsInput,
@@ -361,11 +363,11 @@ const getAverageRating = (product) => {
 };
 
 const HOME_PRODUCT_SELECT =
-  "_id name image images category price internationalPrice internationalCountryPrices marketPrices stock " +
+  "_id name slug image images category price internationalPrice internationalCountryPrices marketPrices stock " +
   "discountType festiveOffer festiveDiscountPercent productType bundleItems rating reviews reviewsCount createdAt relatedProducts";
 
 const HOME_BUNDLE_PRODUCT_SELECT =
-  "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
+  "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual";
 
 const sortByNewest = (a, b) =>
   new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
@@ -855,6 +857,7 @@ router.post("/", protect, admin, (req, res, next) => {
       hsnSac: productTax.hsnSac,
       gstRate: productTax.gstRate,
       name,
+      ...(String(b.slug || "").trim() ? { slug: String(b.slug).trim() } : {}),
       price,
       internationalPrice,
       internationalCountryPrices,
@@ -923,6 +926,9 @@ router.post("/", protect, admin, (req, res, next) => {
     if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
       return res.status(400).json({ message: error.message });
     }
+    if (error?.name === "ValidationError" && error?.errors?.slug) {
+      return res.status(400).json({ message: error.errors.slug.message });
+    }
     const client = ["ValidationError", "CastError"].includes(error?.name);
     res.status(client ? 400 : 500).json({ message: "Failed to create product", ...(client ? { error: error.message } : {}) });
   }
@@ -946,6 +952,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     const previousFields = getProductAuditFields(product.toObject ? product.toObject() : product);
 
     product.name = req.body.name ?? product.name;
+    if (req.body.slug !== undefined && String(req.body.slug || "").trim()) {
+      product.slug = String(req.body.slug).trim();
+    }
     product.price = req.body.price !== undefined ? normalizeProductPrice(req.body.price, product.price) : product.price;
     product.internationalPrice =
       req.body.internationalPrice !== undefined
@@ -1106,6 +1115,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     if (error?.status === 400 || error?.statusCode === 400 || error?.name === "BundleValidationError") {
       return res.status(400).json({ message: error.message });
     }
+    if (error?.name === "ValidationError" && error?.errors?.slug) {
+      return res.status(400).json({ message: error.errors.slug.message });
+    }
     res.status(500).json({ message: "Failed to update product", error: error.message });
   }
 });
@@ -1137,8 +1149,8 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const products = await Product.find({ isDeleted: { $ne: true } })
-      .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
-      .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+      .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual skipOwnershipRules")
+      .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
       .lean();
     return res.json(products);
   } catch (error) {
@@ -1170,8 +1182,8 @@ router.get("/", async (req, res) => {
             : { isDeleted: { $ne: true }, hideFromListings: { $ne: true } };
           const products = await Product.find(listFilter)
             .select(PUBLIC_PRODUCT_EXCLUDE)
-            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-            .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+            .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
             .lean();
           return products.map(toPublicProduct);
         }
@@ -1179,23 +1191,19 @@ router.get("/", async (req, res) => {
       return res.json(publicList);
     }
 
-    // Build a deterministic cache key from all query params
-    const cacheKey = `products:list:${JSON.stringify(req.query)}`;
-    const cached = appCache.get(cacheKey);
+    // The cache key is built only from the values this route uses, after cleaning them,
+    // so extra or junk query parameters can't create endless cache entries
+    const { page, limit, sortOption, selectedCategory, country, cacheKey } = productListQuery(req.query);
+    const cached = cacheKey ? appCache.get(cacheKey) : undefined;
     if (cached) return res.json(cached);
-
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-    const limit = Math.max(1, Math.min(48, Number.parseInt(req.query.limit, 10) || 8));
-    const sortOption = String(req.query.sort || "featured").trim();
-    const selectedCategory = String(req.query.category || "All").trim();
 
     // The slow part of this route is loading every product, so that load is shared by
     // all page/sort/category combinations and refreshed in the background
     const baseProducts = await cacheStaleWhileRevalidate("products:base:paged", TTL.PRODUCTS_LIST, async () => {
       const products = await Product.find({ isDeleted: { $ne: true }, hideFromListings: { $ne: true } })
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category isDigital digitalType digitalDelivery externalAccessManual")
+        .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
         .lean();
       return products.map(toPublicProduct);
     });
@@ -1262,15 +1270,15 @@ router.get("/", async (req, res) => {
     filteredProducts.sort((a, b) => {
       if (sortOption === "priceLow") {
         return (
-          getProductPriceDetails(a, req.query.country, pricingConfig).price -
-          getProductPriceDetails(b, req.query.country, pricingConfig).price
+          getProductPriceDetails(a, country, pricingConfig).price -
+          getProductPriceDetails(b, country, pricingConfig).price
         );
       }
 
       if (sortOption === "priceHigh") {
         return (
-          getProductPriceDetails(b, req.query.country, pricingConfig).price -
-          getProductPriceDetails(a, req.query.country, pricingConfig).price
+          getProductPriceDetails(b, country, pricingConfig).price -
+          getProductPriceDetails(a, country, pricingConfig).price
         );
       }
 
@@ -1306,8 +1314,10 @@ router.get("/", async (req, res) => {
       categoryCounts
     };
 
-    // Cache paginated result for 60 seconds
-    appCache.set(cacheKey, payload, TTL.PRODUCTS_LIST);
+    // Cache paginated result for 60 seconds. Unknown categories aren't cached at all.
+    if (cacheKey && (selectedCategory === "All" || categories.includes(selectedCategory))) {
+      setBounded(cacheKey, payload, TTL.PRODUCTS_LIST, { prefix: "products:list:", maxKeys: 1000 });
+    }
 
     return res.json(payload);
   } catch (error) {
@@ -1421,9 +1431,9 @@ router.get("/recommend/:productId", async (req, res) => {
       });
     });
 
+    // Every product bought together with this one, most often first
     const sortedIds = Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
       .map((entry) => entry[0]);
 
     let products = [];
@@ -1438,33 +1448,19 @@ router.get("/recommend/:productId", async (req, res) => {
     const rank = new Map(sortedIds.map((id, index) => [id, index]));
     products.sort((a, b) => (rank.get(String(a._id)) ?? 999) - (rank.get(String(b._id)) ?? 999));
 
-    // Fallback 1: Same category
-    if (products.length < 4 && category) {
+    // Then every other product in the same category, newest first
+    if (category) {
       const existingIds = products.map((p) => String(p._id));
       existingIds.push(productId);
 
-      const categoryFallback = await Product.find({
+      const sameCategory = await Product.find({
         category: category,
         _id: { $nin: existingIds },
         isDeleted: { $ne: true },
         hideFromListings: { $ne: true }
-      }).limit(4 - products.length);
+      }).sort({ createdAt: -1 });
 
-      products = [...products, ...categoryFallback];
-    }
-
-    // Fallback 2: Any random recent products
-    if (products.length < 4) {
-      const existingIds = products.map((p) => String(p._id));
-      existingIds.push(productId);
-
-      const anyFallback = await Product.find({
-        _id: { $nin: existingIds },
-        isDeleted: { $ne: true },
-        hideFromListings: { $ne: true }
-      }).sort({ createdAt: -1 }).limit(4 - products.length);
-
-      products = [...products, ...anyFallback];
+      products = [...products, ...sameCategory];
     }
 
     const ranked = products.map((product) => ({
@@ -1531,8 +1527,9 @@ router.get("/:id", async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(targetId)) {
       product = await Product.findById(targetId)
         .select(PUBLIC_PRODUCT_EXCLUDE)
-        .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-        .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+        .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+        .populate("optionParent", "_id slug")
         .lean();
     }
 
@@ -1541,8 +1538,21 @@ router.get("/:id", async (req, res) => {
       if (!isNaN(numId)) {
         product = await Product.findOne({ wpProductId: numId, isDeleted: { $ne: true } })
           .select(PUBLIC_PRODUCT_EXCLUDE)
-          .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
-          .populate("relatedProducts", "name image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+          .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
+          .lean();
+      }
+    }
+
+    if (!product) {
+      const slug = normalizeSlug(targetId);
+      if (slug) {
+        product = await Product.findOne({ $or: [{ slug }, { slugHistory: slug }], isDeleted: { $ne: true } })
+          .select(PUBLIC_PRODUCT_EXCLUDE)
+          .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+          .populate("relatedProducts", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock")
+          .populate("optionParent", "_id slug")
           .lean();
       }
     }
@@ -1552,8 +1562,8 @@ router.get("/:id", async (req, res) => {
     }
 
     // Try loading reviews from the new standalone collection
-    const reviewsCount = await Review.countDocuments({ product: req.params.id });
-    const latestReviews = await Review.find({ product: req.params.id })
+    const reviewsCount = await Review.countDocuments({ product: product._id });
+    const latestReviews = await Review.find({ product: product._id })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();
@@ -1580,7 +1590,7 @@ router.get("/:id", async (req, res) => {
       const optionDocs = optionIds.length
         ? await Product.find({ _id: { $in: optionIds }, isDeleted: { $ne: true } })
             .select(PUBLIC_PRODUCT_EXCLUDE)
-            .populate("bundleItems.product", "name image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
+            .populate("bundleItems.product", "name slug image price internationalPrice internationalCountryPrices marketPrices category stock isDigital digitalType digitalDelivery externalAccessManual")
             .lean()
         : [];
       const byId = new Map(optionDocs.map((d) => [String(d._id), d]));

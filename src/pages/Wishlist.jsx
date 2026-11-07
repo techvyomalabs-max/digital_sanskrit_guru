@@ -10,6 +10,7 @@ import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent } from "../utils/productOptions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Wishlist.css";
+import { productPath } from "../utils/productLink";
 
 function Wishlist() {
   const { wishlist, isLoadingWishlist, removeFromWishlist } = useWishlist();
@@ -90,7 +91,7 @@ function Wishlist() {
                     {/* Column 1: Image & Details */}
                     <div className="wishlist-item-cell col-product">
                       <div className="wishlist-item-product-info">
-                        <Link to={`/product/${product._id}`} className="wishlist-item-image-wrap">
+                        <Link to={productPath(product)} className="wishlist-item-image-wrap">
                           <img
                             src={product.image || "https://picsum.photos/120"}
                             alt={product.name}
@@ -102,7 +103,7 @@ function Wishlist() {
                           <span className="wishlist-item-category">
                             {product?.category || "Sanskrit Item"}
                           </span>
-                          <Link to={`/product/${product._id}`} className="wishlist-item-title">
+                          <Link to={productPath(product)} className="wishlist-item-title">
                             {product.name}
                           </Link>
                           {isBundle && <span className="wishlist-bundle-badge">Bundle</span>}
@@ -144,7 +145,7 @@ function Wishlist() {
                       <div className="wishlist-action-buttons">
                         {isOptionsParent(product) ? (
                           <Link
-                            to={`/product/${product._id}`}
+                            to={productPath(product)}
                             className="wishlist-add-to-cart-btn"
                           >
                             Choose format

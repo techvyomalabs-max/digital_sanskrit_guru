@@ -6,16 +6,6 @@
 
 export const ORGANISATION_NAME = "Vyoma Linguistic Labs Foundation";
 
-export const REGISTERED_OFFICE = {
-  title: "Registered Office",
-  lines: [
-    "#155, 2nd Floor, 4th Cross,",
-    "GKW Layout, Vijayanagar,",
-    "Bengaluru, Karnataka – 560040"
-  ],
-  country: "India"
-};
-
 export const WORKING_OFFICE = {
   title: "Working Office",
   lines: [
