@@ -1111,6 +1111,10 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // With formats, the category is the chosen format's own (e.g. Kindle), else the listing's
+  const shownCategory = String(
+    (isOptionsParent(product) && String(buyProduct?.category || "").trim()) || product?.category || ""
+  ).trim();
   // Same per-order limit the cart applies: 5, or the stock left if lower
   const retailMaxQty = maxCartQuantity({ stock: buyProduct?.stock });
   const optionParentId = product?.optionParent
@@ -1435,11 +1439,11 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title product-detail-title">{product.name}</h1>
-          {String(product.category || "").trim() && String(product.category).trim().toLowerCase() !== "general" ? (
+          {shownCategory && shownCategory.toLowerCase() !== "general" ? (
             <p className="product-category-line">
               Category:{" "}
-              <Link to={`/collection?category=${encodeURIComponent(String(product.category).trim())}`}>
-                {String(product.category).trim()}
+              <Link to={`/collection?category=${encodeURIComponent(shownCategory)}`}>
+                {shownCategory}
               </Link>
             </p>
           ) : null}
