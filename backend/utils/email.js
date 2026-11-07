@@ -1087,41 +1087,6 @@ async function sendSupportInterestEmail({ name, email, phone, organisation, supp
   });
 }
 
-async function sendWelcomeCredentialsEmail(user, plainPassword) {
-  const to = String(user?.email || "").trim().toLowerCase();
-  if (!to) return;
-
-  const safeName = escapeHtml(user?.name || "Student");
-  const safeEmail = escapeHtml(to);
-  const safePassword = escapeHtml(plainPassword);
-
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-      <h2 style="color: #d97706; margin-bottom: 16px;">Welcome to ${SITE_NAME}!</h2>
-      <p>Namaste <strong>${safeName}</strong>,</p>
-      <p>Thank you for purchasing our course. We have created a student account for you so you can access your digital library, view courses, and track order shipments.</p>
-      
-      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #1e293b;">Your Student Login Credentials:</h3>
-        <p style="margin: 8px 0;"><strong>Login URL:</strong> <a href="${siteLink("/login")}">${siteLink("/login")}</a></p>
-        <p style="margin: 8px 0;"><strong>Username / Email:</strong> ${safeEmail}</p>
-        <p style="margin: 8px 0;"><strong>Temporary Password:</strong> <code style="font-family: monospace; font-size: 14px; background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${safePassword}</code></p>
-      </div>
-
-      <p style="color: #64748b; font-size: 13px;">For security, we highly recommend logging in and changing your password under the "My Account" settings page.</p>
-      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-      <p style="font-size: 12px; color: #94a3b8; text-align: center;">This is an automated system email. Please do not reply directly.</p>
-    </div>
-  `;
-
-  return sendEmail({
-    to,
-    subject: `🔑 Your Student Account Credentials - ${SITE_NAME}`,
-    html,
-    type: "welcome-credentials"
-  });
-}
-
 async function sendWishlistReminderEmail(user, wishlistItems = []) {
   if (user?._id) {
     const dbUser = await User.findById(user._id).select("marketingOptOut").lean();
@@ -1384,7 +1349,6 @@ module.exports = {
   sendGiftPassEmail,
   sendBulkEnquiryEmail,
   sendSupportInterestEmail,
-  sendWelcomeCredentialsEmail,
   sendWishlistReminderEmail,
   sendReturnStatusEmail,
   buildPendingAccessNotice,

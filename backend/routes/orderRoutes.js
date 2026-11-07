@@ -32,12 +32,12 @@ const {
   sendRefundStatusUpdate,
   sendLowStockAdminAlert,
   sendWishlistLowStockAlert,
-  sendWelcomeCredentialsEmail,
   sendGiftPassEmail,
   sendReturnStatusEmail,
   sendAccessGrantedEmail,
   sendAccessPendingAdminAlert
 } = require("../utils/email");
+const { sendWelcomeSetPasswordEmail } = require("../utils/passwordReset");
 const {
   isPhysicalItem,
   isReturnOverdue,
@@ -2889,11 +2889,15 @@ router.get("/:id/credit-notes/:n", protect, async (req, res) => {
 });
 
 // POST /api/orders/direct-buy (PUBLIC)
+// Guest "Buy now" without signing in. Only for a completed Razorpay payment: the order
+// is created after the payment is verified against the cart, so nobody can create
+// unpaid orders on someone else's account by entering their email. The reply is the
+// same whether or not the email already had an account.
 router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res) => {
   try {
-    const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
-    if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
-      return res.status(400).json({ message: "Invalid payment status." });
+    const rawPaymentStatus = String(req.body?.paymentStatus || "").trim();
+    if (rawPaymentStatus !== "Paid") {
+      return res.status(400).json({ message: "Please complete the payment to place this order." });
     }
 
     const shipping = req.body.shipping || {};
@@ -2910,32 +2914,16 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       return res.status(400).json({ message: "Email is required for direct purchase." });
     }
 
-    let targetUser = await User.findOne({ email: guestEmail });
-    let tempPassword = "";
-    let isNewUserCreated = false;
-
-    if (!targetUser) {
-      tempPassword = crypto.randomBytes(5).toString("hex");
-      const salt = await bcrypt.genSalt(12);
-      const hashedPassword = await bcrypt.hash(tempPassword, salt);
-      
-      // Where the buyer came from (UTM / referrer), same as on Register. Never blocks the order.
-      let acquisition = null;
-      try {
-        if (req.body?.attribution) acquisition = sanitizeAttribution(req.body.attribution);
-      } catch {
-        acquisition = null;
-      }
-      targetUser = await User.create({
-        name: guestName,
-        email: guestEmail,
-        password: hashedPassword,
-        phone: guestPhone,
-        isAdmin: false,
-        ...(acquisition ? { acquisition } : {})
-      });
-      isNewUserCreated = true;
+    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
+    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
+    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({ message: "Payment reference is required to place paid order." });
     }
+
+    // Only looked up here; a new account is created after the payment is verified
+    let targetUser = await User.findOne({ email: guestEmail });
+    let isNewUserCreated = false;
 
     const settings = await StoreSettings.findOne().lean();
 
@@ -2957,33 +2945,49 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       throw err;
     }
 
-    const razorpayOrderId = String(req.body?.razorpayOrderId || "").trim();
-    const razorpayPaymentId = String(req.body?.razorpayPaymentId || "").trim();
-    const razorpaySignature = String(req.body?.razorpaySignature || req.body?.razorpay_signature || "").trim();
+    if (await Order.exists({ "paymentMeta.razorpayPaymentId": razorpayPaymentId })) {
+      return res.status(409).json({ message: "Payment already used" });
+    }
 
-    let verifiedPayment = null;
-    if (rawPaymentStatus === "Paid") {
-      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-        return res.status(400).json({ message: "Payment reference is required to place paid order." });
+    const v = await verifyRazorpayPaymentForOrder({
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      expectedAmount: calc.chargeAmount || calc.totalInInr || calc.total,
+      expectedCurrency: calc.chargeCurrency || "INR",
+      toleranceMinor: 100
+    });
+    if (!v.ok) {
+      return sendPaymentVerificationError(res, v, razorpayPaymentId);
+    }
+    const verifiedPayment = v.payment;
+
+    if (!targetUser) {
+      // Where the buyer came from (UTM / referrer), same as on Register. Never blocks the order.
+      let acquisition = null;
+      try {
+        if (req.body?.attribution) acquisition = sanitizeAttribution(req.body.attribution);
+      } catch {
+        acquisition = null;
       }
-
-      if (await Order.exists({ "paymentMeta.razorpayPaymentId": razorpayPaymentId })) {
-        return res.status(409).json({ message: "Payment already used" });
+      try {
+        // No password is chosen or sent: the welcome email has a link to set one
+        targetUser = await User.create({
+          name: guestName,
+          email: guestEmail,
+          password: await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12),
+          hasLocalPassword: false,
+          phone: guestPhone,
+          isAdmin: false,
+          ...(acquisition ? { acquisition } : {})
+        });
+        isNewUserCreated = true;
+      } catch (createErr) {
+        // Created by a parallel request a moment ago
+        if (createErr?.code !== 11000) throw createErr;
+        targetUser = await User.findOne({ email: guestEmail });
+        if (!targetUser) throw createErr;
       }
-
-      const v = await verifyRazorpayPaymentForOrder({
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        expectedAmount: calc.chargeAmount || calc.totalInInr || calc.total,
-        expectedCurrency: calc.chargeCurrency || "INR",
-        toleranceMinor: 100
-      });
-
-      if (!v.ok) {
-        return sendPaymentVerificationError(res, v, razorpayPaymentId);
-      }
-      verifiedPayment = v.payment;
     }
 
     let directBuyUserId = req.user || null;
@@ -3109,8 +3113,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         }
       }
 
-      if (isNewUserCreated && tempPassword) {
-        await sendWelcomeCredentialsEmail(targetUser, tempPassword);
+      if (isNewUserCreated) {
+        await sendWelcomeSetPasswordEmail(targetUser);
       }
 
       if (rawPaymentStatus === "Paid") {
@@ -3118,9 +3122,9 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       }
     });
 
+    // Deliberately the same reply for new and existing accounts
     res.status(201).json({
       order: serializeOrderForOwner(order, targetUser._id),
-      accountCreated: isNewUserCreated,
       email: guestEmail
     });
   } catch (err) {
