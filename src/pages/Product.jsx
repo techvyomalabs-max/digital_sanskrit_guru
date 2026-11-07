@@ -1129,7 +1129,19 @@ function Product() {
   };
   const galleryImages = getGalleryImages(product);
   const extraProductDetails = getExtraProductDetails(product.name);
-  const aboutProductPoints = buildAboutProductPoints(product, extraProductDetails);
+  // With formats, the details shown are the chosen format's own (e.g. the Kindle edition's
+  // description and points), falling back to the listing's where the format has none. The
+  // page title, reviews, share text and search-engine tags stay the listing's.
+  const formatInfo = isOptionsParent(product) && buyProduct ? buyProduct : null;
+  const hasText = (value) => htmlToPlainText(String(value || "")).trim() !== "";
+  const formatAbout = Array.isArray(formatInfo?.aboutProduct)
+    ? formatInfo.aboutProduct.filter((point) => String(point || "").trim())
+    : [];
+  const aboutProductPoints = buildAboutProductPoints(
+    formatInfo ? { ...formatInfo, aboutProduct: formatAbout.length > 0 ? formatAbout : product.aboutProduct } : product,
+    extraProductDetails
+  );
+  const shownDescription = formatInfo && hasText(formatInfo.description) ? formatInfo.description : product.description;
   const bundleItems = Array.isArray(buyProduct?.bundleItems) ? buyProduct.bundleItems : [];
   const isBundle =
     Boolean(buyProduct) &&
@@ -1578,7 +1590,7 @@ function Product() {
               <span className="out-stock">This product is currently unavailable.</span>
             </p>
           )}
-          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || "") }} />
+          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shownDescription || "") }} />
         </div>
 
         <div className="product-right">
