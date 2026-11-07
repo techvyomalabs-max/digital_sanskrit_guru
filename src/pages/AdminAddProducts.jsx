@@ -117,6 +117,7 @@ function createEmptySingleFormat(kind = "new") {
     height: "",
     hsnSac: "",
     gstRate: "",
+    mrp: "",
     productId: ""
   };
 }
@@ -428,6 +429,8 @@ function AdminAddProducts() {
   const [singleFormats, setSingleFormats] = useState([]);
   // Shown in the shop, or hidden (page still opens by link). Formats follow their main listing.
   const [hideFromListings, setHideFromListings] = useState(false);
+  // M.R.P. (e.g. printed cover price): optional, display-only, never below the price
+  const [mrp, setMrp] = useState("");
   const [visibilityBusyId, setVisibilityBusyId] = useState("");
   const [visibilityMessage, setVisibilityMessage] = useState("");
   const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
@@ -836,6 +839,7 @@ function AdminAddProducts() {
     setBundleFormats([]);
     setSingleFormats([]);
     setHideFromListings(false);
+    setMrp("");
     setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
@@ -1735,7 +1739,11 @@ function AdminAddProducts() {
           setFormMessage(`Format "${label}": enter a price.`);
           return;
         }
-        for (const field of ["price", "stock", "weight", "length", "width", "height"]) {
+        if (String(row.mrp ?? "").trim() !== "" && Number(row.mrp) < Number(row.price)) {
+          setFormMessage(`Format "${label}": M.R.P. can't be lower than its price.`);
+          return;
+        }
+        for (const field of ["price", "stock", "weight", "length", "width", "height", "mrp"]) {
           const raw = String(row[field] ?? "").trim();
           if (raw !== "" && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
             setFormMessage(`Format "${label}": ${field} must be 0 or more.`);
@@ -1755,6 +1763,18 @@ function AdminAddProducts() {
           setFormMessage(`Format "${label}": HSN/SAC code must be 4 to 8 digits (or left blank).`);
           return;
         }
+      }
+    }
+
+    if (!hasAnyFormats && String(mrp).trim() !== "") {
+      const mrpValue = Number(mrp);
+      if (Number.isNaN(mrpValue) || mrpValue < 0) {
+        setFormMessage("M.R.P. must be a number, 0 or more (or left blank).");
+        return;
+      }
+      if (mrpValue < formSummary.numericPrice) {
+        setFormMessage("M.R.P. can't be lower than the selling price.");
+        return;
       }
     }
 
@@ -1899,6 +1919,7 @@ function AdminAddProducts() {
       festiveOffer: discountType !== "none",
       festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
       ...(isManagedFormat ? {} : { hideFromListings }),
+      mrp: hasAnyFormats || String(mrp).trim() === "" ? null : Number(mrp),
       productType: productType,
       // With formats the product is digital only when every format is
       isDigital: hasSingleFormats ? singleFormats.every((row) => isSingleFormatDigital(row)) : isDigital,
@@ -1951,6 +1972,7 @@ function AdminAddProducts() {
                   ),
                   hsnSac: String(row.hsnSac || "").replace(/\s+/g, ""),
                   gstRate: String(row.gstRate ?? "") === "" ? null : Number(row.gstRate),
+                  mrp: String(row.mrp ?? "").trim() === "" ? null : Number(row.mrp),
                   position
                 }))
             : [],
@@ -2101,7 +2123,8 @@ function AdminAddProducts() {
             height: Number(format.height) > 0 ? String(format.height) : "",
             hsnSac: String(optionProduct?.hsnSac || ""),
             gstRate:
-              optionProduct?.gstRate === null || optionProduct?.gstRate === undefined ? "" : String(optionProduct.gstRate)
+              optionProduct?.gstRate === null || optionProduct?.gstRate === undefined ? "" : String(optionProduct.gstRate),
+            mrp: optionProduct?.mrp === null || optionProduct?.mrp === undefined ? "" : String(optionProduct.mrp)
           };
         })
       );
@@ -2109,6 +2132,7 @@ function AdminAddProducts() {
       setSingleFormats([]);
     }
     setHideFromListings(product.hideFromListings === true);
+    setMrp(product.mrp === null || product.mrp === undefined ? "" : String(product.mrp));
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setHsnSac(String(product.hsnSac || ""));
@@ -2998,6 +3022,19 @@ function AdminAddProducts() {
                               value={stock}
                               onChange={(e) => setStock(e.target.value)}
                             />
+                          </label>
+                          <label className="admin-field">
+                            <span>M.R.P. (optional)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="e.g. 250 (printed price)"
+                              value={mrp}
+                              onChange={(e) => setMrp(e.target.value)}
+                            />
+                            <small className="pf-hint">
+                              Shown crossed out next to the price for customers in India. Leave blank if there is none.
+                            </small>
                           </label>
                         </>
                       )}
@@ -4118,6 +4155,16 @@ function AdminAddProducts() {
                                             placeholder="e.g. 499"
                                             value={row.price}
                                             onChange={(e) => updateSingleFormat(row.rowKey, "price", e.target.value)}
+                                          />
+                                        </label>
+                                        <label className="pf-formats-pack-field">
+                                          <span>M.R.P. (optional)</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="e.g. 550"
+                                            value={row.mrp}
+                                            onChange={(e) => updateSingleFormat(row.rowKey, "mrp", e.target.value)}
                                           />
                                         </label>
                                         {row.type === "digital" ? (

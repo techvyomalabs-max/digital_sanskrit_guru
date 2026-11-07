@@ -12,6 +12,7 @@ const { getProductPriceDetails } = require("../utils/productPricing");
 const { getAdminActorSnapshot, logAdminAction } = require("../utils/adminAudit");
 const { appCache, TTL, invalidateProductCache, invalidateKeys, cacheAside, cacheStaleWhileRevalidate, setBounded } = require("../utils/cache");
 const { productListQuery } = require("../utils/productListQuery");
+const { normalizeMrpInput, mrpBelowPriceError } = require("../utils/productMrp");
 const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require("../utils/spamFilter");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
@@ -1036,6 +1037,11 @@ router.post("/", protect, admin, (req, res, next) => {
     const festiveOffer = rawDiscountType !== "none" || b.festiveOffer === true;
     const discountType = festiveOffer ? rawDiscountType : "none";
     const price = optionsRes.hasOptions && optionsRes.pricing ? optionsRes.pricing.price : normalizeProductPrice(b.price);
+    const mrpRes = normalizeMrpInput(b.mrp);
+    if (mrpRes.error) return res.status(400).json({ message: mrpRes.error });
+    const mrp = mrpRes.value ?? null;
+    const mrpError = optionsRes.hasOptions ? "" : mrpBelowPriceError(mrp, price);
+    if (mrpError) return res.status(400).json({ message: mrpError });
     const internationalPrice =
       optionsRes.hasOptions && optionsRes.pricing
         ? optionsRes.pricing.internationalPrice
@@ -1076,6 +1082,7 @@ router.post("/", protect, admin, (req, res, next) => {
       name,
       ...(String(b.slug || "").trim() ? { slug: String(b.slug).trim() } : {}),
       price,
+      mrp,
       internationalPrice,
       internationalCountryPrices,
       marketPrices,
@@ -1179,6 +1186,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
       product.slug = String(req.body.slug).trim();
     }
     product.price = req.body.price !== undefined ? normalizeProductPrice(req.body.price, product.price) : product.price;
+    const mrpRes = normalizeMrpInput(req.body.mrp);
+    if (mrpRes.error) return res.status(400).json({ message: mrpRes.error });
+    if (mrpRes.value !== undefined) product.mrp = mrpRes.value;
     product.internationalPrice =
       req.body.internationalPrice !== undefined
         ? normalizeInternationalPrice(req.body.internationalPrice, product.internationalPrice)
@@ -1335,6 +1345,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     product.lastUpdatedByName = actor.name;
     product.lastUpdatedByEmail = actor.email;
     product.lastUpdatedAt = new Date();
+
+    const mrpError = product.hasOptions ? "" : mrpBelowPriceError(product.mrp, product.price);
+    if (mrpError) return res.status(400).json({ message: mrpError });
 
     // Remember the links before saving, so reconcileSingleFormats can unlink what was removed
     const optionsBeforeSave = clearsSingleFormats ? optionsRes.options : null;

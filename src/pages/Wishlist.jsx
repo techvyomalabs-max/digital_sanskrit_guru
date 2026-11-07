@@ -11,6 +11,7 @@ import { isOptionsParent } from "../utils/productOptions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import "./Wishlist.css";
 import { productPath } from "../utils/productLink";
+import { getShownMrp } from "../utils/productMrp";
 
 function Wishlist() {
   const { wishlist, isLoadingWishlist, removeFromWishlist } = useWishlist();
@@ -79,7 +80,10 @@ function Wishlist() {
                   ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
                   : displayPrice;
                 // Crossed-out price only when there is a real one (no made-up price x 1.1)
-                const listPrice = hasActiveMarketSale
+                const shownMrp = getShownMrp(product, pricing, displayPrice);
+                const listPrice = shownMrp
+                  ? shownMrp
+                  : hasActiveMarketSale
                   ? Number(pricing.marketRegularPrice)
                   : festiveOriginalPrice > displayPrice
                     ? festiveOriginalPrice

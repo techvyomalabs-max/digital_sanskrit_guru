@@ -105,6 +105,19 @@ function normalizeBundleFormatsInput(input) {
     const tax = sentTax ? normalizeProductTax({ hsnSac: raw.hsnSac, gstRate: raw.gstRate }) : {};
     if (tax.error) return { formats: [], error: `Format "${label}": ${tax.error}` };
 
+    // M.R.P. of the format (single products only; stored on the format's product)
+    let mrp;
+    if (raw.mrp !== undefined) {
+      mrp = isBlank(raw.mrp) ? null : Number(raw.mrp);
+      if (mrp !== null && (!Number.isFinite(mrp) || mrp < 0)) {
+        return { formats: [], error: `Format "${label}": M.R.P. must be 0 or more (or left blank).` };
+      }
+      if (mrp !== null) mrp = Math.round(mrp * 100) / 100;
+      if (mrp !== null && price !== null && mrp < price) {
+        return { formats: [], error: `Format "${label}": M.R.P. can't be lower than its price.` };
+      }
+    }
+
     const position = Number(raw.position);
     formats.push({
       key,
@@ -114,6 +127,7 @@ function normalizeBundleFormatsInput(input) {
       stock,
       ...pack,
       ...(sentTax ? { hsnSac: tax.hsnSac, gstRate: tax.gstRate } : {}),
+      ...(mrp !== undefined ? { mrp } : {}),
       ...(Number.isFinite(position) ? { position } : {})
     });
   }
@@ -384,6 +398,7 @@ function buildSingleFormatChildFields(parent, format) {
     skipOwnershipRules: false,
     hsnSac: format.hsnSac || "",
     gstRate: format.gstRate === undefined ? null : format.gstRate,
+    mrp: format.mrp === undefined ? null : format.mrp,
     isDeleted: false,
     deletedAt: null
   };

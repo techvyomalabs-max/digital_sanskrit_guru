@@ -18,6 +18,7 @@ import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct 
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { getShownMrp } from "../utils/productMrp";
 import { fetchPublicCatalog } from "../utils/productCatalog";
 import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -1172,13 +1173,17 @@ function Product() {
   // A crossed-out price is shown only when there is a real one: the market's regular price
   // during a sale, a combo's items bought separately, or the price before the admin's discount.
   // (It used to fall back to price x 1.1, which showed a made-up "9% off" on every product.)
-  const listPrice = hasActiveMarketSale
-    ? marketRegularPrice
-    : isBundle && bundleOriginalTotal > displayPrice
-      ? bundleOriginalTotal
-      : festiveOriginalPrice > displayPrice
-        ? festiveOriginalPrice
-        : displayPrice;
+  // The admin's M.R.P. (e.g. printed cover price) comes first; for a format, the format's own.
+  const shownMrp = getShownMrp(buyProduct || product, pricing, displayPrice);
+  const listPrice = shownMrp
+    ? shownMrp
+    : hasActiveMarketSale
+      ? marketRegularPrice
+      : isBundle && bundleOriginalTotal > displayPrice
+        ? bundleOriginalTotal
+        : festiveOriginalPrice > displayPrice
+          ? festiveOriginalPrice
+          : displayPrice;
   const hasListPrice = listPrice > displayPrice;
   const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
@@ -1539,7 +1544,7 @@ function Product() {
                 ) : null}
                 {hasListPrice ? (
                   <p className="price-meta">
-                    Regular price: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
+                    {shownMrp ? "M.R.P." : "Regular price"}: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
                   </p>
                 ) : null}
                 <p className="tax-note">Inclusive of all taxes</p>
