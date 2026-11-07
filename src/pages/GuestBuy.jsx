@@ -82,7 +82,6 @@ function GuestBuy() {
 
   // Success state
   const [orderSuccess, setOrderSuccess] = useState(null);
-  const [credentialsSent, setCredentialsSent] = useState(false);
   const [settings, setSettings] = useState(null);
   const [coords, setCoords] = useState({ latitude: null, longitude: null });
 
@@ -356,8 +355,7 @@ function GuestBuy() {
             });
 
             setOrderSuccess(orderRes.data?.order);
-            setCredentialsSent(orderRes.data?.accountCreated);
-            if (orderRes.data?.accountCreated) clearAttribution();
+            clearAttribution();
           } catch (err) {
             setCheckoutMessage(err.response?.data?.message || "Failed to finalize order on server.");
           } finally {
@@ -475,15 +473,9 @@ function GuestBuy() {
 
           <div style={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", padding: "16px", borderRadius: "8px", marginBottom: "24px" }}>
             <h4 style={{ fontWeight: "700", color: "#1e293b", marginBottom: "8px" }}><KeyRound size={16} className="ui-inline-icon" aria-hidden="true" />Account Provisioning</h4>
-            {credentialsSent ? (
-              <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.5" }}>
-                Welcome to the platform! Since you are a new user, we have automatically created a student account for you. Your <strong>temporary password</strong> has been sent to <strong>{email}</strong>.
-              </p>
-            ) : (
-              <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.5" }}>
-                This order has been linked to your existing account registered under <strong>{email}</strong>. Log in with your password to access your courses immediately.
-              </p>
-            )}
+            <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.5" }}>
+              This order is saved to the account for <strong>{email}</strong>, and the order details are on their way to that inbox. Already have a password? Sign in to open your purchase. New here? Check your email for a link to set your password.
+            </p>
           </div>
 
           <button onClick={() => navigate("/login")} className="checkout-btn" style={{ width: "100%", padding: "12px" }}>
