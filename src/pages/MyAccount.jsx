@@ -87,6 +87,20 @@ const formatAddressFullText = (item) =>
     .filter(Boolean)
     .join("\n");
 
+/** The address on one line, adding city/state/PIN/country only when the address doesn't already say them. */
+const formatAddressDisplayText = (item) => {
+  const line = String(item?.address || "").trim().replace(/\s*,\s*/g, ", ");
+  const lower = line.toLowerCase();
+  const extra = [item?.city, item?.state, item?.pincode, item?.country]
+    .map((part) => String(part || "").trim())
+    .filter((part) => part && !lower.includes(part.toLowerCase()))
+    .map((part) => (part === part.toLowerCase() ? part.replace(/\b\p{L}/gu, (c) => c.toUpperCase()) : part));
+  return [line, ...extra].filter(Boolean).join(", ") || "Location details not available";
+};
+
+const isAddressSheetLayout = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches;
+
 const formatAddressLocationLine = (item) =>
   [item?.city, item?.state, item?.pincode, item?.country].filter(Boolean).join(", ");
 
@@ -512,11 +526,31 @@ function MyAccount() {
     setShowAddressForm(false);
   };
 
+  // Escape closes the address form; on phones the form is a full-screen sheet, so the page behind it stays put.
+  useEffect(() => {
+    if (!showAddressForm) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") setShowAddressForm(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const lockScroll = isAddressSheetLayout();
+    const previousOverflow = document.body.style.overflow;
+    if (lockScroll) document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (lockScroll) document.body.style.overflow = previousOverflow;
+    };
+  }, [showAddressForm]);
+
   const openNewAddressForm = () => {
     resetAddressForm();
     setIsDefaultAddress(addresses.length === 0);
     setShowAddressForm(true);
     setTimeout(() => {
+      if (isAddressSheetLayout()) {
+        nameInputRef.current?.focus();
+        return;
+      }
       const targetEl = addressFormRef.current || document.getElementById("manage-address");
       if (targetEl) {
         const navOffset = 140;
@@ -602,6 +636,10 @@ function MyAccount() {
     setAddressError("");
 
     setTimeout(() => {
+      if (isAddressSheetLayout()) {
+        nameInputRef.current?.focus();
+        return;
+      }
       const cardEl = document.getElementById(`my-account-addr-card-${index}`);
       const formEl = addressFormRef.current || document.getElementById("manage-address");
       const targetEl = formEl || cardEl;
@@ -2076,24 +2114,17 @@ function MyAccount() {
             <p className="my-account-section-kicker">Address Book</p>
             <h2>Manage addresses</h2>
           </div>
-          <div className="my-account-panel-head-actions">
-            {showAddressForm ? (
+          {!showAddressForm || editingIndex !== null ? (
+            <div className="my-account-panel-head-actions">
               <button
                 type="button"
-                className="my-account-inline-link my-account-inline-btn"
-                onClick={closeAddressForm}
+                className="my-account-inline-link my-account-inline-btn primary-tint"
+                onClick={openNewAddressForm}
               >
-                <X size={14} /> Close Form
+                <Plus size={14} aria-hidden="true" /> Add New Address
               </button>
-            ) : null}
-            <button
-              type="button"
-              className="my-account-inline-link my-account-inline-btn primary-tint"
-              onClick={openNewAddressForm}
-            >
-              <MapPin size={14} /> Add New Address
-            </button>
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {addressToast && (
@@ -2111,117 +2142,96 @@ function MyAccount() {
           </div>
         )}
 
+        <div className={`my-account-address-layout ${showAddressForm ? "has-form" : ""}`}>
+        <div className="my-account-address-list">
         {isLoadingAddresses ? (
           <LoadingSpinner text="Loading saved addresses..." minHeight="160px" />
         ) : addresses.length > 0 ? (
           <div className="my-account-address-cards-grid">
             {addresses.map((item, index) => {
               const isEditingThisCard = editingIndex === index && showAddressForm;
+              const labelKey = item.label === "Work" || item.label === "Other" ? item.label : "Home";
+              const LabelIcon = labelKey === "Work" ? Building2 : labelKey === "Other" ? MapPin : House;
+              const who = item.name || "this address";
 
               return (
                 <div
                   key={`${item.name}-${item.pincode}-${index}`}
                   id={`my-account-addr-card-${index}`}
-                  className={`my-account-addr-card ${
-                    isEditingThisCard ? "editing-active" : ""
+                  className={`my-account-addr-card ${isEditingThisCard ? "editing-active" : ""} ${
+                    item.isDefault ? "is-default" : ""
                   }`}
                 >
-                  <div className="my-account-addr-card-head">
-                    <div className="my-account-addr-title-group">
-                      <span
-                        className={`my-account-addr-label-tag ${(
-                          item.label || "Home"
-                        ).toLowerCase()}`}
-                      >
-                        {item.label === "Work" ? (
-                          <><Building2 size={13} className="ui-inline-icon" aria-hidden="true" />Work</>
-                        ) : item.label === "Other" ? (
-                          <><MapPin size={13} className="ui-inline-icon" aria-hidden="true" />Other</>
-                        ) : (
-                          <><House size={13} className="ui-inline-icon" aria-hidden="true" />Home</>
-                        )}
-                      </span>
-                      <strong className="my-account-addr-recipient">
-                        {item.name || "Recipient"}
-                      </strong>
-                    </div>
-                    {item.isDefault ? (
-                      <span className="my-account-default-badge">
-                        <CheckCircle2 size={12} /> Default
-                      </span>
-                    ) : null}
-                  </div>
+                  <span className={`my-account-addr-tile ${labelKey.toLowerCase()}`} aria-hidden="true">
+                    <LabelIcon size={18} />
+                  </span>
 
-                  <div className="my-account-addr-card-body">
-                    <div className="my-account-addr-row">
-                      <Phone size={14} className="my-account-addr-icon" />
-                      <span>{item.phone || "No phone added"}</span>
-                    </div>
-                    <div className="my-account-addr-row">
-                      <MapPin size={14} className="my-account-addr-icon" />
-                      <span>
-                        {item.address}
-                        {item.landmark ? ` (Landmark: ${item.landmark})` : ""}
-                      </span>
-                    </div>
-                    <p className="my-account-addr-city-line">
-                      {formatAddressLocationLine(item)}
-                    </p>
-                  </div>
+                  <div className="my-account-addr-main">
+                    <div className="my-account-addr-card-head">
+                      <div className="my-account-addr-title-group">
+                        <strong className="my-account-addr-recipient">{item.name || "Recipient"}</strong>
+                        <span className="my-account-addr-label-tag">{labelKey}</span>
+                        {item.isDefault ? <span className="my-account-default-badge">Default</span> : null}
+                        {isEditingThisCard ? <span className="my-account-addr-editing-flag">Editing</span> : null}
+                      </div>
 
-                  <div className="my-account-addr-card-footer">
-                    <div className="my-account-addr-action-btns">
-                      <button
-                        type="button"
-                        className="my-account-addr-btn"
-                        title="Copy full address"
-                        onClick={() => copyAddressToClipboard(item, index)}
-                      >
-                        {copiedAddressIndex === index ? (
-                          <>
-                            <CheckCircle2 size={13} className="text-emerald" /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy size={13} /> Copy
-                          </>
-                        )}
-                      </button>
-
-                      {isEditingThisCard ? (
+                      <div className="my-account-addr-icon-actions">
                         <button
                           type="button"
-                          className="my-account-addr-cancel-edit-btn"
-                          onClick={() => {
-                            resetAddressForm();
-                            setShowAddressForm(false);
-                            setAddressError("");
+                          className="my-account-addr-icon-btn"
+                          title={copiedAddressIndex === index ? "Copied" : "Copy address"}
+                          aria-label={`Copy address of ${who}`}
+                          onClick={() => copyAddressToClipboard(item, index)}
+                        >
+                          {copiedAddressIndex === index ? (
+                            <CheckCircle2 size={15} className="text-emerald" aria-hidden="true" />
+                          ) : (
+                            <Copy size={15} aria-hidden="true" />
+                          )}
+                        </button>
+                        {isEditingThisCard ? (
+                          <button
+                            type="button"
+                            className="my-account-addr-icon-btn"
+                            title="Cancel editing"
+                            aria-label={`Cancel editing address of ${who}`}
+                            onClick={closeAddressForm}
+                          >
+                            <X size={15} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="my-account-addr-icon-btn"
+                            title="Edit"
+                            aria-label={`Edit address of ${who}`}
+                            onClick={() => editAddress(index)}
+                          >
+                            <Edit3 size={15} aria-hidden="true" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="my-account-addr-icon-btn danger"
+                          title="Delete"
+                          aria-label={`Delete address of ${who}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setAddressToDelete({ index, address: item });
                           }}
                         >
-                          <X size={13} /> Cancel
+                          <Trash2 size={15} aria-hidden="true" />
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="my-account-addr-btn"
-                          onClick={() => editAddress(index)}
-                        >
-                          <Edit3 size={13} /> Edit
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        className="my-account-addr-btn danger"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setAddressToDelete({ index, address: item });
-                        }}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
+                      </div>
                     </div>
+
+                    <p className="my-account-addr-line">{formatAddressDisplayText(item)}</p>
+                    {item.landmark ? <p className="my-account-addr-meta">Landmark: {item.landmark}</p> : null}
+                    <p className="my-account-addr-meta">
+                      <Phone size={12} aria-hidden="true" />
+                      {item.phone || "No phone added"}
+                    </p>
 
                     {!item.isDefault ? (
                       <button
@@ -2229,7 +2239,7 @@ function MyAccount() {
                         className="my-account-set-default-btn"
                         onClick={() => handleSetDefaultAddress(index)}
                       >
-                        Set as Default
+                        Set as default
                       </button>
                     ) : null}
                   </div>
@@ -2244,35 +2254,43 @@ function MyAccount() {
             </div>
             <h4>No saved delivery addresses</h4>
             <p>Add your home or office address for fast, 1-click checkout on all your orders.</p>
-            <button
-              type="button"
-              className="primary my-account-empty-add-btn"
-              onClick={openNewAddressForm}
-            >
-              <Plus size={16} className="ui-inline-icon" aria-hidden="true" />Add Delivery Address
-            </button>
+            {!showAddressForm ? (
+              <button
+                type="button"
+                className="primary my-account-empty-add-btn"
+                onClick={openNewAddressForm}
+              >
+                <Plus size={16} className="ui-inline-icon" aria-hidden="true" />Add Delivery Address
+              </button>
+            ) : null}
           </div>
         )}
+        </div>
 
         {showAddressForm ? (
-          <div ref={addressFormRef} className="my-account-address-form-wrapper">
+          <div className="my-account-address-sheet-backdrop" onClick={closeAddressForm} aria-hidden="true" />
+        ) : null}
+
+        {showAddressForm ? (
+          <div
+            ref={addressFormRef}
+            className="my-account-address-form-wrapper"
+            role="region"
+            aria-labelledby="my-account-address-form-title"
+          >
             <div className="my-account-address-form-header">
               <div className="my-account-address-form-title-group">
                 <div className="my-account-form-icon-badge">
                   <MapPin size={22} />
                 </div>
                 <div>
-                  <h3>
-                    {editingIndex !== null
-                      ? `Edit Delivery Address (${
-                          addresses[editingIndex]?.name || name || "Address"
-                        })`
-                      : "Add New Delivery Address"}
+                  <h3 id="my-account-address-form-title">
+                    {editingIndex !== null ? "Edit address" : "Add a new address"}
                   </h3>
                   <p className="my-account-form-subtitle">
                     {editingIndex !== null
-                      ? "Update your recipient and location details below."
-                      : "Add your full shipping details for seamless, 1-click checkout."}
+                      ? `For ${addresses[editingIndex]?.name || name || "this address"}`
+                      : "Saved for quick checkout"}
                   </p>
                 </div>
               </div>
@@ -2285,7 +2303,7 @@ function MyAccount() {
                     disabled={isDetectingLocation}
                   >
                     <Compass size={14} className={isDetectingLocation ? "spin" : ""} />
-                    <span>{isDetectingLocation ? "Detecting GPS..." : "Autofill via Location"}</span>
+                    <span>{isDetectingLocation ? "Detecting..." : "Use my location"}</span>
                   </button>
                 )}
                 <button
@@ -2311,7 +2329,7 @@ function MyAccount() {
               <div className="my-account-type-chips">
                 {[
                   { key: "Home", icon: House, label: "Home", desc: "All day delivery" },
-                  { key: "Work", icon: Building2, label: "Work / Office", desc: "10 AM - 6 PM" },
+                  { key: "Work", icon: Building2, label: "Work", desc: "10 AM - 6 PM" },
                   { key: "Other", icon: MapPin, label: "Other", desc: "Specific timing" }
                 ].map((item) => (
                   <button
@@ -2624,7 +2642,7 @@ function MyAccount() {
                 className="primary my-account-save-btn"
                 onClick={saveAddress}
               >
-                {editingIndex === null ? "Save Delivery Address" : "Update Delivery Address"}
+                {editingIndex === null ? "Save address" : "Update address"}
               </button>
               <button
                 type="button"
@@ -2636,6 +2654,7 @@ function MyAccount() {
             </div>
           </div>
         ) : null}
+        </div>
 
         {/* Delete Address Confirmation Popup Modal */}
         {addressToDelete !== null &&
