@@ -10,6 +10,8 @@
  * access therefore work on the child exactly like on any other combo.
  */
 
+const { normalizeProductTax } = require("./productTax");
+
 const MAX_FORMATS = 8;
 const MAX_LABEL_LENGTH = 40;
 const KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -97,7 +99,23 @@ function normalizeBundleFormatsInput(input) {
     }
     usedKeys.add(key);
 
-    formats.push({ key, label, type: normalizeFormatType(raw.type), price, stock, ...pack });
+    // Own HSN/SAC and GST rate of the format (single products only; stored on the format's product).
+    // Blank = the standard rule for its type (printed book 4901 at 0%, digital 998433 at 18%).
+    const sentTax = raw.hsnSac !== undefined || raw.gstRate !== undefined;
+    const tax = sentTax ? normalizeProductTax({ hsnSac: raw.hsnSac, gstRate: raw.gstRate }) : {};
+    if (tax.error) return { formats: [], error: `Format "${label}": ${tax.error}` };
+
+    const position = Number(raw.position);
+    formats.push({
+      key,
+      label,
+      type: normalizeFormatType(raw.type),
+      price,
+      stock,
+      ...pack,
+      ...(sentTax ? { hsnSac: tax.hsnSac, gstRate: tax.gstRate } : {}),
+      ...(Number.isFinite(position) ? { position } : {})
+    });
   }
 
   return { formats, error: "" };
@@ -311,6 +329,81 @@ function buildFormatChildFields(parent, format, items, priceById = {}, digitalBy
   return fields;
 }
 
+// What a single product's format copies from the main product on every save.
+const SINGLE_COPY_FIELDS = [
+  "category",
+  "description",
+  "aboutProduct",
+  "image",
+  "images",
+  "trailerVideoUrl",
+  "discountType",
+  "festiveOffer",
+  "festiveDiscountPercent"
+];
+
+// Online access settings: a Digital format uses the main product's; a Physical one has none.
+const SINGLE_DIGITAL_FIELDS = [
+  "digitalType",
+  "webReaderLink",
+  "kindleLink",
+  "kindleAsin",
+  "digitalInstructions",
+  "courseLink",
+  "digitalDelivery",
+  "externalAccessLink",
+  "externalAccessLabel",
+  "externalAccessManual"
+];
+
+/**
+ * The fields of the hidden product for one format of a single product (e.g. "Print" or
+ * "Web Version" of a book). Unlike combo formats there are no items: the format is the product
+ * itself in another form, with its own price, stock, package size and tax settings.
+ * The main product's HSN/SAC and GST rate are never copied, because a printed book and its web
+ * version are taxed differently.
+ */
+function buildSingleFormatChildFields(parent, format) {
+  const src = plain(parent) || {};
+  const isDigital = normalizeFormatType(format.type) === "digital";
+  const fields = {
+    name: `${String(src.name || "").trim()} – ${format.label}`.slice(0, 200),
+    price: Number.isFinite(Number(format.price)) ? Number(format.price) : 0,
+    productType: "single",
+    bundleItems: [],
+    hideFromListings: true,
+    optionParent: src._id || null,
+    bundleFormatKey: format.key,
+    hasOptions: false,
+    options: [],
+    bundleFormats: [],
+    internationalPrice: null,
+    internationalCountryPrices: [],
+    marketPrices: [],
+    isDigital,
+    skipOwnershipRules: false,
+    hsnSac: format.hsnSac || "",
+    gstRate: format.gstRate === undefined ? null : format.gstRate,
+    isDeleted: false,
+    deletedAt: null
+  };
+  for (const field of SINGLE_COPY_FIELDS) {
+    if (src[field] !== undefined) fields[field] = Array.isArray(src[field]) ? [...src[field]] : src[field];
+  }
+  for (const field of SINGLE_DIGITAL_FIELDS) {
+    if (isDigital) {
+      if (src[field] !== undefined) fields[field] = src[field];
+    } else {
+      fields[field] = field === "digitalDelivery" ? "onsite" : field === "externalAccessManual" ? false : "";
+    }
+  }
+  for (const field of PACKAGE_FIELDS) {
+    fields[field] = isDigital ? 0 : Math.max(0, Number(format[field]) || 0);
+  }
+  if (format.stock !== null && format.stock !== undefined) fields.stock = format.stock;
+  return fields;
+}
+
 module.exports = {
   MAX_FORMATS,
   MAX_LABEL_LENGTH,
@@ -324,5 +417,6 @@ module.exports = {
   itemsForFormat,
   isItemDigital,
   computeFormatTotal,
-  buildFormatChildFields
+  buildFormatChildFields,
+  buildSingleFormatChildFields
 };

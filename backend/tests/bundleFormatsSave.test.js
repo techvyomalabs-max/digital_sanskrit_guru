@@ -4,7 +4,14 @@ const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const productRoutes = require("../routes/productRoutes");
 
-const { resolveBundleFormatsForSave, reconcileBundleFormats, setFormatChildrenDeleted } = productRoutes;
+const {
+  resolveBundleFormatsForSave,
+  reconcileBundleFormats,
+  setFormatChildrenDeleted,
+  resolveLinkedOptions,
+  reconcileSingleFormats,
+  setLinkedOptionsActive
+} = productRoutes;
 
 // ── A tiny in-memory stand-in for the products collection (real Product documents, no database) ──
 let store;
@@ -275,10 +282,169 @@ describe("resolveBundleFormatsForSave", () => {
   it("not sent -> formats undefined (left as they are)", () => {
     assert.equal(resolveBundleFormatsForSave(undefined, "bundle", items).formats, undefined);
   });
-  it("not a combo -> no formats", () => {
-    assert.deepEqual(resolveBundleFormatsForSave([{ label: "USB" }], "single", items).formats, []);
+  it("bulk products -> no formats", () => {
+    assert.deepEqual(resolveBundleFormatsForSave([{ label: "USB" }], "bulk", items).formats, []);
+  });
+  it("single products: formats need a price and a type, and keep their own tax settings", () => {
+    assert.equal(
+      resolveBundleFormatsForSave([{ label: "Print", type: "physical" }], "single", []).error,
+      'Format "Print": enter a price.'
+    );
+    assert.equal(
+      resolveBundleFormatsForSave([{ label: "Print", price: 500 }], "single", []).error,
+      'Format "Print": choose Physical or Digital.'
+    );
+    assert.match(
+      resolveBundleFormatsForSave([{ label: "Print", type: "physical", price: 500, hsnSac: "49" }], "single", []).error,
+      /HSN\/SAC code must be 4 to 8 digits/
+    );
+    const ok = resolveBundleFormatsForSave(
+      [{ label: "Print", type: "physical", price: 500, hsnSac: "4901", gstRate: 0, position: 1 }],
+      "single",
+      []
+    );
+    assert.equal(ok.error, "");
+    assert.equal(ok.formats[0].hsnSac, "4901");
+    assert.equal(ok.formats[0].gstRate, 0);
+    assert.equal(ok.formats[0].position, 1);
   });
   it("a format with no items -> clear message", () => {
     assert.equal(resolveBundleFormatsForSave([{ label: "USB" }, { label: "Web" }], "bundle", items).error, 'Format "Web": tick at least one item for it.');
+  });
+});
+
+// ── Formats of a single product (e.g. a book sold as Print and Web Version) ──
+describe("single product formats", () => {
+  const book = () =>
+    seed({
+      name: "Learn Sanskrit Level 1",
+      price: 450,
+      productType: "single",
+      category: "Books",
+      description: "Beginner course book",
+      image: "https://img/ls1.jpg",
+      hsnSac: "4901",
+      gstRate: 0,
+      webReaderLink: "https://reader/ls1",
+      digitalType: "Web Version",
+      digitalDelivery: "onsite"
+    });
+  const print = { key: "", label: "Print", type: "physical", price: 500, stock: 20, weight: 400, length: 24, width: 18, height: 2, hsnSac: "4901", gstRate: 0, position: 0 };
+  const web = { key: "", label: "Web Version", type: "digital", price: 300, stock: null, weight: 0, length: 0, width: 0, height: 0, hsnSac: "", gstRate: null, position: 2 };
+  const formatsOf = (list) => resolveBundleFormatsForSave(list, "single", []).formats;
+
+  it("creates a hidden product per format with its own price, stock, package and tax", async () => {
+    const parent = await book();
+    const saved = await reconcileSingleFormats(parent, formatsOf([print, web]), [], {});
+    assert.equal(saved.hasOptions, true);
+    assert.deepEqual(saved.options.map((o) => o.label), ["Print", "Web Version"]);
+    assert.equal(saved.price, 300, "the listing shows the lowest format price");
+
+    const children = [...store.values()].filter((d) => idOf(d.optionParent) === idOf(parent._id));
+    const printChild = children.find((c) => c.bundleFormatKey === "print");
+    const webChild = children.find((c) => c.bundleFormatKey === "web-version");
+    assert.equal(printChild.name, "Learn Sanskrit Level 1 – Print");
+    assert.equal(printChild.productType, "single");
+    assert.equal(printChild.hideFromListings, true);
+    assert.equal(printChild.isDigital, false);
+    assert.equal(printChild.stock, 20);
+    assert.equal(printChild.weight, 400);
+    assert.equal(printChild.webReaderLink, "", "a printed copy never gives online access");
+    assert.equal(printChild.hsnSac, "4901");
+    assert.equal(printChild.gstRate, 0);
+
+    assert.equal(webChild.isDigital, true);
+    assert.equal(webChild.webReaderLink, "https://reader/ls1", "the web version uses the book's access settings");
+    assert.equal(webChild.weight, 0);
+    assert.equal(webChild.hsnSac, "", "the book's 4901 / 0% is never copied to the web version");
+    assert.equal(webChild.gstRate, null);
+    assert.equal(webChild.description, "Beginner course book");
+  });
+
+  it("links existing products in the admin's order and hides them from the shop", async () => {
+    const parent = await book();
+    const kindle = await seed({ name: "Learn Sanskrit Level 1 (Kindle)", price: 250, isDigital: true });
+    const saved = await reconcileSingleFormats(
+      parent,
+      formatsOf([print, web]),
+      [{ product: String(kindle._id), label: "Kindle", position: 1 }],
+      {}
+    );
+    assert.deepEqual(saved.options.map((o) => o.label), ["Print", "Kindle", "Web Version"]);
+    assert.equal(saved.price, 250);
+    const linked = store.get(String(kindle._id));
+    assert.equal(idOf(linked.optionParent), idOf(parent._id));
+    assert.equal(linked.hideFromListings, true);
+    assert.equal(linked.price, 250, "the linked product itself is not changed");
+  });
+
+  it("unlinking puts the product back in the shop; null keeps a part as it is", async () => {
+    const parent = await book();
+    const kindle = await seed({ name: "Kindle edition", price: 250, isDigital: true });
+    let saved = await reconcileSingleFormats(parent, formatsOf([print]), [{ product: String(kindle._id), label: "Kindle" }], {});
+
+    // Formats not sent: links are updated, formats stay
+    saved = await reconcileSingleFormats(saved, null, [], {});
+    assert.deepEqual(saved.options.map((o) => o.label), ["Print"]);
+    const unlinked = store.get(String(kindle._id));
+    assert.equal(unlinked.optionParent, null);
+    assert.equal(unlinked.hideFromListings, false);
+
+    // Links not sent: formats are updated, links stay
+    saved = await reconcileSingleFormats(saved, formatsOf([print, web]), [{ product: String(kindle._id), label: "Kindle" }], {});
+    saved = await reconcileSingleFormats(saved, formatsOf([web]), null, {});
+    assert.deepEqual(saved.options.map((o) => o.label).sort(), ["Kindle", "Web Version"]);
+    const printChild = [...store.values()].find((d) => d.bundleFormatKey === "print");
+    assert.equal(printChild.isDeleted, true, "a removed format goes to the Recycle Bin");
+  });
+
+  it("removing every format and link turns the product back into a plain product", async () => {
+    const parent = await book();
+    let saved = await reconcileSingleFormats(parent, formatsOf([print]), [], {});
+    saved = await reconcileSingleFormats(saved, [], [], {});
+    assert.equal(saved.hasOptions, false);
+    assert.deepEqual(saved.options, []);
+    assert.deepEqual(saved.bundleFormats, []);
+  });
+
+  it("refuses links that would mix up other listings", async () => {
+    const parent = await book();
+    const other = await seed({ name: "Other listing", price: 1 });
+    const takenElsewhere = await seed({ name: "Already linked", price: 10, optionParent: other._id });
+    const comboFormat = await seed({ name: "Combo – USB", price: 10, bundleFormatKey: "usb", optionParent: other._id });
+    const withOptions = await seed({ name: "Has options", price: 10, hasOptions: true });
+
+    assert.match(
+      (await resolveLinkedOptions([{ product: String(takenElsewhere._id), label: "Print" }], String(parent._id))).error,
+      /already a format of another product/
+    );
+    assert.match(
+      (await resolveLinkedOptions([{ product: String(comboFormat._id), label: "USB" }], String(parent._id))).error,
+      /format of another product and can't be linked/
+    );
+    assert.match(
+      (await resolveLinkedOptions([{ product: String(withOptions._id), label: "X" }], String(parent._id))).error,
+      /options cannot be nested/
+    );
+    assert.match(
+      (await resolveLinkedOptions([{ product: String(parent._id), label: "Self" }], String(parent._id))).error,
+      /cannot be an option of itself/
+    );
+    assert.deepEqual((await resolveLinkedOptions([], String(parent._id))).linked, []);
+    assert.equal((await resolveLinkedOptions(undefined, String(parent._id))).linked, undefined);
+  });
+
+  it("Recycle Bin: linked products go back to the shop, and are linked again on restore", async () => {
+    const parent = await book();
+    const kindle = await seed({ name: "Kindle edition", price: 250, isDigital: true });
+    const saved = await reconcileSingleFormats(parent, formatsOf([print]), [{ product: String(kindle._id), label: "Kindle" }], {});
+
+    await setLinkedOptionsActive(saved, false);
+    assert.equal(store.get(String(kindle._id)).hideFromListings, false);
+    assert.equal(store.get(String(kindle._id)).optionParent, null);
+
+    await setLinkedOptionsActive(saved, true);
+    assert.equal(store.get(String(kindle._id)).hideFromListings, true);
+    assert.equal(idOf(store.get(String(kindle._id)).optionParent), idOf(parent._id));
   });
 });

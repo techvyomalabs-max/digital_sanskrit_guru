@@ -29,7 +29,8 @@ const {
   normalizeBundleFormatsInput,
   normalizeItemFormats,
   applyFormatsToItems,
-  buildFormatChildFields
+  buildFormatChildFields,
+  buildSingleFormatChildFields
 } = require("../utils/bundleFormats");
 
 const router = express.Router();
@@ -675,6 +676,16 @@ async function syncAllOptionParents() {
  */
 function resolveBundleFormatsForSave(rawFormats, productType, items) {
   if (rawFormats === undefined) return { formats: undefined, items, error: "" };
+  if (productType === "single") {
+    // A single product's formats (e.g. Print, Web Version) have no items, but each needs a price.
+    const norm = normalizeBundleFormatsInput(rawFormats);
+    if (norm.error) return { formats: undefined, items, error: norm.error };
+    const unpriced = norm.formats.find((f) => f.price === null);
+    if (unpriced) return { formats: undefined, items, error: `Format "${unpriced.label}": enter a price.` };
+    const untyped = norm.formats.find((f) => !f.type);
+    if (untyped) return { formats: undefined, items, error: `Format "${untyped.label}": choose Physical or Digital.` };
+    return { formats: norm.formats, items, error: "" };
+  }
   if (productType !== "bundle") return { formats: [], items, error: "" };
   const norm = normalizeBundleFormatsInput(rawFormats);
   if (norm.error) return { formats: undefined, items, error: norm.error };
@@ -779,6 +790,207 @@ async function setFormatChildrenDeleted(parent, deleted, actor = {}) {
   );
 }
 
+// ── Formats of a single product ──────────────────────────────────────────────
+
+// A single product with a Digital format may give access on another website even when the
+// product as a whole is not digital (e.g. Print + Web Version): its digital formats use it.
+const hasDigitalSingleFormat = (productType, formats) =>
+  productType === "single" && Array.isArray(formats) && formats.some((f) => f?.type === "digital");
+
+// A single product (e.g. a book) can be sold in formats. Each format is either new, so the server
+// keeps a hidden product for it like a combo format, or an existing product linked to this listing
+// (it keeps its own orders, stock and link, and is hidden from the shop while linked).
+
+/**
+ * Check the existing products sent to be linked as formats. Returns { linked, error };
+ * linked is undefined when the request did not send linkedOptions (links are then left as they are).
+ */
+async function resolveLinkedOptions(raw, selfId = "") {
+  if (raw === undefined) return { linked: undefined, error: "" };
+  if (!Array.isArray(raw)) return { linked: undefined, error: "Linked products must be a list." };
+  if (raw.length === 0) return { linked: [], error: "" };
+
+  const norm = normalizeOptionsInput(raw, selfId);
+  if (norm.error) return { linked: undefined, error: norm.error.replace(/^Option/, "Linked product") };
+  const ids = norm.options.map((o) => String(o.product));
+  const docs = await Product.find({ _id: { $in: ids } })
+    .select(`${OPTION_TARGET_SELECT} name optionParent bundleFormatKey productType`)
+    .lean();
+  const check = validateOptionTargets(norm.options, docs);
+  if (!check.ok) return { linked: undefined, error: check.error };
+
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  for (const opt of norm.options) {
+    const doc = byId.get(String(opt.product));
+    if (doc.bundleFormatKey) {
+      return { linked: undefined, error: `${opt.label}: that is a format of another product and can't be linked.` };
+    }
+    const parentId = doc.optionParent ? String(doc.optionParent) : "";
+    if (parentId && parentId !== String(selfId)) {
+      return { linked: undefined, error: `${opt.label}: "${doc.name}" is already a format of another product.` };
+    }
+  }
+
+  const positions = raw.map((r) => Number(r?.position));
+  return {
+    linked: norm.options.map((o, i) => ({
+      product: String(o.product),
+      label: o.label,
+      ...(Number.isFinite(positions[i]) ? { position: positions[i] } : {})
+    })),
+    error: ""
+  };
+}
+
+/**
+ * Save a single product's formats and linked products, and point the product at all of them
+ * (in the admin's order) as options. formats / linked = null leaves that part as it is.
+ * `parent` is the saved product. Returns the refreshed product (lean).
+ */
+async function reconcileSingleFormats(parent, formats, linked, actor = {}) {
+  const parentId = parent._id;
+  const parentPlain = parent.toObject ? parent.toObject() : parent;
+  const stamp = { lastUpdatedByName: actor.name || "", lastUpdatedByEmail: actor.email || "", lastUpdatedAt: new Date() };
+
+  const existingChildren = await Product.find({ optionParent: parentId, bundleFormatKey: { $nin: ["", null] } });
+  const childByKey = new Map(existingChildren.map((c) => [c.bundleFormatKey, c]));
+  const childIds = new Set(existingChildren.map((c) => String(c._id)));
+
+  const prevOptions = Array.isArray(parentPlain.options) ? parentPlain.options : [];
+  const prevIndex = new Map(prevOptions.map((o, i) => [String(o?.product?._id || o?.product || ""), i]));
+  const prevLinked = prevOptions
+    .map((o) => ({ product: String(o?.product?._id || o?.product || ""), label: o?.label || "" }))
+    .filter((o) => o.product && !childIds.has(o.product))
+    .map((o) => ({ ...o, position: prevIndex.get(o.product) }));
+
+  let generated = [];
+  if (formats === null) {
+    const prevFormats = Array.isArray(parentPlain.bundleFormats) ? parentPlain.bundleFormats : [];
+    generated = prevFormats
+      .map((format) => {
+        const child = existingChildren.find((c) => String(c._id) === String(format?.product?._id || format?.product || ""));
+        return child && child.isDeleted !== true ? { format: { ...format, position: prevIndex.get(String(child._id)) }, child } : null;
+      })
+      .filter(Boolean);
+  } else {
+    for (const format of formats) {
+      const fields = buildSingleFormatChildFields(parentPlain, format);
+      let child = childByKey.get(format.key);
+      if (child) {
+        child.set({ ...fields, ...stamp, deletedBy: { name: "", email: "" } });
+        child = await child.save();
+      } else {
+        child = await Product.create({ ...fields, stock: fields.stock ?? 0, ...stamp });
+      }
+      generated.push({ format, child });
+    }
+    const keep = new Set(formats.map((f) => f.key));
+    for (const child of existingChildren) {
+      if (!keep.has(child.bundleFormatKey) && child.isDeleted !== true) {
+        child.isDeleted = true;
+        child.deletedAt = new Date();
+        child.deletedBy = { name: actor.name || "", email: actor.email || "" };
+        await child.save();
+      }
+    }
+  }
+
+  const linkedList = linked === null ? prevLinked : linked;
+  const linkedIds = linkedList.map((l) => String(l.product));
+  const linkedDocs = linkedIds.length
+    ? await Product.find({ _id: { $in: linkedIds } }).select(OPTION_TARGET_SELECT).lean()
+    : [];
+  const linkedById = new Map(linkedDocs.map((d) => [String(d._id), d]));
+
+  // Products no longer linked go back to the shop; linked ones are sold through this listing only.
+  const removed = prevLinked.map((l) => l.product).filter((id) => !linkedIds.includes(id));
+  if (removed.length > 0) {
+    await Product.updateMany(
+      { _id: { $in: removed }, optionParent: parentId },
+      { $set: { optionParent: null, hideFromListings: false } }
+    );
+  }
+  if (linkedIds.length > 0) {
+    await Product.updateMany({ _id: { $in: linkedIds } }, { $set: { optionParent: parentId, hideFromListings: true } });
+  }
+
+  const at = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+  const entries = [
+    ...generated.map(({ format, child }, i) => ({
+      product: child._id,
+      label: format.label,
+      position: at(format.position, i),
+      doc: child.toObject ? child.toObject() : child
+    })),
+    ...linkedList.map((l, i) => ({
+      product: l.product,
+      label: l.label,
+      position: at(l.position, 1000 + i),
+      doc: linkedById.get(String(l.product))
+    }))
+  ].sort((a, b) => a.position - b.position);
+
+  const update = {
+    bundleFormats: generated.map(({ format, child }) => ({
+      key: format.key,
+      label: format.label,
+      type: format.type || "",
+      price: format.price,
+      weight: Number(format.weight) || 0,
+      length: Number(format.length) || 0,
+      width: Number(format.width) || 0,
+      height: Number(format.height) || 0,
+      product: child._id
+    }))
+  };
+  if (entries.length > 0) {
+    const docs = entries.map((e) => e.doc).filter(Boolean);
+    update.hasOptions = true;
+    update.options = entries.map((e) => ({ product: e.product, label: e.label }));
+    const pricing = pickPricingFromOptions(docs);
+    if (pricing) {
+      update.price = pricing.price;
+      update.internationalPrice = pricing.internationalPrice;
+      update.internationalCountryPrices = pricing.internationalCountryPrices;
+      update.marketPrices = pricing.marketPrices;
+    }
+    update.stock = computeOptionsStock(docs);
+  } else if (parentPlain.hasOptions === true) {
+    // Every format removed: the product is sold on its own again.
+    update.hasOptions = false;
+    update.options = [];
+  }
+
+  await Product.updateOne({ _id: parentId }, { $set: update });
+  return Product.findById(parentId).lean();
+}
+
+/**
+ * When a single product with linked formats goes to the Recycle Bin its linked products are
+ * put back in the shop; when it is restored they are linked (and hidden) again.
+ */
+async function setLinkedOptionsActive(parent, active) {
+  if (parent?.productType !== "single" || parent?.hasOptions !== true) return;
+  const generatedIds = new Set(
+    (Array.isArray(parent.bundleFormats) ? parent.bundleFormats : []).map((f) => String(f?.product?._id || f?.product || ""))
+  );
+  const linkedIds = (Array.isArray(parent.options) ? parent.options : [])
+    .map((o) => String(o?.product?._id || o?.product || ""))
+    .filter((id) => id && !generatedIds.has(id));
+  if (linkedIds.length === 0) return;
+  if (active) {
+    await Product.updateMany(
+      { _id: { $in: linkedIds }, optionParent: { $in: [null, parent._id] } },
+      { $set: { optionParent: parent._id, hideFromListings: true } }
+    );
+  } else {
+    await Product.updateMany(
+      { _id: { $in: linkedIds }, optionParent: parent._id },
+      { $set: { optionParent: null, hideFromListings: false } }
+    );
+  }
+}
+
 // Create product (ADMIN) — 25mb for image URLs
 router.post("/", protect, admin, (req, res, next) => {
   const pages = Array.isArray(req.allowedPages) ? req.allowedPages : [];
@@ -814,6 +1026,11 @@ router.post("/", protect, admin, (req, res, next) => {
       return res.status(400).json({ message: formatsRes.error });
     }
     bundleItems = formatsRes.items;
+    const linkedRes =
+      productType === "single" ? await resolveLinkedOptions(b.linkedOptions, "") : { linked: undefined, error: "" };
+    if (linkedRes.error) {
+      return res.status(400).json({ message: linkedRes.error });
+    }
 
     const rawDiscountType = normalizeDiscountType(b.discountType, b.festiveOffer);
     const festiveOffer = rawDiscountType !== "none" || b.festiveOffer === true;
@@ -842,7 +1059,7 @@ router.post("/", protect, admin, (req, res, next) => {
       externalAccessLink: b.externalAccessLink,
       externalAccessLabel: b.externalAccessLabel,
       externalAccessManual: b.externalAccessManual,
-      isDigital,
+      isDigital: isDigital || hasDigitalSingleFormat(productType, formatsRes.formats),
       productType
     });
     if (!deliveryValidation.isValid) {
@@ -915,7 +1132,13 @@ router.post("/", protect, admin, (req, res, next) => {
     });
 
     let savedProduct = product;
-    if (Array.isArray(formatsRes.formats) && formatsRes.formats.length > 0) {
+    if (productType === "single") {
+      const singleFormats = formatsRes.formats === undefined ? [] : formatsRes.formats;
+      const singleLinked = linkedRes.linked === undefined ? [] : linkedRes.linked;
+      if (singleFormats.length > 0 || singleLinked.length > 0) {
+        savedProduct = await reconcileSingleFormats(product, singleFormats, singleLinked, actor);
+      }
+    } else if (Array.isArray(formatsRes.formats) && formatsRes.formats.length > 0) {
       savedProduct = await reconcileBundleFormats(product, formatsRes.formats, actor);
     }
 
@@ -1040,7 +1263,12 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
       externalAccessLink: req.body.externalAccessLink !== undefined ? req.body.externalAccessLink : product.externalAccessLink,
       externalAccessLabel: req.body.externalAccessLabel !== undefined ? req.body.externalAccessLabel : product.externalAccessLabel,
       externalAccessManual: req.body.externalAccessManual !== undefined ? req.body.externalAccessManual : product.externalAccessManual,
-      isDigital: product.isDigital,
+      isDigital:
+        product.isDigital === true ||
+        hasDigitalSingleFormat(
+          product.productType,
+          Array.isArray(req.body.bundleFormats) ? req.body.bundleFormats : product.bundleFormats
+        ),
       productType: product.productType
     };
     const deliveryValidation = validateExternalDelivery(deliveryCandidate);
@@ -1061,6 +1289,27 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     if (formatsRes.formats !== undefined) {
       product.bundleItems = formatsRes.items;
     }
+    const isSingle = product.productType === "single";
+    const linkedRes = isSingle
+      ? await resolveLinkedOptions(req.body.linkedOptions, String(product._id))
+      : { linked: undefined, error: "" };
+    if (linkedRes.error) {
+      return res.status(400).json({ message: linkedRes.error });
+    }
+    const singleFormatsSent = isSingle && (formatsRes.formats !== undefined || linkedRes.linked !== undefined);
+    const singleFormats = formatsRes.formats === undefined ? null : formatsRes.formats;
+    const singleLinked = linkedRes.linked === undefined ? null : linkedRes.linked;
+    // Does this save leave the product with no formats and no linked products at all?
+    const storedFormatCount = (product.bundleFormats || []).length;
+    const storedLinkedCount = Math.max(0, (product.options || []).length - storedFormatCount);
+    const clearsSingleFormats =
+      singleFormatsSent &&
+      product.hasOptions === true &&
+      (singleFormats === null ? storedFormatCount === 0 : singleFormats.length === 0) &&
+      (singleLinked === null ? storedLinkedCount === 0 : singleLinked.length === 0);
+    if (singleFormatsSent && !clearsSingleFormats && (product.optionParent || product.bundleFormatKey)) {
+      return res.status(400).json({ message: "This product is a format of another product, so it can't have formats of its own." });
+    }
     const nextImageValue = req.body.image ?? product.image;
     const nextImages = normalizeImages(req.body.images ?? product.images, nextImageValue);
     product.image = nextImages[0] || String(nextImageValue || "").trim();
@@ -1069,7 +1318,12 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     product.options = optionsRes.options;
     product.hideFromListings = optionsRes.hideFromListings;
     product.optionParent = optionsRes.optionParent;
-    if (optionsRes.hasOptions) {
+    if (clearsSingleFormats && product.hasOptions) {
+      // All formats removed: the product's own price and stock (sent with this save) apply again.
+      // reconcileSingleFormats below puts the linked products back in the shop.
+      product.hasOptions = false;
+      product.options = [];
+    } else if (optionsRes.hasOptions) {
       if (optionsRes.pricing) {
         product.price = optionsRes.pricing.price;
         product.internationalPrice = optionsRes.pricing.internationalPrice;
@@ -1082,8 +1336,15 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     product.lastUpdatedByEmail = actor.email;
     product.lastUpdatedAt = new Date();
 
+    // Remember the links before saving, so reconcileSingleFormats can unlink what was removed
+    const optionsBeforeSave = clearsSingleFormats ? optionsRes.options : null;
     let updatedProduct = await product.save();
-    if (formatsRes.formats !== undefined) {
+    if (singleFormatsSent) {
+      const parentForReconcile = optionsBeforeSave
+        ? { ...updatedProduct.toObject(), options: optionsBeforeSave, hasOptions: true }
+        : updatedProduct;
+      updatedProduct = await reconcileSingleFormats(parentForReconcile, singleFormats, singleLinked, actor);
+    } else if (formatsRes.formats !== undefined) {
       updatedProduct = await reconcileBundleFormats(updatedProduct, formatsRes.formats, actor);
     }
 
@@ -1739,6 +2000,7 @@ router.delete("/:id", protect, admin, requireAdminPage("products"), async (req, 
     res.json({ message: "Product moved to Recycle Bin" });
     try {
       await setFormatChildrenDeleted(product, true, actor);
+      await setLinkedOptionsActive(product, false);
     } catch (err) {
       console.error("Failed to hide combo formats:", err);
     }
@@ -1776,6 +2038,7 @@ router.post("/:id/restore", protect, admin, requireAdminPage("products"), async 
     res.json({ message: "Product restored successfully", product });
     try {
       await setFormatChildrenDeleted(product, false);
+      await setLinkedOptionsActive(product, true);
     } catch (err) {
       console.error("Failed to restore combo formats:", err);
     }
@@ -1931,5 +2194,8 @@ router.syncAllOptionParents = syncAllOptionParents;
 router.resolveBundleFormatsForSave = resolveBundleFormatsForSave;
 router.reconcileBundleFormats = reconcileBundleFormats;
 router.setFormatChildrenDeleted = setFormatChildrenDeleted;
+router.resolveLinkedOptions = resolveLinkedOptions;
+router.reconcileSingleFormats = reconcileSingleFormats;
+router.setLinkedOptionsActive = setLinkedOptionsActive;
 
 module.exports = router;
