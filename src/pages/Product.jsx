@@ -1169,14 +1169,17 @@ function Product() {
     isFestiveOffer && festiveDiscountPercent > 0
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
+  // A crossed-out price is shown only when there is a real one: the market's regular price
+  // during a sale, a combo's items bought separately, or the price before the admin's discount.
+  // (It used to fall back to price x 1.1, which showed a made-up "9% off" on every product.)
   const listPrice = hasActiveMarketSale
     ? marketRegularPrice
     : isBundle && bundleOriginalTotal > displayPrice
       ? bundleOriginalTotal
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
-        : fallbackOriginalPrice;
+        : displayPrice;
+  const hasListPrice = listPrice > displayPrice;
   const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
   const _calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
@@ -1534,9 +1537,11 @@ function Product() {
                     <strong>You save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
                   </div>
                 ) : null}
-                <p className="price-meta">
-                  M.R.P.: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
-                </p>
+                {hasListPrice ? (
+                  <p className="price-meta">
+                    Regular price: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
+                  </p>
+                ) : null}
                 <p className="tax-note">Inclusive of all taxes</p>
               </div>
               {productOffers.length > 0 && (

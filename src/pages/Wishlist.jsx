@@ -78,13 +78,12 @@ function Wishlist() {
                 const festiveOriginalPrice = product?.festiveOffer === true && festiveDiscountPercent > 0
                   ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
                   : displayPrice;
-                const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
-                
+                // Crossed-out price only when there is a real one (no made-up price x 1.1)
                 const listPrice = hasActiveMarketSale
                   ? Number(pricing.marketRegularPrice)
                   : festiveOriginalPrice > displayPrice
                     ? festiveOriginalPrice
-                    : fallbackOriginalPrice;
+                    : displayPrice;
 
                 return (
                   <div key={product._id} className="wishlist-item-row">
