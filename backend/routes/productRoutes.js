@@ -2011,6 +2011,60 @@ router.delete("/:id", protect, admin, requireAdminPage("products"), async (req, 
   }
 });
 
+/**
+ * Show or hide a product in the shop (ADMIN). Hidden products are left out of the shop list,
+ * home page, search, recommendations and the sitemap, and search engines are asked not to
+ * index them; their page still opens for anyone with the link (e.g. for a private sale).
+ * Formats and linked products are shown or hidden through their main listing instead.
+ */
+async function setProductVisibility(productId, hidden, actor = {}) {
+  if (!mongoose.Types.ObjectId.isValid(String(productId || ""))) {
+    return { status: 404, message: "Product not found" };
+  }
+  if (typeof hidden !== "boolean") {
+    return { status: 400, message: "Send hidden: true or false." };
+  }
+  const product = await Product.findById(productId);
+  if (!product || product.isDeleted === true) {
+    return { status: 404, message: "Product not found" };
+  }
+  if (product.bundleFormatKey || product.optionParent) {
+    return {
+      status: 400,
+      message: "This product is a format of another product, so it is shown or hidden with that product."
+    };
+  }
+  product.hideFromListings = hidden;
+  product.lastUpdatedByName = actor.name || "";
+  product.lastUpdatedByEmail = actor.email || "";
+  product.lastUpdatedAt = new Date();
+  await product.save();
+  return { status: 200, product };
+}
+
+router.patch("/:id/visibility", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    const actor = await getAdminActorSnapshot(req.user);
+    const result = await setProductVisibility(req.params.id, req.body?.hidden, actor);
+    if (result.status !== 200) return res.status(result.status).json({ message: result.message });
+
+    const productName = String(result.product.name || "").trim();
+    await logAdminAction({
+      req,
+      action: "product-updated",
+      entityType: "product",
+      entityId: String(result.product._id || ""),
+      entityLabel: productName,
+      summary: `${result.product.hideFromListings ? "Hid" : "Showed"} product ${productName} in the shop`,
+      details: { changedFields: ["visibility"] }
+    });
+    invalidateProductCache();
+    res.json({ _id: result.product._id, hideFromListings: result.product.hideFromListings });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to change visibility", error: error.message });
+  }
+});
+
 // RESTORE product (ADMIN)
 router.post("/:id/restore", protect, admin, requireAdminPage("products"), async (req, res) => {
   try {
@@ -2197,5 +2251,6 @@ router.setFormatChildrenDeleted = setFormatChildrenDeleted;
 router.resolveLinkedOptions = resolveLinkedOptions;
 router.reconcileSingleFormats = reconcileSingleFormats;
 router.setLinkedOptionsActive = setLinkedOptionsActive;
+router.setProductVisibility = setProductVisibility;
 
 module.exports = router;

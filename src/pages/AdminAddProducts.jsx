@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, FileText, Link2 } from "lucide-react";
+import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, FileText, Link2, Eye, EyeOff } from "lucide-react";
 import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
@@ -426,6 +426,10 @@ function AdminAddProducts() {
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
   const [bundleFormats, setBundleFormats] = useState([]);
   const [singleFormats, setSingleFormats] = useState([]);
+  // Shown in the shop, or hidden (page still opens by link). Formats follow their main listing.
+  const [hideFromListings, setHideFromListings] = useState(false);
+  const [visibilityBusyId, setVisibilityBusyId] = useState("");
+  const [visibilityMessage, setVisibilityMessage] = useState("");
   const [relatedProductItems, setRelatedProductItems] = useState([createEmptyRelatedProduct()]);
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
@@ -831,6 +835,7 @@ function AdminAddProducts() {
     setBundleItems([createEmptyBundleItem()]);
     setBundleFormats([]);
     setSingleFormats([]);
+    setHideFromListings(false);
     setRelatedProductItems([createEmptyRelatedProduct()]);
     setCategory("General");
     setStock("1");
@@ -1856,6 +1861,9 @@ function AdminAddProducts() {
       })
       .filter(Boolean);
 
+    // A format or linked product is shown or hidden with its main listing, so it never sends this
+    const isManagedFormat = Boolean(editingProduct?.bundleFormatKey || editingProduct?.optionParent);
+
     // Formats are only sent for single products that have (or had) them, so saving any other
     // product never touches format data.
     const sendSingleFormats = singleFormats.length > 0 || editingProduct?.hasOptions === true;
@@ -1890,6 +1898,7 @@ function AdminAddProducts() {
       discountType,
       festiveOffer: discountType !== "none",
       festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
+      ...(isManagedFormat ? {} : { hideFromListings }),
       productType: productType,
       // With formats the product is digital only when every format is
       isDigital: hasSingleFormats ? singleFormats.every((row) => isSingleFormatDigital(row)) : isDigital,
@@ -2099,6 +2108,7 @@ function AdminAddProducts() {
     } else {
       setSingleFormats([]);
     }
+    setHideFromListings(product.hideFromListings === true);
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setHsnSac(String(product.hsnSac || ""));
@@ -2162,6 +2172,32 @@ function AdminAddProducts() {
       formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       nameInputRef.current?.focus();
     });
+  };
+
+  const toggleProductVisibility = async (product) => {
+    const id = String(product?._id || "");
+    if (!id || visibilityBusyId) return;
+    const hidden = product.hideFromListings !== true;
+    setVisibilityBusyId(id);
+    setVisibilityMessage("");
+    try {
+      const { data } = await axios.patch(
+        `/api/products/${id}/visibility`,
+        { hidden },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setProducts((current) =>
+        current.map((item) =>
+          String(item?._id || "") === id ? { ...item, hideFromListings: data?.hideFromListings === true } : item
+        )
+      );
+      if (String(editingProduct?._id || "") === id) setHideFromListings(data?.hideFromListings === true);
+      setVisibilityMessage(`${product.name || "Product"} is now ${data?.hideFromListings ? "hidden from" : "shown in"} the shop.`);
+    } catch (err) {
+      setVisibilityMessage(err?.response?.data?.message || "Could not change the visibility. Please try again.");
+    } finally {
+      setVisibilityBusyId("");
+    }
   };
 
   const deleteProduct = async (id) => {
@@ -2892,6 +2928,43 @@ function AdminAddProducts() {
                       <option value="bulk">Bulk Product</option>
                     </select>
                   </label>
+                  <div className="admin-field admin-field-wide pf-visibility">
+                    <span>Visibility</span>
+                    {editingProduct?.bundleFormatKey || editingProduct?.optionParent ? (
+                      <p className="pf-empty-note">
+                        This product is a format of another product, so it is shown or hidden together with that product.
+                      </p>
+                    ) : (
+                      <div className="pf-visibility-options" role="radiogroup" aria-label="Visibility">
+                        <label className={`pf-visibility-option ${hideFromListings ? "" : "active"}`}>
+                          <input
+                            type="radio"
+                            name="product-visibility"
+                            checked={!hideFromListings}
+                            onChange={() => setHideFromListings(false)}
+                          />
+                          <Eye size={16} aria-hidden="true" />
+                          <span>
+                            <strong>Visible in the shop</strong>
+                            <small>Listed in the shop, search and recommendations.</small>
+                          </span>
+                        </label>
+                        <label className={`pf-visibility-option ${hideFromListings ? "active" : ""}`}>
+                          <input
+                            type="radio"
+                            name="product-visibility"
+                            checked={hideFromListings}
+                            onChange={() => setHideFromListings(true)}
+                          />
+                          <EyeOff size={16} aria-hidden="true" />
+                          <span>
+                            <strong>Hidden</strong>
+                            <small>Not listed anywhere or shown to search engines; the page still opens for anyone with the link.</small>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
                   <>
                       {hasAnyFormats ? (
                         <div className="admin-field admin-field-wide">
@@ -4403,6 +4476,9 @@ function AdminAddProducts() {
 
         <section className="card">
           <h3 style={{ marginBottom: "14px" }}>All Products</h3>
+          {visibilityMessage ? (
+            <p className="pf-visibility-message" role="status">{visibilityMessage}</p>
+          ) : null}
           <div className="products-tools">
             <input
               className="product-search"
@@ -4500,6 +4576,19 @@ function AdminAddProducts() {
                     </span>
                     <div className="actions">
                       <button onClick={() => startEdit(product)}>Edit</button>
+                      {product.bundleFormatKey || product.optionParent ? null : (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => toggleProductVisibility(product)}
+                          disabled={visibilityBusyId === String(product._id)}
+                          title={product.hideFromListings ? "Show this product in the shop" : "Hide this product from the shop"}
+                        >
+                          {product.hideFromListings
+                            ? <><Eye size={13} className="ui-inline-icon" aria-hidden="true" />Show</>
+                            : <><EyeOff size={13} className="ui-inline-icon" aria-hidden="true" />Hide</>}
+                        </button>
+                      )}
                       <button 
                         style={{ background: "var(--admin-primary, #d97706)", color: "#fff", border: "none" }}
                         onClick={() => copyBuyLink(product._id)}
