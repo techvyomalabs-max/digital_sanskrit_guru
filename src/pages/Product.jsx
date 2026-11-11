@@ -18,6 +18,7 @@ import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct 
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { getShownMrp } from "../utils/productMrp";
 import { fetchPublicCatalog } from "../utils/productCatalog";
 import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -1111,6 +1112,10 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // With formats, the category is the chosen format's own (e.g. Kindle), else the listing's
+  const shownCategory = String(
+    (isOptionsParent(product) && String(buyProduct?.category || "").trim()) || product?.category || ""
+  ).trim();
   // Same per-order limit the cart applies: 5, or the stock left if lower
   const retailMaxQty = maxCartQuantity({ stock: buyProduct?.stock });
   const optionParentId = product?.optionParent
@@ -1125,7 +1130,19 @@ function Product() {
   };
   const galleryImages = getGalleryImages(product);
   const extraProductDetails = getExtraProductDetails(product.name);
-  const aboutProductPoints = buildAboutProductPoints(product, extraProductDetails);
+  // With formats, the details shown are the chosen format's own (e.g. the Kindle edition's
+  // description and points), falling back to the listing's where the format has none. The
+  // page title, reviews, share text and search-engine tags stay the listing's.
+  const formatInfo = isOptionsParent(product) && buyProduct ? buyProduct : null;
+  const hasText = (value) => htmlToPlainText(String(value || "")).trim() !== "";
+  const formatAbout = Array.isArray(formatInfo?.aboutProduct)
+    ? formatInfo.aboutProduct.filter((point) => String(point || "").trim())
+    : [];
+  const aboutProductPoints = buildAboutProductPoints(
+    formatInfo ? { ...formatInfo, aboutProduct: formatAbout.length > 0 ? formatAbout : product.aboutProduct } : product,
+    extraProductDetails
+  );
+  const shownDescription = formatInfo && hasText(formatInfo.description) ? formatInfo.description : product.description;
   const bundleItems = Array.isArray(buyProduct?.bundleItems) ? buyProduct.bundleItems : [];
   const isBundle =
     Boolean(buyProduct) &&
@@ -1153,14 +1170,21 @@ function Product() {
     isFestiveOffer && festiveDiscountPercent > 0
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
-  const listPrice = hasActiveMarketSale
-    ? marketRegularPrice
-    : isBundle && bundleOriginalTotal > displayPrice
-      ? bundleOriginalTotal
-      : festiveOriginalPrice > displayPrice
-        ? festiveOriginalPrice
-        : fallbackOriginalPrice;
+  // A crossed-out price is shown only when there is a real one: the market's regular price
+  // during a sale, a combo's items bought separately, or the price before the admin's discount.
+  // (It used to fall back to price x 1.1, which showed a made-up "9% off" on every product.)
+  // The admin's M.R.P. (e.g. printed cover price) comes first; for a format, the format's own.
+  const shownMrp = getShownMrp(buyProduct || product, pricing, displayPrice);
+  const listPrice = shownMrp
+    ? shownMrp
+    : hasActiveMarketSale
+      ? marketRegularPrice
+      : isBundle && bundleOriginalTotal > displayPrice
+        ? bundleOriginalTotal
+        : festiveOriginalPrice > displayPrice
+          ? festiveOriginalPrice
+          : displayPrice;
+  const hasListPrice = listPrice > displayPrice;
   const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
   const _calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
@@ -1435,11 +1459,11 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title product-detail-title">{product.name}</h1>
-          {String(product.category || "").trim() && String(product.category).trim().toLowerCase() !== "general" ? (
+          {shownCategory && shownCategory.toLowerCase() !== "general" ? (
             <p className="product-category-line">
               Category:{" "}
-              <Link to={`/collection?category=${encodeURIComponent(String(product.category).trim())}`}>
-                {String(product.category).trim()}
+              <Link to={`/collection?category=${encodeURIComponent(shownCategory)}`}>
+                {shownCategory}
               </Link>
             </p>
           ) : null}
@@ -1518,9 +1542,11 @@ function Product() {
                     <strong>You save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
                   </div>
                 ) : null}
-                <p className="price-meta">
-                  M.R.P.: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
-                </p>
+                {hasListPrice ? (
+                  <p className="price-meta">
+                    {shownMrp ? "M.R.P." : "Regular price"}: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
+                  </p>
+                ) : null}
                 <p className="tax-note">Inclusive of all taxes</p>
               </div>
               {productOffers.length > 0 && (
@@ -1574,7 +1600,7 @@ function Product() {
               <span className="out-stock">This product is currently unavailable.</span>
             </p>
           )}
-          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || "") }} />
+          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shownDescription || "") }} />
         </div>
 
         <div className="product-right">
