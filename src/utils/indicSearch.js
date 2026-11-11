@@ -21,6 +21,8 @@
  *   formats, categories, and website services.
  */
 
+import { lookupProductTranslation } from "./productTranslations.js";
+
 // Unicode ranges for Indian Brahmic scripts
 export const SCRIPT_CONFIGS = [
   { script: "Devanagari", defaultLang: "Hindi / Sanskrit", base: 0x0900, min: 0x0900, max: 0x097f, nativeName: "देवनागरी" },
@@ -37,33 +39,38 @@ export const SCRIPT_CONFIGS = [
 // Unified Brahmic phonetic mapping based on offset from script base
 const BRAHMIC_VOWELS = {
   0x05: "a",
-  0x06: "aa",
+  0x06: "a",
   0x07: "i",
-  0x08: "ee",
+  0x08: "i",
   0x09: "u",
-  0x0a: "oo",
+  0x0a: "u",
   0x0b: "ri",
+  0x0d: "e",
   0x0e: "e",
-  0x0f: "ee",
+  0x0f: "e",
   0x10: "ai",
+  0x11: "o",
   0x12: "o",
-  0x13: "oo",
+  0x13: "o",
   0x14: "au"
 };
 
 const BRAHMIC_MATRAS = {
-  0x3e: "aa",
+  0x3e: "a",
   0x3f: "i",
-  0x40: "ee",
+  0x40: "i",
   0x41: "u",
-  0x42: "oo",
+  0x42: "u",
   0x43: "ri",
+  0x45: "e",
   0x46: "e",
-  0x47: "ee",
+  0x47: "e",
   0x48: "ai",
+  0x49: "o",
   0x4a: "o",
-  0x4b: "oo",
-  0x4c: "au"
+  0x4b: "o",
+  0x4c: "au",
+  0x57: "au"
 };
 
 const BRAHMIC_CONSONANTS = {
@@ -87,6 +94,7 @@ const BRAHMIC_CONSONANTS = {
   0x26: "d",
   0x27: "dh",
   0x28: "n",
+  0x29: "n",
   0x2a: "p",
   0x2b: "ph",
   0x2c: "b",
@@ -94,6 +102,7 @@ const BRAHMIC_CONSONANTS = {
   0x2e: "m",
   0x2f: "y",
   0x30: "r",
+  0x31: "r",
   0x32: "l",
   0x33: "l",
   0x34: "zh",
@@ -102,6 +111,7 @@ const BRAHMIC_CONSONANTS = {
   0x37: "sh",
   0x38: "s",
   0x39: "h",
+  0x4e: "t",
   0x58: "q",
   0x59: "kh",
   0x5a: "gh",
@@ -109,8 +119,10 @@ const BRAHMIC_CONSONANTS = {
   0x5c: "r",
   0x5d: "rh",
   0x5e: "f",
-  0x5f: "y"
+  0x5f: "y",
+  0x71: "v"
 };
+
 
 /**
  * Detects if the text contains characters from an Indic script.
@@ -199,6 +211,16 @@ export function transliterateIndicToLatin(text) {
       continue;
     }
 
+    // Devanagari candra A (ॲ)
+    if (cp === 0x0972) {
+      if (prevConsonant) {
+        out += "a";
+        prevConsonant = false;
+      }
+      out += "a";
+      continue;
+    }
+
     // Determine script base
     let base = null;
     for (const cfg of SCRIPT_CONFIGS) {
@@ -245,9 +267,22 @@ export function transliterateIndicToLatin(text) {
       continue;
     }
 
-    // Avagraha (ऽ, ঽ, ઽ, ଽ, ఽ, ಽ)
-    if (offset === 0x3d) {
+    // Avagraha (ऽ, ঽ, ઽ, ଽ, ఽ, ಽ) & Nukta (़, ়, ଼)
+    if (offset === 0x3d || offset === 0x3c) {
       continue;
+    }
+
+    // Malayalam chillu letters (pure consonants without implicit vowel)
+    if (base === 0x0d00 && offset >= 0x7a && offset <= 0x7f) {
+      const chillu = { 0x7a: "n", 0x7b: "n", 0x7c: "r", 0x7d: "l", 0x7e: "l", 0x7f: "k" };
+      if (chillu[offset]) {
+        if (prevConsonant) {
+          out += "a";
+        }
+        out += chillu[offset];
+        prevConsonant = false;
+        continue;
+      }
     }
 
     // Independent Vowel
@@ -291,6 +326,7 @@ export function transliterateIndicToLatin(text) {
   // Post-processing phonetic cleanups for accurate English matching
   return out
     .toLowerCase()
+    .replace(/n(?=[pb])/g, "m")
     .replace(/aa/g, "a")
     .replace(/ee/g, "i")
     .replace(/oo/g, "u")
@@ -316,6 +352,52 @@ export function normalizeIndicWord(w) {
 }
 
 /**
+ * Sanskrit Compound (Samasa) Root Vocabulary.
+ * Used to intelligently separate unspaced Sanskrit titles (e.g. 'dhaturupaparicayah' -> 'dhaturupa paricayah').
+ */
+export const SANSKRIT_COMPOUND_ROOTS = [
+  "bhagavad", "gita", "gitam",
+  "dhaturupa", "shabdarupa", "sabdarupa",
+  "saptaha", "stotra", "stotram",
+  "sangraha", "sangrahah", "sangraham",
+  "paricaya", "paricayah", "parichaya",
+  "ramayana", "ratnamala",
+  "yoga", "sutra", "sutram",
+  "ashtadhyayi", "astadhyayi",
+  "panchatantra", "katha",
+  "shabdasampadvardhini", "sampadvardhini",
+  "sanskrit", "vyakarana", "vyakaranam",
+  "prarthana", "shloka", "shlokah", "nama",
+  "amarakosha", "tarkasangraha", "saundaryalahari"
+];
+SANSKRIT_COMPOUND_ROOTS.sort((a, b) => b.length - a.length);
+
+/**
+ * Splits unspaced Sanskrit compounds into constituent words for high-accuracy token matching.
+ */
+export function splitSanskritCompound(text) {
+  let remaining = String(text || "").toLowerCase().trim();
+  if (remaining.length < 5) return text;
+  const tokens = [];
+  while (remaining.length > 0) {
+    let matched = false;
+    for (const r of SANSKRIT_COMPOUND_ROOTS) {
+      if (remaining.startsWith(r)) {
+        tokens.push(r);
+        remaining = remaining.slice(r.length);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      tokens.push(remaining);
+      break;
+    }
+  }
+  return tokens.join(" ").trim();
+}
+
+/**
  * Comprehensive Cross-Lingual Knowledge Dictionary
  * Maps user search terms in Kannada, Hindi, Sanskrit, Tamil, Marathi, Telugu, Odia, Gujarati, Bengali
  * to canonical English store queries, categories, and entities.
@@ -335,6 +417,148 @@ export const MULTILINGUAL_LEXICON = {
   "डिजिटल संस्कृत गुरु": "digital sanskrit guru",
   "டிஜிட்டல் சமஸ்கிருத குரு": "digital sanskrit guru",
   "డిజిటల్ సంస్కృత గురు": "digital sanskrit guru",
+
+  // ==========================================
+  // STORE BOOK TITLES & POPULAR SANSKRIT WORKS
+  // ==========================================
+  // Dhaturupaparicayah
+  "ಧಾತುರೂಪ ಪರಿಚಯ": "dhaturupa paricaya",
+  "ಧಾತುರೂಪಪರಿಚಯಃ": "dhaturupa paricayah",
+  "ಧಾತುರೂಪ ಪರಿಚಯಃ": "dhaturupa paricayah",
+  "ಧಾತುರೂಪ ಪರಿಚಯ ೨": "dhaturupa paricaya 2",
+  "ಧಾತುರೂಪ ಪರಿಚಯ - ೨": "dhaturupa paricaya 2",
+  "धातुरूप परिचय": "dhaturupa paricaya",
+  "धातुरूपपरिचयः": "dhaturupa paricayah",
+  "धातुरूप परिचयः": "dhaturupa paricayah",
+  "धातुरूप परिचय - २": "dhaturupa paricaya 2",
+  "ಧಾತುರೂಪ": "dhaturupa",
+  "ಧಾತು ರೂಪ": "dhaturupa",
+  "धातुरूप": "dhaturupa",
+  "धातु रूप": "dhaturupa",
+
+  // Shabdarupasangrahah
+  "ಶಬ್ದರೂಪ ಸಂಗ್ರಹ": "shabdarupa sangraha",
+  "ಶಬ್ದರೂಪ ಸಂಗ್ರಹಃ": "shabdarupa sangrahah",
+  "ಶಬ್ದರೂಪಸಂಗ್ರಹಃ": "shabdarupa sangrahah",
+  "ಶಬ್ದ ರೂಪ ಸಂಗ್ರಹ": "shabdarupa sangraha",
+  "शब्दरूप संग्रह": "shabdarupa sangraha",
+  "शब्दरूपसंग्रहः": "shabdarupa sangrahah",
+  "शब्दरूप संग्रहः": "shabdarupa sangrahah",
+  "शब्द रूप संग्रह": "shabdarupa sangraha",
+  "ಶಬ್ದರೂಪ": "shabdarupa",
+  "ಶಬ್ದ ರೂಪ": "shabdarupa",
+  "शब्दरूप": "shabdarupa",
+  "शब्द रूप": "shabdarupa",
+
+  // Saptaha Stotra Sangrahah
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹ": "saptaha stotra sangraha",
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ ಸಂಗ್ರಹಃ": "saptaha stotra sangrahah",
+  "ಸಪ್ತಾಹಸ್ತೋತ್ರಸಂಗ್ರಹಃ": "saptaha stotra sangrahah",
+  "ಸಪ್ತಾಹ ಸ್ತೋತ್ರ": "saptaha stotra",
+  "ಸಪ್ತಾಹಸ್ತೋತ್ರ": "saptaha stotra",
+  "सप्ताह स्तोत्र संग्रह": "saptaha stotra sangraha",
+  "सप्ताह स्तोत्र संग्रहः": "saptaha stotra sangrahah",
+  "सप्ताहस्तोत्रसंग्रहः": "saptaha stotra sangrahah",
+  "सप्ताह स्तोत्र": "saptaha stotra",
+  "सप्ताहस्तोत्र": "saptaha stotra",
+
+  // Ramayana Ratnamala
+  "ರಾಮಾಯಣ ರತ್ನಮಾಲಾ": "ramayana ratnamala",
+  "ರಾಮಾಯಣ ರತ್ನಮಾಲೆ": "ramayana ratnamala",
+  "ರಾಮಾಯಣರತ್ನಮಾಲಾ": "ramayana ratnamala",
+  "ರಾಮಾಯಣರತ್ನಮಾಲೆ": "ramayana ratnamala",
+  "रामायण रत्नमाला": "ramayana ratnamala",
+  "रामायणरत्नमाला": "ramayana ratnamala",
+
+  // Yoga Sutra Paricayah
+  "ಯೋಗ ಸೂತ್ರ": "yoga sutra",
+  "ಯೋಗಸೂತ್ರ": "yoga sutra",
+  "ಯೋಗ ಸೂತ್ರಗಳು": "yoga sutras",
+  "ಯೋಗ ಸೂತ್ರ ಪರಿಚಯ": "yoga sutra paricaya",
+  "ಯೋಗ ಸೂತ್ರ ಪರಿಚಯಃ": "yoga sutra paricayah",
+  "ಯೋಗಸೂತ್ರಪರಿಚಯಃ": "yoga sutra paricayah",
+  "ಯೋಗದರ್ಶನ": "yoga sutra",
+  "योग सूत्र": "yoga sutra",
+  "योगसूत्र": "yoga sutra",
+  "योग सूत्र परिचय": "yoga sutra paricaya",
+  "योग सूत्र परिचयः": "yoga sutra paricayah",
+  "योगसूत्रपरिचयः": "yoga sutra paricayah",
+  "योगदर्शन": "yoga sutra",
+
+  // Ashtadhyayi
+  "ಅಷ್ಟಾಧ್ಯಾಯಿ": "ashtadhyayi",
+  "ಅಷ್ಟಾಧ್ಯಾಯೀ": "ashtadhyayi",
+  "ಅಷ್ಟಾಧ್ಯಾಯೀ ಸೂತ್ರ": "ashtadhyayi sutra",
+  "अष्टाध्यायी": "ashtadhyayi",
+  "अष्टाध्यायी सूत्र": "ashtadhyayi sutra",
+
+  // Panchatantra
+  "ಪಂಚತಂತ್ರ": "panchatantra",
+  "ಪಂಚತಂತ್ರ ಕಥೆಗಳು": "panchatantra stories",
+  "ಸಂಸ್ಕೃತ ಕಥಾಮಾಲಿಕಾ": "samskrita kathamalika stories",
+  "पञ्चतन्त्र": "panchatantra",
+  "पंचतंत्र": "panchatantra",
+  "पंचतंत्र की कहानियां": "panchatantra stories",
+  "संस्कृत कथामालिका": "samskrita kathamalika stories",
+
+  // Shabdasampadvardhini (Vocabulary Builder)
+  "ಶಬ್ದಸಂಪದ್ವರ್ಧಿನೀ": "shabdasampadvardhini",
+  "ಶಬ್ದ ಸಂಪದ್ವರ್ಧಿನೀ": "shabdasampadvardhini",
+  "ಸಂಸ್ಕೃತ ಶಬ್ದಸಂಪದ್ವರ್ಧಿನೀ": "samskrta shabdasampadvardhini",
+  "ಸಂಸ್ಕೃತ ಶಬ್ದ ಸಂಪದ್ವರ್ಧಿನೀ": "samskrta shabdasampadvardhini",
+  "शब्दसम्पद्वर्धिनी": "shabdasampadvardhini",
+  "शब्द सम्पद वर्धिनी": "shabdasampadvardhini",
+  "संस्कृत शब्दसम्पद्वर्धिनी": "samskrta shabdasampadvardhini",
+
+  // Nitya Prarthana Shloka
+  "ನಿತ್ಯ ಪ್ರಾರ್ಥನಾ ಶ್ಲೋಕ": "nitya prarthana shloka",
+  "ನಿತ್ಯ ಪ್ರಾರ್ಥನೆ": "nitya prarthana shloka",
+  "ನಮಸ್ಕಾರ ಶ್ಲೋಕ": "prarthana shloka",
+  "नित्य प्रार्थना श्लोक": "nitya prarthana shloka",
+  "नित्य प्रार्थना": "nitya prarthana shloka",
+
+  // Nama Ramayana
+  "ನಾಮರಾಮಾಯಣ": "nama ramayana",
+  "ನಾಮರಾಮಾಯಣಂ": "nama ramayana",
+  "ನಾಮ ರಾಮಾಯಣ": "nama ramayana",
+  "नामरामायण": "nama ramayana",
+  "नामरामायणम्": "nama ramayana",
+  "नाम रामायण": "nama ramayana",
+
+  // Saundaryalahari & Amarakosha & Tarkasangraha
+  "ಸೌಂದರ್ಯಲಹರೀ": "saundarya lahari",
+  "ಸೌಂದರ್ಯ ಲಹರಿ": "saundarya lahari",
+  "सौन्दर्यलहरी": "saundarya lahari",
+  "सौंदर्य लहरी": "saundarya lahari",
+  "ಅಮರಕೋಶ": "amarakosha",
+  "ಅಮರಕೋಶಂ": "amarakosha",
+  "अमरकोश": "amarakosha",
+  "तर्कसंग्रह": "tarkasangraha",
+  "ತರ್ಕಸಂಗ್ರಹ": "tarkasangraha",
+  "ತರ್ಕ ಸಂಗ್ರಹ": "tarkasangraha",
+  "ಸಮಾಸ": "samasa",
+  "ಸಮಾಸಗಳು": "samasa compounds",
+  "समास": "samasa compounds",
+
+  // Common title subcomponents
+  "ಪರಿಚಯ": "paricaya",
+  "ಪರಿಚಯಃ": "paricayah",
+  "ಸಂಗ್ರಹ": "sangraha",
+  "ಸಂಗ್ರಹಃ": "sangrahah",
+  "ಸಪ್ತಾಹ": "saptaha",
+  "ರತ್ನಮಾಲಾ": "ratnamala",
+  "ರತ್ನಮಾಲೆ": "ratnamala",
+  "ಸೂತ್ರ": "sutra",
+  "ಸೂತ್ರಗಳು": "sutras",
+  "ಪ್ರಾರ್ಥನಾ": "prarthana",
+  "ಪ್ರಾರ್ಥನೆ": "prarthana",
+  "परिचय": "paricaya",
+  "परिचयः": "paricayah",
+  "संग्रह": "sangraha",
+  "संग्रहः": "sangrahah",
+  "सप्ताह": "saptaha",
+  "रत्नमाला": "ratnamala",
+  "सूत्र": "sutra",
 
   // ==========================================
   // 1. BHAGAVAD GITA
@@ -550,7 +774,7 @@ export const MULTILINGUAL_LEXICON = {
   // ==========================================
   // 5. CHANTING, STOTRAS, SHLOKAS & SUKTAMS
   // ==========================================
-  "ಸ್ತೋತ್ರ": "stotra chanting",
+  "ಸ್ತೋತ್ರ": "stotra",
   "ಶ್ಲೋಕ": "shloka",
   "ಮಂತ್ರ": "mantra",
   "ಸೂಕ್ತಂ": "suktam",
@@ -559,8 +783,8 @@ export const MULTILINGUAL_LEXICON = {
   "ಲಲಿತಾ ಸಹಸ್ರನಾಮ": "lalitha sahasranama",
   "ಪಾರಾಯಣ": "chanting",
 
-  "स्तोत्र": "stotra chanting",
-  "स्तोत्रम्": "stotra chanting",
+  "स्तोत्र": "stotra",
+  "स्तोत्रम्": "stotra",
   "श्लोक": "shloka",
   "मंत्र": "mantra",
   "सूक्त": "suktam",
@@ -570,140 +794,405 @@ export const MULTILINGUAL_LEXICON = {
   "पारायण": "chanting",
   "आरती": "aarti chanting",
 
-  "ஸ்தோத்திரம்": "stotra chanting",
+  "ஸ்தோத்திரம்": "stotra",
   "சுலோகம்": "shloka",
   "மந்திரம்": "mantra",
   "சூக்தம்": "suktam",
   "சகஸ்ரநாமம்": "sahasranama",
 
-  "స్తోత్రం": "stotra chanting",
+  "స్తోత్రం": "stotra",
   "శ్లోకం": "shloka",
   "మంత్రం": "mantra",
   "సూక్తం": "suktam",
   "సహస్రనామం": "sahasranama",
 
-  "સ્તોત્ર": "stotra chanting",
+  "સ્તોત્ર": "stotra",
   "શ્લોક": "shloka",
   "મંત્ર": "mantra",
   "સૂક્ત": "suktam",
   "સહસ્રનામ": "sahasranama",
 
-  "স্তোত্র": "stotra chanting",
+  "স্তোত্র": "stotra",
   "শ্লোক": "shloka",
   "মন্ত্র": "mantra",
   "সূক্ত": "suktam",
   "সহস্রনাম": "sahasranama",
 
-  "ସ୍ତୋତ୍ର": "stotra chanting",
+  "ସ୍ତୋତ୍ର": "stotra",
   "ଶ୍ଳୋକ": "shloka",
   "ମନ୍ତ୍ର": "mantra",
   "ସୂକ୍ତ": "suktam",
   "ସହସ୍ରନାମ": "sahasranama",
 
   // ==========================================
-  // 6. FORMATS (BOOK, KINDLE, FLIPBOOK, AUDIO, COMBO)
+  // 6. FORMATS & DESCRIPTORS ACROSS 10 INDIC LANGUAGES
   // ==========================================
+  // --- Audio Device & Chanting Hardware ---
+  "श्रव्ययन्त्रम्": "audio device",
+  "श्रव्ययन्त्र": "audio device",
+  "श्रव्यम्": "audio",
+  "श्रव्य": "audio",
+  "यन्त्रम्": "device",
+  "यन्त्र": "device",
+  "ऑडियो": "audio",
+  "डिवाइस": "device",
+  "ऑडियो डिवाइस": "audio device",
+  "ऑडिओ": "audio",
+  "डिव्हाइस": "device",
+  "ऑडिओ डिव्हाइस": "audio device",
+  "ஆடியோ": "audio",
+  "சாதனம்": "device",
+  "ஆடியோ சாதனம்": "audio device",
+  "ఆడియో": "audio",
+  "పరికరం": "device",
+  "ఆడియో పరికరం": "audio device",
+  "ಆಡಿಯೋ": "audio",
+  "ಸಾಧನ": "device",
+  "ಆಡಿಯೋ ಸಾಧನ": "audio device",
+  "ഓഡിയോ": "audio",
+  "ഉപകരണം": "device",
+  "ഓഡിയോ ഉപകരണം": "audio device",
+  "ଅଡିଓ": "audio",
+  "ଡିଭାଇସ୍": "device",
+  "ଅଡିଓ ଡିଭାଇସ୍": "audio device",
+  "অডিও": "audio",
+  "ডিভাইস": "device",
+  "অডিও ডিভাইস": "audio device",
+  "ઑડિયો": "audio",
+  "ડિવાઇસ": "device",
+  "ઑડિયો ડિવાઇસ": "audio device",
+
+  // --- Books & Paperback ---
+  "मृदुबन्धसंस्करणम्": "paperback",
+  "मृदुबन्ध-पुस्तकम्": "paperback book",
+  "मृदुबन्ध": "paperback",
+  "मृदु आवरण": "paperback",
+  "पेपरबैक": "paperback",
+  "पेपरबॅक": "paperback",
+  "मृदू मुखपृष्ठ": "paperback",
+  "பேப்பர்பேக்": "paperback",
+  "மென் அட்டை": "paperback",
+  "పేపర్‌బ్యాక్": "paperback",
+  "ಪೇಪರ್‌ಬ್ಯಾಕ್": "paperback",
+  "ಮುದ್ರಿತ": "paperback",
+  "പേപ്പർബാക്ക്": "paperback",
+  "ପେପରବ୍ୟାକ୍": "paperback",
+  "পেপারব্যাক": "paperback",
+  "પેપરબૅક": "paperback",
+  "पुस्तक": "book paperback",
+  "किताब": "book paperback",
+  "ग्रन्थ": "book paperback",
+  "पुस्तके": "book paperback",
   "ಪುಸ್ತಕ": "book paperback",
   "ಪುಸ್ತಕಗಳು": "books",
   "ಪುಸ್ತಕಗಳ": "books",
   "ಗ್ರಂಥ": "book paperback",
-  "ಮುದ್ರಿತ": "paperback",
-  "ಕಿಂಡಲ್": "kindle",
-  "ಇ-ಬುಕ್": "ebook kindle",
-  "ಡಿಜಿಟಲ್ ಪುಸ್ತಕ": "ebook kindle",
-  "ಫ್ಲಿಪ್ ಬುಕ್": "flipbook",
+  "புத்தகம்": "book paperback",
+  "நூல்": "book paperback",
+  "పుస్తకం": "book paperback",
+  "పుస్తకాలు": "books",
+  "বই": "book paperback",
+  "ବହି": "book paperback",
+  "ચોપડી": "book paperback",
+
+  // --- Flipbooks ---
+  "फ्लिपबुक": "flipbook",
+  "फ्लिप बुक": "flipbook",
+  "फ्लिप्-पुस्तकम्": "flipbook",
+  "ஃபிளிப்புக்": "flipbook",
+  "ஃபிளிப் புக்": "flipbook",
+  "ఫ్లిప్‌బుక్": "flipbook",
+  "ఫ్లిప్ బుక్": "flipbook",
   "ಫ್ಲಿಪ್‌ಬುಕ್": "flipbook",
-  "ಆಡಿಯೋ": "audio device",
-  "ಧ್ವನಿ": "audio",
-  "ಹಾಡು": "audio chanting",
-  "ಪೆನ್ ಡ್ರೈವ್": "usb stick",
+  "ಫ್ಲಿಪ್ ಬುಕ್": "flipbook",
+  "ഫ്ലിപ്ബുക്ക്": "flipbook",
+  "ഫ്ലിപ് ബുക്ക്": "flipbook",
+  "ଫ୍ଲିପବୁକ୍": "flipbook",
+  "ফ্লিপবুক": "flipbook",
+  "ફ્લિપબુક": "flipbook",
+
+  // --- Kindle & eBooks ---
+  "किण्डल-संस्करणम्": "kindle edition ebook",
+  "किण्डल-संस्करण": "kindle edition ebook",
+  "किण्डल": "kindle",
+  "किंडल संस्करण": "kindle edition ebook",
+  "किंडल": "kindle",
+  "किंडल आवृत्ती": "kindle edition ebook",
+  "கிண்டில் பதிப்பு": "kindle edition ebook",
+  "கிண்டில்": "kindle",
+  "కిండిల్ ఎడిషన్": "kindle edition ebook",
+  "కిండిల్": "kindle",
+  "ಕಿಂಡಲ್ ಆವೃತ್ತಿ": "kindle edition ebook",
+  "ಕಿಂಡಲ್": "kindle",
+  "കിൻഡിൽ പതിപ്പ്": "kindle edition ebook",
+  "കിൻഡിൽ": "kindle",
+  "କିଣ୍ଡଲ୍ ସଂସ୍କରଣ": "kindle edition ebook",
+  "କିଣ୍ଡଲ୍": "kindle",
+  "কিন্ডল সংস্করণ": "kindle edition ebook",
+  "কিন্ডল": "kindle",
+  "કિન્ડલ આવૃત્તિ": "kindle edition ebook",
+  "કિન્ડલ": "kindle",
+  "ई-बुक": "ebook kindle",
+  "ई-पुस्तकम्": "ebook",
+  "डिजिटल पुस्तक": "ebook kindle",
+  "इ-बुक": "ebook",
+  "மின்னூல்": "ebook",
+  "இ-புக்": "ebook",
+  "ఈ-బుక్": "ebook",
+  "ಇ-ಪುಸ್ತಕ": "ebook",
+  "ಡಿಜಿಟಲ್ ಪುಸ್ತಕ": "ebook",
+  "ഇ-ബുക്ക്": "ebook",
+  "ଇ-ବୁକ୍": "ebook",
+  "ই-বুক": "ebook",
+  "ઈ-બુક": "ebook",
+
+  // --- Web Version ---
+  "वेब्-संस्करणम्": "web version",
+  "वेब्-संस्करण": "web version",
+  "वेब संस्करण": "web version",
+  "वेब आवृत्ती": "web version",
+  "வெப் பதிப்பு": "web version",
+  "இணையப் பதிப்பு": "web version",
+  "వెబ్ వెర్షన్": "web version",
+  "ವೆಬ್ ಆವೃತ್ತಿ": "web version",
+  "ಆನ್‌ಲೈನ್ ಓದು": "web version",
+  "വെബ് പതിപ്പ്": "web version",
+  "ୱେବ୍ ସଂସ୍କରଣ": "web version",
+  "ওয়েব সংস্করণ": "web version",
+  "વેબ આવૃત્તિ": "web version",
+
+  // --- USB / Pendrive ---
+  "पेनड्राइव": "pendrive",
+  "पेन ड्राइव": "pendrive",
+  "पेनड्राइव में": "pendrive",
+  "पेन्ड्राइव्": "pendrive",
+  "पेन्ड्राइव्-मध्ये": "pendrive",
+  "पेनड्राइव्ह": "pendrive",
+  "पेनड्राइव्हमध्ये": "pendrive",
+  "பென்டிரைவ்": "pendrive",
+  "பென் டிரைவ்": "pendrive",
+  "பென்டிரைவில்": "pendrive",
+  "పెన్‌డ్రైవ్": "pendrive",
+  "పెన్ డ్రైవ్": "pendrive",
+  "పెన్‌డ్రైవ్‌లో": "pendrive",
+  "ಪೆನ್‌ಡ್ರೈವ್": "pendrive",
+  "ಪೆನ್ ಡ್ರೈವ್": "pendrive",
+  "ಪೆನ್‌ಡ್ರೈವ್‌ನಲ್ಲಿ": "pendrive",
+  "പെൻഡ്രൈവ്": "pendrive",
+  "പെൻഡ്രൈവിൽ": "pendrive",
+  "ପେନଡ୍ରାଇଭ୍": "pendrive",
+  "ପେନଡ୍ରାଇଭ୍‌ରେ": "pendrive",
+  "পেনড্রাইভ": "pendrive",
+  "পেনড্রাইভে": "pendrive",
+  "પેનડ્રાઇવ": "pendrive",
+  "પેનડ્રાઇવમાં": "pendrive",
+  "यूएसबी": "usb stick",
   "ಯುಎಸ್ ಬಿ": "usb stick",
+
+  // --- Bulk Purchase / Orders ---
+  "बृहत्क्रयणम्": "bulk purchase",
+  "बृहदादेशः": "bulk order",
+  "थोक खरीद": "bulk purchase",
+  "थोक ऑर्डर": "bulk order",
+  "घाऊक खरेदी": "bulk purchase",
+  "घाऊक ऑर्डर": "bulk order",
+  "மொத்தக் கொள்முதல்": "bulk purchase",
+  "மொத்த ஆர்டர்": "bulk order",
+  "టోకు కొనుగోలు": "bulk purchase",
+  "టోకు ఆర్డర్": "bulk order",
+  "ಸಗಟು ಖರೀದಿ": "bulk purchase",
+  "ಸಗಟು ಆರ್ಡರ್": "bulk order",
+  "മൊത്ത വാങ്ങൽ": "bulk purchase",
+  "മൊത്ത ഓർഡർ": "bulk order",
+  "ଥୋକ କ୍ରୟ": "bulk purchase",
+  "ଥୋକ ଅର୍ଡର୍": "bulk order",
+  "পাইকারি ক্রয়": "bulk purchase",
+  "পাইকারি অর্ডার": "bulk order",
+  "જથ્થાબંધ ખરીદી": "bulk purchase",
+  "જથ્થાબંધ ઑર્ડર": "bulk order",
+
+  // --- Festival Offers ---
+  "उत्सव-उपहारः": "festival offer",
+  "उत्सव उपहार": "festival offer",
+  "त्योहार ऑफ़र": "festival offer",
+  "त्योहार ऑफर": "festival offer",
+  "सण ऑफर": "festival offer",
+  "பண்டிகை சலுகை": "festival offer",
+  "పండుగ ఆఫర్": "festival offer",
+  "ಹಬ್ಬದ ಕೊಡುಗೆ": "festival offer",
+  "ഉത്സവ ഓഫർ": "festival offer",
+  "ପର୍ବ ଅଫର୍": "festival offer",
+  "উৎসব অফার": "festival offer",
+  "તહેવાર ઑફર": "festival offer",
+
+  // --- Learning Paths (My Path) ---
+  "मम मार्गः": "my path",
+  "मेरा पथ": "my path",
+  "माझा मार्ग": "my path",
+  "என் பாதை": "my path",
+  "నా మార్గం": "my path",
+  "ನನ್ನ ಹಾದಿ": "my path",
+  "ಎന്റെ പാത": "my path",
+  "ମୋ ପଥ": "my path",
+  "আমার পথ": "my path",
+  "મારો માર્ગ": "my path",
+
+  // Audiences
+  "बच्चे": "kids",
+  "बालाः": "kids",
+  "बालानां": "kids",
+  "लहान मुले": "kids",
+  "குழந்தைகள்": "kids",
+  "పిల్లలు": "kids",
+  "ಮಕ್ಕಳು": "kids",
+  "കുട്ടികൾ": "kids",
+  "ପିଲା": "kids",
+  "শিশু": "kids",
+  "બાળકો": "kids",
+  "स्कूली बच्चे": "school children",
+  "विद्यालयछात्राः": "school children",
+  "शालेय मुले": "school children",
+  "பள்ளி மாணவர்கள்": "school children",
+  "పాఠశాల విద్యార్థులు": "school children",
+  "ಶಾಲಾ ಮಕ್ಕಳು": "school children",
+  "സ്കൂൾ കുട്ടികൾ": "school children",
+  "ବିଦ୍ୟାଳୟ ଛାତ୍ରଛାତ୍ରୀ": "school children",
+  "স্কুল পড়ুয়া": "school children",
+  "શાળાના બાળકો": "school children",
+  "विशेष बच्चे": "special children",
+  "विशेषबालाः": "special children",
+  "विशेष गरजा असलेली मुले": "special children",
+  "சிறப்புக் குழந்தைகள்": "special children",
+  "ప్రత్యేక అవసరాల పిల్లలు": "special children",
+  "ವಿಶೇಷ ಮಕ್ಕಳು": "special children",
+  "പ്രത്യേക പരിഗണന അർಹിക്കുന്ന കുട്ടികൾ": "special children",
+  "ସ୍ୱତନ୍ତ୍ର ପିଲା": "special children",
+  "বিশেষ চাহিদাসম্পন্ন শিশু": "special children",
+  "વિશેષ બાળકો": "special children",
+  "विश्वविद्यालय": "university",
+  "विश्वविद्यालयः": "university",
+  "विद्यापीठ": "university",
+  "பல்கலைக்கழகம்": "university",
+  "విశ్వవిద్యాలయం": "university",
+  "ವಿಶ್ವವಿದ್ಯಾಲಯ": "university",
+  "സർവ്വകലാശാല": "university",
+  "ବିଶ୍ୱବିଦ୍ୟାଳୟ": "university",
+  "বিশ্ববিদ্যালয়": "university",
+  "યુનિવર્સિટી": "university",
+
+  // Levels
+  "प्रारंभिक": "beginner",
+  "प्रारम्भिकः": "beginner",
+  "प्राथमिक": "beginner",
+  "தொடக்க நிலை": "beginner",
+  "ప్రారంభ స్థాయి": "beginner",
+  "ಆರಂಭಿಕ ಹಂತ": "beginner",
+  "തുടക്കക്കാർ": "beginner",
+  "ପ୍ରାରମ୍ଭିକ": "beginner",
+  "প্রাথমিক": "beginner",
+  "પ્રારંભિક": "beginner",
+  "उन्नत": "advanced",
+  "उन्नतः": "advanced",
+  "प्रगत": "advanced",
+  "மேம்பட்ட நிலை": "advanced",
+  "ఉన్నత స్థాయి": "advanced",
+  "ಉನ್ನತ ಹಂತ": "advanced",
+  "ഉന്നത തലം": "advanced",
+  "ଉନ୍ନତ": "advanced",
+  "উন্নত": "advanced",
+  "ઉન્નત": "advanced",
+
+  // Subjects
+  "मंत्रोच्चार": "chanting",
+  "मन्त्रपाठः": "chanting",
+  "मंत्रपठण": "chanting",
+  "பாராயணம்": "chanting",
+  "పారాయణం": "chanting",
+  "ಪಠಣ": "chanting",
+  "പാരായണം": "chanting",
+  "ମନ୍ତ୍ରପାଠ": "chanting",
+  "মন্ত্রপাঠ": "chanting",
+  "મંત્રપાઠ": "chanting",
+  "संस्कृति": "culture",
+  "संस्कृतिः": "culture",
+  "संस्कृती": "culture",
+  "கலாச்சாரம்": "culture",
+  "సంస్కృతి": "culture",
+  "ಸಂಸ್ಕೃತಿ": "culture",
+  "സംസ്കാരം": "culture",
+  "ସଂସ୍କୃତି": "culture",
+  "সংস্কৃতি": "culture",
+  "સંસ્કૃતિ": "culture",
+  "स्मरण शक्ति": "memory",
+  "स्मृतिः": "memory",
+  "स्मरणशक्ती": "memory",
+  "நினைவாற்றல்": "memory",
+  "జ్ఞాపకశక్తి": "memory",
+  "ಸ್ಮರಣಶಕ್ತಿ": "memory",
+  "ഓർമ്മശಕ್ತಿ": "memory",
+  "ସ୍ମରଣ ଶକ୍ତି": "memory",
+  "স্মৃতিশক্তি": "memory",
+  "સ્મરણ શક્તિ": "memory",
+  "संस्कृत भाषा": "sanskrit language",
+  "संस्कृतभाषा": "sanskrit language",
+  "சமஸ்கிருத மொழி": "sanskrit language",
+  "సంస్కృత భాష": "sanskrit language",
+  "ಸಂಸ್ಕೃತ ಭಾಷೆ": "sanskrit language",
+  "സംസ്കൃത ഭാഷ": "sanskrit language",
+  "ସଂସ୍କୃତ ଭାଷା": "sanskrit language",
+  "সংস্কৃত ভাষা": "sanskrit language",
+  "સંસ્કૃત ભાષા": "sanskrit language",
+  "संस्कृत व्याकरण": "sanskrit grammar",
+  "संस्कृतव्याकरणम्": "sanskrit grammar",
+  "சமஸ்கிருத இலக்கணம்": "sanskrit grammar",
+  "సంస్కృత వ్యాకరణం": "sanskrit grammar",
+  "ಸಂಸ್ಕೃತ ವ್ಯಾಕರಣ": "sanskrit grammar",
+  "സംസ്കൃത വ്യാകരണം": "sanskrit grammar",
+  "ସଂସ୍କୃତ ବ୍ୟାକରଣ": "sanskrit grammar",
+  "সংস্কৃত ব্যাকরণ": "sanskrit grammar",
+  "સંસ્કૃત વ્યાકરણ": "sanskrit grammar",
+  "गतिविधि": "activity",
+  "क्रियाकलापः": "activity",
+  "उपक्रम": "activity",
+  "செயல்பாடு": "activity",
+  "కార్యకలాపం": "activity",
+  "ಚಟುವಟಿಕೆ": "activity",
+  "പ്രവർത്തനം": "activity",
+  "କାର୍ଯ୍ୟକଳାପ": "activity",
+  "ক্রিয়াকলাপ": "activity",
+  "પ્રવૃત્તિ": "activity",
+
+  // --- Other formats & categories ---
+  "कॉम्बो": "combo pack",
+  "पैक": "combo pack",
   "ಕಾಂಬೋ": "combo pack",
   "ಕಲಿಕಾ ಪ್ಯಾಕ್": "combo learning pack",
-  "ಆನ್‌ಲೈನ್ ಓದು": "web version",
-  "ಕೋರ್ಸ್": "course products",
+  "காம்போ": "combo pack",
+  "தொகுப்பு": "combo pack",
+  "కాంబో": "combo pack",
+  "సెట్": "combo pack",
+  "કોમ્બો": "combo pack",
+  "কম্বো": "combo pack",
+  "କମ୍ବୋ": "combo pack",
+  "कैलेंडर": "calendar",
+  "पंचांग": "calendar panchanga",
   "ಕ್ಯಾಲೆಂಡರ್": "calendar",
   "ಪಂಚಾಂಗ": "calendar panchanga",
   "ದಿನದರ್ಶಿ": "calendar",
-
-  "पुस्तक": "book paperback",
-  "किताब": "book paperback",
-  "ग्रन्थ": "book paperback",
-  "किंडल": "kindle",
-  "ई-बुक": "ebook kindle",
-  "डिजिटल पुस्तक": "ebook kindle",
-  "फ्लिपबुक": "flipbook",
-  "फ्लिप बुक": "flipbook",
-  "ऑडियो": "audio device",
-  "आवाज": "audio",
-  "पेन ड्राइव": "usb stick",
-  "यूएसबी": "usb stick",
-  "कॉम्बो": "combo pack",
-  "पैक": "combo pack",
-  "ऑनलाइन": "web version",
-  "कोर्स": "course products",
-  "पाठ्यक्रम": "learning path course",
-  "कैलेंडर": "calendar",
-  "पंचांग": "calendar panchanga",
-
-  "புத்தகம்": "book paperback",
-  "நூல்": "book paperback",
-  "அச்சிடப்பட்ட": "paperback",
-  "கிண்டில்": "kindle",
-  "இ-புக்": "ebook kindle",
-  "ஃபிளிப் புக்": "flipbook",
-  "ஆடியோ": "audio device",
-  "ஒலி": "audio",
-  "பென் டிரைவ்": "usb stick",
-  "காம்போ": "combo pack",
-  "தொகுப்பு": "combo pack",
-  "இணையப் பதிப்பு": "web version",
-  "பாடநெறி": "course products",
   "நாட்காட்டி": "calendar",
   "பஞ்சாங்கம்": "calendar panchanga",
-
-  "పుస్తకం": "book paperback",
-  "పుస్తకాలు": "books",
-  "ముద్రిత": "paperback",
-  "కిండిల్": "kindle",
-  "ఈ-బుక్": "ebook kindle",
-  "ఫ్లిప్ బుక్": "flipbook",
-  "ఆడియో": "audio device",
-  "ధ్వని": "audio",
-  "పెన్ డ్రೈవ్": "usb stick",
-  "కాంబో": "combo pack",
-  "సెట్": "combo pack",
-  "ఆన్‌లైన్": "web version",
-  "కోర్సు": "course products",
   "క్యాలెండర్": "calendar",
   "పంచాంగం": "calendar panchanga",
-
-  "ચોપડી": "book paperback",
-  "કિન્ડલ": "kindle",
-  "ઇ-બુક": "ebook kindle",
-  "ઓડિયો": "audio device",
-  "કોમ્બો": "combo pack",
   "કેલેન્ડર": "calendar",
-
-  "বই": "book paperback",
-  "কিন্ডল": "kindle",
-  "ই-বুক": "ebook kindle",
-  "অডিও": "audio device",
-  "কম্বো": "combo pack",
-  "ক্যালেন্ডার": "calendar",
+  "ક্যালেন্ডার": "calendar",
   "পঞ্জিকা": "calendar panchanga",
-
-  "ବହି": "book paperback",
-  "କିଣ୍ଡଲ୍": "kindle",
-  "ଇ-ବୁକ୍": "ebook kindle",
-  "ଅଡିଓ": "audio device",
-  "କମ୍ବୋ": "combo pack",
   "କ୍ୟାଲେଣ୍ଡର": "calendar",
   "ପଞ୍ଜିକା": "calendar panchanga",
-
-  // Marathi specific variations
-  "पुस्तके": "book paperback",
-  "पुस्तके खरेदी": "buy books",
+  "कोर्स": "course products",
+  "पाठ्यक्रम": "learning path course",
+  "ಕೋರ್ಸ್": "course products",
+  "பாடநெறி": "course products",
+  "కోర్సు": "course products",
 
   // ==========================================
   // 7. WEBSITE PAGES & SERVICES (LIBRARY, SHIPPING, ORDERS, CONTACT)
@@ -857,6 +1346,22 @@ export function processIndicQuery(query) {
   const cleaned = cleanQuery(raw);
   const normalizedCleaned = normalizeIndicWord(cleaned);
 
+  // 0. Direct whole-query product title translation match (from pre-compiled catalog mappings)
+  const productTitle = lookupProductTranslation(raw) || lookupProductTranslation(cleaned) || lookupProductTranslation(normalizedCleaned);
+  if (productTitle) {
+    return {
+      isIndic: true,
+      language: detection.language,
+      script: detection.script,
+      nativeName: detection.nativeName,
+      originalQuery: raw,
+      canonicalQuery: productTitle,
+      transliteratedQuery: transliterateIndicToLatin(cleaned),
+      isMultilingualMatch: true,
+      displayBadge: `${detection.language} Recognized`
+    };
+  }
+
   // 1. Direct whole-query dictionary match (exact or inflection-normalized)
   if (MULTILINGUAL_LEXICON[cleaned] || MULTILINGUAL_LEXICON[normalizedCleaned]) {
     const canonical = MULTILINGUAL_LEXICON[cleaned] || MULTILINGUAL_LEXICON[normalizedCleaned];
@@ -873,12 +1378,39 @@ export function processIndicQuery(query) {
     };
   }
 
-  // 2. Multi-word phrase search in lexicon
+  // 2. Multi-word phrase search in lexicon with greedy n-gram matching
   const words = cleaned.split(" ").filter(Boolean);
   const matchedCanonicalWords = [];
   let hadLexiconHit = false;
+  let i = 0;
 
-  for (const word of words) {
+  while (i < words.length) {
+    // Try 3-word phrase
+    if (i + 2 < words.length) {
+      const p3 = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+      const norm3 = normalizeIndicWord(p3);
+      if (MULTILINGUAL_LEXICON[p3] || MULTILINGUAL_LEXICON[norm3]) {
+        matchedCanonicalWords.push(MULTILINGUAL_LEXICON[p3] || MULTILINGUAL_LEXICON[norm3]);
+        hadLexiconHit = true;
+        i += 3;
+        continue;
+      }
+    }
+
+    // Try 2-word phrase
+    if (i + 1 < words.length) {
+      const p2 = `${words[i]} ${words[i + 1]}`;
+      const norm2 = normalizeIndicWord(p2);
+      if (MULTILINGUAL_LEXICON[p2] || MULTILINGUAL_LEXICON[norm2]) {
+        matchedCanonicalWords.push(MULTILINGUAL_LEXICON[p2] || MULTILINGUAL_LEXICON[norm2]);
+        hadLexiconHit = true;
+        i += 2;
+        continue;
+      }
+    }
+
+    // Single-word token
+    const word = words[i];
     const normW = normalizeIndicWord(word);
     if (MULTILINGUAL_LEXICON[word]) {
       matchedCanonicalWords.push(MULTILINGUAL_LEXICON[word]);
@@ -893,27 +1425,17 @@ export function processIndicQuery(query) {
         matchedCanonicalWords.push(tWord);
       }
     }
+    i += 1;
   }
 
   const transliteratedFull = transliterateIndicToLatin(cleaned);
   let canonicalQuery = matchedCanonicalWords.join(" ").trim();
 
-  // 3. Compound word detection if query has no spaces (e.g. 'ಭಗವದ್ಗೀತಾ', 'ಸಂಸ್ಕೃತವ್ಯಾಕರಣ')
+  // 3. Compound word detection if query has no spaces or is a joined compound
   if (!hadLexiconHit && words.length === 1) {
-    if (transliteratedFull.includes("bhagavad") && transliteratedFull.includes("gita")) {
-      canonicalQuery = "bhagavad gita";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("sanskrit") && (transliteratedFull.includes("vyakaran") || transliteratedFull.includes("grammar"))) {
-      canonicalQuery = "sanskrit grammar";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("dhatu") && transliteratedFull.includes("rupa")) {
-      canonicalQuery = "dhaturupa";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("ashta") && (transliteratedFull.includes("dhyay") || transliteratedFull.includes("dyay"))) {
-      canonicalQuery = "ashtadhyayi";
-      hadLexiconHit = true;
-    } else if (transliteratedFull.includes("pancha") && transliteratedFull.includes("tantra")) {
-      canonicalQuery = "panchatantra";
+    const splitCompound = splitSanskritCompound(transliteratedFull);
+    if (splitCompound && splitCompound !== transliteratedFull) {
+      canonicalQuery = splitCompound;
       hadLexiconHit = true;
     } else {
       canonicalQuery = transliteratedFull;

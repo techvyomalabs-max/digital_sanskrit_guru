@@ -105,22 +105,120 @@ function seoHeadTags({ pathname, hostname, siteUrl = getSeoSiteUrl(), canonicalP
   const canonicalPath = noindex === "hard" ? "" : override || canonicalPathFor(pathname);
   const indexable = Boolean(canonicalPath) && !noindex && isProductionHost(hostname, siteUrl);
   const tags = [`<meta name="robots" content="${indexable ? "index, follow" : "noindex, follow"}" />`];
+  const canonicalUrl = canonicalPath ? `${siteUrl}${canonicalPath}` : "";
   if (canonicalPath) {
-    const href = escapeAttr(`${siteUrl}${canonicalPath}`);
-    tags.push(`<link rel="canonical" href="${href}" />`);
-    tags.push(`<meta property="og:url" content="${href}" />`);
+    tags.push(`<link rel="canonical" href="${escapeAttr(canonicalUrl)}" />`);
   }
-  return { tags: tags.join("\n    "), indexable };
+  return { tags: tags.join("\n    "), indexable, canonicalUrl };
 }
 
-/** Adds the request's SEO tags to the built index.html. */
-function injectSeoTags(html, options) {
-  const { tags, indexable } = seoHeadTags(options);
-  const cleaned = String(html)
+const SITE_NAME = "Digital Sanskrit Guru";
+const DEFAULT_SHARE_IMAGE = "/logo.png";
+
+/** Plain text from product HTML: tags and entities removed, spaces collapsed. */
+function plainText(value) {
+  return String(value || "")
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>|<\/(p|div|li|h[1-6])>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&quot;/gi, '"')
+    .replace(/&(apos|#039);/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Shortens text at a word boundary, adding an ellipsis when cut. */
+function shorten(text, max = 200) {
+  const t = String(text || "").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:–-]+$/, "")}…`;
+}
+
+/** A full URL for an image: kept if already absolute, else on assetOrigin (this server). */
+function absoluteAsset(src, assetOrigin) {
+  const s = String(src || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("//")) return `https:${s}`;
+  return `${String(assetOrigin || "").replace(/\/+$/, "")}${s.startsWith("/") ? "" : "/"}${s}`;
+}
+
+/** What link previews (WhatsApp, Facebook, LinkedIn, X) should show for a product. */
+function productShareInfo(product) {
+  if (!product) return null;
+  const name = plainText(product.name);
+  if (!name) return null;
+  const about = Array.isArray(product.aboutProduct) ? product.aboutProduct.map(plainText).filter(Boolean).join(" ") : "";
+  const description = shorten(plainText(product.description) || about || `${name} from ${SITE_NAME}.`);
+  const image = String(product.image || (Array.isArray(product.images) ? product.images[0] : "") || "").trim();
+  return { title: name, description, image };
+}
+
+/**
+ * Link-preview tags. share: { title, description, image } for a product page; without it
+ * the page keeps its own title and description and only the image is made absolute.
+ */
+function shareTags({ share, url, assetOrigin, siteTitle, siteDescription }) {
+  const title = share ? `${share.title} | ${SITE_NAME}` : siteTitle;
+  const description = share ? share.description : siteDescription;
+  const image = absoluteAsset((share && share.image) || DEFAULT_SHARE_IMAGE, assetOrigin);
+  const tags = [
+    `<meta property="og:site_name" content="${escapeAttr(SITE_NAME)}" />`,
+    `<meta property="og:type" content="${share ? "product" : "website"}" />`,
+    `<meta property="og:title" content="${escapeAttr(title)}" />`,
+    `<meta property="og:description" content="${escapeAttr(description)}" />`,
+    `<meta property="og:image" content="${escapeAttr(image)}" />`,
+    `<meta property="og:image:alt" content="${escapeAttr(share ? share.title : SITE_NAME)}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="${escapeAttr(title)}" />`,
+    `<meta name="twitter:description" content="${escapeAttr(description)}" />`,
+    `<meta name="twitter:image" content="${escapeAttr(image)}" />`
+  ];
+  if (url) tags.push(`<meta property="og:url" content="${escapeAttr(url)}" />`);
+  return tags;
+}
+
+const attrOf = (html, re) => {
+  const m = String(html).match(re);
+  return m ? m[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">") : "";
+};
+
+/**
+ * Adds the request's SEO and link-preview tags to the built index.html.
+ * options.share (product pages) also sets the page title and meta description.
+ * options.assetOrigin: where this server serves its own files (for relative image paths).
+ */
+function injectSeoTags(html, options = {}) {
+  const { tags, indexable, canonicalUrl } = seoHeadTags(options);
+  const source = String(html);
+  const siteTitle = attrOf(source, /<title>([^<]*)<\/title>/i) || SITE_NAME;
+  const siteDescription = attrOf(source, /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
+  const share = options.share || null;
+
+  let cleaned = source
     .replace(/\s*<link[^>]+rel=["']canonical["'][^>]*>/gi, "")
     .replace(/\s*<meta[^>]+name=["']robots["'][^>]*>/gi, "")
-    .replace(/\s*<meta[^>]+property=["']og:url["'][^>]*>/gi, "");
-  return { html: cleaned.replace(/<\/head>/i, `    ${tags}\n  </head>`), indexable };
+    .replace(/\s*<meta[^>]+property=["']og:[^"']+["'][^>]*>/gi, "")
+    .replace(/\s*<meta[^>]+name=["']twitter:[^"']+["'][^>]*>/gi, "");
+  if (share) {
+    const pageTitle = escapeAttr(`${share.title} | ${SITE_NAME}`);
+    cleaned = cleaned
+      .replace(/<title>[^<]*<\/title>/i, `<title>${pageTitle}</title>`)
+      .replace(
+        /(<meta[^>]+name=["']description["'][^>]+content=)["'][^"']*["']/i,
+        `$1"${escapeAttr(share.description)}"`
+      );
+  }
+  const all = [tags, ...shareTags({ share, url: canonicalUrl, assetOrigin: options.assetOrigin || options.siteUrl || getSeoSiteUrl(), siteTitle, siteDescription })];
+  return { html: cleaned.replace(/<\/head>/i, `    ${all.join("\n    ")}\n  </head>`), indexable };
 }
 
 function buildRobotsTxt({ hostname, siteUrl = getSeoSiteUrl() }) {
@@ -188,6 +286,9 @@ module.exports = {
   canonicalPathFor,
   seoHeadTags,
   injectSeoTags,
+  productShareInfo,
+  plainText,
+  absoluteAsset,
   buildRobotsTxt,
   buildSitemapXml
 };

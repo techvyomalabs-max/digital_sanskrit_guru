@@ -280,6 +280,14 @@ router.post("/send-whatsapp-otp", otpLimiter, async (req, res) => {
     // Dispatch via WhatsApp
     const dispatchResult = await sendWhatsAppOtp(cleanPhone, otp);
 
+    if (!dispatchResult?.success) {
+      // Don't leave an OTP the user never received; let them retry cleanly.
+      await PhoneOtp.deleteMany({ phone: cleanPhone, verified: false });
+      return res.status(502).json({
+        message: "We couldn't send the OTP on WhatsApp right now. Please try again in a few minutes."
+      });
+    }
+
     return res.json({
       success: true,
       message: `OTP sent to your WhatsApp (+${cleanPhone.replace(/^\+/, "")}) successfully.`,

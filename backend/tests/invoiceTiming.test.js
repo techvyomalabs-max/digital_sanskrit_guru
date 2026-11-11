@@ -58,6 +58,8 @@ describe("Order save hook: invoice and credit note numbers", () => {
   afterEach(() => mock.restoreAll());
 
   function mockCounters() {
+    // No invoice number is taken yet (the save hook checks before using one)
+    mock.method(Order, "exists", async () => null);
     const seqs = new Map();
     const asked = [];
     mock.method(Counter, "findByIdAndUpdate", (filter) => {

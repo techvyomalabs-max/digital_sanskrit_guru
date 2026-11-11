@@ -473,6 +473,28 @@ function nextNumber(counterId) {
   ).then((counter) => counter.seq);
 }
 
+/**
+ * Next unused invoice number for the year of `now`. If the counter has fallen behind the
+ * numbers already given out (e.g. a copied or restored database), it is moved past the
+ * highest one in use instead of handing out a duplicate, which would fail the save.
+ */
+async function nextFreeInvoiceNumber(OrderModel, now) {
+  const counterId = invoiceCounterId(now);
+  const prefix = formatInvoiceNumber(now, 1).slice(0, -4); // "DSG/2026-27/"
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const number = formatInvoiceNumber(now, await nextNumber(counterId));
+    if (!(await OrderModel.exists({ invoiceNumber: number }))) return number;
+
+    const highest = await OrderModel.find({ invoiceNumber: { $regex: `^${prefix.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\d+$` } })
+      .select("invoiceNumber")
+      .lean();
+    const maxSeq = highest.reduce((max, o) => Math.max(max, Number(String(o.invoiceNumber).slice(prefix.length)) || 0), 0);
+    console.warn(`[Invoice] Counter ${counterId} was behind (gave ${number}); moving it to ${maxSeq}`);
+    await Counter.updateOne({ _id: counterId }, { $max: { seq: maxSeq } }, { upsert: true });
+  }
+  throw new Error(`Could not find a free invoice number for ${counterId}`);
+}
+
 orderSchema.pre("save", async function() {
   const self = this;
   const now = new Date();
@@ -483,14 +505,15 @@ orderSchema.pre("save", async function() {
   // The tax invoice is issued when the order ships (digital-only: when access is given), so
   // the numbers run without gaps: unpaid, failed and cancelled-before-dispatch orders never
   // take one. It is dated the day the order was placed and numbered in that date's financial
-  // year (DSG/2026-27/0001; each year restarts at 0001). An order that has a number keeps it.
+  // year (DSG/2026-27/0001; each year restarts at 0001), skipping any number already in use.
+  // An order that has a number keeps it.
   let invoiceJustIssued = false;
   if (!self.invoiceNumber && isInvoiceDue(self)) {
     invoiceJustIssued = true;
     const invoiceDate = invoiceDateFor(self, now);
     self.invoiceIssuedAt = invoiceDate;
     self.invoiceGeneratedAt = now;
-    self.invoiceNumber = formatInvoiceNumber(invoiceDate, await nextNumber(invoiceCounterId(invoiceDate)));
+    self.invoiceNumber = await nextFreeInvoiceNumber(self.constructor, invoiceDate);
   }
   // Older orders (state "") keep their state unless something changes about their invoice
   if (self.invoiceState || !self.invoiceNumber || self.isNew) {
