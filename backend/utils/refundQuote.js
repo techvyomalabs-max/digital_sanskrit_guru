@@ -85,6 +85,16 @@ function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewa
   if (isWholeOrder) {
     // Whole-order cancellation includes delivery for both reasons
     deliveryIncluded = deliveryChargeInInr;
+  } else if (reason === "store_fault" && activePolicy.refundDeliveryShareOnStoreFault) {
+    // Store's fault (e.g. damaged item): the customer also gets back the share of delivery that
+    // item carried, in proportion to its value among the physical items
+    const physicalItems = orderItems.filter((it) => !it.isDigital);
+    const gross = (it) => (Number(it.price) || 0) * (Number(it.quantity) || 1);
+    const physicalGross = physicalItems.reduce((sum, it) => sum + gross(it), 0);
+    const selectedPhysicalGross = selectedItems.filter((it) => !it.isDigital).reduce((sum, it) => sum + gross(it), 0);
+    if (physicalGross > 0) {
+      deliveryIncluded = round2(deliveryChargeInInr * (selectedPhysicalGross / physicalGross));
+    }
   } else if (reason === "store_fault") {
     // Item return on store fault: include delivery if policy allows and all physical items end up returned/refunded
     const physicalItems = orderItems.filter((it) => !it.isDigital);

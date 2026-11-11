@@ -36,9 +36,12 @@ const num = (value) => {
   const [whole, frac] = Math.abs(n).toFixed(2).split(".");
   return `${n < 0 ? "-" : ""}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${frac}`;
 };
+const roundTwo = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const pct = (rate) => `${Number(rate) % 1 === 0 ? Number(rate) : Number(rate).toFixed(2)}%`;
 
 function dateText(value) {
+  // new Date(null) is 1 Jan 1970, so a missing date must print as "-" rather than that
+  if (value === null || value === undefined || value === "") return "-";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -113,7 +116,7 @@ function draw(doc, inv) {
   if (cn) {
     doc.fillColor(C.muted).font("Helvetica").fontSize(7.5).text("Issued for a refund (GST credit note)", rx, doc.y, { width: rw, align: "right" });
   } else if (!isInvoice) {
-    doc.fillColor(C.accent).font("Helvetica-Bold").fontSize(7.5).text("Not a tax invoice: payment not received", rx, doc.y, { width: rw, align: "right" });
+    doc.fillColor(C.accent).font("Helvetica-Bold").fontSize(7.5).text(plain(inv.pendingInvoiceNote || "Not a tax invoice"), rx, doc.y, { width: rw, align: "right" });
   } else {
     doc.fillColor(C.muted).font("Helvetica").fontSize(7.5).text("Original for recipient", rx, doc.y, { width: rw, align: "right" });
   }
@@ -131,6 +134,7 @@ function draw(doc, inv) {
   } else if (isInvoice) {
     fact("Invoice no.", inv.invoiceNumber);
     fact("Invoice date", dateText(inv.invoiceDate));
+    if (inv.dispatchDate) fact("Dispatched on", dateText(inv.dispatchDate));
   }
   fact("Order ref.", `#${inv.orderRef}`);
   fact("Order date", dateText(inv.orderDate));
@@ -264,15 +268,57 @@ function draw(doc, inv) {
     });
     doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
   });
+
+  // Delivery charges as one line with their total. Behind it the fee is still split over the
+  // goods and taxed at each one's rate (books 0%, an Audio Box 18%); the tax summary below
+  // groups that by rate, so the line itself shows only the totals.
+  const deliveryParts = inv.delivery?.taxed && inv.totals.deliveryGross > 0
+    ? (inv.delivery.parts || []).filter((p) => (Number(p.taxable) || 0) + (Number(p.tax) || 0) > 0)
+    : [];
+  if (deliveryParts.length) {
+    const sum = (k) => roundTwo(deliveryParts.reduce((a, p) => a + (Number(p[k]) || 0), 0));
+    const taxable = sum("taxable");
+    const tax = sum("tax");
+    const rates = [...new Set(deliveryParts.map((p) => p.rate))];
+    const label = "Delivery charges";
+    doc.font("Helvetica").fontSize(8);
+    const h = 18;
+    if (ensure(h)) header();
+    if (inv.lines.length % 2 === 1) doc.rect(left, y, width, h).fill(C.fill);
+    const values = {
+      idx: String(inv.lines.length + 1),
+      name: label,
+      hsnSac: "",
+      quantity: "",
+      unitPrice: "",
+      discount: "-",
+      taxable: num(taxable),
+      // One rate when all the goods share it; otherwise the tax summary shows the split
+      rate: rates.length === 1 && rates[0] !== null ? pct(rates[0]) : "",
+      tax: num(tax),
+      total: num(roundTwo(taxable + tax))
+    };
+    let x = left;
+    cols.forEach((c) => {
+      doc.fillColor(c.key === "name" || c.key === "total" ? C.ink : C.body)
+        .font(c.key === "total" ? "Helvetica-Bold" : "Helvetica")
+        .fontSize(8)
+        .text(values[c.key], x + pad, y + 4.5, { width: c.w - pad * 2, align: c.align });
+      x += c.w;
+    });
+    y += h;
+    doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
+  }
+
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
     .text(cn
       ? cn.itemLevel
         ? `Amounts in ${cur}. Returned items only, with the refunded share of what was invoiced for them; price and quantity are as invoiced.`
         : `Amounts in ${cur}. Each line shows the refunded share of what was invoiced${cn.isFull ? " (the full amount)" : ""}; price and quantity are as invoiced.`
       : `Amounts in ${cur}. Prices include GST; the taxable value is the price less GST.${inv.lines.some((l) => l.parts) ? " A combo is taxed by its components, its price shared in proportion to their value." : ""}`, left, y + 4, { width });
-  if (inv.delivery?.taxed && inv.totals.deliveryGross > 0) {
+  if (deliveryParts.length) {
     doc.fillColor(C.muted).font("Helvetica").fontSize(7)
-      .text("Delivery charges are part of the taxable value, taxed at the rate of the items delivered; their GST is included below.", left, doc.y + 1, { width });
+      .text("Delivery charges are part of the taxable value and are taxed at the GST rate of the goods delivered.", left, doc.y + 1, { width });
   }
   y = doc.y + 12;
 
@@ -415,4 +461,10 @@ function generateCreditNotePdfBuffer(order, refund, user = null, seller = null) 
   return renderInvoicePdf(buildCreditNote(order, refund, { user, seller }));
 }
 
-module.exports = { generateInvoicePdfBuffer, generateCreditNotePdfBuffer, renderInvoicePdf };
+module.exports = {
+  generateInvoicePdfBuffer,
+  generateCreditNotePdfBuffer,
+  renderInvoicePdf,
+  // Shared text helpers for other PDFs (e.g. the WP archive export)
+  pdfText: { plain, money, dateText }
+};

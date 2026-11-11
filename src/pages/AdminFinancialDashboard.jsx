@@ -21,6 +21,7 @@ import "./AdminShared.css";
 import "./AdminSalesDashboard.css";
 import "./AdminFinancialDashboard.css";
 import { downloadFromApi } from "../utils/downloadInvoice";
+import FinanceAdvancesPanel from "../components/admin/FinanceAdvancesPanel";
 import { fyLabel, fyRange, fyStartYearOf, quarterOf, recentFinancialYears, recentQuarters, todayInIndia } from "../utils/financialYear";
 
 ChartJS.register(
@@ -685,6 +686,8 @@ function AdminFinancialDashboard() {
                 </div>
               </div>
             </div>
+
+            <FinanceAdvancesPanel advances={data?.advances} periodLabel={data?.period ? `${data.period.from} to ${data.period.to}` : ""} />
 
             {/* Charts Row */}
             <div className="fin-charts-grid">

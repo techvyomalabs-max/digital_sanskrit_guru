@@ -47,6 +47,7 @@ import {
   Link2
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import ReturnPhotoPicker from "../components/orders/ReturnPhotoPicker";
 import "./MyOrders.css";
 import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
 
@@ -293,6 +294,8 @@ function MyOrders() {
   const [returnTarget, setReturnTarget] = useState(null);
   const [returnReason, setReturnReason] = useState("Damaged or defective product received");
   const [customReturnReason, setCustomReturnReason] = useState("");
+  const [returnPhotos, setReturnPhotos] = useState([]);
+  const [photoUploadUnavailable, setPhotoUploadUnavailable] = useState(false);
   const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
   const [copiedOrderId, setCopiedOrderId] = useState(null);
   const [buyingAgainItemId, setBuyingAgainItemId] = useState(null);
@@ -527,6 +530,9 @@ function MyOrders() {
     }
   };
 
+  // Damaged/defective: photos are the evidence (up to ₹300 the item needn't be sent back)
+  const isDamageReturn = /damaged|defective/i.test(returnReason);
+
   const handleConfirmReturnRequest = async (e) => {
     if (e) e.preventDefault();
     if (!returnTarget) return;
@@ -539,7 +545,7 @@ function MyOrders() {
     try {
       await axios.put(
         `/api/orders/${returnTarget.orderId}/items/${returnTarget.itemId}/return-request`,
-        { reason: finalReason },
+        { reason: finalReason, photos: isDamageReturn ? returnPhotos.map((p) => p.key) : [] },
         getAuthHeaders()
       );
       await loadOrders();
@@ -548,6 +554,7 @@ function MyOrders() {
       setReturnTarget(null);
       setReturnReason("Damaged or defective product received");
       setCustomReturnReason("");
+      setReturnPhotos([]);
     } catch (err) {
       const errMsg = err?.response?.data?.message || "Unable to submit return request.";
       setPageMessage(errMsg);
@@ -817,7 +824,10 @@ function MyOrders() {
             });
 
           // The tax invoice is issued when the payment is received
-          const canDownloadInvoice = isPaid && !isWpOrder && !order?.isRedeemedGift && Boolean(order?.invoiceNumber);
+          // Paid orders always have a document: the order summary until the tax invoice is
+          // issued (on shipping; digital-only orders when access is given), then the invoice
+          const canDownloadDocument = isPaid && !isWpOrder && !order?.isRedeemedGift;
+          const canDownloadInvoice = canDownloadDocument && Boolean(order?.invoiceNumber);
 
           const orderStatusClass = `my-order-status status-${orderStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
           const paymentStatusClass = `my-order-status status-payment-${paymentStatusLabel.toLowerCase().replace(/\s+/g, "-")}`;
@@ -1428,16 +1438,23 @@ function MyOrders() {
                   <button
                     type="button"
                     className="my-order-invoice-btn"
-                    disabled={!canDownloadInvoice || generatingInvoiceOrderId === order._id}
+                    disabled={!canDownloadDocument || generatingInvoiceOrderId === order._id}
                     onClick={() => {
-                      if (!canDownloadInvoice) return;
+                      if (!canDownloadDocument) return;
                       void generateInvoice(order);
                     }}
+                    title={
+                      canDownloadDocument && !canDownloadInvoice
+                        ? "Your tax invoice is issued when the order ships (digital items: when access is given)"
+                        : undefined
+                    }
                   >
                     {generatingInvoiceOrderId === order._id
-                      ? "Generating invoice..."
+                      ? "Preparing..."
                       : canDownloadInvoice
                       ? "Download invoice"
+                      : canDownloadDocument
+                      ? "Download order summary"
                       : "Invoice after payment"}
                   </button>
 
@@ -1816,6 +1833,24 @@ function MyOrders() {
                   className="order-cancel-textarea"
                   rows={2}
                 />
+
+                {isDamageReturn && returnTarget && (
+                  <>
+                    <ReturnPhotoPicker
+                      orderId={returnTarget.orderId}
+                      itemId={returnTarget.itemId}
+                      token={token}
+                      photos={returnPhotos}
+                      onChange={setReturnPhotos}
+                      onUnavailable={() => setPhotoUploadUnavailable(true)}
+                      required={!photoUploadUnavailable}
+                      disabled={isSubmittingReturn}
+                    />
+                    <p className="return-photos-hint" style={{ marginTop: "8px" }}>
+                      Items worth up to ₹300 don't need to be sent back. For costlier items we'll ask you to post it to our office first (postage at your cost), then refund or replace it.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="order-cancel-modal-actions">
@@ -1830,7 +1865,8 @@ function MyOrders() {
                 <button
                   type="submit"
                   className="order-cancel-btn-confirm return-submit"
-                  disabled={isSubmittingReturn}
+                  disabled={isSubmittingReturn || (isDamageReturn && returnPhotos.length === 0 && !photoUploadUnavailable)}
+                  title={isDamageReturn && returnPhotos.length === 0 && !photoUploadUnavailable ? "Add at least one photo of the damage" : undefined}
                 >
                   {isSubmittingReturn ? "Submitting..." : "Submit Return"}
                 </button>

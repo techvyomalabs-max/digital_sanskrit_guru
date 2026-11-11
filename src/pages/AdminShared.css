@@ -1353,3 +1353,11 @@ border-bottom:none;
   }
 }
 
+
+/* Live currency rate status under the conversion rates */
+.pricing-currency-rates-note {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--admin-muted, #64748b);
+}

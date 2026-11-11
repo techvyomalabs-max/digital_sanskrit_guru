@@ -10,6 +10,7 @@
  * - Delivery is shown on its own line, outside the taxable value (as charged at checkout).
  */
 
+const { pendingInvoiceNote } = require("./invoiceTiming");
 const { codeByStateName, stateByCode, gstinStateCode, determineIsIntrastate } = require("./gstin");
 const { lineCode, lineGstRate, lineTax, roundMoney } = require("./tax");
 const { isInternationalCountry } = require("./productPricing");
@@ -257,7 +258,11 @@ function buildInvoice(order, { user = null, seller: fallbackSeller = null } = {}
     invoiceDate: order?.invoiceIssuedAt || order?.paymentMeta?.paidAt || order?.createdAt || null,
     orderRef: String(order?._id || "").slice(-8).toUpperCase(),
     orderDate: order?.createdAt || null,
+    // Invoices are dated the order date and issued at dispatch, so the dispatch date is shown too
+    dispatchDate: order?.shippedAt || null,
     isPaid: order?.paymentStatus === "Paid" || order?.paymentStatus === "Refunded",
+    // Shown on the order summary to say why it isn't a tax invoice yet
+    pendingInvoiceNote: pendingInvoiceNote(order),
     paymentStatus: text(order?.paymentStatus) || "Pending",
     paymentRef: text(order?.paymentMeta?.razorpayPaymentId || order?.razorpayPaymentId),
     paymentMethod: text(order?.paymentMethod) || "Online (Razorpay)",

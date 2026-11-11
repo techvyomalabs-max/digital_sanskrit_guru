@@ -1649,3 +1649,42 @@ body.admin-dark .order-access-pending-tag:hover {
   white-space: nowrap;
   cursor: help;
 }
+
+/* Damaged/defective item claims */
+.admin-damage-claim {
+  margin-top: 6px;
+}
+
+.admin-damage-badge {
+  display: inline-block;
+  margin: 0 0 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-damage-badge.is-keep {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.admin-damage-badge.is-return {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.admin-damage-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.admin-damage-photos img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}

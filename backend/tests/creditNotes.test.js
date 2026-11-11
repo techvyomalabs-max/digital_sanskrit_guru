@@ -312,3 +312,14 @@ describe("item returns", () => {
     assert.equal(col("Taxable Value INR"), "450.00");
   });
 });
+
+describe("PDF dates", () => {
+  it("a missing date prints as a dash, not 1 Jan 1970", () => {
+    const { pdfText } = require("../utils/invoicePdfGenerator");
+    assert.equal(pdfText.dateText(null), "-");
+    assert.equal(pdfText.dateText(undefined), "-");
+    assert.equal(pdfText.dateText(""), "-");
+    assert.equal(pdfText.dateText("not a date"), "-");
+    assert.equal(pdfText.dateText("2026-11-05T06:00:00Z"), "05 Nov 2026");
+  });
+});

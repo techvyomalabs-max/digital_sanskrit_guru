@@ -1,0 +1,334 @@
+/* WP Archive: export + invoice download buttons */
+.wp-archive-export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wp-archive-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.wp-archive-btn svg {
+  color: var(--site-link, #0f62b3);
+  flex-shrink: 0;
+}
+
+.wp-archive-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.wp-archive-btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--site-link, #0f62b3) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.wp-archive-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wp-archive-btn-sm {
+  min-height: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.wp-archive-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.wp-archive-spin {
+  animation: wp-archive-spin 0.8s linear infinite;
+}
+
+@keyframes wp-archive-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-archive-spin {
+    animation: none;
+  }
+}
+
+.wp-archive-btn-primary {
+  background: var(--site-link, #0f62b3);
+  border-color: var(--site-link, #0f62b3);
+  color: #ffffff;
+}
+
+.wp-archive-btn-primary svg {
+  color: #ffffff;
+}
+
+.wp-archive-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--site-link, #0f62b3) 88%, #000000);
+  border-color: color-mix(in srgb, var(--site-link, #0f62b3) 88%, #000000);
+}
+
+/* ── Export dialog ─────────────────────────────────────────────────────── */
+.wp-export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.wp-export-dialog {
+  width: 100%;
+  max-width: 620px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 22px 24px;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
+}
+
+.wp-export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.wp-export-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.wp-export-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+}
+
+.wp-export-section {
+  margin: 14px 0 0;
+  padding: 0;
+  border: none;
+}
+
+.wp-export-section legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.wp-export-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.wp-export-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wp-export-chip.is-active {
+  border-color: var(--site-link, #0f62b3);
+  background: color-mix(in srgb, var(--site-link, #0f62b3) 10%, #ffffff);
+  color: var(--site-link, #0f62b3);
+}
+
+.wp-export-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wp-export-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.wp-export-dialog label > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.wp-export-dialog input[type="date"],
+.wp-export-dialog input[type="text"],
+.wp-export-dialog select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.wp-export-search {
+  display: block;
+  margin-top: 12px;
+}
+
+.wp-export-formats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wp-export-format {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.wp-export-format input {
+  margin: 0;
+  accent-color: var(--site-link, #0f62b3);
+}
+
+.wp-export-format svg {
+  color: var(--site-link, #0f62b3);
+  flex-shrink: 0;
+}
+
+.wp-export-format strong {
+  display: block;
+  font-size: 14px;
+}
+
+.wp-export-format small {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+.wp-export-format.is-active {
+  border-color: var(--site-link, #0f62b3);
+  background: color-mix(in srgb, var(--site-link, #0f62b3) 6%, #ffffff);
+}
+
+.wp-export-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.wp-export-status svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wp-export-status.is-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.wp-export-status.is-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.wp-export-status.is-info {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.wp-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (max-width: 560px) {
+  .wp-export-dialog {
+    padding: 18px 16px;
+  }
+
+  .wp-export-grid,
+  .wp-export-grid-3,
+  .wp-export-formats {
+    grid-template-columns: 1fr;
+  }
+
+  .wp-export-actions .wp-archive-btn {
+    flex: 1;
+  }
+}
+
+/* The site-wide "table { display: block }" (responsive-overrides.css) makes rows shrink to
+   their content, leaving a gap at the right of the card. This table already sits in its
+   own horizontal scroller, so it keeps normal table layout and fills the card. */
+.wp-archive-table {
+  display: table;
+  width: 100%;
+  min-width: 980px;
+  overflow: visible;
+}
+
+.wp-archive-table th:last-child,
+.wp-archive-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}

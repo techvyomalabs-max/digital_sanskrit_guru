@@ -635,10 +635,34 @@ p {
 
 /* ── Fix tables/wide content ─────────────────────────────────────────────────── */
 
+/* A table with no scroller of its own (e.g. one pasted into a product description) becomes a
+   scrollable block, so it can never push the page wider than the phone screen. */
 table {
   display: block;
   overflow-x: auto;
   width: 100%;
+}
+
+/* A table that already sits in its own horizontal scroller keeps real table layout. As a block,
+   its rows would shrink to their content and leave an empty strip at the right of the card. */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+:is(
+  .table-scroll,
+  .admin-table-wrap,
+  .weekly-stats-table-wrapper,
+  .ua-table-wrap,
+  .sd-table-wrap,
+  .admin-orders-table-wrap,
+  .coupon-table-wrap,
+  .mkt-table-wrap
+) > table {
+  display: table;
+  width: 100%;
+  overflow: visible;
 }
 
 /* ── Global Border Radius System ─────────────────────────────────────────── */

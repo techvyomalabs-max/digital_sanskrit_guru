@@ -142,6 +142,63 @@ function AdminOrderDetails() {
     }
   };
 
+  // A paid order cancelled before it shipped gets everything back once an admin approves here
+  // (the refund goes through Razorpay; refunds shouldn't be made on the Razorpay website)
+  const cancellationRefundAmount = (() => {
+    if (!order) return 0;
+    const cancelledBeforeDispatch =
+      String(order.status || "") === "Cancelled" &&
+      String(order.paymentStatus || "") === "Paid" &&
+      !order.shippedAt &&
+      !order.deliveredAt &&
+      String(order.refundStatus || "") !== "Refunded";
+    if (!cancelledBeforeDispatch) return 0;
+    const total = Number(order.totalInInr || order.total || 0);
+    return Math.max(0, Math.round((total - Number(order.refundedAmountInInr || 0)) * 100) / 100);
+  })();
+
+  const approveCancellationRefund = async (forceManual = false) => {
+    if (!order?._id || cancellationRefundAmount <= 0) return;
+    if (!forceManual) {
+      const ok = await confirm({
+        title: "Approve full refund?",
+        message: `This order was cancelled before it shipped. ₹${cancellationRefundAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} (the full amount, including delivery) will be refunded to the customer through Razorpay.`,
+        confirmText: "Approve refund"
+      });
+      if (!ok) return;
+    }
+    setIsUpdatingRefund(true);
+    setPageMessage("");
+    try {
+      const res = await axios.put(
+        `/api/orders/${order._id}/approve-cancellation-refund`,
+        { forceManual },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOrder(res.data || order);
+      const rzpId = res.data?.paymentMeta?.razorpayRefundId;
+      setPageMessage(rzpId ? `Full refund sent through Razorpay (Refund ID: ${rzpId}).` : "Full refund recorded.");
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Unable to process the refund.";
+      if (err?.response?.data?.canForceManual) {
+        const force = await confirm({
+          title: "Record as refunded manually?",
+          message: `${errMsg}\n\nIf you have already refunded the customer another way, record it here as a manual refund.`,
+          tone: "danger",
+          confirmText: "Record manual refund"
+        });
+        if (force) {
+          setIsUpdatingRefund(false);
+          return approveCancellationRefund(true);
+        }
+      }
+      setPageMessage(errMsg);
+    } finally {
+      setIsUpdatingRefund(false);
+    }
+    return undefined;
+  };
+
   const handleManualMarkPaid = async () => {
     if (!order?._id) return;
     const reason = await prompt({
@@ -269,7 +326,11 @@ function AdminOrderDetails() {
                 onClick={() => void generateInvoice()}
                 disabled={isGeneratingInvoice}
               >
-                {isGeneratingInvoice ? "Generating invoice..." : "Generate invoice"}
+                {isGeneratingInvoice
+                  ? "Preparing..."
+                  : order.invoiceNumber
+                    ? "Download invoice"
+                    : "Download order summary"}
               </button>
             ) : null}
           </div>
@@ -360,6 +421,23 @@ function AdminOrderDetails() {
                       </p>
                     ) : (
                       <div className="admin-order-details-refund-actions">
+                        {cancellationRefundAmount > 0 && (
+                          <div className="admin-order-cancel-refund">
+                            <p>
+                              Cancelled before dispatch: the customer gets the full amount back.
+                            </p>
+                            <button
+                              type="button"
+                              className="admin-order-details-refund-btn refund-btn-success"
+                              disabled={isUpdatingRefund}
+                              onClick={() => void approveCancellationRefund()}
+                            >
+                              {isUpdatingRefund
+                                ? "Refunding..."
+                                : `Approve full refund (₹${cancellationRefundAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })})`}
+                            </button>
+                          </div>
+                        )}
                         <select
                           value={displayRefundStatus}
                           onChange={(e) => {
