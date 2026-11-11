@@ -630,7 +630,12 @@ function MyOrders() {
 
       rzp.on("payment.failed", async (response) => {
         try {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
+          await updateOrderPaymentStatus(order._id, {
+            paymentStatus: "Failed",
+            // So the failed payment (pay_…) shows on the admin order page
+            razorpayOrderId: response?.error?.metadata?.order_id || "",
+            failedPaymentId: response?.error?.metadata?.payment_id || ""
+          });
           await loadOrders();
         } catch {
           // Ignore

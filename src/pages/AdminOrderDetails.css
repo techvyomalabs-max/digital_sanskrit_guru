@@ -41,6 +41,85 @@
 
 .admin-order-details-link,
 .admin-order-details-btn,
+.admin-order-attempts {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--admin-border, #e5e7eb);
+}
+
+.admin-order-attempts h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.admin-order-attempts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-order-attempt {
+  border: 1px solid var(--admin-border, #e5e7eb);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.admin-order-attempt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  color: var(--admin-muted, #64748b);
+  font-size: 12px;
+}
+
+.admin-order-attempt-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.admin-order-attempt.is-paid .admin-order-attempt-badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-order-attempt.is-failed .admin-order-attempt-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.admin-order-attempt dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+
+.admin-order-attempt dt {
+  color: var(--admin-muted, #64748b);
+  font-weight: 600;
+}
+
+.admin-order-attempt dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--admin-text, #0f1111);
+}
+
+.admin-order-attempt-note {
+  margin: 8px 0 0;
+  color: var(--admin-muted, #64748b);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .order-code-link {
   display: inline-flex;
   align-items: center;

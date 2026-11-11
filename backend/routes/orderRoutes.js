@@ -65,6 +65,7 @@ const rateLimit = require("express-rate-limit");
 const { perWorker } = require("../utils/workerCount");
 const getRazorpayClient = require("../utils/razorpay");
 const PaymentIntent = require("../models/PaymentIntent");
+const { findOwnedIntent, noteUnpaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
@@ -650,6 +651,13 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     if (billingGst.error) billingGst.gstin = billingGst.businessName = "";
     const initialStatus = rawPaymentStatus === "Paid" && canAutoComplete(totals.normalizedItems) ? "Completed" : "Pending";
 
+    // A failed or abandoned checkout: keep its Razorpay order ID (order_…) so admins can find it
+    // in Razorpay, but only if our server created that checkout for this customer.
+    const unpaidIntent = !verifiedPayment && razorpayOrderId
+      ? await findOwnedIntent({ razorpayOrderId, userId: req.user }, { PaymentIntent }).catch(() => null)
+      : null;
+    const unpaidRazorpayOrderId = unpaidIntent && !unpaidIntent.orderId ? unpaidIntent.razorpayOrderId : "";
+
     const order = await Order.create({
       user: req.user,
       items: totals.normalizedItems,
@@ -674,7 +682,7 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       status: initialStatus,
       paymentStatus: rawPaymentStatus,
       paymentMeta: {
-        razorpayOrderId: verifiedPayment ? razorpayOrderId : "",
+        razorpayOrderId: verifiedPayment ? razorpayOrderId : unpaidRazorpayOrderId,
         razorpayPaymentId: verifiedPayment ? razorpayPaymentId : "",
         paidAt: verifiedPayment ? new Date() : null,
         paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : null,
@@ -730,6 +738,15 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
+    }
+
+    if (unpaidRazorpayOrderId) {
+      // Link the checkout to this order and record the failed payment (pay_…) if there was one.
+      // Bookkeeping only: runs after the reply and never fails the order.
+      noteUnpaidCheckout(
+        { razorpayOrderId: unpaidRazorpayOrderId, failedPaymentId: req.body?.failedPaymentId, userId: req.user, orderId: order._id },
+        { PaymentIntent, fetchPayment: (id) => getRazorpayClient().payments.fetch(id) }
+      );
     }
 
     fireNotifications(async () => {
@@ -1925,6 +1942,14 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     }
   }
 
+  if (isOwner && rawPaymentStatus === "Failed" && razorpayOrderId) {
+    // A failed retry from My Orders: record the failed payment on that retry's checkout.
+    noteUnpaidCheckout(
+      { razorpayOrderId, failedPaymentId: req.body?.failedPaymentId, userId: req.user, orderId: order._id },
+      { PaymentIntent, fetchPayment: (id) => getRazorpayClient().payments.fetch(id) }
+    );
+  }
+
   let updated;
   try {
     updated = await order.save();
@@ -3042,7 +3067,21 @@ router.get("/:id", protect, admin, requireAdminPage("orders"), async (req, res) 
     return res.status(404).json({ message: "Order not found" });
   }
 
-  res.json(order);
+  // Every Razorpay checkout for this order (first try and retries), with failed payment IDs
+  let paymentAttempts = [];
+  try {
+    const rzpOrderId = String(order.paymentMeta?.razorpayOrderId || "");
+    const intents = await PaymentIntent.find({
+      $or: [{ orderId: order._id }, ...(rzpOrderId ? [{ razorpayOrderId: rzpOrderId }] : [])]
+    })
+      .select("razorpayOrderId razorpayPaymentId mode status failedAttempts lastFailure createdAt")
+      .lean();
+    paymentAttempts = describePaymentAttempts(intents);
+  } catch (attemptErr) {
+    console.warn("[Order] Could not load payment attempts:", attemptErr?.message || attemptErr);
+  }
+
+  res.json({ ...order, paymentAttempts });
 });
 
 // Get tracking details for a specific order (customer who placed it OR admin)
