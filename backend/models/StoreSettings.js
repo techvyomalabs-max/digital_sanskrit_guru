@@ -457,6 +457,16 @@ const storeSettingsSchema = new mongoose.Schema(
       type: currencyConversionRatesSchema,
       default: () => ({})
     },
+    // Where the live rates came from and when (written by services/fxRateSync.js)
+    currencyRatesMeta: {
+      source: { type: String, default: "" },
+      updatedAt: { type: Date, default: null },
+      lastCheckedAt: { type: Date, default: null },
+      sourceUpdatedAt: { type: Date, default: null },
+      lastError: { type: String, default: "" },
+      // The live rates last applied, per currency (checked against on the next update)
+      lastLiveRates: { type: mongoose.Schema.Types.Mixed, default: () => ({}) }
+    },
     siteTheme: {
       type: String,
       default: "sunrise"

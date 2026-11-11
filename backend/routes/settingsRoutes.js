@@ -335,6 +335,13 @@ function normalizeSettings(settings) {
     pricingMarkets: normalizePricingMarkets(settings?.pricingMarkets || []),
     internationalPricingDefaults: normalizeInternationalPricingDefaults(settings?.internationalPricingDefaults || {}),
     currencyConversionRates: normalizeCurrencyConversionRates(settings?.currencyConversionRates || {}),
+    // Live rate status (see services/fxRateSync.js); shown next to the rates in admin
+    currencyRatesMeta: {
+      source: String(settings?.currencyRatesMeta?.source || ""),
+      updatedAt: settings?.currencyRatesMeta?.updatedAt || null,
+      lastCheckedAt: settings?.currencyRatesMeta?.lastCheckedAt || null,
+      lastError: String(settings?.currencyRatesMeta?.lastError || "")
+    },
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),

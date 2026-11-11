@@ -76,6 +76,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const { initVapid } = require("./utils/webPush");
   const { initWishlistScheduler } = require("./services/wishlistScheduler");
   const { initMailmodoScheduler } = require("./services/mailmodoSync");
+  const { initFxRateScheduler } = require("./services/fxRateSync");
   const { initPaymentReconciler } = require("./services/paymentReconciler");
   const { paymentWebhookHandler } = require("./routes/paymentWebhook");
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
@@ -382,6 +383,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   initWishlistScheduler();
   initPaymentReconciler();
   initMailmodoScheduler();
+  initFxRateScheduler();
 
   // Retry connection if disconnected
   setInterval(() => {
