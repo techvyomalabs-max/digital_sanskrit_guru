@@ -269,31 +269,34 @@ function draw(doc, inv) {
     doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
   });
 
-  // Delivery charges as their own lines, each share at the GST rate of the goods it carried
-  // (delivery of printed books at 0%, of an Audio Box at 18%), with its taxable value and tax
+  // Delivery charges as one line with their total. Behind it the fee is still split over the
+  // goods and taxed at each one's rate (books 0%, an Audio Box 18%); the tax summary below
+  // groups that by rate, so the line itself shows only the totals.
   const deliveryParts = inv.delivery?.taxed && inv.totals.deliveryGross > 0
     ? (inv.delivery.parts || []).filter((p) => (Number(p.taxable) || 0) + (Number(p.tax) || 0) > 0)
     : [];
-  deliveryParts.forEach((part, j) => {
-    const label = deliveryParts.length > 1
-      ? `Delivery charges (share for HSN ${part.hsnSac || "-"} goods)`
-      : "Delivery charges";
-    const amount = roundTwo((Number(part.taxable) || 0) + (Number(part.tax) || 0));
+  if (deliveryParts.length) {
+    const sum = (k) => roundTwo(deliveryParts.reduce((a, p) => a + (Number(p[k]) || 0), 0));
+    const taxable = sum("taxable");
+    const tax = sum("tax");
+    const rates = [...new Set(deliveryParts.map((p) => p.rate))];
+    const label = "Delivery charges";
     doc.font("Helvetica").fontSize(8);
-    const h = Math.max(18, doc.heightOfString(label, { width: cols[1].w - pad * 2 }) + 9);
+    const h = 18;
     if (ensure(h)) header();
-    if ((inv.lines.length + j) % 2 === 1) doc.rect(left, y, width, h).fill(C.fill);
+    if (inv.lines.length % 2 === 1) doc.rect(left, y, width, h).fill(C.fill);
     const values = {
-      idx: String(inv.lines.length + j + 1),
+      idx: String(inv.lines.length + 1),
       name: label,
-      hsnSac: part.hsnSac || "-",
+      hsnSac: "",
       quantity: "",
       unitPrice: "",
       discount: "-",
-      taxable: num(part.taxable),
-      rate: part.rate === null ? "Mixed" : pct(part.rate),
-      tax: num(part.tax),
-      total: num(amount)
+      taxable: num(taxable),
+      // One rate when all the goods share it; otherwise the tax summary shows the split
+      rate: rates.length === 1 && rates[0] !== null ? pct(rates[0]) : "",
+      tax: num(tax),
+      total: num(roundTwo(taxable + tax))
     };
     let x = left;
     cols.forEach((c) => {
@@ -305,7 +308,7 @@ function draw(doc, inv) {
     });
     y += h;
     doc.moveTo(left, y).lineTo(right, y).strokeColor(C.line).lineWidth(0.5).stroke();
-  });
+  }
 
   doc.fillColor(C.muted).font("Helvetica").fontSize(7)
     .text(cn
