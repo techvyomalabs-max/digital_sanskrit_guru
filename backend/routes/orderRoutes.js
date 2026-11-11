@@ -64,6 +64,7 @@ const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require(".
 const rateLimit = require("express-rate-limit");
 const { perWorker } = require("../utils/workerCount");
 const getRazorpayClient = require("../utils/razorpay");
+const { applyPaidPaymentMeta } = require("../utils/paidPaymentMeta");
 const PaymentIntent = require("../models/PaymentIntent");
 const { findOwnedIntent, noteUnpaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
@@ -1907,24 +1908,15 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     ? { by: "customer", source: rawPaymentStatus === "Paid" ? "customer-payment" : "customer-update", reference: razorpayPaymentId }
     : { by: adminEmail || String(req.user), source: "manual-override", reference: manualPaymentReference, note: manualReason };
   if (rawPaymentStatus === "Paid") {
-    order.paymentMeta = {
-      ...(order.paymentMeta || {}),
-      razorpayOrderId: razorpayOrderId || order.paymentMeta?.razorpayOrderId || "",
-      razorpayPaymentId: razorpayPaymentId || order.paymentMeta?.razorpayPaymentId || "",
-      razorpaySignature: razorpaySignature || order.paymentMeta?.razorpaySignature || "",
-      paidAt: order.paymentMeta?.paidAt || new Date(),
-      paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : order.paymentMeta?.paidAmountMinor || null,
-      paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : order.paymentMeta?.paidCurrency || ""
-    };
-
-    if (!isOwner) {
-      order.paymentMeta.manualOverride = {
-        by: adminEmail || String(req.user),
-        reason: manualReason,
-        paymentReference: manualPaymentReference,
-        at: new Date()
-      };
-    }
+    applyPaidPaymentMeta(order, {
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      verifiedPayment,
+      manualOverride: isOwner
+        ? null
+        : { by: adminEmail || String(req.user), reason: manualReason, paymentReference: manualPaymentReference }
+    });
 
     if (canAutoComplete(order.items)) {
       order.status = "Completed";
