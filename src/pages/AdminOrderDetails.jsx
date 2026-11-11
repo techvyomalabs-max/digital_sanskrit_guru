@@ -821,9 +821,68 @@ function AdminOrderDetails() {
                     </div>
                     <div>
                       <span>Razorpay Payment ID</span>
-                      <strong>{order?.paymentMeta?.razorpayPaymentId || "-"}</strong>
+                      <strong>
+                        {order?.paymentMeta?.razorpayPaymentId ||
+                          (order?.paymentStatus === "Paid" ? "-" : "None (not paid)")}
+                      </strong>
                     </div>
                   </div>
+
+                  {Array.isArray(order?.paymentAttempts) && order.paymentAttempts.length > 0 && (
+                    <div className="admin-order-attempts">
+                      <h3>Payment attempts</h3>
+                      <ul>
+                        {order.paymentAttempts.map((attempt) => (
+                          <li key={attempt.razorpayOrderId} className={`admin-order-attempt is-${attempt.outcome}`}>
+                            <div className="admin-order-attempt-head">
+                              <span className="admin-order-attempt-badge">
+                                {attempt.outcome === "paid"
+                                  ? "Paid"
+                                  : attempt.outcome === "failed"
+                                    ? `Failed${attempt.failedAttempts > 1 ? ` (${attempt.failedAttempts} tries)` : ""}`
+                                    : "Not paid"}
+                              </span>
+                              <span>
+                                {attempt.mode === "retry" ? "Retry from My Orders" : "Checkout"}
+                                {attempt.startedAt ? ` · ${formatDateTime(attempt.startedAt)}` : ""}
+                              </span>
+                            </div>
+                            <dl>
+                              <dt>Razorpay Order ID</dt>
+                              <dd>{attempt.razorpayOrderId}</dd>
+                              {attempt.outcome === "paid" && attempt.razorpayPaymentId && (
+                                <>
+                                  <dt>Payment ID</dt>
+                                  <dd>{attempt.razorpayPaymentId}</dd>
+                                </>
+                              )}
+                              {attempt.lastFailure?.paymentId && (
+                                <>
+                                  <dt>Failed payment ID</dt>
+                                  <dd>{attempt.lastFailure.paymentId}</dd>
+                                </>
+                              )}
+                              {attempt.lastFailure && (attempt.lastFailure.description || attempt.lastFailure.reason) && (
+                                <>
+                                  <dt>Reason</dt>
+                                  <dd>
+                                    {attempt.lastFailure.description || attempt.lastFailure.reason}
+                                    {attempt.lastFailure.method ? ` (${attempt.lastFailure.method})` : ""}
+                                  </dd>
+                                </>
+                              )}
+                            </dl>
+                            {attempt.outcome === "closed" && (
+                              <p className="admin-order-attempt-note">
+                                No payment was made (the payment window was closed without paying), so Razorpay
+                                has no payment ID. Search the Razorpay Order ID in the Razorpay dashboard.
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </article>
               </aside>
             </section>
