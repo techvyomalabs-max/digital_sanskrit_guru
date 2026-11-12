@@ -2,23 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Google Tag Manager — loaded on the visitor's first scroll, tap, click or key press,
-         or 6 s after the page has loaded, whichever comes first. Its ~300 KB of scripts
-         (GTM + GA4) then never compete with the store loading. Events pushed to dataLayer
-         before that are queued and still sent. Trade-off: a visitor who leaves within ~6 s
-         without touching the page is not counted. -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var done=false,events=['scroll','pointerdown','keydown','touchstart','mousemove'];
-    var load=function(){if(done)return;done=true;events.forEach(function(e){w.removeEventListener(e,load,{passive:true});});
-    var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);};
-    events.forEach(function(e){w.addEventListener(e,load,{passive:true,once:true});});
-    var fallback=function(){setTimeout(load,6000);};
-    if(d.readyState==='complete'){fallback();}else{w.addEventListener('load',fallback,{once:true});}
-    })(window,document,'script','dataLayer','GTM-MRSLKKT9');</script>
-    <!-- End Google Tag Manager -->
-
-    <!-- Google Tag Manager and Consent Mode v2 Setup (GDPR & DPDP Act 2023 Compliant) -->
+    <!-- Consent Mode v2 defaults (GDPR & DPDP Act 2023). Must come BEFORE the GTM snippet below,
+         so GTM reads the consent state before its first event (gtm.js / Container Loaded). -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
@@ -40,6 +25,22 @@
         'security_storage': 'granted' // Necessary cookies are always granted
       });
     </script>
+    <!-- Google Tag Manager — loaded on the visitor's first scroll, tap, click or key press,
+         or 6 s after the page has loaded, whichever comes first. Its ~300 KB of scripts
+         (GTM + GA4) then never compete with the store loading. Events pushed to dataLayer
+         before that are queued and still sent. Trade-off: a visitor who leaves within ~6 s
+         without touching the page is not counted. -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var done=false,events=['scroll','pointerdown','keydown','touchstart','mousemove'];
+    var load=function(){if(done)return;done=true;events.forEach(function(e){w.removeEventListener(e,load,{passive:true});});
+    var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);};
+    events.forEach(function(e){w.addEventListener(e,load,{passive:true,once:true});});
+    var fallback=function(){setTimeout(load,6000);};
+    if(d.readyState==='complete'){fallback();}else{w.addEventListener('load',fallback,{once:true});}
+    })(window,document,'script','dataLayer','GTM-MRSLKKT9');</script>
+    <!-- End Google Tag Manager -->
+
     <!-- Immediate site theme pre-restore and fast fetch for new browsers -->
     <script>
       (function() {
