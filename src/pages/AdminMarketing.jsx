@@ -647,7 +647,7 @@ function AdminMarketing() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <h1>Marketing</h1>
           <p>Reach your customers with email campaigns, push notifications, and stock alerts.</p>
@@ -1598,7 +1598,7 @@ function AdminMarketing() {
             <MailmodoPanel getAuthHeaders={getAuthHeaders} defaultTestEmail={user?.email || ""} />
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

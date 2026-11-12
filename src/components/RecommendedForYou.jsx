@@ -14,6 +14,27 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
   const { wishlist } = useWishlist();
   const { cartItems } = useCart();
   const sliderRef = useRef(null);
+  const sentinelRef = useRef(null);
+  // The full catalog is a large download (~650 KB of JSON), so only fetch it
+  // once this section is about to scroll into view.
+  const [isNearViewport, setIsNearViewport] = useState(
+    () => initialProducts.length > 0 || typeof IntersectionObserver === "undefined"
+  );
+
+  useEffect(() => {
+    if (isNearViewport || !sentinelRef.current) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "600px 0px" }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isNearViewport]);
 
   // Load user's browsing history from localStorage
   useEffect(() => {
@@ -31,6 +52,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
       setCatalog(initialProducts);
       return;
     }
+    if (!isNearViewport) return undefined;
 
     let active = true;
     fetchPublicCatalog()
@@ -42,7 +64,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
     return () => {
       active = false;
     };
-  }, [initialProducts]);
+  }, [initialProducts, isNearViewport]);
 
   // Compute AI recommendations based on user history, searches, wishlist, and cart
   const recommendations = useMemo(() => {
@@ -70,6 +92,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
     });
   };
 
+  if (!isNearViewport) return <div ref={sentinelRef} aria-hidden="true" style={{ minHeight: 1 }} />;
   if (recommendations.length === 0) return null;
 
   return (

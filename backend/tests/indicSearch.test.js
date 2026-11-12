@@ -9,6 +9,7 @@ describe("indicSearch & multilingual search engine", async () => {
     scoreProduct,
     searchWebsite
   } = await import("../../src/utils/searchText.js");
+  await (await import("../../src/utils/indicSearch.js")).loadProductTranslations();
 
   const sampleCatalog = [
     {

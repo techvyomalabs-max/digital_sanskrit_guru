@@ -915,7 +915,7 @@ function AdminOrders() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main admin-orders-page">
+      <div className="admin-main admin-orders-page">
         <div className="admin-orders-header">
           <div>
             <p className="admin-orders-kicker">Operations</p>
@@ -2037,7 +2037,7 @@ function AdminOrders() {
             );
           }}
         />
-      </main>
+      </div>
     </div>
   );
 }

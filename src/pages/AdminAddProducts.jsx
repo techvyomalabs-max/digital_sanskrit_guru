@@ -2721,7 +2721,7 @@ function AdminAddProducts() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header admin-header-flex">
           <div>
             <h1>Add Products</h1>
@@ -4653,7 +4653,7 @@ function AdminAddProducts() {
             <p style={{ marginTop: "10px" }}>No matching products found.</p>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

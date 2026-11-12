@@ -997,12 +997,16 @@
 
 .home-mini-card-ambient-bg {
   position: absolute;
+  display: block;
+  width: calc(100% + 30px);
+  height: calc(100% + 30px);
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
   top: -15px;
   left: -15px;
   right: -15px;
   bottom: -15px;
-  background-size: cover;
-  background-position: center;
   filter: blur(16px) saturate(1.3) brightness(0.96);
   opacity: 0.45;
   transform: scale(1.15);

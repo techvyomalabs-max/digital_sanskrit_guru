@@ -583,3 +583,12 @@ button:disabled,
     display: none !important;
   }
 }
+
+/* ── Layout stability ───────────────────────────────────────────────────── */
+/* Keep the footer below the fold while lazy routes and their data load, so it
+   doesn't jump up and then get pushed down again (PageSpeed: layout shift). */
+.site-main {
+  display: block;
+  min-height: 100vh;
+  min-height: 100svh;
+}
