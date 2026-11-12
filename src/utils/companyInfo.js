@@ -22,3 +22,18 @@ export function formatAddressInline(address) {
   const body = address.lines.map((line) => line.replace(/,\s*$/, "")).join(", ");
   return `${body}, ${address.country}`;
 }
+
+/**
+ * Seller and Grievance Officer shown on the policy pages (the e-commerce rules require them).
+ * PLACEHOLDERS: replace with the confirmed details before going live.
+ */
+export const SELLER_INFO = {
+  sellingEntity: "[To be confirmed: legal name of the selling entity]",
+  gstEntity: "[To be confirmed: GST-registered entity]",
+  gstin: "[To be confirmed]",
+  grievanceOfficer: {
+    name: "[Grievance Officer name]",
+    email: "[grievance email]",
+    phone: "[grievance phone]"
+  }
+};

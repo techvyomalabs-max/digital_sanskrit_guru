@@ -1,9 +1,22 @@
 import { useEffect, useState, useCallback } from "react";
-import { Package, Phone, Mail } from "lucide-react";
+import { Package, Phone, Mail, Download, FileDown, Loader2 } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../../hooks/useAuth";
 import AdminSidebar from "../../components/admin/AdminSidebar";
+import WpArchiveExportDialog from "../../components/admin/WpArchiveExportDialog";
 import "../AdminShared.css";
+import "./WpArchiveDashboard.css";
+
+// WooCommerce item names can contain HTML such as "<br>"; show them as plain text
+function cleanItemName(name) {
+  return String(name || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function WpArchiveDashboard() {
   const { token } = useAuth();
@@ -20,6 +33,57 @@ function WpArchiveDashboard() {
   const [error, setError] = useState("");
 
   const [selectedOrder, setSelectedOrder] = useState(null);
+
+  // Which download is running: "csv", "pdf" or "invoice-<wpOrderId>"
+  const [downloading, setDownloading] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
+  const downloadFile = useCallback(async (key, url, fallbackName) => {
+    setDownloading(key);
+    setDownloadError("");
+    try {
+      const res = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: "blob"
+      });
+      const disposition = String(res.headers?.["content-disposition"] || "");
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const blobUrl = URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = match ? match[1] : fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      return true;
+    } catch (err) {
+      let message = "Download failed. Please try again.";
+      try {
+        const text = await err.response?.data?.text?.();
+        message = JSON.parse(text || "{}").message || message;
+      } catch {
+        // keep the generic message
+      }
+      setDownloadError(message);
+      return false;
+    } finally {
+      setDownloading("");
+    }
+  }, [token]);
+
+  const exportOrders = async (format, exportFilters) => {
+    const params = new URLSearchParams(exportFilters);
+    const ok = await downloadFile(format, `/api/admin/wp-archive/orders/export.${format}?${params.toString()}`, `wp-archive-orders.${format}`);
+    if (ok) setIsExportOpen(false);
+  };
+
+  const exportCurrencies = Array.from(new Set(["INR", "USD", ...Object.keys(stats?.revenueByCurrency || {})]));
+
+  const downloadInvoice = (wpOrderId) => {
+    downloadFile(`invoice-${wpOrderId}`, `/api/admin/wp-archive/orders/${encodeURIComponent(wpOrderId)}/invoice`, `WP-Invoice-${wpOrderId}.pdf`);
+  };
 
   const loadStats = useCallback(async () => {
     try {
@@ -98,7 +162,7 @@ function WpArchiveDashboard() {
 
       <main className="admin-main" style={{ padding: "24px" }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "24px" }}>
           <div>
             <h1 style={{ fontSize: "24px", fontWeight: "800", color: "var(--site-text, #0f172a)", margin: 0 }}>
               <Package size={22} className="ui-inline-icon" aria-hidden="true" />WordPress Archive Dashboard
@@ -107,7 +171,23 @@ function WpArchiveDashboard() {
               Search, filter, and audit historical WooCommerce orders with exact WP Order IDs
             </p>
           </div>
+          <button
+            type="button"
+            className="wp-archive-btn wp-archive-btn-primary"
+            onClick={() => {
+              setDownloadError("");
+              setIsExportOpen(true);
+            }}
+          >
+            <FileDown size={16} aria-hidden="true" />
+            Export orders
+          </button>
         </div>
+        {downloadError && !isExportOpen && (
+          <div role="alert" style={{ padding: "12px 16px", marginBottom: "16px", borderRadius: "8px", backgroundColor: "#fee2e2", color: "#b91c1c", fontSize: "14px" }}>
+            {downloadError}
+          </div>
+        )}
 
         {/* Stats Grid */}
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "24px" }}>
@@ -195,8 +275,8 @@ function WpArchiveDashboard() {
             </div>
           )}
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
+          <div className="table-scroll">
+            <table className="wp-archive-table" style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
               <thead>
                 <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569", fontWeight: "700" }}>
                   <th style={{ padding: "14px 16px" }}>WP Order #</th>
@@ -205,7 +285,7 @@ function WpArchiveDashboard() {
                   <th style={{ padding: "14px 16px" }}>Items Purchased</th>
                   <th style={{ padding: "14px 16px" }}>Total Amount</th>
                   <th style={{ padding: "14px 16px" }}>Status</th>
-                  <th style={{ padding: "14px 16px", textAlign: "right" }}>Action</th>
+                  <th style={{ padding: "14px 16px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,7 +316,7 @@ function WpArchiveDashboard() {
                       </td>
                       <td style={{ padding: "14px 16px", color: "#334155", maxWidth: "250px" }}>
                         <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {o.items && o.items.length > 0 ? o.items[0].name : "WooCommerce Order"}
+                          {o.items && o.items.length > 0 ? cleanItemName(o.items[0].name) : "WooCommerce Order"}
                         </div>
                         {o.items && o.items.length > 1 && (
                           <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "600" }}>
@@ -251,6 +331,7 @@ function WpArchiveDashboard() {
                         {getStatusBadge(o.status)}
                       </td>
                       <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                        <div className="wp-archive-actions">
                         <button
                           type="button"
                           onClick={() => setSelectedOrder(o)}
@@ -267,6 +348,20 @@ function WpArchiveDashboard() {
                         >
                           View Details
                         </button>
+                        <button
+                          type="button"
+                          className="wp-archive-btn wp-archive-btn-sm"
+                          onClick={() => downloadInvoice(o.wpOrderId)}
+                          disabled={downloading === `invoice-${o.wpOrderId}`}
+                          aria-label={`Download invoice for WP order ${o.wpOrderId}`}
+                          title="Download invoice (PDF)"
+                        >
+                          {downloading === `invoice-${o.wpOrderId}`
+                            ? <Loader2 size={14} className="wp-archive-spin" aria-hidden="true" />
+                            : <Download size={14} aria-hidden="true" />}
+                          Invoice
+                        </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -306,6 +401,18 @@ function WpArchiveDashboard() {
             </div>
           </div>
         </section>
+
+        {isExportOpen && (
+          <WpArchiveExportDialog
+            token={token}
+            initialFilters={{ search: search.trim(), status: statusFilter }}
+            currencies={exportCurrencies}
+            downloading={downloading === "csv" || downloading === "pdf"}
+            downloadError={downloadError}
+            onDownload={exportOrders}
+            onClose={() => setIsExportOpen(false)}
+          />
+        )}
 
         {/* Order Details Modal */}
         {selectedOrder && (
@@ -364,6 +471,18 @@ function WpArchiveDashboard() {
               <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px" }}>
                 Date Placed: {formatDate(selectedOrder.wpCreatedAt)} | Status: {selectedOrder.status}
               </p>
+              <button
+                type="button"
+                className="wp-archive-btn"
+                style={{ marginBottom: "16px" }}
+                onClick={() => downloadInvoice(selectedOrder.wpOrderId)}
+                disabled={downloading === `invoice-${selectedOrder.wpOrderId}`}
+              >
+                {downloading === `invoice-${selectedOrder.wpOrderId}`
+                  ? <Loader2 size={16} className="wp-archive-spin" aria-hidden="true" />
+                  : <Download size={16} aria-hidden="true" />}
+                Download invoice
+              </button>
 
               {/* Items Table */}
               <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", marginBottom: "16px", backgroundColor: "#f8fafc" }}>
@@ -371,7 +490,7 @@ function WpArchiveDashboard() {
                 {selectedOrder.items && selectedOrder.items.map((item, idx) => (
                   <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: idx < selectedOrder.items.length - 1 ? "1px solid #e2e8f0" : "none" }}>
                     <div>
-                      <strong style={{ fontSize: "14px" }}>{item.name}</strong>
+                      <strong style={{ fontSize: "14px" }}>{cleanItemName(item.name)}</strong>
                       <div style={{ fontSize: "12px", color: "#64748b" }}>Qty: {item.quantity} {item.isDigital ? "(Digital Format)" : ""}</div>
                     </div>
                     <span style={{ fontWeight: "700" }}>

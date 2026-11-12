@@ -9,6 +9,7 @@ import { isOptionsParent, getOptionCount } from "../utils/productOptions";
 import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
 import { productPath, productUrl } from "../utils/productLink";
+import { getShownMrp } from "../utils/productMrp";
 
 function getProductFormat(product) {
   if (isOptionsParent(product)) {
@@ -66,14 +67,17 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
   const festiveSavings = Math.max(0, festiveOriginalPrice - displayPrice);
-  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
-  const listPrice = hasActiveMarketSale
+  // Crossed-out price only when there is a real one (no made-up price x 1.1).
+  const shownMrp = getShownMrp(product, pricing, displayPrice);
+  const listPrice = shownMrp
+    ? shownMrp
+    : hasActiveMarketSale
     ? marketRegularPrice
     : isBundle && bundleOriginalTotal > displayPrice
       ? bundleOriginalTotal
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
-        : fallbackOriginalPrice;
+        : displayPrice;
 
   const [copied, setCopied] = useState(false);
 
@@ -187,7 +191,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
               / copy
             </span>
           ) : null}
-          {!isOptionsParent(product) ? (
+          {!isOptionsParent(product) && listPrice > displayPrice ? (
             <span className="original-price">
               {formatCurrencyExact(listPrice, displayCurrency)}
             </span>

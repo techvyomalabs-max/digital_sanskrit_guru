@@ -675,3 +675,493 @@ body.admin-dark .admin-bundle-tag-external {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* Cancelled before dispatch: one-click full refund */
+.admin-order-cancel-refund {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.admin-order-cancel-refund p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #065f46;
+}
+
+/* Payment attempts (failed and abandoned checkouts) */
+.admin-order-attempts {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--admin-border, #e5e7eb);
+}
+
+.admin-order-attempts h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.admin-order-attempts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-order-attempt {
+  border: 1px solid var(--admin-border, #e5e7eb);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.admin-order-attempt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  color: var(--admin-muted, #64748b);
+  font-size: 12px;
+}
+
+.admin-order-attempt-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.admin-order-attempt.is-paid .admin-order-attempt-badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-order-attempt.is-failed .admin-order-attempt-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.admin-order-attempt dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+
+.admin-order-attempt dt {
+  color: var(--admin-muted, #64748b);
+  font-weight: 600;
+}
+
+.admin-order-attempt dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--admin-text, #0f1111);
+}
+
+.admin-order-attempt-note {
+  margin: 8px 0 0;
+  color: var(--admin-muted, #64748b);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Page layout (header, two columns, cards) ─────────────────────────────── */
+
+.aod-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.aod-head-main {
+  min-width: 0;
+}
+
+.aod-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.aod-title-row h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aod-chips .admin-order-chip {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.aod-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-meta > span + span::before {
+  content: "·";
+  margin: 0 8px;
+  color: var(--admin-border, #cbd5e1);
+}
+
+.aod-meta-strong {
+  font-weight: 700;
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-meta-good {
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.aod-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.aod-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
+}
+
+.aod-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.aod-btn-primary {
+  background: var(--admin-primary, #d97706);
+  color: #fff;
+}
+
+.aod-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.aod-btn-secondary {
+  background: var(--admin-surface, #fff);
+  border-color: var(--admin-border, #e2e8f0);
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-btn-secondary:hover {
+  border-color: var(--admin-primary, #d97706);
+  color: var(--admin-primary-2, #b45309);
+}
+
+.aod-btn-success {
+  background: #16a34a;
+  color: #fff;
+}
+
+.aod-btn-success:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.aod-btn-small {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.aod-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 16px;
+  align-items: start;
+}
+
+.aod-main,
+.aod-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-order-details-page .admin-order-details-card h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.aod-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.aod-card-head h2 {
+  margin: 0 !important;
+}
+
+/* Totals under the items */
+.aod-totals {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--admin-surface-2, #f5f3ef);
+}
+
+.aod-totals .admin-order-summary-row {
+  padding: 6px 0;
+  font-size: 14px;
+  border-bottom: 0;
+}
+
+.aod-totals .admin-order-summary-row span {
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-totals .admin-order-summary-row.total {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--admin-border, #e2e8f0);
+  font-size: 17px;
+}
+
+.aod-totals .admin-order-summary-row.total span,
+.aod-totals .admin-order-summary-row.total strong {
+  color: var(--admin-text, #0f172a);
+  font-weight: 800;
+}
+
+/* Label / value lists */
+.aod-facts,
+.aod-refs {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.aod-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.aod-facts > div,
+.aod-refs > div {
+  min-width: 0;
+}
+
+.aod-facts dt,
+.aod-refs dt {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-facts dd,
+.aod-refs dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-facts-tracking {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--admin-border-soft, #f1f5f9);
+}
+
+.aod-copy-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.aod-copy-value code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-copy-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--admin-border, #e2e8f0);
+  background: var(--admin-surface, #fff);
+  color: var(--admin-muted, #64748b);
+  cursor: pointer;
+}
+
+.aod-copy-btn:hover {
+  color: var(--admin-primary-2, #b45309);
+  border-color: var(--admin-primary, #d97706);
+}
+
+.aod-copy-btn.is-copied {
+  color: #16a34a;
+  border-color: #86efac;
+}
+
+.aod-muted {
+  color: var(--admin-muted, #64748b);
+  font-size: 14px;
+}
+
+/* Customer contact */
+.aod-contact {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.aod-contact strong {
+  font-size: 15px;
+  color: var(--admin-text, #0f172a);
+}
+
+.aod-contact a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--admin-text, #0f172a);
+  text-decoration: none;
+}
+
+.aod-contact a svg {
+  flex: 0 0 auto;
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-contact a:hover {
+  color: var(--admin-primary-2, #b45309);
+  text-decoration: underline;
+}
+
+.admin-order-details-page .admin-order-address-block {
+  font-size: 14px;
+}
+
+.admin-order-details-page .admin-order-address-block p {
+  margin: 0;
+}
+
+/* Payment card sections */
+.aod-payment-card .admin-payment-history,
+.aod-payment-card .admin-order-attempts,
+.aod-payment-card .admin-order-details-refund-control-wrap {
+  margin-top: 16px;
+}
+
+.aod-payment-card .admin-order-attempts {
+  padding-top: 14px;
+  border-top: 1px solid var(--admin-border-soft, #f1f5f9);
+}
+
+.aod-payment-card .admin-order-attempts h3,
+.aod-payment-card .admin-payment-history h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--admin-muted, #64748b);
+}
+
+.aod-payment-card .admin-order-attempt {
+  background: var(--admin-surface, #fff);
+}
+
+.aod-payment-card .admin-order-attempt dl {
+  grid-template-columns: max-content 1fr;
+}
+
+.aod-payment-card .admin-order-attempt dd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+body.admin-dark .aod-payment-card .admin-order-attempt-badge {
+  background: var(--admin-surface-2, #334155);
+  color: var(--admin-text, #f8fafc);
+}
+
+body.admin-dark .aod-meta-good {
+  color: #4ade80;
+}
+
+@media (max-width: 1100px) {
+  .aod-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .aod-title-row h1 {
+    font-size: 24px;
+  }
+
+  .aod-head-actions,
+  .aod-head-actions .aod-btn {
+    width: 100%;
+  }
+
+  .aod-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+}

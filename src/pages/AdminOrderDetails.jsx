@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Copy, Download, Mail, Phone, Zap } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import axios from "axios";
 import AdminSidebar from "../components/admin/AdminSidebar";
@@ -25,6 +25,53 @@ const chipClass = (prefix, value) =>
   `admin-order-chip ${prefix}-${String(value || "").trim().toLowerCase().replace(/\s+/g, "-")}`;
 
 const RETURN_STATUS_HIDDEN = new Set(["", "not requested"]);
+
+// Copy works on http too (navigator.clipboard needs https), falling back to a hidden text box.
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall back below
+  }
+  try {
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.setAttribute("readonly", "");
+    box.style.position = "fixed";
+    box.style.opacity = "0";
+    document.body.appendChild(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function CopyButton({ value, label }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className={`aod-copy-btn${copied ? " is-copied" : ""}`}
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+      title={copied ? "Copied" : "Copy"}
+      onClick={async () => {
+        if (await copyToClipboard(String(value))) {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+    >
+      {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+    </button>
+  );
+}
+
 
 function AdminOrderDetails() {
   const { id } = useParams();
@@ -142,6 +189,63 @@ function AdminOrderDetails() {
     }
   };
 
+  // A paid order cancelled before it shipped gets everything back once an admin approves here
+  // (the refund goes through Razorpay; refunds shouldn't be made on the Razorpay website)
+  const cancellationRefundAmount = (() => {
+    if (!order) return 0;
+    const cancelledBeforeDispatch =
+      String(order.status || "") === "Cancelled" &&
+      String(order.paymentStatus || "") === "Paid" &&
+      !order.shippedAt &&
+      !order.deliveredAt &&
+      String(order.refundStatus || "") !== "Refunded";
+    if (!cancelledBeforeDispatch) return 0;
+    const total = Number(order.totalInInr || order.total || 0);
+    return Math.max(0, Math.round((total - Number(order.refundedAmountInInr || 0)) * 100) / 100);
+  })();
+
+  const approveCancellationRefund = async (forceManual = false) => {
+    if (!order?._id || cancellationRefundAmount <= 0) return;
+    if (!forceManual) {
+      const ok = await confirm({
+        title: "Approve full refund?",
+        message: `This order was cancelled before it shipped. ₹${cancellationRefundAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} (the full amount, including delivery) will be refunded to the customer through Razorpay.`,
+        confirmText: "Approve refund"
+      });
+      if (!ok) return;
+    }
+    setIsUpdatingRefund(true);
+    setPageMessage("");
+    try {
+      const res = await axios.put(
+        `/api/orders/${order._id}/approve-cancellation-refund`,
+        { forceManual },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setOrder(res.data || order);
+      const rzpId = res.data?.paymentMeta?.razorpayRefundId;
+      setPageMessage(rzpId ? `Full refund sent through Razorpay (Refund ID: ${rzpId}).` : "Full refund recorded.");
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || "Unable to process the refund.";
+      if (err?.response?.data?.canForceManual) {
+        const force = await confirm({
+          title: "Record as refunded manually?",
+          message: `${errMsg}\n\nIf you have already refunded the customer another way, record it here as a manual refund.`,
+          tone: "danger",
+          confirmText: "Record manual refund"
+        });
+        if (force) {
+          setIsUpdatingRefund(false);
+          return approveCancellationRefund(true);
+        }
+      }
+      setPageMessage(errMsg);
+    } finally {
+      setIsUpdatingRefund(false);
+    }
+    return undefined;
+  };
+
   const handleManualMarkPaid = async () => {
     if (!order?._id) return;
     const reason = await prompt({
@@ -224,56 +328,78 @@ function AdminOrderDetails() {
     }
   };
 
+  const shortOrderId = order ? String(order._id || "").slice(-6).toUpperCase() : "";
+  const canMarkPaid =
+    Number(user?.adminLevel) === 1 &&
+    displayPaymentStatus !== "Paid" &&
+    displayPaymentStatus !== "Refunded" &&
+    order?.status !== "Cancelled";
+  const showRefundChip = displayRefundStatus !== "Not Applicable";
+
   return (
     <div className="admin-layout">
       <AdminSidebar />
 
       <main className="admin-main admin-order-details-page">
-        <div className="admin-order-details-head">
-          <div>
-            <p className="admin-order-details-kicker">Order details</p>
-            <h1>
-              {order ? `Order #${String(order._id || "").slice(-6).toUpperCase()}` : "Order Details"}
-              {order?.invoiceNumber ? (
-                <span
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 500,
-                    color: "var(--admin-muted, #64748b)",
-                    marginLeft: "12px",
-                    verticalAlign: "middle"
-                  }}
-                >
-                  Invoice {order.invoiceNumber}
-                </span>
+        <header className="aod-head">
+          <div className="aod-head-main">
+            <p className="aod-kicker">Order details</p>
+            <div className="aod-title-row">
+              <h1>{order ? `Order #${shortOrderId}` : "Order details"}</h1>
+              {order ? (
+                <div className="aod-chips" aria-label="Order status">
+                  <span className={chipClass("status", displayOrderStatus)}>{displayOrderStatus}</span>
+                  <span className={chipClass("payment", displayPaymentStatus)}>Payment: {displayPaymentStatus}</span>
+                  {showRefundChip ? (
+                    <span className={chipClass("refund", displayRefundStatus)}>Refund: {displayRefundStatus}</span>
+                  ) : null}
+                </div>
               ) : null}
-            </h1>
-            <p className="admin-order-details-subtitle">
-              Review customer, payment, shipping, and item-level information in one place.
-            </p>
+            </div>
+            {order ? (
+              <p className="aod-meta">
+                <span>Placed {formatDateTime(order.createdAt)}</span>
+                {displayOrderStatus.toLowerCase() === "delivered" && order.deliveredAt ? (
+                  <span className="aod-meta-good">Delivered {formatDateTime(order.deliveredAt)}</span>
+                ) : null}
+                <span>
+                  {itemCount} item{itemCount === 1 ? "" : "s"}
+                </span>
+                <span className="aod-meta-strong">{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</span>
+                {order.invoiceNumber ? <span>Invoice {order.invoiceNumber}</span> : null}
+              </p>
+            ) : null}
             {order?.billing?.gstin ? (
-              <p className="admin-order-details-subtitle">
-                Business purchase: <strong>{order.billing.businessName || "—"}</strong>, GSTIN{" "}
-                <strong>{order.billing.gstin}</strong>
+              <p className="aod-meta">
+                <span>
+                  Business purchase: <strong>{order.billing.businessName || "—"}</strong>, GSTIN{" "}
+                  <strong>{order.billing.gstin}</strong>
+                </span>
               </p>
             ) : null}
           </div>
-          <div className="admin-order-details-actions">
-            <Link to="/admin/orders" className="admin-order-details-link">
+          <div className="aod-head-actions">
+            <Link to="/admin/orders" className="aod-btn aod-btn-secondary">
+              <ArrowLeft size={16} aria-hidden="true" />
               Back to orders
             </Link>
             {order ? (
               <button
                 type="button"
-                className="admin-order-details-btn"
+                className="aod-btn aod-btn-primary"
                 onClick={() => void generateInvoice()}
                 disabled={isGeneratingInvoice}
               >
-                {isGeneratingInvoice ? "Generating invoice..." : "Generate invoice"}
+                <Download size={16} aria-hidden="true" />
+                {isGeneratingInvoice
+                  ? "Preparing..."
+                  : order.invoiceNumber
+                    ? "Download invoice"
+                    : "Download order summary"}
               </button>
             ) : null}
           </div>
-        </div>
+        </header>
 
         {pageMessage ? <p className="admin-order-details-feedback">{pageMessage}</p> : null}
 
@@ -303,211 +429,6 @@ function AdminOrderDetails() {
               </div>
             )}
 
-            <section className="admin-order-details-grid">
-              <article className="admin-order-details-card">
-                <span className="admin-order-details-label">Customer</span>
-                <strong>{order.user?.name || order.shipping?.name || "Unknown"}</strong>
-                <p>{order.user?.email || "No email available"}</p>
-                <p>{order.shipping?.phone || "No phone available"}</p>
-              </article>
-
-              <article className="admin-order-details-card">
-                <span className="admin-order-details-label">Order status</span>
-                <strong className={chipClass("status", displayOrderStatus)}>
-                  {displayOrderStatus}
-                </strong>
-                <p>Placed on {formatDateTime(order.createdAt)}</p>
-                {displayOrderStatus.toLowerCase() === "delivered" && order.deliveredAt && (
-                  <p style={{ marginTop: '4px', fontWeight: '600', color: '#16a34a' }}>
-                    Delivered on {formatDateTime(order.deliveredAt)}
-                  </p>
-                )}
-                <p>{itemCount} item{itemCount === 1 ? "" : "s"} in this order</p>
-              </article>
-
-              <article className="admin-order-details-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span className="admin-order-details-label">Payment</span>
-                  {Number(user?.adminLevel) === 1 &&
-                    displayPaymentStatus !== "Paid" &&
-                    displayPaymentStatus !== "Refunded" &&
-                    order?.status !== "Cancelled" && (
-                    <button
-                      type="button"
-                      className="admin-order-details-btn"
-                      style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                      disabled={isMarkingPaid || isUpdatingRefund}
-                      onClick={handleManualMarkPaid}
-                    >
-                      {isMarkingPaid ? "Updating..." : "Mark Paid"}
-                    </button>
-                  )}
-                </div>
-                <strong className={chipClass("payment", displayPaymentStatus)}>
-                  {displayPaymentStatus}
-                </strong>
-                {displayRefundStatus !== "Not Applicable" || displayOrderStatus === "Cancelled" ? (
-                  <div className="admin-order-details-refund-control-wrap">
-                    <div className="admin-order-details-refund-header">
-                      <span>Refund Status:</span>
-                      <strong className={chipClass("refund", displayRefundStatus)}>
-                        {displayRefundStatus}
-                      </strong>
-                    </div>
-                    {displayRefundStatus === "Refunded" ? (
-                      <p style={{ margin: "6px 0 0", fontSize: "12.5px", fontWeight: 700, color: "#166534" }}>
-                        <CheckCircle2 size={15} className="ui-inline-icon" aria-hidden="true" />Refund Completed & Finalized
-                      </p>
-                    ) : (
-                      <div className="admin-order-details-refund-actions">
-                        <select
-                          value={displayRefundStatus}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === "Refunded") {
-                              setIsRefundModalOpen(true);
-                            } else {
-                              updateRefundStatus(val);
-                            }
-                          }}
-                          disabled={isUpdatingRefund}
-                          className="admin-order-details-refund-select"
-                          aria-label="Change refund status"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Processing">Processing</option>
-                          {displayRefundStatus === "Partially Refunded" ? (
-                            <option value="Partially Refunded" disabled>
-                              Partially Refunded
-                            </option>
-                          ) : null}
-                          <option value="Refunded">Refunded</option>
-                          <option value="Rejected">Rejected</option>
-                          <option value="Not Applicable">Not Applicable</option>
-                        </select>
-                        {displayRefundStatus === "Pending" && (
-                          <button
-                            type="button"
-                            className="admin-order-details-refund-btn"
-                            disabled={isUpdatingRefund}
-                            onClick={() => updateRefundStatus("Processing")}
-                          >
-                            {isUpdatingRefund ? "Updating..." : "Set status: Processing"}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="admin-order-details-refund-btn refund-btn-success"
-                          disabled={isUpdatingRefund}
-                          onClick={() => setIsRefundModalOpen(true)}
-                        >
-                          Refund…
-                        </button>
-                        {displayRefundStatus !== "Rejected" && (
-                          <button
-                            type="button"
-                            className="admin-order-details-refund-btn refund-btn-danger"
-                            disabled={isUpdatingRefund}
-                            onClick={() => updateRefundStatus("Rejected")}
-                          >
-                            {isUpdatingRefund ? "Updating..." : "Reject"}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                {isManualRefund(order) ? (
-                  <p style={{ marginTop: '8px', color: '#b45309', fontWeight: 600 }}>
-                    Manual refund (no money sent via Razorpay)
-                  </p>
-                ) : order?.paymentMeta?.razorpayRefundId ? (
-                  <p style={{ marginTop: '8px', color: '#4f46e5', fontWeight: 600 }}>
-                    <Zap size={14} className="ui-inline-icon" aria-hidden="true" />Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
-                  </p>
-                ) : null}
-                {order?.paymentMeta?.refundedAt ? (
-                  <p>Refunded on: {formatDateTime(order.paymentMeta.refundedAt)}</p>
-                ) : null}
-                <p>Method: {order.paymentMethod || "Razorpay"}</p>
-                <p>
-                  {order?.paymentMeta?.paidAt
-                    ? `Paid on ${formatDateTime(order.paymentMeta.paidAt)}`
-                    : "Payment not completed yet"}
-                </p>
-
-                {order?.paymentMeta?.manualOverride?.reason && (
-                  <div style={{ marginTop: "10px", padding: "8px 10px", background: "#fef3c7", borderRadius: "6px", border: "1px solid #fde68a", fontSize: "12px", color: "#92400e" }}>
-                    <strong style={{ display: "block", marginBottom: "2px" }}>Manual Payment Override:</strong>
-                    <div>Reason: {order.paymentMeta.manualOverride.reason}</div>
-                    {order.paymentMeta.manualOverride.paymentReference && (
-                      <div>Ref: {order.paymentMeta.manualOverride.paymentReference}</div>
-                    )}
-                    <div>By: {order.paymentMeta.manualOverride.by} {order.paymentMeta.manualOverride.at ? `on ${formatDateTime(order.paymentMeta.manualOverride.at)}` : ""}</div>
-                  </div>
-                )}
-
-                {Array.isArray(order?.paymentHistory) && order.paymentHistory.length > 0 && (
-                  <div className="admin-payment-history">
-                    <h3>Payment history</h3>
-                    <ol>
-                      {order.paymentHistory.map((h, idx) => (
-                        <li key={`${h.at}-${idx}`}>
-                          <span className="admin-payment-history-change">
-                            {h.from ? `${h.from} → ${h.to}` : h.to}
-                          </span>
-                          <span className="admin-payment-history-meta">
-                            {h.at ? formatDateTime(h.at) : "—"} · {PAYMENT_SOURCES[h.source] || h.source || "—"}
-                            {h.by ? ` · ${h.by}` : ""}
-                            {h.reference ? ` · ${h.reference}` : ""}
-                          </span>
-                          {h.note ? <span className="admin-payment-history-note">"{h.note}"</span> : null}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
-                {Array.isArray(order?.paymentMeta?.refunds) && order.paymentMeta.refunds.length > 0 && (
-                  <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
-                    <h3 style={{ margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
-                      Refund History
-                    </h3>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {order.paymentMeta.refunds.map((rf, idx) => (
-                        <div key={rf.refundId || rf.creditNoteNumber || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-                            <span>{formatCurrencyExact((Number(rf.amountMinor) || 0) / 100, rf.currency || "INR")}</span>
-                            <span style={{ textTransform: "capitalize", color: rf.method === "manual" ? "#b45309" : "#4f46e5" }}>
-                              {rf.method === "manual" ? "Manual" : "Razorpay"}
-                            </span>
-                          </div>
-                          <div style={{ color: "#64748b", marginTop: "4px", display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
-                            <span>{rf.at ? formatDateTime(rf.at) : "—"}</span>
-                            <span>{rf.reference ? `Ref: ${rf.reference}` : ""}</span>
-                          </div>
-                          {rf.reason ? <div style={{ color: "#475569", marginTop: "4px", fontSize: "11.5px", fontStyle: "italic" }}>"{rf.reason}"</div> : null}
-                          {rf.creditNoteNumber ? (
-                            <div className="admin-credit-note-row">
-                              <span>Credit note <strong>{rf.creditNoteNumber}</strong></span>
-                              <button
-                                type="button"
-                                className="admin-credit-note-btn"
-                                disabled={downloadingCreditNote === rf.creditNoteNumber}
-                                onClick={() => void handleCreditNote(rf.creditNoteNumber)}
-                              >
-                                {downloadingCreditNote === rf.creditNoteNumber ? "Preparing…" : "Download PDF"}
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </article>
-            </section>
-
             {showPendingAccessCard && (
               <div className="admin-order-pending-access-banner">
                 <div>
@@ -534,128 +455,435 @@ function AdminOrderDetails() {
               </div>
             )}
 
-            <section className="admin-order-details-layout">
-              <article className="admin-order-details-card">
-                <h2>Items</h2>
-                <div className="admin-order-item-list">
-                  {Array.isArray(order.items) && order.items.length > 0 ? (
-                    order.items.map((item, index) => (
-                      <div key={`${item?.name || "item"}-${index}`} className="admin-order-item-row">
-                        <div>
-                          <strong>{item?.name || "Product"}</strong>
-                          {item.productType === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length > 0 && (
-                            <div className="admin-order-item-bundle-details" style={{ marginTop: '6px', paddingLeft: '10px', borderLeft: '2px solid #cbd5e1' }}>
-                              <p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>
-                                Pack Includes:
+            <div className="aod-layout">
+              <div className="aod-main">
+                <article className="admin-order-details-card">
+                  <h2>Items</h2>
+                  <div className="admin-order-item-list">
+                    {Array.isArray(order.items) && order.items.length > 0 ? (
+                      order.items.map((item, index) => (
+                        <div key={`${item?.name || "item"}-${index}`} className="admin-order-item-row">
+                          <div>
+                            <strong>{item?.name || "Product"}</strong>
+                            {item.productType === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length > 0 && (
+                              <div className="admin-order-item-bundle-details" style={{ marginTop: '6px', paddingLeft: '10px', borderLeft: '2px solid #cbd5e1' }}>
+                                <p style={{ margin: '0 0 2px 0', fontSize: '11px', fontWeight: 'bold', color: '#64748b' }}>
+                                  Pack Includes:
+                                </p>
+                                <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                                  {item.bundleItems.map((bi, idx) => (
+                                    <li key={idx} style={{ fontSize: '11.5px', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
+                                      <span style={{ color: '#94a3b8' }}>•</span>
+                                      <span>{bi.name}</span>
+                                      {bi.accessManual === true ? (
+                                        <span className="admin-bundle-tag admin-bundle-tag-manual">
+                                          team sets up access
+                                        </span>
+                                      ) : bi.digitalDelivery === "external" ? (
+                                        <span className="admin-bundle-tag admin-bundle-tag-external">
+                                          on another website
+                                        </span>
+                                      ) : null}
+                                      <span style={{ color: '#64748b' }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {Number(item?.upgradeCredit) > 0 && (
+                              <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+                                Price includes {formatCurrencyExact(Number(item.upgradeCredit), item?.currency || order?.currencyDisplay?.currency || "INR")} taken off for items already owned: {
+                                  Array.isArray(item.upgradeOwnedDetails) && item.upgradeOwnedDetails.length > 0
+                                    ? item.upgradeOwnedDetails
+                                        .map((od) => `${od.name} (-${formatCurrencyExact(Number(od.amount || 0), item?.currency || order?.currencyDisplay?.currency || "INR")})`)
+                                        .join(", ")
+                                    : (Array.isArray(item.upgradeOwnedItems) ? item.upgradeOwnedItems.join(", ") : "")
+                                }
                               </p>
-                              <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                                {item.bundleItems.map((bi, idx) => (
-                                  <li key={idx} style={{ fontSize: '11.5px', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px', flexWrap: 'wrap' }}>
-                                    <span style={{ color: '#94a3b8' }}>•</span>
-                                    <span>{bi.name}</span>
-                                    {bi.accessManual === true ? (
-                                      <span className="admin-bundle-tag admin-bundle-tag-manual">
-                                        team sets up access
-                                      </span>
-                                    ) : bi.digitalDelivery === "external" ? (
-                                      <span className="admin-bundle-tag admin-bundle-tag-external">
-                                        on another website
-                                      </span>
-                                    ) : null}
-                                    <span style={{ color: '#64748b' }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {Number(item?.upgradeCredit) > 0 && (
-                            <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#64748b' }}>
-                              Price includes {formatCurrencyExact(Number(item.upgradeCredit), item?.currency || order?.currencyDisplay?.currency || "INR")} taken off for items already owned: {
-                                Array.isArray(item.upgradeOwnedDetails) && item.upgradeOwnedDetails.length > 0
-                                  ? item.upgradeOwnedDetails
-                                      .map((od) => `${od.name} (-${formatCurrencyExact(Number(od.amount || 0), item?.currency || order?.currencyDisplay?.currency || "INR")})`)
-                                      .join(", ")
-                                  : (Array.isArray(item.upgradeOwnedItems) ? item.upgradeOwnedItems.join(", ") : "")
-                              }
+                            )}
+                            <p>
+                              Qty: {Math.max(1, Number(item?.quantity || 1))}
+                              {Math.max(1, Number(item?.quantity || 1)) > 1
+                                ? ` × ${formatCurrencyExact(Number(item?.price || 0), item?.currency || orderCurrency)} each`
+                                : ""}
                             </p>
-                          )}
-                          <p>
-                            Qty: {Math.max(1, Number(item?.quantity || 1))}
-                            {Math.max(1, Number(item?.quantity || 1)) > 1
-                              ? ` × ${formatCurrencyExact(Number(item?.price || 0), item?.currency || orderCurrency)} each`
-                              : ""}
-                          </p>
-                          {!RETURN_STATUS_HIDDEN.has(String(item?.returnRequest?.status || "").trim().toLowerCase()) && (
-                            <div className="admin-order-item-return">
-                              <span className={`admin-order-item-return-badge return-${String(item.returnRequest.status).trim().toLowerCase().replace(/\s+/g, "-")}`}>
-                                Return: {item.returnRequest.status}
-                              </span>
-                              {item.returnRequest.requestedAt ? (
-                                <span className="admin-order-item-return-meta">
-                                  Requested {formatDateTime(item.returnRequest.requestedAt)}
-                                  {item.returnRequest.resolvedAt ? ` · Resolved ${formatDateTime(item.returnRequest.resolvedAt)}` : ""}
+                            {!RETURN_STATUS_HIDDEN.has(String(item?.returnRequest?.status || "").trim().toLowerCase()) && (
+                              <div className="admin-order-item-return">
+                                <span className={`admin-order-item-return-badge return-${String(item.returnRequest.status).trim().toLowerCase().replace(/\s+/g, "-")}`}>
+                                  Return: {item.returnRequest.status}
                                 </span>
-                              ) : null}
-                              {item.returnRequest.reason ? (
-                                <span className="admin-order-item-return-meta">Customer reason: {item.returnRequest.reason}</span>
-                              ) : null}
-                              {item.returnRequest.adminReason ? (
-                                <span className="admin-order-item-return-meta">Admin note: {item.returnRequest.adminReason}</span>
-                              ) : null}
+                                {item.returnRequest.requestedAt ? (
+                                  <span className="admin-order-item-return-meta">
+                                    Requested {formatDateTime(item.returnRequest.requestedAt)}
+                                    {item.returnRequest.resolvedAt ? ` · Resolved ${formatDateTime(item.returnRequest.resolvedAt)}` : ""}
+                                  </span>
+                                ) : null}
+                                {item.returnRequest.reason ? (
+                                  <span className="admin-order-item-return-meta">Customer reason: {item.returnRequest.reason}</span>
+                                ) : null}
+                                {item.returnRequest.adminReason ? (
+                                  <span className="admin-order-item-return-meta">Admin note: {item.returnRequest.adminReason}</span>
+                                ) : null}
+                              </div>
+                            )}
+                            {item.accessManual === true && (
+                              <div style={{ marginTop: "8px" }}>
+                                {!item.accessGrantedAt ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <span className="admin-item-access-badge pending">
+                                      Access pending
+                                    </span>
+                                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
+                                      Set up this customer&apos;s access on the other website, then click Grant access.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <span className="admin-item-access-badge granted">
+                                      Access granted on {formatDateTime(item.accessGrantedAt)}
+                                    </span>
+                                    {item.accessNote && (
+                                      <div
+                                        style={{
+                                          margin: "4px 0 0",
+                                          fontSize: "12px",
+                                          color: "var(--admin-text, #334155)",
+                                          whiteSpace: "pre-wrap",
+                                          background: "var(--admin-surface-2, #f8fafc)",
+                                          padding: "6px 10px",
+                                          borderRadius: "6px",
+                                          border: "1px solid var(--admin-border, #e2e8f0)"
+                                        }}
+                                      >
+                                        {item.accessNote}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <span>
+                            {formatCurrencyExact(
+                              Number(item?.price || 0) * Math.max(1, Number(item?.quantity || 1)),
+                              item?.currency || orderCurrency
+                            )}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p>No items found for this order.</p>
+                    )}
+                  </div>
+                  <div className="aod-totals">
+                    <div className="admin-order-summary-row">
+                      <span>{order.taxDetails?.delivery ? "Items (before GST)" : "Subtotal"}</span>
+                      <strong>{formatOrderDisplayCurrency(order, "subtotal", Number(order.subtotal || 0))}</strong>
+                    </div>
+                    <div className="admin-order-summary-row">
+                      <span>{order.taxDetails?.delivery ? "GST (items and delivery)" : "GST"}</span>
+                      <strong>{formatOrderDisplayCurrency(order, "gstAmount", Number(order.gstAmount || 0))}</strong>
+                    </div>
+                    <div className="admin-order-summary-row">
+                      <span>{order.taxDetails?.delivery ? "Delivery (before GST)" : "Delivery"}</span>
+                      <strong>{formatOrderDisplayCurrency(order, "deliveryCharge", Number(order.deliveryCharge || 0))}</strong>
+                    </div>
+                    {Number(order.discount || 0) > 0 ? (
+                      <div className="admin-order-summary-row">
+                        <span>Discount {order.couponCode ? `(${order.couponCode})` : ""}</span>
+                        <strong>-{formatOrderDisplayCurrency(order, "discount", Number(order.discount || 0))}</strong>
+                      </div>
+                    ) : null}
+                    <div className="admin-order-summary-row total">
+                      <span>Total</span>
+                      <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="admin-order-details-card aod-payment-card">
+                  <div className="aod-card-head">
+                    <h2>Payment</h2>
+                    {canMarkPaid ? (
+                      <button
+                        type="button"
+                        className="aod-btn aod-btn-success aod-btn-small"
+                        disabled={isMarkingPaid || isUpdatingRefund}
+                        onClick={handleManualMarkPaid}
+                      >
+                        <CheckCircle2 size={15} aria-hidden="true" />
+                        {isMarkingPaid ? "Updating..." : "Mark paid"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <dl className="aod-facts">
+                    <div>
+                      <dt>Status</dt>
+                      <dd>
+                        <span className={chipClass("payment", displayPaymentStatus)}>{displayPaymentStatus}</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Method</dt>
+                      <dd>{order.paymentMethod || "Razorpay"}</dd>
+                    </div>
+                    <div>
+                      <dt>Paid on</dt>
+                      <dd>{order?.paymentMeta?.paidAt ? formatDateTime(order.paymentMeta.paidAt) : "Not paid yet"}</dd>
+                    </div>
+                  </dl>
+                  {displayRefundStatus !== "Not Applicable" || displayOrderStatus === "Cancelled" ? (
+                    <div className="admin-order-details-refund-control-wrap">
+                      <div className="admin-order-details-refund-header">
+                        <span>Refund Status:</span>
+                        <strong className={chipClass("refund", displayRefundStatus)}>
+                          {displayRefundStatus}
+                        </strong>
+                      </div>
+                      {displayRefundStatus === "Refunded" ? (
+                        <p style={{ margin: "6px 0 0", fontSize: "12.5px", fontWeight: 700, color: "#166534" }}>
+                          <CheckCircle2 size={15} className="ui-inline-icon" aria-hidden="true" />Refund Completed & Finalized
+                        </p>
+                      ) : (
+                        <div className="admin-order-details-refund-actions">
+                          {cancellationRefundAmount > 0 && (
+                            <div className="admin-order-cancel-refund">
+                              <p>
+                                Cancelled before dispatch: the customer gets the full amount back.
+                              </p>
+                              <button
+                                type="button"
+                                className="admin-order-details-refund-btn refund-btn-success"
+                                disabled={isUpdatingRefund}
+                                onClick={() => void approveCancellationRefund()}
+                              >
+                                {isUpdatingRefund
+                                  ? "Refunding..."
+                                  : `Approve full refund (₹${cancellationRefundAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })})`}
+                              </button>
                             </div>
                           )}
-                          {item.accessManual === true && (
-                            <div style={{ marginTop: "8px" }}>
-                              {!item.accessGrantedAt ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <span className="admin-item-access-badge pending">
-                                    Access pending
-                                  </span>
-                                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
-                                    Set up this customer&apos;s access on the other website, then click Grant access.
-                                  </p>
-                                </div>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <span className="admin-item-access-badge granted">
-                                    Access granted on {formatDateTime(item.accessGrantedAt)}
-                                  </span>
-                                  {item.accessNote && (
-                                    <div
-                                      style={{
-                                        margin: "4px 0 0",
-                                        fontSize: "12px",
-                                        color: "var(--admin-text, #334155)",
-                                        whiteSpace: "pre-wrap",
-                                        background: "var(--admin-surface-2, #f8fafc)",
-                                        padding: "6px 10px",
-                                        borderRadius: "6px",
-                                        border: "1px solid var(--admin-border, #e2e8f0)"
-                                      }}
-                                    >
-                                      {item.accessNote}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                          <select
+                            value={displayRefundStatus}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "Refunded") {
+                                setIsRefundModalOpen(true);
+                              } else {
+                                updateRefundStatus(val);
+                              }
+                            }}
+                            disabled={isUpdatingRefund}
+                            className="admin-order-details-refund-select"
+                            aria-label="Change refund status"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Processing">Processing</option>
+                            {displayRefundStatus === "Partially Refunded" ? (
+                              <option value="Partially Refunded" disabled>
+                                Partially Refunded
+                              </option>
+                            ) : null}
+                            <option value="Refunded">Refunded</option>
+                            <option value="Rejected">Rejected</option>
+                            <option value="Not Applicable">Not Applicable</option>
+                          </select>
+                          {displayRefundStatus === "Pending" && (
+                            <button
+                              type="button"
+                              className="admin-order-details-refund-btn"
+                              disabled={isUpdatingRefund}
+                              onClick={() => updateRefundStatus("Processing")}
+                            >
+                              {isUpdatingRefund ? "Updating..." : "Set status: Processing"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="admin-order-details-refund-btn refund-btn-success"
+                            disabled={isUpdatingRefund}
+                            onClick={() => setIsRefundModalOpen(true)}
+                          >
+                            Refund…
+                          </button>
+                          {displayRefundStatus !== "Rejected" && (
+                            <button
+                              type="button"
+                              className="admin-order-details-refund-btn refund-btn-danger"
+                              disabled={isUpdatingRefund}
+                              onClick={() => updateRefundStatus("Rejected")}
+                            >
+                              {isUpdatingRefund ? "Updating..." : "Reject"}
+                            </button>
                           )}
                         </div>
-                        <span>
-                          {formatCurrencyExact(
-                            Number(item?.price || 0) * Math.max(1, Number(item?.quantity || 1)),
-                            item?.currency || orderCurrency
-                          )}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p>No items found for this order.</p>
-                  )}
-                </div>
-              </article>
+                      )}
+                    </div>
+                  ) : null}
+                  {isManualRefund(order) ? (
+                    <p style={{ marginTop: '8px', color: '#b45309', fontWeight: 600 }}>
+                      Manual refund (no money sent via Razorpay)
+                    </p>
+                  ) : order?.paymentMeta?.razorpayRefundId ? (
+                    <p style={{ marginTop: '8px', color: '#4f46e5', fontWeight: 600 }}>
+                      <Zap size={14} className="ui-inline-icon" aria-hidden="true" />Razorpay Refund ID: <code style={{ backgroundColor: '#eef2ff', padding: '2px 6px', borderRadius: '4px' }}>{order.paymentMeta.razorpayRefundId}</code>
+                    </p>
+                  ) : null}
+                  {order?.paymentMeta?.refundedAt ? (
+                    <p>Refunded on: {formatDateTime(order.paymentMeta.refundedAt)}</p>
+                  ) : null}
 
-              <aside className="admin-order-side-stack">
+                  {order?.paymentMeta?.manualOverride?.reason && (
+                    <div style={{ marginTop: "10px", padding: "8px 10px", background: "#fef3c7", borderRadius: "6px", border: "1px solid #fde68a", fontSize: "12px", color: "#92400e" }}>
+                      <strong style={{ display: "block", marginBottom: "2px" }}>Manual Payment Override:</strong>
+                      <div>Reason: {order.paymentMeta.manualOverride.reason}</div>
+                      {order.paymentMeta.manualOverride.paymentReference && (
+                        <div>Ref: {order.paymentMeta.manualOverride.paymentReference}</div>
+                      )}
+                      <div>By: {order.paymentMeta.manualOverride.by} {order.paymentMeta.manualOverride.at ? `on ${formatDateTime(order.paymentMeta.manualOverride.at)}` : ""}</div>
+                    </div>
+                  )}
+
+                  {Array.isArray(order?.paymentHistory) && order.paymentHistory.length > 0 && (
+                    <div className="admin-payment-history">
+                      <h3>Payment history</h3>
+                      <ol>
+                        {order.paymentHistory.map((h, idx) => (
+                          <li key={`${h.at}-${idx}`}>
+                            <span className="admin-payment-history-change">
+                              {h.from ? `${h.from} → ${h.to}` : h.to}
+                            </span>
+                            <span className="admin-payment-history-meta">
+                              {h.at ? formatDateTime(h.at) : "—"} · {PAYMENT_SOURCES[h.source] || h.source || "—"}
+                              {h.by ? ` · ${h.by}` : ""}
+                              {h.reference ? ` · ${h.reference}` : ""}
+                            </span>
+                            {h.note ? <span className="admin-payment-history-note">"{h.note}"</span> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  {Array.isArray(order?.paymentMeta?.refunds) && order.paymentMeta.refunds.length > 0 && (
+                    <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--admin-border, #e2e8f0)" }}>
+                      <h3 style={{ margin: "0 0 8px", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
+                        Refund History
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {order.paymentMeta.refunds.map((rf, idx) => (
+                          <div key={rf.refundId || rf.creditNoteNumber || idx} style={{ fontSize: "12px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                              <span>{formatCurrencyExact((Number(rf.amountMinor) || 0) / 100, rf.currency || "INR")}</span>
+                              <span style={{ textTransform: "capitalize", color: rf.method === "manual" ? "#b45309" : "#4f46e5" }}>
+                                {rf.method === "manual" ? "Manual" : "Razorpay"}
+                              </span>
+                            </div>
+                            <div style={{ color: "#64748b", marginTop: "4px", display: "flex", justifyContent: "space-between", fontSize: "11px" }}>
+                              <span>{rf.at ? formatDateTime(rf.at) : "—"}</span>
+                              <span>{rf.reference ? `Ref: ${rf.reference}` : ""}</span>
+                            </div>
+                            {rf.reason ? <div style={{ color: "#475569", marginTop: "4px", fontSize: "11.5px", fontStyle: "italic" }}>"{rf.reason}"</div> : null}
+                            {rf.creditNoteNumber ? (
+                              <div className="admin-credit-note-row">
+                                <span>Credit note <strong>{rf.creditNoteNumber}</strong></span>
+                                <button
+                                  type="button"
+                                  className="admin-credit-note-btn"
+                                  disabled={downloadingCreditNote === rf.creditNoteNumber}
+                                  onClick={() => void handleCreditNote(rf.creditNoteNumber)}
+                                >
+                                  {downloadingCreditNote === rf.creditNoteNumber ? "Preparing…" : "Download PDF"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                    {Array.isArray(order?.paymentAttempts) && order.paymentAttempts.length > 0 && (
+                      <div className="admin-order-attempts">
+                        <h3>Payment attempts</h3>
+                        <ul>
+                          {order.paymentAttempts.map((attempt) => (
+                            <li key={attempt.razorpayOrderId} className={`admin-order-attempt is-${attempt.outcome}`}>
+                              <div className="admin-order-attempt-head">
+                                <span className="admin-order-attempt-badge">
+                                  {attempt.outcome === "paid"
+                                    ? "Paid"
+                                    : attempt.outcome === "failed"
+                                      ? `Failed${attempt.failedAttempts > 1 ? ` (${attempt.failedAttempts} tries)` : ""}`
+                                      : "Not paid"}
+                                </span>
+                                <span>
+                                  {attempt.mode === "retry" ? "Retry from My Orders" : "Checkout"}
+                                  {attempt.startedAt ? ` · ${formatDateTime(attempt.startedAt)}` : ""}
+                                </span>
+                              </div>
+                              <dl>
+                                <dt>Razorpay Order ID</dt>
+                                <dd>{attempt.razorpayOrderId}</dd>
+                                {attempt.outcome === "paid" && attempt.razorpayPaymentId && (
+                                  <>
+                                    <dt>Payment ID</dt>
+                                    <dd>{attempt.razorpayPaymentId}</dd>
+                                  </>
+                                )}
+                                {attempt.lastFailure?.paymentId && (
+                                  <>
+                                    <dt>Failed payment ID</dt>
+                                    <dd>{attempt.lastFailure.paymentId}</dd>
+                                  </>
+                                )}
+                                {attempt.lastFailure && (attempt.lastFailure.description || attempt.lastFailure.reason) && (
+                                  <>
+                                    <dt>Reason</dt>
+                                    <dd>
+                                      {attempt.lastFailure.description || attempt.lastFailure.reason}
+                                      {attempt.lastFailure.method ? ` (${attempt.lastFailure.method})` : ""}
+                                    </dd>
+                                  </>
+                                )}
+                              </dl>
+                              {attempt.outcome === "closed" && (
+                                <p className="admin-order-attempt-note">
+                                  No payment was made (the payment window was closed without paying), so Razorpay
+                                  has no payment ID. Search the Razorpay Order ID in the Razorpay dashboard.
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                </article>
+              </div>
+
+              <aside className="aod-side">
+                <article className="admin-order-details-card">
+                  <h2>Customer</h2>
+                  <div className="aod-contact">
+                    <strong>{order.user?.name || order.shipping?.name || "Unknown"}</strong>
+                    {order.user?.email ? (
+                      <a href={`mailto:${order.user.email}`}>
+                        <Mail size={14} aria-hidden="true" />
+                        {order.user.email}
+                      </a>
+                    ) : (
+                      <span className="aod-muted">No email available</span>
+                    )}
+                    {order.shipping?.phone ? (
+                      <a href={`tel:${order.shipping.phone}`}>
+                        <Phone size={14} aria-hidden="true" />
+                        {order.shipping.phone}
+                      </a>
+                    ) : (
+                      <span className="aod-muted">No phone available</span>
+                    )}
+                  </div>
+                </article>
+
                 <article className="admin-order-details-card">
                   <h2>Shipping</h2>
                   {Array.isArray(order?.items) && order.items.length > 0 && order.items.every(isDigitalLikeItem) ? (
@@ -686,69 +914,56 @@ function AdminOrderDetails() {
                       <p>{order.shipping?.phone || "-"}</p>
                     </div>
                   )}
-                </article>
-
-                {order.trackingId ? (
-                  <article className="admin-order-details-card">
-                    <h2>Tracking Details</h2>
-                    <div className="admin-order-reference-list" style={{ marginTop: '8px' }}>
+                  {order.trackingId ? (
+                    <dl className="aod-facts aod-facts-tracking">
                       <div>
-                        <span>Courier Partner</span>
-                        <strong>{order.courierPartner || "Delhivery"}</strong>
+                        <dt>Courier</dt>
+                        <dd>{order.courierPartner || "Delhivery"}</dd>
                       </div>
                       <div>
-                        <span>Tracking ID</span>
-                        <strong>{order.trackingId}</strong>
+                        <dt>Tracking ID</dt>
+                        <dd className="aod-copy-value">
+                          <code>{order.trackingId}</code>
+                          <CopyButton value={order.trackingId} label="tracking ID" />
+                        </dd>
                       </div>
-                    </div>
-                  </article>
-                ) : null}
-
-                <article className="admin-order-details-card">
-                  <h2>Payment summary</h2>
-                  <div className="admin-order-summary-row">
-                    <span>{order.taxDetails?.delivery ? "Items (before GST)" : "Subtotal"}</span>
-                    <strong>{formatOrderDisplayCurrency(order, "subtotal", Number(order.subtotal || 0))}</strong>
-                  </div>
-                  <div className="admin-order-summary-row">
-                    <span>{order.taxDetails?.delivery ? "GST (items and delivery)" : "GST"}</span>
-                    <strong>{formatOrderDisplayCurrency(order, "gstAmount", Number(order.gstAmount || 0))}</strong>
-                  </div>
-                  <div className="admin-order-summary-row">
-                    <span>{order.taxDetails?.delivery ? "Delivery (before GST)" : "Delivery"}</span>
-                    <strong>{formatOrderDisplayCurrency(order, "deliveryCharge", Number(order.deliveryCharge || 0))}</strong>
-                  </div>
-                  {Number(order.discount || 0) > 0 ? (
-                    <div className="admin-order-summary-row">
-                      <span>Discount {order.couponCode ? `(${order.couponCode})` : ""}</span>
-                      <strong>-{formatOrderDisplayCurrency(order, "discount", Number(order.discount || 0))}</strong>
-                    </div>
+                    </dl>
                   ) : null}
-                  <div className="admin-order-summary-row total">
-                    <span>Total</span>
-                    <strong>{formatOrderDisplayCurrency(order, "total", Number(order.total || 0))}</strong>
-                  </div>
                 </article>
 
                 <article className="admin-order-details-card">
                   <h2>References</h2>
-                  <div className="admin-order-reference-list">
-                    <div>
-                      <span>Full Order ID</span>
-                      <strong>{order._id}</strong>
-                    </div>
-                    <div>
-                      <span>Razorpay Order ID</span>
-                      <strong>{order?.paymentMeta?.razorpayOrderId || "-"}</strong>
-                    </div>
-                    <div>
-                      <span>Razorpay Payment ID</span>
-                      <strong>{order?.paymentMeta?.razorpayPaymentId || "-"}</strong>
-                    </div>
-                  </div>
+                  <dl className="aod-refs">
+                    {[
+                      ["Order ID", order._id],
+                      ["Invoice number", order.invoiceNumber],
+                      ["Razorpay order ID", order?.paymentMeta?.razorpayOrderId],
+                      ["Razorpay payment ID", order?.paymentMeta?.razorpayPaymentId]
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd className="aod-copy-value">
+                          {value ? (
+                            <>
+                              <code>{value}</code>
+                              <CopyButton value={value} label={label} />
+                            </>
+                          ) : (
+                            <span className="aod-muted">
+                              {label === "Razorpay payment ID" && displayPaymentStatus !== "Paid"
+                                ? "None (not paid)"
+                                : label === "Invoice number"
+                                  ? "Not issued yet"
+                                  : "—"}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </article>
               </aside>
-            </section>
+            </div>
           </>
         ) : (
           <section className="admin-order-details-card">

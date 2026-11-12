@@ -646,6 +646,8 @@ function Checkout() {
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
         razorpaySignature: paymentInfo?.razorpaySignature || "",
+        // Failed checkout only: the payment that failed (the server checks it with Razorpay)
+        failedPaymentId: paymentInfo?.failedPaymentId || "",
         currencyDisplay: {
           currency: displayCurrency,
           amount: finalTotal,
@@ -658,8 +660,8 @@ function Checkout() {
     return data;
   };
 
-  const createFailedOrderAttempt = async (selected, message) => {
-    await createOrderWithPaymentStatus(selected, "Failed");
+  const createFailedOrderAttempt = async (selected, message, paymentInfo = {}) => {
+    await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
     navigate("/my-orders", {
       state: {
         message: message || "Payment failed. The order is saved in My Orders. You can retry payment there."
@@ -723,10 +725,15 @@ function Checkout() {
     let checkoutOpened = false;
     let hasRecordedFailedAttempt = false;
 
-    const recordFailedAttempt = async (message) => {
+    // Razorpay order ID (order_…) of this checkout; set once the payment window is created.
+    let razorpayOrderIdForAttempt = "";
+    const recordFailedAttempt = async (message, failedPaymentId = "") => {
       if (hasRecordedFailedAttempt) return;
       hasRecordedFailedAttempt = true;
-      await createFailedOrderAttempt(selected, message);
+      await createFailedOrderAttempt(selected, message, {
+        razorpayOrderId: razorpayOrderIdForAttempt,
+        failedPaymentId
+      });
     };
 
     try {
@@ -751,6 +758,7 @@ function Checkout() {
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
 
+      razorpayOrderIdForAttempt = String(data?.id || "");
       const cleanPhone = String(selected.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(user?.email || selected?.email || "").trim();
 
@@ -846,7 +854,7 @@ function Checkout() {
           "Payment failed. Failed order saved in My Orders.";
         console.error("Razorpay payment failed:", response?.error);
         setCheckoutMessage(`Payment failed: ${failReason}`);
-        await recordFailedAttempt(`Payment failed: ${failReason}`);
+        await recordFailedAttempt(`Payment failed: ${failReason}`, response?.error?.metadata?.payment_id || "");
       });
 
       checkoutOpened = true;

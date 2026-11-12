@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { WORKING_OFFICE } from "../../utils/companyInfo";
+import { getTourKeyForPath, requestPageTour } from "../../utils/pageTours";
 import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon, YoutubeIcon } from "../common/SocialIcons";
 import "./Footer.css";
 
@@ -88,6 +89,7 @@ function FooterSection({ id, icon, title, isCompact, isOpen, onToggle, className
 
 function Footer() {
   const location = useLocation();
+  const hasPageTour = Boolean(getTourKeyForPath(location.pathname));
   const { user } = useAuth();
   const isCompact = useCompactFooter();
   const [openSection, setOpenSection] = useState(null);
@@ -166,6 +168,13 @@ function Footer() {
             <li>
               <Link to="/faq">FAQ</Link>
             </li>
+            {hasPageTour && (
+              <li>
+                <button type="button" className="footer-tour-link" onClick={requestPageTour}>
+                  Show me around this page
+                </button>
+              </li>
+            )}
             <li>
               <Link to={user ? "/account" : "/login"}>My Account</Link>
             </li>

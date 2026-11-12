@@ -208,108 +208,110 @@ export default function AdminUnmatchedPayments() {
               <p style={{ margin: "4px 0 0", fontSize: "13px" }}>All captured payments match an order in the store.</p>
             </div>
           ) : (
-            <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", textAlign: "left", fontSize: "12px", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
-                  <th style={{ padding: "12px 16px" }}>Date</th>
-                  <th style={{ padding: "12px 16px" }}>Razorpay Payment ID</th>
-                  <th style={{ padding: "12px 16px" }}>Amount</th>
-                  <th style={{ padding: "12px 16px" }}>Customer</th>
-                  <th style={{ padding: "12px 16px" }}>Status</th>
-                  <th style={{ padding: "12px 16px" }}>Resolution Details</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const isBusy = busyId === item._id;
-                  const formattedAmount = `₹${((Number(item.amountMinor) || 0) / 100).toFixed(2)}`;
+            <div className="table-scroll">
+              <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", textAlign: "left", fontSize: "12px", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "12px 16px" }}>Date</th>
+                    <th style={{ padding: "12px 16px" }}>Razorpay Payment ID</th>
+                    <th style={{ padding: "12px 16px" }}>Amount</th>
+                    <th style={{ padding: "12px 16px" }}>Customer</th>
+                    <th style={{ padding: "12px 16px" }}>Status</th>
+                    <th style={{ padding: "12px 16px" }}>Resolution Details</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const isBusy = busyId === item._id;
+                    const formattedAmount = `₹${((Number(item.amountMinor) || 0) / 100).toFixed(2)}`;
 
-                  return (
-                    <tr key={item._id} style={{ borderBottom: "1px solid #f1f5f9", fontSize: "13px" }}>
-                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap", color: "#64748b" }}>
-                        {formatDateTime(item.capturedAt || item.createdAt)}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontWeight: 600 }}>
-                          {item.razorpayPaymentId || "—"}
-                        </code>
-                        <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
-                          Order ID: {item.razorpayOrderId}
-                        </div>
-                      </td>
-                      <td style={{ padding: "12px 16px", fontWeight: 700, color: "#0f172a" }}>
-                        {formattedAmount}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        {item.user ? (
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{item.user.name || "Customer"}</div>
-                            <div style={{ fontSize: "11px", color: "#64748b" }}>{item.user.email}</div>
+                    return (
+                      <tr key={item._id} style={{ borderBottom: "1px solid #f1f5f9", fontSize: "13px" }}>
+                        <td style={{ padding: "12px 16px", whiteSpace: "nowrap", color: "#64748b" }}>
+                          {formatDateTime(item.capturedAt || item.createdAt)}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", fontWeight: 600 }}>
+                            {item.razorpayPaymentId || "—"}
+                          </code>
+                          <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                            Order ID: {item.razorpayOrderId}
                           </div>
-                        ) : (
-                          <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Guest / Unlinked</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        {getStatusBadge(item.status)}
-                      </td>
-                      <td style={{ padding: "12px 16px", maxWidth: "240px", fontSize: "12px" }}>
-                        {item.status === "refunded" ? (
-                          <div style={{ color: "#15803d" }}>
-                            <div><strong>Refund ID:</strong> {item.refundId || "Completed"}</div>
-                            <div style={{ fontSize: "11px", color: "#64748b" }}>By: {item.resolvedBy || "Super Admin"}</div>
-                          </div>
-                        ) : item.status === "resolved" ? (
-                          <div>
-                            <div style={{ color: "#334155", fontStyle: "italic" }}>"{item.resolutionNote}"</div>
-                            <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>By: {item.resolvedBy || "Admin"}</div>
-                          </div>
-                        ) : (
-                          <span style={{ color: "#94a3b8" }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {item.status === "refunding" ? (
-                          <span style={{ fontSize: "12px", color: "#d97706", fontStyle: "italic" }}>
-                            Refund in progress — check Razorpay dashboard
-                          </span>
-                        ) : item.status === "orphan" ? (
-                          <div style={{ display: "inline-flex", gap: "6px" }}>
-                            {isSuperAdmin && (
+                        </td>
+                        <td style={{ padding: "12px 16px", fontWeight: 700, color: "#0f172a" }}>
+                          {formattedAmount}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {item.user ? (
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{item.user.name || "Customer"}</div>
+                              <div style={{ fontSize: "11px", color: "#64748b" }}>{item.user.email}</div>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Guest / Unlinked</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {getStatusBadge(item.status)}
+                        </td>
+                        <td style={{ padding: "12px 16px", maxWidth: "240px", fontSize: "12px" }}>
+                          {item.status === "refunded" ? (
+                            <div style={{ color: "#15803d" }}>
+                              <div><strong>Refund ID:</strong> {item.refundId || "Completed"}</div>
+                              <div style={{ fontSize: "11px", color: "#64748b" }}>By: {item.resolvedBy || "Super Admin"}</div>
+                            </div>
+                          ) : item.status === "resolved" ? (
+                            <div>
+                              <div style={{ color: "#334155", fontStyle: "italic" }}>"{item.resolutionNote}"</div>
+                              <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>By: {item.resolvedBy || "Admin"}</div>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#94a3b8" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          {item.status === "refunding" ? (
+                            <span style={{ fontSize: "12px", color: "#d97706", fontStyle: "italic" }}>
+                              Refund in progress — check Razorpay dashboard
+                            </span>
+                          ) : item.status === "orphan" ? (
+                            <div style={{ display: "inline-flex", gap: "6px" }}>
+                              {isSuperAdmin && (
+                                <button
+                                  type="button"
+                                  className="admin-btn"
+                                  style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#dc2626", color: "#ffffff", border: "none", borderRadius: "4px" }}
+                                  disabled={isBusy}
+                                  onClick={() => handleRefund(item)}
+                                  title="Process Razorpay refund"
+                                >
+                                  <RotateCcw size={12} style={{ display: "inline", marginRight: "3px" }} />
+                                  {isBusy ? "Processing..." : "Refund"}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="admin-btn"
-                                style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#dc2626", color: "#ffffff", border: "none", borderRadius: "4px" }}
+                                style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#0284c7", color: "#ffffff", border: "none", borderRadius: "4px" }}
                                 disabled={isBusy}
-                                onClick={() => handleRefund(item)}
-                                title="Process Razorpay refund"
+                                onClick={() => handleResolve(item)}
+                                title="Mark resolved with a note"
                               >
-                                <RotateCcw size={12} style={{ display: "inline", marginRight: "3px" }} />
-                                {isBusy ? "Processing..." : "Refund"}
+                                <CheckCircle size={12} style={{ display: "inline", marginRight: "3px" }} />
+                                {isBusy ? "Saving..." : "Resolve"}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              className="admin-btn"
-                              style={{ padding: "4px 8px", fontSize: "11px", backgroundColor: "#0284c7", color: "#ffffff", border: "none", borderRadius: "4px" }}
-                              disabled={isBusy}
-                              onClick={() => handleResolve(item)}
-                              title="Mark resolved with a note"
-                            >
-                              <CheckCircle size={12} style={{ display: "inline", marginRight: "3px" }} />
-                              {isBusy ? "Saving..." : "Resolve"}
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>Completed</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: "11px", color: "#94a3b8" }}>Completed</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
           {!isLoading && items.length > 0 ? (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid #e2e8f0" }}>

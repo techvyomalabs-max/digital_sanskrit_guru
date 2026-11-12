@@ -375,6 +375,7 @@ function AdminDashboard() {
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isPricingUnlocked, setIsPricingUnlocked] = useState(false);
   const [savedPricingSettings, setSavedPricingSettings] = useState(null);
+  const [currencyRatesMeta, setCurrencyRatesMeta] = useState(null);
   const [pricingSettings, setPricingSettings] = useState(() => formatPricingSettingsFromData({}));
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [isGettingWarehouseLocation, setIsGettingWarehouseLocation] = useState(false);
@@ -470,6 +471,7 @@ function AdminDashboard() {
         const formatted = formatPricingSettingsFromData(res.data);
         setPricingSettings(formatted);
         setSavedPricingSettings(formatted);
+        setCurrencyRatesMeta(res.data?.currencyRatesMeta || null);
       })
       .catch(() => {
         if (!active) return;
@@ -1552,6 +1554,16 @@ function AdminDashboard() {
                   </label>
                 ))}
               </div>
+              <p className="pricing-currency-rates-note">
+                {currencyRatesMeta?.updatedAt
+                  ? `USD is updated automatically every 6 hours from ${currencyRatesMeta.source || "a live source"} (now 1 USD = ₹${
+                      Number(pricingSettings.currencyConversionRates?.USD) > 0
+                        ? (1 / Number(pricingSettings.currencyConversionRates.USD)).toFixed(2)
+                        : "-"
+                    }, last updated ${new Date(currencyRatesMeta.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}). A rate you type here is replaced at the next update.`
+                  : "USD is updated automatically every 6 hours from a live rate source once the server has fetched it."}
+                {currencyRatesMeta?.lastError ? ` Note: ${currencyRatesMeta.lastError}.` : ""}
+              </p>
             </div>
           </div>
 

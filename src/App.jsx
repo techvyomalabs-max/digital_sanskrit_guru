@@ -11,6 +11,7 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import SeoTags from "./components/common/SeoTags";
 import LoadingSpinner from "./components/common/LoadingSpinner";
 import CookieConsent from "./components/layout/CookieConsent";
+import PageTour from "./components/layout/PageTour";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CartPopup from "./components/ui/CartPopup";
 import AdminRoute from "./components/AdminRoute";
@@ -506,6 +507,7 @@ function App() {
       <NetworkNotice />
       <CookieConsent />
       <CartPopup />
+      <PageTour />
     </BrowserRouter>
   );
 }

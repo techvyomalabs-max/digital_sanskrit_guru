@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { invoiceCounterId, formatInvoiceNumber, creditNoteCounterId, formatCreditNoteNumber } = require("../utils/invoiceNumber");
+const { isInvoiceDue, invoiceStateFor, invoiceDateFor, canIssueCreditNote } = require("../utils/invoiceTiming");
 
 const counterSchema = new mongoose.Schema({
   _id: { type: String, required: true },
@@ -366,11 +367,25 @@ const orderSchema = new mongoose.Schema(
       unique: true,
       sparse: true
     },
-    // When the tax invoice was issued: the moment payment succeeded (India time decides its
-    // financial year). Older orders don't have it; their invoice date is createdAt.
+    // The date on the tax invoice (India time decides its financial year). Invoices are issued
+    // when the order ships (digital-only: when access is given) and dated the day the order was
+    // placed; see utils/invoiceTiming.js. Older orders were dated when payment succeeded, and
+    // some don't have it at all (their invoice date is createdAt).
     invoiceIssuedAt: {
       type: Date,
       default: null
+    },
+    // When the invoice number was actually given (audit; the printed date is invoiceIssuedAt)
+    invoiceGeneratedAt: {
+      type: Date,
+      default: null
+    },
+    // "" = older order; "awaiting" = paid, invoice not due yet; "issued"; "not-required" =
+    // cancelled/refunded before it was invoiced (no invoice, so no credit note either)
+    invoiceState: {
+      type: String,
+      enum: ["", "awaiting", "issued", "not-required"],
+      default: ""
     },
     taxDetails: {
       hsnCode: { type: String, default: "4901" },
@@ -487,20 +502,32 @@ orderSchema.pre("save", async function() {
   checkLocks(self);
   recordPaymentChange(self, now);
 
-  // A tax invoice is issued only once payment has succeeded, so the numbers run without gaps
-  // (unpaid or failed checkouts never take one). Covers orders created as paid and orders
-  // marked paid later. An order that already has a number keeps it.
-  if (!self.invoiceNumber && self.paymentStatus === "Paid") {
-    // GST invoice number by financial year in India time, e.g. DSG/2026-27/0001.
-    // Each financial year has its own counter, so the number restarts at 0001 every 1 April.
-    self.invoiceIssuedAt = now;
-    self.invoiceNumber = await nextFreeInvoiceNumber(self.constructor, now);
+  // The tax invoice is issued when the order ships (digital-only: when access is given), so
+  // the numbers run without gaps: unpaid, failed and cancelled-before-dispatch orders never
+  // take one. It is dated the day the order was placed and numbered in that date's financial
+  // year (DSG/2026-27/0001; each year restarts at 0001), skipping any number already in use.
+  // An order that has a number keeps it.
+  let invoiceJustIssued = false;
+  if (!self.invoiceNumber && isInvoiceDue(self)) {
+    invoiceJustIssued = true;
+    const invoiceDate = invoiceDateFor(self, now);
+    self.invoiceIssuedAt = invoiceDate;
+    self.invoiceGeneratedAt = now;
+    self.invoiceNumber = await nextFreeInvoiceNumber(self.constructor, invoiceDate);
+  }
+  // Older orders (state "") keep their state unless something changes about their invoice
+  if (self.invoiceState || !self.invoiceNumber || self.isNew) {
+    self.invoiceState = invoiceStateFor(self);
   }
 
-  // Each refund recorded gets a credit note number from its own series, in the order the
-  // refunds happened, dated when the refund was recorded.
+  // Each refund on an invoiced order gets a credit note number from its own series, in the
+  // order the refunds happened, dated when the refund was recorded. A refund before the order
+  // was invoiced gets none (nothing was invoiced to reverse); if the order is invoiced later,
+  // its earlier refunds get theirs then.
   const refunds = self.paymentMeta?.refunds;
-  if (Array.isArray(refunds) && refunds.length && (self.isNew || self.isModified("paymentMeta.refunds") || self.isModified("paymentMeta"))) {
+  const missingCreditNote = Array.isArray(refunds) && refunds.some((r) => r && !r.creditNoteNumber);
+  const refundsChanged = self.isNew || self.isModified("paymentMeta.refunds") || self.isModified("paymentMeta");
+  if (canIssueCreditNote(self) && missingCreditNote && (refundsChanged || invoiceJustIssued)) {
     const pending = refunds
       .filter((r) => r && !r.creditNoteNumber)
       .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0));

@@ -40,7 +40,10 @@ export default function AdminRefundModal({
 
   const unreceivedPhysicalItems = useMemo(() => {
     if (!isOrderShippedOrDelivered) return [];
-    return selectedItemsList.filter((it) => !it.isDigital && it.returnRequest?.status !== "Received");
+    // A damaged item worth up to ₹300 is refunded without coming back (same rule as the server)
+    return selectedItemsList.filter(
+      (it) => !it.isDigital && it.returnRequest?.keepItem !== true && it.returnRequest?.status !== "Received"
+    );
   }, [isOrderShippedOrDelivered, selectedItemsList]);
 
   const isReceiptBlocked = unreceivedPhysicalItems.length > 0;
@@ -415,6 +418,25 @@ export default function AdminRefundModal({
                                 {returnStatus}{it.returnRequest?.condition ? ` (${it.returnRequest.condition})` : ""}
                               </span>
                             )}
+                            {it.returnRequest?.damaged && (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: it.returnRequest.keepItem ? "#fef3c7" : "#fee2e2",
+                                  color: it.returnRequest.keepItem ? "#92400e" : "#991b1b",
+                                  fontWeight: 600
+                                }}
+                                title={
+                                  it.returnRequest.keepItem
+                                    ? "Damaged, worth up to ₹300: refund or replace it on the customer's photos; they keep the item"
+                                    : "Damaged, worth over ₹300: the customer posts it to the office first (at their cost), then refund or replace it"
+                                }
+                              >
+                                {it.returnRequest.keepItem ? "Damaged · customer keeps it" : "Damaged · must be returned"}
+                              </span>
+                            )}
                             <span style={{ fontWeight: 600, color: "#0f172a" }}>
                               ₹{(Number(it.price || 0) * Number(it.quantity || 1)).toFixed(2)}
                             </span>
@@ -486,7 +508,7 @@ export default function AdminRefundModal({
                       <AlertTriangle size={14} className="ui-inline-icon" aria-hidden="true" />Gateway fee unavailable; no fee deducted.
                     </div>
                   )}
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
+                  <div className="table-scroll"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
                     <tbody>
                       {quote.lines?.map((line, idx) => (
                         <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
@@ -503,7 +525,7 @@ export default function AdminRefundModal({
                         </td>
                       </tr>
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
               ) : null}
             </div>

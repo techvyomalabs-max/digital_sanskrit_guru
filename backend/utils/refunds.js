@@ -264,10 +264,142 @@ async function processGatewayRefund({ orderId, refundAmount, reason = "Admin req
   }
 }
 
+/**
+ * Whether an admin can approve the automatic full refund for a cancelled order (pure; no DB).
+ * Rule: a paid order cancelled before it was shipped gets everything back (items, delivery,
+ * no gateway fee kept), once an admin approves it in DSG.
+ */
+function cancellationRefundEligibility(order) {
+  if (!order) return { ok: false, message: "Order not found." };
+  if (String(order.status || "") !== "Cancelled") {
+    return { ok: false, message: "Only cancelled orders can get the cancellation refund." };
+  }
+  if (order.paymentStatus !== "Paid") {
+    return { ok: false, message: "This order was not paid, so there is nothing to refund." };
+  }
+  if (order.shippedAt || order.deliveredAt) {
+    return { ok: false, message: "This order was shipped before it was cancelled. Use a return refund instead." };
+  }
+  const total = Number(order.totalInInr || order.total || 0);
+  const refunded = Number(order.refundedAmountInInr || 0);
+  const remaining = Math.max(0, Math.round((total - refunded) * 100) / 100);
+  if (String(order.refundStatus || "") === "Refunded" || remaining <= 0) {
+    return { ok: false, message: "This order has already been refunded in full." };
+  }
+  return { ok: true, amount: remaining };
+}
+
+/**
+ * What to do with a Razorpay "refund.processed" webhook for an order (pure; no DB).
+ * Refunds made from the Razorpay dashboard never pass through our refund screen, so this is
+ * how they get recorded on the order (and get a GST credit note like any other refund).
+ *
+ * Returns { action, ... }:
+ * - "ignore"  nothing to change (reason says why: already recorded, not INR, ...)
+ * - "review"  money moved but it can't be recorded automatically; an admin must look
+ * - "record"  record it: { entry, refundedAmountInInr, refundStatus }
+ */
+function planWebhookRefund(order, refund) {
+  const refundId = String(refund?.id || "").trim();
+  const amountMinor = Number(refund?.amount);
+  const currency = String(refund?.currency || "INR").toUpperCase();
+
+  if (!refundId || !Number.isInteger(amountMinor) || amountMinor <= 0) {
+    return { action: "ignore", reason: "invalid-refund" };
+  }
+  if (!order) return { action: "ignore", reason: "no-order" };
+
+  const recorded = Array.isArray(order.paymentMeta?.refunds) ? order.paymentMeta.refunds : [];
+  if (recorded.some((r) => r && String(r.refundId || "") === refundId)) {
+    return { action: "ignore", reason: "already-recorded" };
+  }
+  // Store refunds are kept in INR; a refund in another currency needs the exchange rate of the
+  // day, so it is left for an admin rather than guessed
+  if (currency !== "INR") return { action: "review", reason: "non-inr-currency" };
+  if (order.paymentStatus !== "Paid") return { action: "review", reason: "order-not-paid" };
+
+  const totalInInr = Number(order.totalInInr || order.total || 0);
+  const alreadyRefunded = Number(order.refundedAmountInInr || 0);
+  const refundedAmountInInr = Math.round((alreadyRefunded * 100 + amountMinor)) / 100;
+  if (refundedAmountInInr > totalInInr + 0.01) {
+    return { action: "review", reason: "exceeds-order-total" };
+  }
+
+  // Refunds should be made in DSG; one that arrives only by webhook was made elsewhere
+  const note = String(refund?.notes?.reason || "").trim();
+  const reason = `Refunded outside DSG (Razorpay dashboard)${note ? `: ${note}` : ""}`;
+  return {
+    action: "record",
+    refundedAmountInInr,
+    refundStatus: refundedAmountInInr >= totalInInr - 0.01 ? "Refunded" : "Partially Refunded",
+    entry: {
+      refundId,
+      amountMinor,
+      currency: "INR",
+      method: "razorpay",
+      reference: refundId,
+      reason: reason.slice(0, 255),
+      byEmail: "razorpay-webhook",
+      at: refund?.created_at ? new Date(Number(refund.created_at) * 1000) : new Date(),
+      itemIds: []
+    }
+  };
+}
+
+/**
+ * Records a processed Razorpay refund on its order (from the webhook). Uses the same refund
+ * lock as the refund screen, so a refund an admin is making right now is never counted twice:
+ * if the order is locked this throws a 409 RefundError and Razorpay retries the webhook later.
+ */
+async function recordWebhookRefund(refund) {
+  const paymentId = String(refund?.payment_id || "").trim();
+  if (!paymentId) return { action: "ignore", reason: "no-payment-id" };
+
+  const candidate = await Order.findOne({
+    $or: [{ "paymentMeta.razorpayPaymentId": paymentId }, { razorpayPaymentId: paymentId }]
+  }).select("_id").lean();
+  if (!candidate) return { action: "ignore", reason: "no-order" };
+
+  const { order: lockedOrder, token } = await acquireRefundLock(candidate._id, "razorpay-webhook");
+  try {
+    const plan = planWebhookRefund(lockedOrder, refund);
+    if (plan.action !== "record") return { ...plan, orderId: String(lockedOrder._id) };
+
+    if (!lockedOrder.paymentMeta) lockedOrder.paymentMeta = {};
+    if (!Array.isArray(lockedOrder.paymentMeta.refunds)) lockedOrder.paymentMeta.refunds = [];
+    lockedOrder.paymentMeta.refunds.push(plan.entry);
+
+    lockedOrder.refundedAmountInInr = plan.refundedAmountInInr;
+    lockedOrder.refundStatus = plan.refundStatus;
+    lockedOrder.paymentMeta.refundedAmountMinor = Math.round(plan.refundedAmountInInr * 100);
+    lockedOrder.paymentMeta.refundMethod = "razorpay";
+    lockedOrder.paymentMeta.razorpayRefundId = plan.entry.refundId;
+    lockedOrder.paymentMeta.refundedAt = new Date();
+    lockedOrder.lastUpdatedByName = "Razorpay (webhook)";
+    lockedOrder.lastUpdatedByEmail = "razorpay-webhook";
+    lockedOrder.lastUpdatedAt = new Date();
+
+    // The order's save hook gives the new refund its credit note number
+    const saved = await lockedOrder.save();
+    const entry = saved.paymentMeta.refunds.find((r) => r.refundId === plan.entry.refundId);
+    return {
+      action: "recorded",
+      orderId: String(saved._id),
+      refundStatus: saved.refundStatus,
+      creditNoteNumber: entry?.creditNoteNumber || ""
+    };
+  } finally {
+    await releaseRefundLock(candidate._id, token);
+  }
+}
+
 module.exports = {
   RefundError,
   previewRefund,
   processGatewayRefund,
   acquireRefundLock,
-  releaseRefundLock
+  releaseRefundLock,
+  cancellationRefundEligibility,
+  planWebhookRefund,
+  recordWebhookRefund
 };
