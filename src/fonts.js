@@ -1,63 +1,7 @@
-/* Self-hosted web fonts (from @fontsource), replacing the render-blocking Google Fonts
- * stylesheet. Same families and weights as before; only the Latin, Latin Extended and
- * Devanagari subsets are included, and the browser downloads a file only when a page
- * actually uses that weight and those characters (unicode-range). font-display: swap. */
-import "@fontsource/cinzel/latin-500.css";
-import "@fontsource/cinzel/latin-ext-500.css";
-import "@fontsource/cinzel/latin-600.css";
-import "@fontsource/cinzel/latin-ext-600.css";
-import "@fontsource/cinzel/latin-700.css";
-import "@fontsource/cinzel/latin-ext-700.css";
-import "@fontsource/cinzel/latin-800.css";
-import "@fontsource/cinzel/latin-ext-800.css";
-import "@fontsource/cinzel/latin-900.css";
-import "@fontsource/cinzel/latin-ext-900.css";
-import "@fontsource/montserrat/latin-600.css";
-import "@fontsource/montserrat/latin-ext-600.css";
-import "@fontsource/montserrat/latin-700.css";
-import "@fontsource/montserrat/latin-ext-700.css";
-import "@fontsource/montserrat/latin-800.css";
-import "@fontsource/montserrat/latin-ext-800.css";
-import "@fontsource/montserrat/latin-900.css";
-import "@fontsource/montserrat/latin-ext-900.css";
-import "@fontsource/playfair-display/latin-600.css";
-import "@fontsource/playfair-display/latin-ext-600.css";
-import "@fontsource/playfair-display/latin-700.css";
-import "@fontsource/playfair-display/latin-ext-700.css";
-import "@fontsource/playfair-display/latin-800.css";
-import "@fontsource/playfair-display/latin-ext-800.css";
-import "@fontsource/playfair-display/latin-600-italic.css";
-import "@fontsource/playfair-display/latin-ext-600-italic.css";
-import "@fontsource/playfair-display/latin-700-italic.css";
-import "@fontsource/playfair-display/latin-ext-700-italic.css";
-import "@fontsource/source-sans-3/latin-300.css";
-import "@fontsource/source-sans-3/latin-ext-300.css";
-import "@fontsource/source-sans-3/latin-400.css";
-import "@fontsource/source-sans-3/latin-ext-400.css";
-import "@fontsource/source-sans-3/latin-500.css";
-import "@fontsource/source-sans-3/latin-ext-500.css";
-import "@fontsource/source-sans-3/latin-600.css";
-import "@fontsource/source-sans-3/latin-ext-600.css";
-import "@fontsource/source-sans-3/latin-700.css";
-import "@fontsource/source-sans-3/latin-ext-700.css";
-import "@fontsource/source-sans-3/latin-800.css";
-import "@fontsource/source-sans-3/latin-ext-800.css";
-import "@fontsource/source-sans-3/latin-900.css";
-import "@fontsource/source-sans-3/latin-ext-900.css";
-import "@fontsource/source-sans-3/latin-300-italic.css";
-import "@fontsource/source-sans-3/latin-ext-300-italic.css";
-import "@fontsource/source-sans-3/latin-400-italic.css";
-import "@fontsource/source-sans-3/latin-ext-400-italic.css";
-import "@fontsource/source-sans-3/latin-500-italic.css";
-import "@fontsource/source-sans-3/latin-ext-500-italic.css";
-import "@fontsource/source-sans-3/latin-600-italic.css";
-import "@fontsource/source-sans-3/latin-ext-600-italic.css";
-import "@fontsource/source-sans-3/latin-700-italic.css";
-import "@fontsource/source-sans-3/latin-ext-700-italic.css";
-import "@fontsource/source-sans-3/latin-800-italic.css";
-import "@fontsource/source-sans-3/latin-ext-800-italic.css";
-import "@fontsource/source-sans-3/latin-900-italic.css";
-import "@fontsource/source-sans-3/latin-ext-900-italic.css";
+/* Self-hosted web fonts (replacing the render-blocking Google Fonts stylesheet).
+ * Latin families are variable fonts declared in fonts.css under their usual names;
+ * Tiro Devanagari Sanskrit has no variable version, and only weight 400 is used. */
+import "./fonts.css";
 import "@fontsource/tiro-devanagari-sanskrit/devanagari-400.css";
 import "@fontsource/tiro-devanagari-sanskrit/latin-400.css";
 import "@fontsource/tiro-devanagari-sanskrit/latin-ext-400.css";

@@ -533,7 +533,7 @@ function Home() {
             <span className="home-section-kicker">Most trusted</span>
             <h2>Top Rated Picks</h2>
           </div>
-          <Link to="/collection" className="home-inline-link">See more</Link>
+          <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> top rated picks</span></Link>
         </div>
 
         <div className="home-slider-wrapper">
@@ -576,7 +576,7 @@ function Home() {
               <span className="home-section-kicker">Fresh drop</span>
               <h2>New Arrivals</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> new arrivals</span></Link>
           </div>
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts ? (
@@ -635,7 +635,7 @@ function Home() {
               <span className="home-section-kicker">Best value</span>
               <h2>Budget Picks</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> budget picks</span></Link>
           </div>
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts ? (
@@ -707,7 +707,7 @@ function Home() {
                 <span className="home-section-kicker">Seasonal picks</span>
                 <h2>Festive Offers</h2>
               </div>
-              <Link to="/collection" className="home-inline-link">See more</Link>
+              <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> festive offers</span></Link>
             </div>
 
             <div className="home-slider-wrapper">
@@ -761,7 +761,7 @@ function Home() {
               <span className="home-section-kicker">Bundle deals</span>
               <h2>Bundle Products</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> bundle products</span></Link>
           </div>
 
           <div className="home-slider-wrapper">
@@ -821,7 +821,7 @@ function Home() {
               <span className="home-section-kicker">Catalog</span>
               <h2>Browse the Collection</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> of the collection</span></Link>
           </div>
 
           <div className="home-slider-wrapper">
