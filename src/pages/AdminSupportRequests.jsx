@@ -93,7 +93,7 @@ function AdminSupportRequests() {
   return (
     <div className="admin-layout">
       <AdminSidebar />
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <div>
             <h1><HandHeart size={24} className="ui-inline-icon" aria-hidden="true" />Support Requests</h1>
@@ -213,7 +213,7 @@ function AdminSupportRequests() {
             </button>
           </nav>
         )}
-      </main>
+      </div>
     </div>
   );
 }

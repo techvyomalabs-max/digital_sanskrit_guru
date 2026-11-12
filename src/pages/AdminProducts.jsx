@@ -313,7 +313,7 @@ function AdminProducts() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header" style={{ marginBottom: "20px" }}>
           <div>
             <h1>Warehouse Management</h1>
@@ -663,7 +663,7 @@ function AdminProducts() {
             )}
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

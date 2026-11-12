@@ -340,7 +340,7 @@ function AdminOrderDetails() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main admin-order-details-page">
+      <div className="admin-main admin-order-details-page">
         <header className="aod-head">
           <div className="aod-head-main">
             <p className="aod-kicker">Order details</p>
@@ -995,7 +995,7 @@ function AdminOrderDetails() {
           onSuccess={(updatedOrder) => setOrder(updatedOrder)}
           onReload={reloadOrder}
         />
-      </main>
+      </div>
     </div>
   );
 }

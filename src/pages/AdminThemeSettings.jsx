@@ -816,7 +816,7 @@ function AdminThemeSettings() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <h1>Theme & Site Settings</h1>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
@@ -2310,7 +2310,7 @@ function AdminThemeSettings() {
             </p>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

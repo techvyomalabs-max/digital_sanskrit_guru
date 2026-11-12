@@ -21,7 +21,34 @@
  *   formats, categories, and website services.
  */
 
-import { lookupProductTranslation } from "./productTranslations.js";
+// The product-title translation table is large (~270 KB), so it is kept out of the
+// main bundle and loaded in the background once the page has finished loading.
+// Until it arrives, whole-title translation matches are skipped and the other
+// matching steps below still run.
+let lookupProductTranslation = () => null;
+let translationsPromise = null;
+
+export function loadProductTranslations() {
+  if (!translationsPromise) {
+    translationsPromise = import("./productTranslations.js")
+      .then((mod) => {
+        lookupProductTranslation = mod.lookupProductTranslation;
+      })
+      .catch(() => {
+        translationsPromise = null; // allow a retry on the next call
+      });
+  }
+  return translationsPromise;
+}
+
+if (typeof window !== "undefined") {
+  const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 2000));
+  const schedule = () => idle(() => loadProductTranslations(), { timeout: 5000 });
+  if (document.readyState === "complete") schedule();
+  else window.addEventListener("load", schedule, { once: true });
+} else {
+  loadProductTranslations(); // Node (tests, scripts): no page load to wait for
+}
 
 // Unicode ranges for Indian Brahmic scripts
 export const SCRIPT_CONFIGS = [

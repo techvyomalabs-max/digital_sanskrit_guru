@@ -2,11 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Google Tag Manager -->
+    <!-- Google Tag Manager — loaded after the page has finished loading, so its ~300 KB of
+         scripts (GTM + gtag) don't compete with the store's own JS and images.
+         Events pushed to dataLayer before then are queued and still sent. -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    new Date().getTime(),event:'gtm.js'});var load=function(){var f=d.getElementsByTagName(s)[0],
     j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);};
+    var later=function(){(w.requestIdleCallback||function(cb){setTimeout(cb,1500);})(load,{timeout:3000});};
+    if(d.readyState==='complete'){later();}else{w.addEventListener('load',later,{once:true});}
     })(window,document,'script','dataLayer','GTM-MRSLKKT9');</script>
     <!-- End Google Tag Manager -->
 
@@ -62,6 +66,37 @@
         } catch(e) {
           document.documentElement.setAttribute("data-site-theme", "sunrise");
         }
+      })();
+    </script>
+
+    <!-- Home page: start loading the home data (and the hero banner image) right away,
+         instead of waiting for the JS bundle and the Home chunk to download first.
+         Home.jsx picks up window.__dsgHomePrefetch and falls back to its own request. -->
+    <script>
+      (function() {
+        try {
+          if (location.pathname !== "/" || !window.fetch) return;
+          var base = "%VITE_API_BASE_URL%";
+          if (base.charAt(0) === "%") base = ""; // env var not set: same-origin API
+          base = base.trim().replace(/\/$/, "");
+          var request = fetch(base + "/api/products/home")
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+              var banner = data && Array.isArray(data.heroBanners) ? data.heroBanners[0] : null;
+              if (banner && banner.image) {
+                var isMobile = window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
+                var link = document.createElement("link");
+                link.rel = "preload";
+                link.as = "image";
+                link.href = isMobile && banner.mobileImage ? banner.mobileImage : banner.image;
+                link.setAttribute("fetchpriority", "high");
+                document.head.appendChild(link);
+              }
+              return data;
+            });
+          request.catch(function() {});
+          window.__dsgHomePrefetch = request;
+        } catch (e) {}
       })();
     </script>
 

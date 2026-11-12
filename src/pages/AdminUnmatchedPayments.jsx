@@ -137,7 +137,7 @@ export default function AdminUnmatchedPayments() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <header className="admin-page-header" style={{ marginBottom: "20px" }}>
           <div>
             <h1 style={{ display: "flex", alignItems: "center", gap: "10px", margin: 0, fontSize: "24px" }}>
@@ -331,7 +331,7 @@ export default function AdminUnmatchedPayments() {
             </div>
           ) : null}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

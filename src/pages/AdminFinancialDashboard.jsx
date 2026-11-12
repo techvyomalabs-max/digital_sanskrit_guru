@@ -349,7 +349,7 @@ function AdminFinancialDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         {/* Header & Period Bar */}
         <header className="fin-header-wrap">
           <div>
@@ -1014,7 +1014,7 @@ function AdminFinancialDashboard() {
             </div>
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

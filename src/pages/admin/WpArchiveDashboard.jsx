@@ -160,7 +160,7 @@ function WpArchiveDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main" style={{ padding: "24px" }}>
+      <div className="admin-main" style={{ padding: "24px" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "24px" }}>
           <div>
@@ -557,7 +557,7 @@ function WpArchiveDashboard() {
             </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

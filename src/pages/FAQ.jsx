@@ -501,7 +501,7 @@ export default function FAQ() {
       </section>
 
       {/* ── 3. RESOLUTION ANSWER CARD ──────────────────────────── */}
-      <main className="faq-resolution-stage" ref={cardRef}>
+      <div className="faq-resolution-stage" ref={cardRef}>
         {currentQuestion && (
           <article className="faq-answer-canvas">
             {/* Top Row Meta */}
@@ -649,7 +649,7 @@ export default function FAQ() {
             </div>
           </article>
         )}
-      </main>
+      </div>
 
       {/* ── 4. CUSTOMER SUPPORT BANNER (FOOTER) ────────────────── */}
       <footer className="faq-support-footer-banner">

@@ -11,7 +11,7 @@ function TermsAndConditions() {
   );
 
   return (
-    <main className="policy-page terms-policy-page">
+    <div className="policy-page terms-policy-page">
       <div className="policy-container">
         {/* Header Hero Section */}
         <header className="policy-header">
@@ -195,7 +195,7 @@ function TermsAndConditions() {
           <Link to="/contact" className="policy-nav-link">Contact Seva</Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
