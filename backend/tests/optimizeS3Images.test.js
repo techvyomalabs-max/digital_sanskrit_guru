@@ -9,7 +9,8 @@ const {
   backupKeyFor,
   originalKeyFor,
   resizeTarget,
-  optimizeBuffer
+  optimizeBuffer,
+  keysFromDocument
 } = require("../scripts/optimize-s3-images");
 
 const PREFIX = "dsg/production";
@@ -32,6 +33,23 @@ describe("optimize-s3-images", () => {
     assert.equal(isOptimizableKey("dsg/production/private/return-evidence/u.jpg", PREFIX), false);
     assert.equal(isOptimizableKey("dsg/staging/migrated/abc.jpg", PREFIX), false);
     assert.equal(isOptimizableKey("dsg/production/downloads/book.pdf", PREFIX), false);
+  });
+
+  test("keysFromDocument finds CDN image keys anywhere in a document", () => {
+    const cdn = "https://d1.cloudfront.net";
+    const doc = {
+      image: `${cdn}/dsg/production/migrated/a.jpg`,
+      images: [`${cdn}/dsg/production/product/b.png?v=2`, "https://other.example/c.jpg"],
+      heroBanners: [{ image: `${cdn}/dsg/production/banner/d.webp`, mobileImage: `${cdn}/dsg/production/banner/d.webp` }],
+      evidence: `${cdn}/dsg/production/private/return-evidence/e.jpg`,
+      staging: `${cdn}/dsg/staging/migrated/f.jpg`,
+      pdf: `${cdn}/dsg/production/downloads/g.pdf`
+    };
+    assert.deepEqual([...keysFromDocument(doc, cdn, PREFIX)].sort(), [
+      "dsg/production/banner/d.webp",
+      "dsg/production/migrated/a.jpg",
+      "dsg/production/product/b.png"
+    ]);
   });
 
   test("backup keys round-trip", () => {
