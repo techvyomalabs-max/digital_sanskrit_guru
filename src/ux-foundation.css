@@ -304,13 +304,14 @@ button:disabled,
   }
 }
 
+/* Movement only, no fade: sections still below the fold would otherwise sit at
+   low opacity, and accessibility checkers (PageSpeed / axe) read their text as
+   failing colour contrast even though visitors only ever see it fully opaque. */
 @keyframes ux-rise-in {
   from {
-    opacity: 0.25;
     translate: 0 26px;
   }
   to {
-    opacity: 1;
     translate: none;
   }
 }
