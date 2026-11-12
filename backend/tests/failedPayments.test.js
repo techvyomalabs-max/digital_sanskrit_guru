@@ -6,6 +6,7 @@ const {
   recordFailedPayment,
   findOwnedIntent,
   noteUnpaidCheckout,
+  linkPaidCheckout,
   describePaymentAttempts
 } = require("../utils/failedPayments");
 
@@ -165,5 +166,47 @@ describe("failed payments: admin order page", () => {
     assert.equal(attempts[1].lastFailure, null);
     assert.equal(attempts[2].lastFailure.paymentId, "pay_F1");
     assert.equal(attempts[2].failedAttempts, 2);
+  });
+});
+
+describe("paid checkouts", () => {
+  it("marks the checkout paid and tied to the order (no webhook needed)", async () => {
+    const calls = [];
+    const PaymentIntent = { updateOne: async (filter, update) => (calls.push({ filter, update }), { modifiedCount: 1 }) };
+    const ok = await linkPaidCheckout(
+      { razorpayOrderId: "order_PAIDCHK01", razorpayPaymentId: "pay_PAIDCHK01", orderId: ORDER },
+      { PaymentIntent }
+    );
+    assert.equal(ok, true);
+    assert.deepEqual(calls[0].filter, { razorpayOrderId: "order_PAIDCHK01", status: { $in: ["created", "captured"] } });
+    assert.deepEqual(calls[0].update, { $set: { status: "linked", razorpayPaymentId: "pay_PAIDCHK01", orderId: ORDER } });
+  });
+
+  it("ignores bad IDs and never throws", async () => {
+    let called = false;
+    const PaymentIntent = { updateOne: async () => { called = true; throw new Error("db down"); } };
+    assert.equal(await linkPaidCheckout({ razorpayOrderId: "nope" }, { PaymentIntent }), false);
+    assert.equal(called, false);
+    assert.equal(await linkPaidCheckout({ razorpayOrderId: "order_PAIDCHK01" }, { PaymentIntent, logger: { warn() {} } }), false);
+  });
+
+  it("the admin page shows the order's own payment as paid even if the webhook never updated it", () => {
+    const [attempt] = describePaymentAttempts(
+      [{ razorpayOrderId: "order_LOCAL0001", mode: "checkout", status: "created", createdAt: new Date() }],
+      { paidRazorpayOrderId: "order_LOCAL0001", paidRazorpayPaymentId: "pay_LOCAL0001" }
+    );
+    assert.equal(attempt.outcome, "paid");
+    assert.equal(attempt.razorpayPaymentId, "pay_LOCAL0001");
+  });
+
+  it("another unpaid checkout on the same order still shows as not paid", () => {
+    const attempts = describePaymentAttempts(
+      [
+        { razorpayOrderId: "order_PAIDONE01", status: "created", createdAt: new Date("2026-11-12T05:00:00Z") },
+        { razorpayOrderId: "order_CLOSED001", status: "created", createdAt: new Date("2026-11-12T04:00:00Z") }
+      ],
+      { paidRazorpayOrderId: "order_PAIDONE01", paidRazorpayPaymentId: "pay_PAIDONE01" }
+    );
+    assert.deepEqual(attempts.map((a) => a.outcome), ["paid", "closed"]);
   });
 });

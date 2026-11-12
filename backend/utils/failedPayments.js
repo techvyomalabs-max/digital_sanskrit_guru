@@ -122,13 +122,41 @@ async function noteUnpaidCheckout(
   }
 }
 
-/** What happened on each checkout of an order, for the admin order page (newest first). */
-function describePaymentAttempts(intents = []) {
+/**
+ * A verified payment was saved on an order: mark its checkout as paid and tied to that order,
+ * so the admin page shows it as paid without waiting for the webhook (which never reaches
+ * localhost). Never throws.
+ */
+async function linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId }, { PaymentIntent, logger = console }) {
+  const id = cleanRazorpayOrderId(razorpayOrderId);
+  if (!id) return false;
+  try {
+    const set = { status: "linked" };
+    const paymentId = cleanRazorpayPaymentId(razorpayPaymentId);
+    if (paymentId) set.razorpayPaymentId = paymentId;
+    if (orderId) set.orderId = orderId;
+    const result = await PaymentIntent.updateOne({ razorpayOrderId: id, status: { $in: ["created", "captured"] } }, { $set: set });
+    return Boolean(result?.modifiedCount);
+  } catch (err) {
+    logger.warn?.("[Payment] Could not mark the checkout as paid:", err?.message || err);
+    return false;
+  }
+}
+
+/**
+ * What happened on each checkout of an order, for the admin order page (newest first).
+ * The order's own verified payment counts too, for checkouts the webhook hasn't updated.
+ */
+function describePaymentAttempts(intents = [], { paidRazorpayOrderId = "", paidRazorpayPaymentId = "" } = {}) {
   return [...intents]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     .map((intent) => {
       const failure = intent.lastFailure || {};
-      const paid = Boolean(intent.razorpayPaymentId) || ["captured", "linked", "refunding", "refunded"].includes(intent.status);
+      const paidByOrder = Boolean(paidRazorpayOrderId) && intent.razorpayOrderId === paidRazorpayOrderId;
+      const paid =
+        paidByOrder ||
+        Boolean(intent.razorpayPaymentId) ||
+        ["captured", "linked", "refunding", "refunded"].includes(intent.status);
       let outcome = "closed";
       if (paid) outcome = "paid";
       else if (Number(intent.failedAttempts) > 0 || failure.paymentId) outcome = "failed";
@@ -137,7 +165,7 @@ function describePaymentAttempts(intents = []) {
         mode: intent.mode || "checkout",
         startedAt: intent.createdAt || null,
         outcome,
-        razorpayPaymentId: paid ? String(intent.razorpayPaymentId || "") : "",
+        razorpayPaymentId: paid ? String(intent.razorpayPaymentId || (paidByOrder ? paidRazorpayPaymentId : "") || "") : "",
         failedAttempts: Number(intent.failedAttempts) || 0,
         lastFailure: failure.paymentId || failure.description
           ? {
@@ -158,5 +186,6 @@ module.exports = {
   recordFailedPayment,
   findOwnedIntent,
   noteUnpaidCheckout,
+  linkPaidCheckout,
   describePaymentAttempts
 };

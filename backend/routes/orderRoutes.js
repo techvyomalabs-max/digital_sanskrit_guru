@@ -66,7 +66,7 @@ const { perWorker } = require("../utils/workerCount");
 const getRazorpayClient = require("../utils/razorpay");
 const { applyPaidPaymentMeta } = require("../utils/paidPaymentMeta");
 const PaymentIntent = require("../models/PaymentIntent");
-const { findOwnedIntent, noteUnpaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
+const { findOwnedIntent, noteUnpaidCheckout, linkPaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
@@ -739,6 +739,11 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
+    }
+
+    if (verifiedPayment) {
+      // Mark the checkout paid now (the webhook does too, but it can be late or never arrive)
+      linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
     }
 
     if (unpaidRazorpayOrderId) {
@@ -1934,6 +1939,10 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     }
   }
 
+  if (rawPaymentStatus === "Paid" && verifiedPayment && razorpayOrderId) {
+    linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
+  }
+
   if (isOwner && rawPaymentStatus === "Failed" && razorpayOrderId) {
     // A failed retry from My Orders: record the failed payment on that retry's checkout.
     noteUnpaidCheckout(
@@ -3068,7 +3077,10 @@ router.get("/:id", protect, admin, requireAdminPage("orders"), async (req, res) 
     })
       .select("razorpayOrderId razorpayPaymentId mode status failedAttempts lastFailure createdAt")
       .lean();
-    paymentAttempts = describePaymentAttempts(intents);
+    paymentAttempts = describePaymentAttempts(intents, {
+      paidRazorpayOrderId: order.paymentStatus === "Paid" || order.paymentStatus === "Refunded" ? rzpOrderId : "",
+      paidRazorpayPaymentId: String(order.paymentMeta?.razorpayPaymentId || "")
+    });
   } catch (attemptErr) {
     console.warn("[Order] Could not load payment attempts:", attemptErr?.message || attemptErr);
   }
@@ -3366,6 +3378,9 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         return res.status(409).json({ message: "This payment reference has already been applied to another order." });
       }
       throw err;
+    }
+    if (verifiedPayment) {
+      linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
     }
 
     if (rawPaymentStatus === "Paid") {
