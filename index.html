@@ -29,8 +29,16 @@
          or 6 s after the page has loaded, whichever comes first. Its ~300 KB of scripts
          (GTM + GA4) then never compete with the store loading. Events pushed to dataLayer
          before that are queued and still sent. Trade-off: a visitor who leaves within ~6 s
-         without touching the page is not counted. -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+         without touching the page is not counted.
+         Only runs on the live domain, so staging, the server IP and PageSpeed tests don't
+         show up in the live Analytics. On other hosts it runs only while GTM Preview /
+         Tag Assistant is connected (?gtm_debug=… in the URL; remembered for the tab). -->
+    <script>(function(w,d,s,l,i){
+    var live=/(^|\.)digitalsanskritguru\.com$/i.test(location.hostname),debug=false;
+    try{if(/[?&]gtm_debug=/.test(location.search))sessionStorage.setItem('dsg-gtm-debug','1');
+    debug=sessionStorage.getItem('dsg-gtm-debug')==='1';}catch(e){debug=/[?&]gtm_debug=/.test(location.search);}
+    if(!live&&!debug)return;
+    w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var done=false,events=['scroll','pointerdown','keydown','touchstart','mousemove'];
     var load=function(){if(done)return;done=true;events.forEach(function(e){w.removeEventListener(e,load,{passive:true});});
     var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
