@@ -211,7 +211,7 @@ function AdminAccessControl() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <h1><ShieldCheck size={24} className="ui-inline-icon" aria-hidden="true" />Admin Roles & Access Control</h1><br></br>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
@@ -667,7 +667,7 @@ function AdminAccessControl() {
             </div>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

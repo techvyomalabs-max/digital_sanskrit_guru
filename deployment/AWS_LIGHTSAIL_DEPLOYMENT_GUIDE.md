@@ -91,7 +91,15 @@ pm2 startup
 
 ## 5. Phase 4: Nginx Web Server & Reverse Proxy Configuration
 
-Create `/etc/nginx/sites-available/ecommerce`:
+Copy the full config, with gzip compression and cache headers, from
+[`deployment/nginx-ecommerce.conf`](./nginx-ecommerce.conf):
+
+```bash
+sudo cp /var/www/ecommerce/deployment/nginx-ecommerce.conf /etc/nginx/sites-available/ecommerce
+```
+
+The minimal version below works, but without those settings JS/CSS go out
+uncompressed and uncached (PageSpeed flags both). Minimal `/etc/nginx/sites-available/ecommerce`:
 ```nginx
 server {
     listen 80;

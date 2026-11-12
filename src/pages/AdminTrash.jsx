@@ -166,7 +166,7 @@ function AdminTrash() {
   return (
     <div className="admin-layout">
       <AdminSidebar />
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <div>
             <h1><Trash2 size={24} className="ui-inline-icon" aria-hidden="true" />Admin Recycle Bin</h1>
@@ -391,7 +391,7 @@ function AdminTrash() {
             </div>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

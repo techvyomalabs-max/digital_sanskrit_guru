@@ -125,7 +125,7 @@ function AdminSecurityLogs() {
   return (
     <div className="admin-layout">
       <AdminSidebar />
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <div>
             <h1>Security Threat Monitor</h1>
@@ -516,7 +516,7 @@ function AdminSecurityLogs() {
             </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

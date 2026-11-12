@@ -288,7 +288,7 @@ function AdminCoupons() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <h1>Coupon Manager</h1>
           <p>Create, renew, and remove discount codes from one place.</p>
@@ -689,7 +689,7 @@ function AdminCoupons() {
             </div>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

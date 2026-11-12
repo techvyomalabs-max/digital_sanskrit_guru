@@ -12,7 +12,7 @@ function ShippingPolicy() {
   );
 
   return (
-    <main className="policy-page">
+    <div className="policy-page">
       <div className="policy-container">
         {/* Header Hero Section */}
         <header className="policy-header">
@@ -255,7 +255,7 @@ function ShippingPolicy() {
           <Link to="/contact" className="contact-link">Contact Seva</Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

@@ -151,9 +151,14 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
       <Link to={productPath(product)} className="product-image-wrap">
         {product.image && (
-          <div
+          // A real <img> (not a CSS background) so the browser can lazy-load it.
+          // Same URL as the main image, so it costs no extra download.
+          <img
+            src={product.image}
+            alt=""
             className="product-image-ambient-bg"
-            style={{ backgroundImage: `url(${product.image})` }}
+            loading="lazy"
+            decoding="async"
             aria-hidden="true"
           />
         )}

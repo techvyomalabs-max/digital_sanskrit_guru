@@ -109,7 +109,18 @@ function Home() {
       try {
         let response = null;
 
-        for (let attempt = 0; attempt <= HOME_REQUEST_RETRY_DELAYS.length; attempt += 1) {
+        // index.html starts this request before the app's JS loads; use it once if it worked
+        const prefetched = window.__dsgHomePrefetch;
+        window.__dsgHomePrefetch = null;
+        if (prefetched) {
+          try {
+            response = { data: await prefetched };
+          } catch {
+            response = null;
+          }
+        }
+
+        for (let attempt = 0; !response && attempt <= HOME_REQUEST_RETRY_DELAYS.length; attempt += 1) {
           try {
             response = await axios.get("/api/products/home");
             break;
@@ -575,9 +586,12 @@ function Home() {
                 <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
-                      <div
+                      <img
+                        src={product.image}
+                        alt=""
                         className="home-mini-card-ambient-bg"
-                        style={{ backgroundImage: `url(${product.image})` }}
+                        loading="lazy"
+                        decoding="async"
                         aria-hidden="true"
                       />
                     )}
@@ -631,9 +645,12 @@ function Home() {
                 <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
-                      <div
+                      <img
+                        src={product.image}
+                        alt=""
                         className="home-mini-card-ambient-bg"
-                        style={{ backgroundImage: `url(${product.image})` }}
+                        loading="lazy"
+                        decoding="async"
                         aria-hidden="true"
                       />
                     )}

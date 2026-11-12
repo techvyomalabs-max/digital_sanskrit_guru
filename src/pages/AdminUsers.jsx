@@ -292,7 +292,7 @@ function AdminUsers() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main ua-page">
+      <div className="admin-main ua-page">
         <header className="ua-header">
           <div>
             <h1>User Activity &amp; Insights</h1>
@@ -634,7 +634,7 @@ function AdminUsers() {
             </div>
           ) : null}
         </section>
-      </main>
+      </div>
     </div>
   );
 }
