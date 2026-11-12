@@ -39,6 +39,7 @@ const {
   sendAccessPendingAdminAlert
 } = require("../utils/email");
 const { sendWelcomeSetPasswordEmail } = require("../utils/passwordReset");
+const { sendWhatsAppOrderStatus, sendWhatsAppDigitalAccess } = require("../utils/whatsapp");
 const {
   isPhysicalItem,
   isReturnOverdue,
@@ -1643,6 +1644,7 @@ router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req
       }
 
       await sendPushToUser(populatedOrder.user._id, orderPayload(updated, normalizedStatus.toLowerCase()));
+      await sendWhatsAppOrderStatus(updated, populatedOrder.user, normalizedStatus);
       await sendOrderStatusUpdate(updated, populatedOrder.user, normalizedStatus);
     });
   }
@@ -1729,8 +1731,10 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
 
     // A digital-only order is invoiced once all its access is given; the direct update above
     // skips the save hook that issues it, so save once more when it is now due
+    let invoiceIssuedNow = false;
     if (!updated.invoiceNumber && isInvoiceDue(updated)) {
       await updated.save();
+      invoiceIssuedNow = Boolean(updated.invoiceNumber);
     }
 
     const grantedItems = grantResult.grantedIndexes.map((idx) => updated.items[idx]);
@@ -1765,6 +1769,8 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
           email: updated.billing?.email || updated.shipping?.email
         };
       }
+      // Digital-only order now fully accessible: its invoice was issued with this grant
+      if (invoiceIssuedNow) await sendWhatsAppDigitalAccess(updated, buyerUser);
       if (buyerUser) {
         await sendAccessGrantedEmail(updated, buyerUser, grantedItems, sanitizeAccessNote(note));
       }
