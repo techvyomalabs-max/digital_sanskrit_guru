@@ -22,8 +22,10 @@ import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils
 import { storePricingConfig } from "./utils/productPricing";
 import { useAuth } from "./hooks/useAuth";
 import { pushUnsupportedReason, syncPushSubscription } from "./utils/pushSubscription";
+// Home is bundled with the app (not lazy) so the banner can render without waiting
+// for a second JS file to download first (PageSpeed: LCP "element render delay").
+import Home from "./pages/Home";
 
-const Home = lazy(() => import("./pages/Home"));
 const Collection = lazy(() => import("./pages/Collection"));
 const SearchResults = lazy(() => import("./pages/SearchResults"));
 const Product = lazy(() => import("./pages/Product"));

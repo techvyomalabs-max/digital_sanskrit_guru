@@ -14,6 +14,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import "./fonts"; // self-hosted fonts (were Google Fonts)
 import "./index.css";
 import "./responsive-overrides.css"; // global responsive fixes for all pages/devices
 import "./ux-foundation.css"; // focus, touch, motion and state rules for every page
