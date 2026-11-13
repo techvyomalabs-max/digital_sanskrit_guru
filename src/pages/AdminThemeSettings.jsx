@@ -1176,6 +1176,10 @@ function AdminThemeSettings() {
                   />
                 )}
                 <span className="field-hint">Recommended ratio: 16:9 or 21:9 landscape (e.g. 1920×600 or 1600×520).</span>
+              <span className="field-hint">
+                Mobile image (optional): 1200×750 (16:10), main subject in the middle. Shown on phones and small
+                tablets with the text over it. Without one, phones show the whole desktop image with the text below.
+              </span>
               </div>
 
               {/* Mobile Image Input */}

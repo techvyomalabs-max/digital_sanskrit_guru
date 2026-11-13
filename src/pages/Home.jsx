@@ -342,7 +342,7 @@ function Home() {
         <div className="home-banner-container">
           {activeHeroBanner.title?.trim() ? (
             /* ── Cinematic Spotlight Hero Banner Mode ────────────────────────── */
-            <div className={`home-hero-spotlight-card pos-${activeHeroBanner.textPosition || "middle-left"} align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"} overlay-${activeHeroBanner.overlayType || "feathered"}`}>
+            <div className={`home-hero-spotlight-card${activeHeroBanner.mobileImage?.trim() ? " has-mobile-image" : ""} pos-${activeHeroBanner.textPosition || "middle-left"} align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"} overlay-${activeHeroBanner.overlayType || "feathered"}`}>
               {/* Full-bleed background image */}
               <picture className="home-spotlight-backdrop-picture">
                 <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
