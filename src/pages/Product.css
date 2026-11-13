@@ -1079,6 +1079,10 @@
 }
 
 .product-hero-reviews-link {
+  /* The site-wide tap-target rule makes links at least 36px tall; centre the text in
+     that box so it lines up with the stars and the rating number. */
+  display: inline-flex;
+  align-items: center;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--site-link, #2563eb);
