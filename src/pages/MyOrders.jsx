@@ -47,6 +47,7 @@ import {
   Link2
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import PackIncludes from "../components/orders/PackIncludes";
 import ReturnPhotoPicker from "../components/orders/ReturnPhotoPicker";
 import "./MyOrders.css";
 import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
@@ -991,30 +992,7 @@ function MyOrders() {
                               {item.productType === "bundle" &&
                                 Array.isArray(item.bundleItems) &&
                                 item.bundleItems.length > 0 && (
-                                  <div className="my-order-item-bundle-details">
-                                    <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: "bold", color: "var(--site-text-soft)" }}>
-                                      Pack Includes:
-                                    </p>
-                                    <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                                      {item.bundleItems.map((bi, idx) => (
-                                        <li
-                                          key={idx}
-                                          style={{
-                                            fontSize: "12.5px",
-                                            color: "var(--site-text)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            marginBottom: "2px"
-                                          }}
-                                        >
-                                          <span style={{ color: "var(--site-text-soft)" }}>•</span>
-                                          <span>{bi.name}</span>
-                                          <span style={{ color: "var(--site-text-soft)" }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
+                                  <PackIncludes items={item.bundleItems} multiplier={item.quantity || 1} />
                                 )}
 
                               {Number(item.upgradeCredit) > 0 && (
