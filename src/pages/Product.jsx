@@ -447,6 +447,7 @@ function Product() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewPhotos, setReviewPhotos] = useState([]);
   const [photosOnly, setPhotosOnly] = useState(false);
+  const [showAllBundleItems, setShowAllBundleItems] = useState(false);
   // { verifiedBuyer, canAddPhotos, maxPhotos } for the signed-in user, checked when the form opens
   const [photoEligibility, setPhotoEligibility] = useState(null);
 
@@ -2025,11 +2026,18 @@ function Product() {
           ) : null}
         </div>
 
-        {isBundle && bundleItems.length > 0 ? (
-          <div className="product-details-description">
-            <h4>Included in this bundle ({bundleItems.length} Items)</h4>
-            <ul className="product-bundle-list">
-              {bundleItems.map((item, index) => {
+        {isBundle && bundleItems.length > 0 ? (() => {
+          // Big bundles start with the first few items (8 = two full rows; phones show 4) and a "Show all" button
+          const BUNDLE_PREVIEW = 8;
+          const canCollapse = bundleItems.length > BUNDLE_PREVIEW + 2;
+          const visibleItems = canCollapse && !showAllBundleItems ? bundleItems.slice(0, BUNDLE_PREVIEW) : bundleItems;
+          return (
+          <div className="product-details-description product-bundle-section" id="bundle-items">
+            <h4>
+              Included in this bundle <span className="product-bundle-count">{bundleItems.length} items</span>
+            </h4>
+            <ul className={`product-bundle-list ${canCollapse && !showAllBundleItems ? "is-collapsed" : ""}`} id="product-bundle-list">
+              {visibleItems.map((item, index) => {
                 const includedProduct = item?.product;
                 const includedId = includedProduct?._id || item?.product;
                 const includedName = includedProduct?.name || item?.name || "Included Item";
@@ -2044,53 +2052,69 @@ function Product() {
                   includedDigitalType && includedDigitalType.toLowerCase() !== "other" ? includedDigitalType : "Digital";
                 const physicalFormatLabel = String(item?.digitalType || "").trim() || "Physical item";
                 const qty = Math.max(1, Number(item?.quantity || 1));
-                const itemDescription = item?.description || includedProduct?.description || "";
+                const linkTo = includedProduct?._id ? productPath(includedProduct) : "";
 
-                return (
-                  <li key={`${includedId || "bundle-item"}-${index}`} className="bundle-item-card">
-                    {includedImage ? (
-                      <div className="bundle-item-img-wrap">
-                        <img src={includedImage} alt={includedName} className="bundle-item-img" />
-                      </div>
-                    ) : null}
-
+                const body = (
+                  <>
+                    <div className="bundle-item-img-wrap">
+                      {includedImage ? (
+                        <img src={includedImage} alt="" className="bundle-item-img" loading="lazy" />
+                      ) : (
+                        <Package size={22} aria-hidden="true" />
+                      )}
+                    </div>
                     <div className="bundle-item-content">
-                      <div className="bundle-item-header">
-                        <strong>{includedName}</strong>
-                        <span className="bundle-item-qty-badge">x{qty}</span>
-                      </div>
-
+                      <strong className="bundle-item-name" title={includedName}>
+                        {includedName}
+                      </strong>
                       <div className="bundle-item-meta">
                         {isDigitalItem ? (
                           <span className="bundle-format-tag bundle-format-tag--digital"><Laptop size={12} className="ui-inline-icon" aria-hidden="true" />{digitalFormatLabel}</span>
                         ) : (
                           <span className="bundle-format-tag bundle-format-tag--physical"><Package size={12} className="ui-inline-icon" aria-hidden="true" />{physicalFormatLabel}</span>
                         )}
+                        {qty > 1 ? <span className="bundle-item-qty-badge">x{qty}</span> : null}
                         {includedPrice > 0 ? (
-                          <span className="bundle-item-price-val">
-                            Value: {formatCurrencyExact(includedPrice * qty, displayCurrency)}
-                          </span>
+                          <span className="bundle-item-price-val">{formatCurrencyExact(includedPrice * qty, displayCurrency)}</span>
                         ) : null}
                       </div>
-
-                      {itemDescription ? (
-                        <p className="bundle-item-desc">
-                          {itemDescription.length > 120 ? `${itemDescription.substring(0, 120)}...` : itemDescription}
-                        </p>
-                      ) : null}
                     </div>
+                  </>
+                );
 
-                    {includedProduct?._id ? (
-                      <Link to={productPath(includedProduct)} className="bundle-view-link">
-                        View item →
+                return (
+                  <li key={`${includedId || "bundle-item"}-${index}`}>
+                    {linkTo ? (
+                      <Link to={linkTo} className="bundle-item-card is-link" aria-label={`${includedName} – view item`}>
+                        {body}
                       </Link>
-                    ) : null}
+                    ) : (
+                      <div className="bundle-item-card">{body}</div>
+                    )}
                   </li>
                 );
               })}
             </ul>
+            {canCollapse ? (
+              <button
+                type="button"
+                className={`product-bundle-toggle ${showAllBundleItems ? "is-open" : ""}`}
+                aria-expanded={showAllBundleItems}
+                aria-controls="product-bundle-list"
+                onClick={() => {
+                  if (showAllBundleItems) {
+                    document.getElementById("bundle-items")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                  setShowAllBundleItems((v) => !v);
+                }}
+              >
+                {showAllBundleItems ? "Show less" : `Show all ${bundleItems.length} items`}
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
-        ) : null}
+          );
+        })() : null}
 
         <div className="product-details-description">
           <h4>About this product</h4>
