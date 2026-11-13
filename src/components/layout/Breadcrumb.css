@@ -12,7 +12,7 @@
 }
 
 .site-breadcrumb-container {
-  max-width: 1300px;
+  max-width: 1500px; /* same as the navbar and the store pages, so the trail lines up */
   margin: 0 auto;
   padding: 0 16px;
   overflow-x: auto;
