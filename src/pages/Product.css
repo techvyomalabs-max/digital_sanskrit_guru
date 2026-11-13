@@ -1140,9 +1140,143 @@
 }
 
 .product-format-option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 700;
   color: var(--site-text, #0f172a);
+}
+
+.product-format-option-icon {
+  flex: 0 0 auto;
+  color: var(--site-text-soft, #64748b);
+  transition: color 0.15s ease, transform 0.2s ease;
+}
+
+.product-format-option-btn.is-selected .product-format-option-icon {
+  color: var(--site-button-bg, #0284c7);
+  transform: scale(1.12);
+}
+
+/* What the chosen format is: icon tile, one line, delivery chips.
+   Re-mounts on every format change (React key), so it slides in each time. */
+.product-format-spotlight {
+  --spot: var(--site-button-bg, #0284c7);
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--spot) 28%, transparent);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--spot) 14%, transparent) 0%, transparent 60%),
+    color-mix(in srgb, var(--spot) 5%, var(--site-card-bg, var(--site-surface, #fff)));
+  animation: format-spotlight-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.product-format-spotlight-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--spot), color-mix(in srgb, var(--spot) 62%, #000));
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--spot) 70%, transparent);
+  animation: format-spotlight-pop 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+
+.product-format-spotlight-body {
+  min-width: 0;
+}
+
+.product-format-spotlight-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--site-text, #0f172a);
+}
+
+.product-format-spotlight-text strong {
+  font-weight: 800;
+}
+
+.product-format-spotlight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-format-spotlight-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--site-text-soft, #475569);
+  background: var(--site-card-bg, var(--site-surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--site-text-soft, #64748b) 22%, transparent);
+}
+
+.product-format-spotlight-chips li.chip-ships {
+  color: #9a3412;
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.product-format-spotlight-chips li.chip-instant {
+  color: #166534;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.product-format-spotlight-chips li.chip-later {
+  color: #854d0e;
+  border-color: #fde68a;
+  background: #fefce8;
+}
+
+.product-format-spotlight-chips li.chip-external {
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+@keyframes format-spotlight-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes format-spotlight-pop {
+  0% {
+    transform: scale(0.6) rotate(-8deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-format-spotlight,
+  .product-format-spotlight-icon {
+    animation: none;
+  }
 }
 
 .product-format-option-price {

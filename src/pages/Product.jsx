@@ -13,6 +13,7 @@ import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
+import { getFormatBlurb } from "../utils/formatBlurb";
 import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct } from "../utils/productOptions";
 import { couponsForProduct } from "../utils/couponMatching";
@@ -48,6 +49,18 @@ import {
   Mail,
   GraduationCap,
   Check,
+  Tablet,
+  BookOpen,
+  Usb,
+  Music,
+  Disc3,
+  FileText,
+  BookMarked,
+  Book,
+  Truck,
+  Clock,
+  Zap,
+  MonitorSmartphone,
   Minus,
   Plus
 } from "lucide-react";
@@ -333,6 +346,23 @@ function isDigitalOnlyBundle(product) {
     return comp?.isDigital === true;
   });
 }
+
+// Icons for the format picker and its spotlight (see utils/formatBlurb.js)
+const FORMAT_ICONS = {
+  kindle: Tablet,
+  flipbook: BookOpen,
+  web: Globe,
+  course: GraduationCap,
+  pendrive: Usb,
+  audio: Music,
+  disc: Disc3,
+  ebook: FileText,
+  hardcover: BookMarked,
+  book: Book,
+  digital: Laptop,
+  physical: Package
+};
+const FORMAT_CHIP_ICONS = { ships: Truck, external: ExternalLink, later: Clock, instant: Zap, devices: MonitorSmartphone };
 
 function isManualAccessProduct(product) {
   if (!product) return false;
@@ -1507,16 +1537,21 @@ function Product() {
                   const isSelected = Boolean(optId && optId === selectedOptionId);
                   const available = isOptionAvailable(optProduct);
                   const optPricing = getProductPriceDetails(optProduct, selectedAddress?.country);
+                  const OptionIcon = FORMAT_ICONS[getFormatBlurb(option).kind] || Package;
                   return (
                     <button
                       key={optId || option?.label}
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
+                      aria-describedby={isSelected ? "product-format-spotlight" : undefined}
                       className={`product-format-option-btn${isSelected ? " is-selected" : ""}${!available ? " is-unavailable" : ""}`}
                       onClick={() => handleSelectOption(optProduct)}
                     >
-                      <span className="product-format-option-label">{option?.label}</span>
+                      <span className="product-format-option-label">
+                        <OptionIcon size={15} className="product-format-option-icon" aria-hidden="true" />
+                        {option?.label}
+                      </span>
                       <span className="product-format-option-price">
                         {available ? formatResolvedPrice(optPricing) : "Out of stock"}
                       </span>
@@ -1524,6 +1559,44 @@ function Product() {
                   );
                 })}
               </div>
+              {(() => {
+                const selectedOption = product.publicOptions.find(
+                  (option) => String(option?.product?._id || "") === selectedOptionId
+                );
+                if (!selectedOption) return null;
+                const blurb = getFormatBlurb(selectedOption, product.formatNotes);
+                const SpotIcon = FORMAT_ICONS[blurb.kind] || Package;
+                return (
+                  <div
+                    key={selectedOptionId}
+                    id="product-format-spotlight"
+                    className={`product-format-spotlight kind-${blurb.kind}`}
+                    aria-live="polite"
+                  >
+                    <span className="product-format-spotlight-icon" aria-hidden="true">
+                      <SpotIcon size={22} strokeWidth={2} />
+                    </span>
+                    <div className="product-format-spotlight-body">
+                      <p className="product-format-spotlight-text">
+                        <strong>{selectedOption.label}:</strong> {blurb.text}
+                      </p>
+                      {blurb.chips.length > 0 ? (
+                        <ul className="product-format-spotlight-chips">
+                          {blurb.chips.map((chip) => {
+                            const ChipIcon = FORMAT_CHIP_ICONS[chip.kind] || Check;
+                            return (
+                              <li key={chip.kind} className={`chip-${chip.kind}`}>
+                                <ChipIcon size={13} aria-hidden="true" />
+                                {chip.text}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
           <hr />

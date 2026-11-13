@@ -1642,3 +1642,35 @@ body.admin-dark .pf-badge--hidden {
     grid-template-columns: 1fr;
   }
 }
+
+/* One-line description for each format */
+.pf-format-notes {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--admin-border, #e2e8f0);
+}
+
+.pf-format-notes .pf-hint {
+  margin: 0;
+}
+
+.pf-format-note-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 160px) 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.pf-format-note-row span {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .pf-format-note-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

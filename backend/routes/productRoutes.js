@@ -26,6 +26,7 @@ const {
   computeOptionsStock,
   summarizeOptionsForPublic
 } = require("../utils/productOptions");
+const { normalizeFormatNotes } = require("../utils/formatNotes");
 const {
   normalizeBundleFormatsInput,
   normalizeItemFormats,
@@ -1112,6 +1113,7 @@ router.post("/", protect, admin, (req, res, next) => {
       externalAccessLabel: deliveryValidation.externalAccessLabel,
       externalAccessManual: deliveryValidation.externalAccessManual,
       ...opt("digitalType"),
+      ...(b.formatNotes !== undefined ? { formatNotes: normalizeFormatNotes(b.formatNotes) } : {}),
       ...opt("webReaderLink"),
       ...opt("kindleLink"),
       ...opt("kindleAsin"),
@@ -1255,6 +1257,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     }
     if (req.body.webReaderLink !== undefined) {
       product.webReaderLink = String(req.body.webReaderLink || "").trim();
+    }
+    if (req.body.formatNotes !== undefined) {
+      product.formatNotes = normalizeFormatNotes(req.body.formatNotes);
     }
     if (req.body.kindleLink !== undefined) {
       product.kindleLink = String(req.body.kindleLink || "").trim();
