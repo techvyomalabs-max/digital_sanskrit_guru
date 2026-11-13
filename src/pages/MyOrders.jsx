@@ -8,7 +8,7 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
-import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess, itemGivesOnlineAccess } from "../utils/accessStatus";
 import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
@@ -935,32 +935,10 @@ function MyOrders() {
                       const itemId = String(item?._id || item?.id || item?.product || "").trim();
                       const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
                       const returnWindow = getReturnWindowInfo(order, item);
-                      const isItemDigital = Boolean(
-                        item.isDigital ||
-                          isExternalDelivery(item) ||
-                          item.legacyAccess ||
-                          item.webReaderLink ||
-                          item.kindleLink ||
-                          String(item.name || "").toLowerCase().includes("web") ||
-                          String(item.name || "").toLowerCase().includes("kindle") ||
-                          String(item.name || "").toLowerCase().includes("flipbook") ||
-                          String(item.format || "").toLowerCase().includes("web") ||
-                          String(item.format || "").toLowerCase().includes("flipbook")
-                      );
-                      const comboHasDigital = Boolean(
-                        Array.isArray(item.bundleItems) &&
-                          item.bundleItems.some(
-                            (bi) =>
-                              bi.isDigital ||
-                              isExternalDelivery(bi) ||
-                              bi.webReaderLink ||
-                              bi.kindleLink ||
-                              String(bi.name || "").toLowerCase().includes("web") ||
-                              String(bi.name || "").toLowerCase().includes("flipbook") ||
-                              String(bi.name || "").toLowerCase().includes("kindle")
-                          )
-                      );
-                      const showDigitalBox = isItemDigital || comboHasDigital;
+                      const hasComponents = Array.isArray(item.bundleItems) && item.bundleItems.length > 0;
+                      // Whole item is digital (no return); a mixed combo still has things to return.
+                      const isItemDigital = hasComponents ? item.isDigital === true : itemGivesOnlineAccess(item);
+                      const showDigitalBox = itemGivesOnlineAccess(item);
                       const isComboItem = Boolean(
                         item.productType === "bundle" ||
                           (Array.isArray(item.bundleItems) && item.bundleItems.length > 0)
