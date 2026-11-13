@@ -1657,6 +1657,51 @@
   scroll-margin-top: 130px;
 }
 
+/* ── Phone banner without a separate mobile image ───────────────────────────
+   The desktop banner is wide (e.g. 1920×600). Cropping it into a phone-shaped box
+   showed only its middle, and a different part at each screen size. Without a
+   mobile image, show the whole picture and put the text and button below it.
+   Banners with a mobile image keep the text over the picture. */
+@media (max-width: 768px) {
+  .home-hero-spotlight-card:not(.has-mobile-image) {
+    display: block !important;
+    aspect-ratio: auto !important;
+    min-height: 0 !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-backdrop-picture {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-bg-img {
+    height: auto !important;
+    object-fit: contain !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-overlay {
+    display: none !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-content-layer {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    padding: 12px 16px 16px !important;
+    background: #0b1120 !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-content.overlay-glass {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ── Tablets (iPad portrait and landscape) ──────────────────────────────── */
 
 /* Between the phone layout and full desktop the banner image is very short,
