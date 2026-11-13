@@ -47,7 +47,9 @@ import {
   Laptop,
   Mail,
   GraduationCap,
-  Check
+  Check,
+  Minus,
+  Plus
 } from "lucide-react";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import {
@@ -1732,9 +1734,11 @@ function Product() {
                     ) : null}
 
                     {buyProduct.productType === "bulk" ? (
-                      <div className="qty-box product-bulk-select-wrap">
-                        <span className="product-bulk-select-label">Select Quantity:</span>
+                      <div className="product-bulk-select-wrap">
+                        <label className="product-bulk-select-label" htmlFor="product-bulk-qty">Quantity</label>
+                        <div className="product-bulk-select-field">
                         <select
+                          id="product-bulk-qty"
                           value={qty}
                           onChange={(e) => setQty(Number(e.target.value))}
                           className="product-bulk-select-input"
@@ -1745,6 +1749,8 @@ function Product() {
                             </option>
                           ))}
                         </select>
+                        <ChevronDown size={18} className="product-bulk-select-chevron" aria-hidden="true" />
+                        </div>
                       </div>
                     ) : isDigitalItem(buyProduct) ? (
                       <div className="product-digital-badge-wrap">
@@ -1758,11 +1764,21 @@ function Product() {
                       </div>
                     ) : (
                       <div>
-                        <div className="qty-box product-retail-qty-wrap">
-                          <button type="button" className="qty-btn" onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}>-</button>
+                        <div className="product-qty-stepper" role="group" aria-label="Quantity">
+                          <button
+                            type="button"
+                            className="product-qty-btn"
+                            aria-label="Decrease quantity"
+                            disabled={Number(qty || 1) <= 1}
+                            onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}
+                          >
+                            <Minus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                           <input
                             type="number"
-                            className="qty-input product-retail-qty-input"
+                            inputMode="numeric"
+                            aria-label="Quantity"
+                            className="product-qty-input"
                             value={qty}
                             min="1"
                             max={retailMaxQty}
@@ -1786,9 +1802,13 @@ function Product() {
                           />
                           <button
                             type="button"
-                            className="qty-btn"
+                            className="product-qty-btn"
+                            aria-label="Increase quantity"
+                            disabled={Number(qty || 1) >= retailMaxQty}
                             onClick={() => setQty(Number(qty || 1) < retailMaxQty ? Number(qty || 1) + 1 : Number(qty || 1))}
-                          >+</button>
+                          >
+                            <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                         </div>
                         <p className="product-retail-qty-note">
                           Standard retail order limit: Maximum {MAX_RETAIL_QUANTITY} units.
