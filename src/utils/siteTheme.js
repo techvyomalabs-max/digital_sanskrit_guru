@@ -381,6 +381,20 @@ export function applySiteTheme(themeValue, customThemes = [], shouldPersist = tr
   // Colours the phone's browser bar to match the site header
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activeTheme.palette.header);
 
+  // Remembered so the loading skeleton in index.html uses this theme's colours next time
+  try {
+    window.localStorage.setItem(
+      "dsg-shell-colors",
+      JSON.stringify({
+        header: activeTheme.palette.header,
+        navBottom: activeTheme.palette.navBottom || "#1c2735",
+        bg: activeTheme.palette.bg
+      })
+    );
+  } catch {
+    // Storage blocked: the skeleton uses its default colours.
+  }
+
   if (shouldPersist) {
     persistSiteTheme(activeTheme.value, customThemes);
   }
