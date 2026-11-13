@@ -151,13 +151,14 @@ async function sendTemplateWithInvoice(ws, order, user, { to, name, bodyParams }
   try {
     return await sendTemplate(ws, { to, name, bodyParams, document });
   } catch (err) {
-    // 132000 / 132012: parameters don't match the template (e.g. no document header)
-    const code = err?.response?.data?.error?.code;
-    if (document && (code === 132000 || code === 132012)) {
-      console.warn(`[WhatsApp] ${name} rejected the invoice header; resending without it.`);
-      return sendTemplate(ws, { to, name, bodyParams });
-    }
-    throw err;
+    // Meta rejects the call when the template has no document header (the error code
+    // varies), so retry once without the invoice rather than sending nothing.
+    if (!document) throw err;
+    console.warn(
+      `[WhatsApp] ${name} rejected with the invoice attached; resending without it:`,
+      err?.response?.data || err?.message
+    );
+    return sendTemplate(ws, { to, name, bodyParams });
   }
 }
 
