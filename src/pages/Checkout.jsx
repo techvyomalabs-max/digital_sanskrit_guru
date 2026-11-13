@@ -685,12 +685,8 @@ function Checkout() {
       return null;
     }
 
-    if (!hasManualAccessItem && isGift && !giftRecipientEmail.trim()) {
-      setCheckoutMessage("Please enter the recipient's email address to purchase as a gift.");
-      return null;
-    }
-
-    if (!hasManualAccessItem && isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    // The recipient's email is optional: the Gift Pass codes are always shown in My Orders
+    if (!hasManualAccessItem && isGift && giftRecipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
       return null;
     }

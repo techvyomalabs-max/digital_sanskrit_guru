@@ -1163,7 +1163,7 @@ function MyOrders() {
                               {/* Digital Reader Access Box */}
                               {isPaid &&
                                 showDigitalBox &&
-                                (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
+                                (order.isRedeemedGift || item.redeemedByViewer || !(order.isGift || item.giftCode)) && (
                                   isWpOrder ? (
                                     <div
                                       className="my-order-legacy-note-box"
@@ -1291,7 +1291,7 @@ function MyOrders() {
                                 )}
 
                               {/* 1-Time Gift Passcode */}
-                              {isPaid && (order.isGift || item.giftCode) && (
+                              {isPaid && !order.isRedeemedGift && !item.redeemedByViewer && (item.giftCode || (order.isGift && item.isDigital === true)) && (
                                 <div className="my-order-gift-box">
                                   <div className="my-order-gift-inner">
                                     <div>
@@ -1299,7 +1299,7 @@ function MyOrders() {
                                       <code className="my-order-gift-code">
                                         {item.giftCode ||
                                           (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||
-                                          "GIFT-PASS-GENERATED"}
+                                          "Being created… refresh in a minute"}
                                       </code>
                                     </div>
                                     <button

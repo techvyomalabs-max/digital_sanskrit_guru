@@ -7,7 +7,6 @@ const Product = require("../models/Product");
 const User = require("../models/User");
 const Wishlist = require("../models/Wishlist");
 const GiftPass = require("../models/GiftPass");
-const { generateGiftCode } = require("./giftRoutes");
 const { resolveDeliveryCharge, isDigitalItem, getDeliveryPricingDetails } = require("../utils/deliveryPricing");
 const { applyComboWeights } = require("../utils/comboWeight");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
@@ -482,66 +481,23 @@ router.post("/digital-ownership", protect, estimateRateLimiter, async (req, res)
   }
 });
 
+// Paid gift orders whose digital lines have no pass yet (e.g. issuing failed after payment) get
+// them here when the buyer opens My Orders. Same rules as at payment: digital lines only, one
+// pass per line, and the recipient is emailed only for passes created now.
 const ensureGiftPassesForOrder = async (order) => {
-  if (!order || String(order.paymentStatus) !== "Paid") return order;
-
-  const items = Array.isArray(order.items) ? [...order.items] : [];
-  let updated = false;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const isDigital = Boolean(
-      item.isDigital ||
-      item.webReaderLink ||
-      item.externalAccessLink ||
-      item.kindleLink ||
-      String(item.name || "").toLowerCase().includes("flipbook") ||
-      String(item.name || "").toLowerCase().includes("web") ||
-      String(item.name || "").toLowerCase().includes("kindle") ||
-      String(item.format || "").toLowerCase().includes("web") ||
-      String(item.format || "").toLowerCase().includes("flipbook")
-    );
-
-    if ((order.isGift || item.isGift) && !item.giftCode) {
-      const code = generateGiftCode();
-      try {
-        await GiftPass.create({
-          code,
-          product: item.product || item._id || item.id,
-          productName: item.name || "Digital Item",
-          order: order._id,
-          buyer: order.user,
-          recipientEmail: order.giftRecipientEmail || "",
-          isRedeemed: false
-        });
-        item.giftCode = code;
-        updated = true;
-
-        if (order.giftRecipientEmail) {
-          const User = require("../models/User");
-          const buyerUser = await User.findById(order.user).lean();
-          const buyerName = buyerUser ? (buyerUser.name || buyerUser.email) : "A friend";
-          
-          const { sendGiftPassEmail } = require("../utils/email");
-          await sendGiftPassEmail({
-            to: order.giftRecipientEmail,
-            buyerName,
-            giftCode: code,
-            productName: item.name || "Digital Item",
-            orderId: String(order._id)
-          });
-        }
-      } catch (err) {
-        console.error("[GiftPass] Creation/Email error:", err.message);
-      }
-    }
+  if (!order || String(order.paymentStatus) !== "Paid" || !order.isGift || order.status === "Cancelled") return order;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const missing = items.some((item) => item?.isDigital === true && !item.giftCode);
+  if (!missing) return order;
+  try {
+    const issued = await issueGiftPassesForOrder(order._id);
+    emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
+    const fresh = await Order.findById(order._id).lean();
+    return fresh ? { ...order, items: fresh.items } : order;
+  } catch (err) {
+    console.error("[GiftPass] Issuing missing passes failed:", err?.message);
+    return order;
   }
-
-  if (updated) {
-    await Order.updateOne({ _id: order._id }, { $set: { items } });
-    order.items = items;
-  }
-  return order;
 };
 
 async function emailIssuedGiftPasses(order, issued) {
@@ -3049,6 +3005,7 @@ router.get("/my", protect, async (req, res) => {
     const serializedOrders = orders.map((o) => {
       const oId = String(o._id);
       const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
+      // Also covers a buyer who redeemed a pass from their own gift order
       const serialized = serializeOrderForOwner(o, req.user, { redeemedProductIds });
       const isWp = Boolean(o.isWpArchive || String(o._id || "").startsWith("wp_") || serialized?.isWpArchive);
       if (isWp && serialized) {
