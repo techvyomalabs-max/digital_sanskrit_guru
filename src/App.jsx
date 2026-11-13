@@ -339,6 +339,14 @@ function App() {
             }
           />
           <Route
+            path="/my-library/pack/:orderId/:itemIndex"
+            element={
+              <ProtectedRoute>
+                <MyLibrary />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin"
             element={
               <AdminRoute requiredPage="dashboard">

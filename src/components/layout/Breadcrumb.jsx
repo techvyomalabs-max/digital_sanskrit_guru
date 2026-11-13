@@ -242,6 +242,10 @@ export default function Breadcrumb() {
       }
       items.push({ label: mapped.label, path: mapped.path });
 
+      if (primarySegment === "my-library" && segments[1] === "pack") {
+        items.push({ label: "Combo Pack", path: location.pathname });
+      }
+
       // Handle My Account Subsections (via Hash or Search Params)
       if (primarySegment === "account") {
         const hash = location.hash.toLowerCase();
