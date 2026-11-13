@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Library, Ticket, BookOpen, ShoppingBag, Hourglass, Globe, Smartphone, Zap, ExternalLink, Lightbulb, Lock, AlertTriangle, RefreshCw, Headphones, X } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isAccessPending } from "../utils/accessStatus";
 import ComboLibraryCard from "../components/library/ComboLibraryCard";
+import ComboPackView from "../components/library/ComboPackView";
+import { comboPackKey } from "../components/library/comboPack";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -26,6 +28,8 @@ function MyLibrary() {
   const { token } = useAuth();
   const { showToast } = useToast();
   const location = useLocation();
+  const { orderId: packOrderId, itemIndex: packItemIndex } = useParams();
+  const isPackPage = Boolean(packOrderId && packItemIndex !== undefined);
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(
@@ -478,6 +482,12 @@ function MyLibrary() {
     });
   }, [digitalBooks, searchQuery]);
 
+  const activePack = useMemo(() => {
+    if (!isPackPage) return null;
+    const key = comboPackKey(packOrderId, packItemIndex);
+    return digitalBooks.find((book) => book.kind === "combo" && book.key === key) || null;
+  }, [isPackPage, packOrderId, packItemIndex, digitalBooks]);
+
   const nativeBooks = useMemo(
     () => filteredBooks.filter((book) => !book.legacyAccess && !book.isWpArchive),
     [filteredBooks]
@@ -533,6 +543,10 @@ function MyLibrary() {
 
   return (
     <div className="my-library-container">
+      {isPackPage ? (
+        <ComboPackView combo={activePack} isLoading={isLoading} onOpenReader={openSecureReader} />
+      ) : (
+      <>
       <div className="my-library-header">
         <div className="my-library-title-area">
           <h1><Library size={26} className="ui-inline-icon" aria-hidden="true" />My Digital Library</h1>
@@ -589,7 +603,6 @@ function MyLibrary() {
                     <ComboLibraryCard
                       key={book.key || `combo-${book.orderId}-${idx}`}
                       combo={book}
-                      onOpenReader={openSecureReader}
                     />
                   );
                 }
@@ -792,6 +805,9 @@ function MyLibrary() {
             </div>
           )}
         </>
+      )}
+
+      </>
       )}
 
       {/* Embedded Full-Screen Web Reader Modal (Secure In-Memory Blob Stream) */}

@@ -80,6 +80,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const { initPaymentReconciler } = require("./services/paymentReconciler");
   const { paymentWebhookHandler } = require("./routes/paymentWebhook");
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
+  const reviewAdminRoutes = require("./routes/reviewAdminRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
   const { createApiRateLimiter } = require("./utils/apiRateLimit");
   const { buildRedirectMap, createRedirectMiddleware } = require("./utils/legacyRedirects");
@@ -224,6 +225,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/media", requireDatabase, mediaRoutes);
   app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
+  app.use("/api/admin/reviews", requireDatabase, reviewAdminRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
 
   // ── Legacy URL & trailing-slash redirects ─────────────────────────────────

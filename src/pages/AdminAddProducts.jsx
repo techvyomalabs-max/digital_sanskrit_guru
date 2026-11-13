@@ -427,6 +427,8 @@ function AdminAddProducts() {
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
   const [bundleFormats, setBundleFormats] = useState([]);
   const [singleFormats, setSingleFormats] = useState([]);
+  // One-line description per format, keyed by lower-case format name (shown under "Choose format")
+  const [formatNotes, setFormatNotes] = useState({});
   // Shown in the shop, or hidden (page still opens by link). Formats follow their main listing.
   const [hideFromListings, setHideFromListings] = useState(false);
   // M.R.P. (e.g. printed cover price): optional, display-only, never below the price
@@ -611,6 +613,14 @@ function AdminAddProducts() {
     });
   }, [availableBundleProducts, editingProduct]);
   const hasSingleFormats = productType === "single" && singleFormats.length > 0;
+  // Names of the formats being edited (combo or single), for their one-line descriptions
+  const formatNoteLabels = useMemo(() => {
+    const rows = productType === "bundle" ? bundleFormats : productType === "single" ? singleFormats : [];
+    const seen = new Set();
+    return rows
+      .map((row) => String(row?.label || "").trim())
+      .filter((label) => label && !seen.has(label.toLowerCase()) && seen.add(label.toLowerCase()));
+  }, [productType, bundleFormats, singleFormats]);
   const singleFormatProduct = useCallback(
     (row) => products.find((product) => String(product?._id || "") === String(row?.productId || "")),
     [products]
@@ -838,6 +848,7 @@ function AdminAddProducts() {
     setBundleItems([createEmptyBundleItem()]);
     setBundleFormats([]);
     setSingleFormats([]);
+    setFormatNotes({});
     setHideFromListings(false);
     setMrp("");
     setRelatedProductItems([createEmptyRelatedProduct()]);
@@ -1976,6 +1987,13 @@ function AdminAddProducts() {
                   position
                 }))
             : [],
+      ...(productType === "bundle" || (productType === "single" && sendSingleFormats)
+        ? {
+            formatNotes: formatNoteLabels
+              .map((label) => ({ label, note: String(formatNotes[label.toLowerCase()] || "").trim() }))
+              .filter((entry) => entry.note)
+          }
+        : {}),
       ...(productType === "single" && sendSingleFormats
         ? {
             linkedOptions: singleFormats
@@ -2075,6 +2093,13 @@ function AdminAddProducts() {
     setFestiveOffer(resolvedDiscountType !== "none");
     setFestiveDiscountPercent(String(Number(product.festiveDiscountPercent || 0)));
     setProductType(product.productType || "single");
+    setFormatNotes(
+      Object.fromEntries(
+        (Array.isArray(product.formatNotes) ? product.formatNotes : [])
+          .filter((n) => n?.label && n?.note)
+          .map((n) => [String(n.label).trim().toLowerCase(), String(n.note)])
+      )
+    );
     const savedFormats = Array.isArray(product.bundleFormats) ? product.bundleFormats : [];
     setBundleFormats(
       savedFormats.map((format) => {
@@ -3869,6 +3894,30 @@ function AdminAddProducts() {
                               </p>
                             </div>
                           ) : null}
+                          {formatNoteLabels.length > 0 ? (
+                            <div className="pf-format-notes">
+                              <strong>One-line description for each format (optional)</strong>
+                              <p className="pf-hint">
+                                Shown under &quot;Choose format&quot; when a customer picks that format. Leave blank to use
+                                the automatic line (for example Flipbook: &quot;A digital book with real page-turns, read
+                                online from your Digital Library.&quot;). Up to 140 characters.
+                              </p>
+                              {formatNoteLabels.map((label) => (
+                                <label key={label} className="pf-format-note-row">
+                                  <span>{label}</span>
+                                  <input
+                                    type="text"
+                                    maxLength={140}
+                                    placeholder="Automatic line"
+                                    value={formatNotes[label.toLowerCase()] || ""}
+                                    onChange={(e) =>
+                                      setFormatNotes((current) => ({ ...current, [label.toLowerCase()]: e.target.value }))
+                                    }
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="admin-bundle-builder-list">
@@ -4252,6 +4301,30 @@ function AdminAddProducts() {
                               Content settings. Tax left on Auto follows the standard rule: printed books 4901 at 0%,
                               digital products 998433 at 18%. This product&apos;s own HSN/SAC and GST are not copied to its formats.
                             </p>
+                          </div>
+                        ) : null}
+                        {formatNoteLabels.length > 0 ? (
+                          <div className="pf-format-notes">
+                            <strong>One-line description for each format (optional)</strong>
+                            <p className="pf-hint">
+                              Shown under &quot;Choose format&quot; when a customer picks that format. Leave blank to use
+                              the automatic line (for example Flipbook: &quot;A digital book with real page-turns, read
+                              online from your Digital Library.&quot;). Up to 140 characters.
+                            </p>
+                            {formatNoteLabels.map((label) => (
+                              <label key={label} className="pf-format-note-row">
+                                <span>{label}</span>
+                                <input
+                                  type="text"
+                                  maxLength={140}
+                                  placeholder="Automatic line"
+                                  value={formatNotes[label.toLowerCase()] || ""}
+                                  onChange={(e) =>
+                                    setFormatNotes((current) => ({ ...current, [label.toLowerCase()]: e.target.value }))
+                                  }
+                                />
+                              </label>
+                            ))}
                           </div>
                         ) : null}
                       </div>

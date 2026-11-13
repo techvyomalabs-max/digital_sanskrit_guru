@@ -8,7 +8,7 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
-import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess, itemGivesOnlineAccess } from "../utils/accessStatus";
 import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
@@ -47,6 +47,7 @@ import {
   Link2
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import PackIncludes from "../components/orders/PackIncludes";
 import ReturnPhotoPicker from "../components/orders/ReturnPhotoPicker";
 import "./MyOrders.css";
 import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
@@ -935,32 +936,10 @@ function MyOrders() {
                       const itemId = String(item?._id || item?.id || item?.product || "").trim();
                       const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
                       const returnWindow = getReturnWindowInfo(order, item);
-                      const isItemDigital = Boolean(
-                        item.isDigital ||
-                          isExternalDelivery(item) ||
-                          item.legacyAccess ||
-                          item.webReaderLink ||
-                          item.kindleLink ||
-                          String(item.name || "").toLowerCase().includes("web") ||
-                          String(item.name || "").toLowerCase().includes("kindle") ||
-                          String(item.name || "").toLowerCase().includes("flipbook") ||
-                          String(item.format || "").toLowerCase().includes("web") ||
-                          String(item.format || "").toLowerCase().includes("flipbook")
-                      );
-                      const comboHasDigital = Boolean(
-                        Array.isArray(item.bundleItems) &&
-                          item.bundleItems.some(
-                            (bi) =>
-                              bi.isDigital ||
-                              isExternalDelivery(bi) ||
-                              bi.webReaderLink ||
-                              bi.kindleLink ||
-                              String(bi.name || "").toLowerCase().includes("web") ||
-                              String(bi.name || "").toLowerCase().includes("flipbook") ||
-                              String(bi.name || "").toLowerCase().includes("kindle")
-                          )
-                      );
-                      const showDigitalBox = isItemDigital || comboHasDigital;
+                      const hasComponents = Array.isArray(item.bundleItems) && item.bundleItems.length > 0;
+                      // Whole item is digital (no return); a mixed combo still has things to return.
+                      const isItemDigital = hasComponents ? item.isDigital === true : itemGivesOnlineAccess(item);
+                      const showDigitalBox = itemGivesOnlineAccess(item);
                       const isComboItem = Boolean(
                         item.productType === "bundle" ||
                           (Array.isArray(item.bundleItems) && item.bundleItems.length > 0)
@@ -1013,30 +992,7 @@ function MyOrders() {
                               {item.productType === "bundle" &&
                                 Array.isArray(item.bundleItems) &&
                                 item.bundleItems.length > 0 && (
-                                  <div className="my-order-item-bundle-details">
-                                    <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: "bold", color: "var(--site-text-soft)" }}>
-                                      Pack Includes:
-                                    </p>
-                                    <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                                      {item.bundleItems.map((bi, idx) => (
-                                        <li
-                                          key={idx}
-                                          style={{
-                                            fontSize: "12.5px",
-                                            color: "var(--site-text)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            marginBottom: "2px"
-                                          }}
-                                        >
-                                          <span style={{ color: "var(--site-text-soft)" }}>•</span>
-                                          <span>{bi.name}</span>
-                                          <span style={{ color: "var(--site-text-soft)" }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
+                                  <PackIncludes items={item.bundleItems} multiplier={item.quantity || 1} />
                                 )}
 
                               {Number(item.upgradeCredit) > 0 && (

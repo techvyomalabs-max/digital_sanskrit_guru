@@ -316,6 +316,20 @@ const productSchema = new mongoose.Schema(
       default: "Web Version"
     },
 
+    // One-line description per format, shown under "Choose format" (optional; see utils/formatNotes.js)
+    formatNotes: {
+      type: [
+        new mongoose.Schema(
+          {
+            label: { type: String, trim: true, maxlength: 40 },
+            note: { type: String, trim: true, maxlength: 140 }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
+    },
+
     webReaderLink: {
       type: String,
       default: ""

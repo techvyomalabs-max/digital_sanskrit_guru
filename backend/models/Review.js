@@ -29,6 +29,16 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true
+    },
+    // The customer's own photos (public links to our storage), only from verified buyers
+    photos: {
+      type: [String],
+      default: []
+    },
+    // The reviewer had a paid order with this product when they wrote the review
+    verifiedPurchase: {
+      type: Boolean,
+      default: false
     }
   },
   { timestamps: true }
@@ -36,5 +46,7 @@ const reviewSchema = new mongoose.Schema(
 
 // Compound index for paginated "latest reviews for this product" queries
 reviewSchema.index({ product: 1, createdAt: -1 });
+// Admin "reviews with photos" list
+reviewSchema.index({ "photos.0": 1, createdAt: -1 });
 
 module.exports = mongoose.model("Review", reviewSchema);

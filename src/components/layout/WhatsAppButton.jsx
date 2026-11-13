@@ -36,9 +36,24 @@ function WhatsAppButton() {
   useEffect(() => {
     if (isAdminRoute || isChatbotEnabled) return undefined;
 
+    // Show the "Need help?" bubble once per visit, not on every page: on phones it
+    // covered the product title each time a product was opened.
+    let alreadyShown = false;
+    try {
+      alreadyShown = window.sessionStorage.getItem("dsg_wa_tip_shown") === "1";
+    } catch {
+      // Storage blocked: show it as before.
+    }
+    if (alreadyShown) return undefined;
+
     // Show tooltip 2 seconds after page load
     const timer = setTimeout(() => {
       setShowTooltip(true);
+      try {
+        window.sessionStorage.setItem("dsg_wa_tip_shown", "1");
+      } catch {
+        // ignore
+      }
     }, 2000);
 
     // Hide tooltip after 10 seconds

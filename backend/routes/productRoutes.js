@@ -26,6 +26,11 @@ const {
   computeOptionsStock,
   summarizeOptionsForPublic
 } = require("../utils/productOptions");
+const { normalizeFormatNotes } = require("../utils/formatNotes");
+const rateLimit = require("express-rate-limit");
+const { perWorker } = require("../utils/workerCount");
+const { createPresignedUpload, getMediaConfig } = require("../utils/mediaPresign");
+const { MAX_REVIEW_PHOTOS, normalizeReviewPhotos, hasBoughtProduct } = require("../utils/reviewPhotos");
 const {
   normalizeBundleFormatsInput,
   normalizeItemFormats,
@@ -1112,6 +1117,7 @@ router.post("/", protect, admin, (req, res, next) => {
       externalAccessLabel: deliveryValidation.externalAccessLabel,
       externalAccessManual: deliveryValidation.externalAccessManual,
       ...opt("digitalType"),
+      ...(b.formatNotes !== undefined ? { formatNotes: normalizeFormatNotes(b.formatNotes) } : {}),
       ...opt("webReaderLink"),
       ...opt("kindleLink"),
       ...opt("kindleAsin"),
@@ -1255,6 +1261,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     }
     if (req.body.webReaderLink !== undefined) {
       product.webReaderLink = String(req.body.webReaderLink || "").trim();
+    }
+    if (req.body.formatNotes !== undefined) {
+      product.formatNotes = normalizeFormatNotes(req.body.formatNotes);
     }
     if (req.body.kindleLink !== undefined) {
       product.kindleLink = String(req.body.kindleLink || "").trim();
@@ -1750,6 +1759,52 @@ router.get("/recommend/:productId", async (req, res) => {
   }
 });
 
+// Customers upload review photos straight to storage; a handful per hour is plenty
+const reviewPhotoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: perWorker(30),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `review-photo:${String(req.user || "")}`,
+  message: { message: "Too many photo uploads. Please try again later." }
+});
+
+const findProductForReview = (id) =>
+  mongoose.Types.ObjectId.isValid(id) ? Product.findById(id).select("_id options").lean() : null;
+
+// GET /api/products/:id/reviews/photo-eligibility — can this user add photos to a review here?
+// (Only buyers: a paid order with this product or one of its formats, alone or in a combo.)
+router.get("/:id/reviews/photo-eligibility", protect, async (req, res) => {
+  try {
+    const product = await findProductForReview(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    const verifiedBuyer = await hasBoughtProduct({ userId: req.user, product, Product, Order });
+    res.json({
+      verifiedBuyer,
+      canAddPhotos: verifiedBuyer && getMediaConfig().configured,
+      maxPhotos: MAX_REVIEW_PHOTOS
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Could not check photo uploads." });
+  }
+});
+
+// POST /api/products/:id/reviews/photos/presign — an upload slot for one review photo
+router.post("/:id/reviews/photos/presign", protect, reviewPhotoLimiter, async (req, res) => {
+  try {
+    const product = await findProductForReview(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!(await hasBoughtProduct({ userId: req.user, product, Product, Order }))) {
+      return res.status(403).json({ message: "Only customers who bought this product can add photos." });
+    }
+    const upload = await createPresignedUpload({ kind: "review-photo", contentType: String(req.body?.contentType || "") });
+    return res.json(upload);
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    return res.status(status).json({ message: status === 500 ? "Could not prepare the photo upload." : err.message });
+  }
+});
+
 // Get product reviews with pagination (skip and limit)
 router.get("/:id/reviews", async (req, res) => {
   try {
@@ -1915,6 +1970,15 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
       });
     }
 
+    const photoCheck = normalizeReviewPhotos(req.body.photos);
+    if (photoCheck.error) {
+      return res.status(400).json({ message: photoCheck.error });
+    }
+    const verifiedPurchase = await hasBoughtProduct({ userId: req.user, product, Product, Order });
+    if (photoCheck.photos.length > 0 && !verifiedPurchase) {
+      return res.status(403).json({ message: "Only customers who bought this product can add photos." });
+    }
+
     const user = await User.findById(req.user).select("name");
     const userName = user?.name || "User";
 
@@ -1924,7 +1988,9 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
       user: req.user,
       userName: userName,
       rating,
-      comment
+      comment,
+      photos: photoCheck.photos,
+      verifiedPurchase
     });
 
     // 2. Recalculate average rating & reviews count using MongoDB aggregation
