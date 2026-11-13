@@ -660,13 +660,16 @@
     flex-wrap: nowrap !important;
   }
 
+  /* Natural width (not stretched across the banner), so "Shop now" is the same compact
+     button on phones, tablets and desktop. 40px tall for easy tapping. */
   .home-spotlight-btn {
-    flex: 1 !important;
+    flex: 0 0 auto !important;
+    min-width: 128px !important;
     justify-content: center !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85rem !important;
     font-weight: 700 !important;
-    padding: 7px 12px !important;
-    min-height: 34px !important;
+    padding: 9px 18px !important;
+    min-height: 40px !important;
     border-radius: 9999px !important;
     text-align: center !important;
     white-space: nowrap !important;
