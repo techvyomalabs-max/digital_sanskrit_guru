@@ -2921,3 +2921,67 @@
     max-width: 100%;
   }
 }
+
+/* ── Phones (up to 768px): what matters first ───────────────────────────────
+   Before, a phone's first screen was only the picture: the title, price and the
+   Add to Cart / Buy Now buttons all started below it, under the description.
+   - Shorter picture area, with the thumbnails underneath (not above).
+   - Order: picture, title and rating, price and stock, buy buttons, then the
+     description, so the buttons are reached without scrolling past the text.
+   - The buy box no longer repeats the price shown just above it (it still shows
+     the total when buying more than one copy). */
+@media (max-width: 768px) {
+  .product-container {
+    row-gap: 10px !important;
+  }
+
+  .product-center {
+    display: contents;
+  }
+
+  .product-left {
+    order: 1;
+  }
+
+  .product-center > * {
+    order: 2;
+  }
+
+  .product-right {
+    order: 3;
+  }
+
+  .product-center > .description {
+    order: 4;
+    margin-top: 4px;
+  }
+
+  .product-center > hr {
+    margin: 2px 0;
+  }
+
+  .image-gallery {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  .main-image-container {
+    order: 1 !important;
+    aspect-ratio: 4 / 3;
+    max-height: 320px;
+  }
+
+  .product-main-image {
+    max-height: 92%;
+    width: auto;
+    max-width: 88%;
+  }
+
+  .thumbnail-column-wrapper {
+    order: 2;
+  }
+
+  .buy-box .buy-price:not(:has(.product-buy-price-multiplier)) {
+    display: none;
+  }
+}
