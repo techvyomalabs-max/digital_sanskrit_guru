@@ -2888,7 +2888,10 @@
 
 
 /* ── Tablets: images beside the details instead of one long column ──────── */
-@media (min-width: 720px) and (max-width: 1180px) {
+/* Starts at 769px: up to 768px the phone layout (one column, responsive-overrides.css)
+   applies. When both overlapped (720-768px) the image column collapsed to 0px wide and
+   the picture spilled over the title. */
+@media (min-width: 769px) and (max-width: 1180px) {
   .product-container {
     grid-template-columns: minmax(260px, 40%) minmax(0, 1fr);
     grid-template-areas:
