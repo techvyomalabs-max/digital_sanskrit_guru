@@ -56,6 +56,7 @@ const AdminSecurityLogs = lazy(() => import("./pages/AdminSecurityLogs"));
 const AdminTrash = lazy(() => import("./pages/AdminTrash"));
 const AdminSupportRequests = lazy(() => import("./pages/AdminSupportRequests"));
 const AdminUnmatchedPayments = lazy(() => import("./pages/AdminUnmatchedPayments"));
+const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const WpArchiveDashboard = lazy(() => import("./pages/admin/WpArchiveDashboard"));
 const GuestBuy = lazy(() => import("./pages/GuestBuy"));
 const About = lazy(() => import("./pages/About"));
@@ -399,6 +400,14 @@ function App() {
             element={
               <AdminRoute requiredPage="orders">
                 <AdminUnmatchedPayments />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/reviews"
+            element={
+              <AdminRoute requiredPage="products">
+                <AdminReviews />
               </AdminRoute>
             }
           />

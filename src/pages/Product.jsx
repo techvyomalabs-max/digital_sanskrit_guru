@@ -62,7 +62,8 @@ import {
   Zap,
   MonitorSmartphone,
   Minus,
-  Plus
+  Plus,
+  Camera
 } from "lucide-react";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import {
@@ -74,6 +75,8 @@ import { formatDate } from "../utils/date";
 import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
 import { applySeoTags } from "../utils/seo";
 import { productPath, productUrl } from "../utils/productLink";
+import ReviewPhotoPicker from "../components/reviews/ReviewPhotoPicker";
+import ReviewPhotoStrip from "../components/reviews/ReviewPhotoStrip";
 
 const AVATAR_PALETTES = [
   { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
@@ -442,6 +445,10 @@ function Product() {
   const [reviewSort, setReviewSort] = useState("newest");
   const [helpfulVotes, setHelpfulVotes] = useState({});
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewPhotos, setReviewPhotos] = useState([]);
+  const [photosOnly, setPhotosOnly] = useState(false);
+  // { verifiedBuyer, canAddPhotos, maxPhotos } for the signed-in user, checked when the form opens
+  const [photoEligibility, setPhotoEligibility] = useState(null);
 
   useEffect(() => {
     if (!loading && product && (location.hash === "#write-review" || location.hash === "#reviews-section" || location.state?.scrollToReview)) {
@@ -486,6 +493,9 @@ function Product() {
     if (selectedRatingFilter !== null) {
       list = list.filter((r) => Math.round(Number(r.rating || 5)) === selectedRatingFilter);
     }
+    if (photosOnly) {
+      list = list.filter((r) => Array.isArray(r.photos) && r.photos.length > 0);
+    }
     if (reviewSort === "highest") {
       list.sort((a, b) => Number(b.rating || 5) - Number(a.rating || 5));
     } else if (reviewSort === "lowest") {
@@ -494,7 +504,30 @@ function Product() {
       list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
     return list;
-  }, [reviews, selectedRatingFilter, reviewSort]);
+  }, [reviews, selectedRatingFilter, reviewSort, photosOnly]);
+
+  const reviewsWithPhotos = useMemo(
+    () => reviews.filter((r) => Array.isArray(r.photos) && r.photos.length > 0).length,
+    [reviews]
+  );
+  const verifiedReviewCount = useMemo(() => reviews.filter((r) => r.verifiedPurchase === true).length, [reviews]);
+
+  const reviewProductId = product?._id || "";
+  useEffect(() => {
+    if (!isReviewFormOpen || !token || !reviewProductId) return undefined;
+    let cancelled = false;
+    axios
+      .get(`/api/products/${reviewProductId}/reviews/photo-eligibility`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(({ data }) => {
+        if (!cancelled) setPhotoEligibility(data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setPhotoEligibility(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isReviewFormOpen, token, reviewProductId]);
 
   const handleHelpfulClick = (reviewId) => {
     setHelpfulVotes((prev) => {
@@ -1008,13 +1041,14 @@ function Product() {
       setSubmittingReview(true);
       await axios.post(
         `/api/products/${product?._id || id}/reviews`,
-        { rating: Number(rating), comment: comment.trim() },
+        { rating: Number(rating), comment: comment.trim(), photos: reviewPhotos },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setRating("5");
       setHoverRating(0);
       setComment("");
+      setReviewPhotos([]);
       setReviewError("");
       setShowReviewSuccessModal(true);
       setIsReviewFormOpen(false);
@@ -1030,6 +1064,7 @@ function Product() {
   const handleCancelReview = () => {
     setIsReviewFormOpen(false);
     setComment("");
+    setReviewPhotos([]);
     setRating("5");
     setHoverRating(0);
     setReviewError("");
@@ -2146,10 +2181,14 @@ function Product() {
             <div className="reviews-score-meta">
               Based on <strong>{reviews.length}</strong> {reviews.length === 1 ? "rating" : "ratings"}
             </div>
-            <div className="reviews-verified-badge-tag">
-              <ShieldCheck size={14} />
-              <span>100% Verified Purchases</span>
-            </div>
+            {verifiedReviewCount > 0 && (
+              <div className="reviews-verified-badge-tag">
+                <ShieldCheck size={14} />
+                <span>
+                  {verifiedReviewCount} verified {verifiedReviewCount === 1 ? "purchase" : "purchases"}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* 2. Rating Breakdown Bars */}
@@ -2304,6 +2343,21 @@ function Product() {
                   )}
                 </div>
 
+                {photoEligibility?.canAddPhotos ? (
+                  <div className="reviews-form-group">
+                    <ReviewPhotoPicker
+                      productId={product?._id || id}
+                      token={token}
+                      photos={reviewPhotos}
+                      onChange={setReviewPhotos}
+                      maxPhotos={photoEligibility.maxPhotos || 4}
+                      disabled={submittingReview}
+                    />
+                  </div>
+                ) : photoEligibility && !photoEligibility.verifiedBuyer ? (
+                  <p className="review-photo-buyers-note">Customers who bought this product can also add photos.</p>
+                ) : null}
+
                 <div className="reviews-form-actions">
                   <button
                     type="button"
@@ -2355,6 +2409,16 @@ function Product() {
               >
                 All ({reviews.length})
               </button>
+              {reviewsWithPhotos > 0 && (
+                <button
+                  type="button"
+                  className={`reviews-chip ${photosOnly ? "active" : ""}`}
+                  aria-pressed={photosOnly}
+                  onClick={() => setPhotosOnly((v) => !v)}
+                >
+                  <Camera size={13} className="ui-inline-icon" aria-hidden="true" /> With photos ({reviewsWithPhotos})
+                </button>
+              )}
               {ratingDistribution
                 .filter((d) => d.count > 0)
                 .map((d) => (
@@ -2423,10 +2487,12 @@ function Product() {
                       <div className="review-user-meta">
                         <div className="review-user-name-row">
                           <strong className="review-user-name">{reviewerName}</strong>
-                          <span className="review-verified-tag">
-                            <CheckCircle2 size={13} className="check-icon" />
-                            Verified Buyer
-                          </span>
+                          {r.verifiedPurchase === true && (
+                            <span className="review-verified-tag">
+                              <CheckCircle2 size={13} className="check-icon" />
+                              Verified Buyer
+                            </span>
+                          )}
                         </div>
                         {r.createdAt && (
                           <span className="review-date-text">
@@ -2444,6 +2510,7 @@ function Product() {
 
                   <div className="review-card-content">
                     <p className="review-comment-text">{r.comment}</p>
+                    <ReviewPhotoStrip photos={r.photos} reviewerName={reviewerName} />
                   </div>
 
                   <div className="review-card-footer">

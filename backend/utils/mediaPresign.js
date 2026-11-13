@@ -7,7 +7,8 @@ const { createPresignedPost } = require("@aws-sdk/s3-presigned-post");
 // "return-evidence": customers' photos of a damaged or defective item (see orderRoutes). These
 // are private: stored under <prefix>/private/..., never given a public link, and only shown
 // through the API to the order's owner and admins.
-const ALLOWED_KINDS = ["product", "banner", "site", "return-evidence"];
+// "review-photo": customers' own photos in a product review (public, shown on the product page).
+const ALLOWED_KINDS = ["product", "banner", "site", "return-evidence", "review-photo"];
 const PRIVATE_KINDS = new Set(["return-evidence"]);
 
 const ALLOWED_TYPES = {
@@ -152,6 +153,17 @@ function isReturnEvidenceKey(key, config = getMediaConfig()) {
   return /^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(key.slice(base.length));
 }
 
+/**
+ * True when a link is one of our review photo uploads
+ * (<cdn>/<prefix>/review-photo/<uuid>.<ext>), so a review can't show pictures from anywhere else.
+ */
+function isReviewPhotoUrl(url, config = getMediaConfig()) {
+  if (typeof url !== "string" || !config?.mediaCdnUrl) return false;
+  const base = `${config.mediaCdnUrl}/${config.prefix ? `${config.prefix}/` : ""}review-photo/`;
+  if (!url.startsWith(base)) return false;
+  return /^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(url.slice(base.length));
+}
+
 /** Reads a private stored file: { body (stream), contentType, contentLength }. */
 async function getPrivateObject(key) {
   const config = getMediaConfig();
@@ -173,6 +185,7 @@ async function getPrivateObject(key) {
 
 module.exports = {
   isReturnEvidenceKey,
+  isReviewPhotoUrl,
   getPrivateObject,
   PRIVATE_KINDS,
   getMediaConfig,
