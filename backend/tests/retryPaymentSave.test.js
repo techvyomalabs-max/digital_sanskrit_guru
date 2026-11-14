@@ -30,7 +30,10 @@ describe("Continue Payment: saving a paid retry", () => {
     Order.exists = async () => null;
   });
 
-  it("the old spread copy fails validation (the bug)", async () => {
+  // Skipped: this showed the original bug as it behaved on Mongoose 9.9. Mongoose 9.12
+  // (security update) no longer rejects the spread copy, so there is nothing to show.
+  // The tests below still cover the fix (applyPaidPaymentMeta).
+  it.skip("the old spread copy fails validation (the bug)", async () => {
     const order = failedOrder();
     order.paymentStatus = "Paid";
     order.paymentMeta = { ...(order.paymentMeta || {}), razorpayPaymentId: "pay_RETRYOK001" };

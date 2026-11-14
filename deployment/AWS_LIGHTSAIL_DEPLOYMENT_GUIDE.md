@@ -98,8 +98,13 @@ Copy the full config, with gzip compression and cache headers, from
 sudo cp /var/www/ecommerce/deployment/nginx-ecommerce.conf /etc/nginx/sites-available/ecommerce
 ```
 
-The minimal version below works, but without those settings JS/CSS go out
-uncompressed and uncached (PageSpeed flags both). Minimal `/etc/nginx/sites-available/ecommerce`:
+Use that file on the live server. It sends page requests to Express, which adds the
+SEO tags and sends the redirects for old WordPress and old product links.
+
+The minimal version below is for a quick test only: JS/CSS go out uncompressed and
+uncached (PageSpeed flags both), and because it serves `index.html` directly, old links
+are not redirected and pages get no canonical or share tags.
+Minimal `/etc/nginx/sites-available/ecommerce`:
 ```nginx
 server {
     listen 80;
