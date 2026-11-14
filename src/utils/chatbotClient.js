@@ -14,8 +14,7 @@ const CHAT_ENDPOINT = import.meta.env.DEV ? "/chatbot-api/v1/chat" : `${CHATBOT_
 
 // The widget is shown in local development, and on a deployed site only when
 // VITE_CHATBOT_ENABLED is "true".
-export const isChatbotEnabled =
-  Boolean(import.meta.env.DEV) || String(import.meta.env.VITE_CHATBOT_ENABLED || "") === "true";
+export { isChatbotEnabled } from "./chatbotEnabled.js";
 
 export const CHATBOT_STARTER_REPLIES = [
   "Track my order",
