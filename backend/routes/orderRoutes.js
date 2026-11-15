@@ -3048,11 +3048,24 @@ router.get("/my", protect, async (req, res) => {
       return it;
     };
 
+    // Codes from this buyer's gift orders that someone has used, so My Orders can say so
+    const giftOrderIds = orders.filter((o) => o?.isGift && String(o.user?._id || o.user) === String(req.user)).map((o) => o._id);
+    const usedGiftCodes = new Set(
+      giftOrderIds.length
+        ? (await GiftPass.find({ order: { $in: giftOrderIds }, isRedeemed: true }).select("code").lean()).map((gp) => gp.code)
+        : []
+    );
+
     const serializedOrders = orders.map((o) => {
       const oId = String(o._id);
       const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
       // Also covers a buyer who redeemed a pass from their own gift order
       const serialized = serializeOrderForOwner(o, req.user, { redeemedProductIds });
+      if (serialized && usedGiftCodes.size && Array.isArray(serialized.items)) {
+        serialized.items.forEach((item) => {
+          if (item?.giftCode && usedGiftCodes.has(item.giftCode)) item.giftRedeemed = true;
+        });
+      }
       const isWp = Boolean(o.isWpArchive || String(o._id || "").startsWith("wp_") || serialized?.isWpArchive);
       if (isWp && serialized) {
         serialized.legacyAccess = true;

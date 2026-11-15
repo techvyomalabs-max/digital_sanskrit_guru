@@ -1292,18 +1292,32 @@ function MyOrders() {
 
                               {/* 1-Time Gift Passcode */}
                               {isPaid && !order.isRedeemedGift && !item.redeemedByViewer && (item.giftCode || (order.isGift && item.isDigital === true)) && (
-                                <div className="my-order-gift-box">
+                                <div className={`my-order-gift-box${item.giftRedeemed ? " is-redeemed" : ""}`}>
+                                  {item.giftRedeemed ? (
+                                    // Used already: no point showing or copying the code
+                                    <div className="my-order-gift-inner">
+                                      <div>
+                                        <span className="my-order-gift-title">
+                                          <Ticket size={15} className="ui-inline-icon" aria-hidden="true" />Gift Pass
+                                          <span className="my-order-gift-redeemed">Redeemed</span>
+                                        </span>
+                                        <p className="my-order-gift-redeemed-note">
+                                          This gift has been redeemed by the person you shared it with.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
                                   <div className="my-order-gift-inner">
                                     <div>
                                       <span className="my-order-gift-title">
                                         <Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code
-                                        {item.giftRedeemed ? <span className="my-order-gift-redeemed">Redeemed</span> : null}
                                       </span>
                                       <code className="my-order-gift-code">
                                         {item.giftCode ||
                                           (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||
                                           "Being created… refresh in a minute"}
                                       </code>
+                                      <p className="my-order-gift-redeemed-note">Share this code with the person you are gifting.</p>
                                     </div>
                                     <button
                                       type="button"
@@ -1321,6 +1335,7 @@ function MyOrders() {
                                       <Copy size={14} className="ui-inline-icon" aria-hidden="true" />Copy Code
                                     </button>
                                   </div>
+                                  )}
                                 </div>
                               )}
                             </div>
