@@ -82,8 +82,20 @@ export function suggestEmailFix(rawEmail) {
   return bestDistance > 0 && bestDistance <= allowed ? `${name}@${best}` : "";
 }
 
-/** True when both are the same address (case and spaces ignored). */
+/** The mailbox an address goes to: lowercase, "+tag" dropped, Gmail dots dropped. */
+function mailboxKey(raw) {
+  const email = String(raw || "").trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at < 1) return email;
+  let name = email.slice(0, at).split("+")[0];
+  let domain = email.slice(at + 1);
+  if (domain === "googlemail.com") domain = "gmail.com";
+  if (domain === "gmail.com") name = name.replace(/\./g, "");
+  return `${name}@${domain}`;
+}
+
+/** True when both reach the same inbox (case, spaces, "+tag" and Gmail dots ignored). */
 export function isSameEmail(a, b) {
-  const clean = (value) => String(value || "").trim().toLowerCase();
-  return Boolean(clean(a)) && clean(a) === clean(b);
+  const clean = (value) => String(value || "").trim();
+  return Boolean(clean(a)) && Boolean(clean(b)) && mailboxKey(a) === mailboxKey(b);
 }

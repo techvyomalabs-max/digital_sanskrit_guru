@@ -696,6 +696,13 @@ function Checkout() {
       document.getElementById("gift-recipient-email")?.focus();
       return null;
     }
+    if (isGift && giftEmailIsOwn) {
+      setCheckoutMessage(
+        "That's your own email. A gift is sent to someone else, so please enter their email."
+      );
+      document.getElementById("gift-recipient-email")?.focus();
+      return null;
+    }
 
     const gst = gstinPayload(gstInfo);
     if (gst.error) {
@@ -1402,8 +1409,8 @@ function Checkout() {
                       </p>
                     ) : null}
                     {giftEmailIsOwn ? (
-                      <p className="checkout-gift-hint is-own" role="status">
-                        This is your own email. The Gift Pass code will be sent to you — is that what you want?
+                      <p className="checkout-gift-hint is-own" role="alert">
+                        That&apos;s your own email. A gift is sent to someone else, so please enter their email.
                       </p>
                     ) : null}
                     <p className="checkout-gift-subnote">

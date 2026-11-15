@@ -59,6 +59,14 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
     }
 
+    // A gift is for someone else: the person who bought it can't redeem it
+    if (existingPass.buyer && String(existingPass.buyer) === String(req.user)) {
+      return res.status(400).json({
+        code: "GIFT_OWN_PURCHASE",
+        message: "You bought this gift, so it can't be redeemed on your account. Please share the code with the person you're gifting."
+      });
+    }
+
     // Check if the user already owns this product
     const ownedDigitalIds = await getOwnedDigitalIdsForUser(req.user);
     if (ownedDigitalIds.has(String(existingPass.product))) {
