@@ -96,6 +96,7 @@ const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
 const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
 const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
+const { cleanAccessCredentials } = require("../utils/accessCredentials");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
@@ -1647,6 +1648,13 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
     }
 
     const { itemIndexes, note } = req.body || {};
+    // Optional login details for an account the admin made on the other website: emailed
+    // once, never saved or logged
+    const credentialCheck = cleanAccessCredentials(req.body?.credentials);
+    if (credentialCheck.error) {
+      return res.status(400).json({ message: credentialCheck.error });
+    }
+    const credentials = credentialCheck.credentials;
 
     // Gift orders: only lines someone has redeemed (they carry the recipient's details) can
     // be granted; before that there is nobody to set up access for
@@ -1738,7 +1746,10 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       summary: `Granted access to ${grantResult.grantedIndexes.length} item(s)`,
       details: {
         itemNames,
-        hasNote: Boolean(sanitizeAccessNote(note))
+        hasNote: Boolean(sanitizeAccessNote(note)),
+        // whether login details were emailed (never the password itself)
+        sentLoginDetails: Boolean(credentials),
+        sentPassword: Boolean(credentials?.tempPassword)
       }
     });
 
@@ -1755,7 +1766,8 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
             updated,
             { name: recipient.name, email: recipient.email },
             indexes.map((idx) => updated.items[idx]),
-            sanitizeAccessNote(note)
+            sanitizeAccessNote(note),
+            credentials
           );
         }
       }
@@ -1777,7 +1789,7 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       // Digital-only order now fully accessible: its invoice was issued with this grant
       if (invoiceIssuedNow) await sendWhatsAppDigitalAccess(updated, buyerUser);
       if (buyerUser) {
-        await sendAccessGrantedEmail(updated, buyerUser, buyerItems, sanitizeAccessNote(note));
+        await sendAccessGrantedEmail(updated, buyerUser, buyerItems, sanitizeAccessNote(note), credentials);
       }
     });
   } catch (err) {

@@ -1261,7 +1261,7 @@ function applyDigitalAccessNoticeToBody(bodyTemplate, pendingItems = []) {
   return bodyTemplate;
 }
 
-function buildAccessGrantedEmail(order, user, grantedItems, note) {
+function buildAccessGrantedEmail(order, user, grantedItems, note, credentials = null) {
   const subject = cleanSubject(`Your access is ready — ${SITE_NAME}`);
   const items = Array.isArray(grantedItems) ? grantedItems : [];
   const itemsList = items
@@ -1289,6 +1289,30 @@ function buildAccessGrantedEmail(order, user, grantedItems, note) {
       </div>`;
   }
 
+  // Login details for an account our team created on the other website (this email only)
+  let loginBox = "";
+  if (credentials?.loginEmail) {
+    const rows = [
+      credentials.loginUrl
+        ? `<tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Login page</td><td style="padding: 4px 0;"><a href="${escapeHtml(credentials.loginUrl)}" style="color: #2563eb;">${escapeHtml(credentials.loginUrl)}</a></td></tr>`
+        : "",
+      `<tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Email</td><td style="padding: 4px 0;"><strong>${escapeHtml(credentials.loginEmail)}</strong></td></tr>`,
+      credentials.tempPassword
+        ? `<tr><td style="padding: 4px 12px 4px 0; color: #64748b;">Password</td><td style="padding: 4px 0;"><code style="font-size: 15px; font-weight: bold; background: #f1f5f9; padding: 3px 8px; border-radius: 4px; border: 1px solid #cbd5e1;">${escapeHtml(credentials.tempPassword)}</code></td></tr>`
+        : ""
+    ].join("");
+    loginBox = `
+      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: sans-serif;">
+        <strong style="color: #1e3a8a; display: block; margin-bottom: 8px;">Your login details</strong>
+        <table style="border-collapse: collapse; font-size: 14px; color: #1e293b;">${rows}</table>
+        ${
+          credentials.tempPassword
+            ? `<p style="margin: 10px 0 0; color: #475569; font-size: 13px;">This is a temporary password. Please change it after you first log in, and keep this email private.</p>`
+            : ""
+        }
+      </div>`;
+  }
+
   const bodyHtml = `
     <h2>Your access is ready! 🎉</h2>
     <p>Hi <strong>${escapeHtml(user?.name || "Customer")}</strong>,</p>
@@ -1296,6 +1320,7 @@ function buildAccessGrantedEmail(order, user, grantedItems, note) {
     <ul style="line-height: 1.8; color: #334155;">
       ${itemsList}
     </ul>
+    ${loginBox}
     ${noteBox}
     <p>You can view your materials anytime from your library:</p>
     <a class="cta" href="${siteLink("/my-library")}">Go to My Library</a>
@@ -1306,10 +1331,10 @@ function buildAccessGrantedEmail(order, user, grantedItems, note) {
   return { subject, html };
 }
 
-async function sendAccessGrantedEmail(order, user, grantedItems, note) {
+async function sendAccessGrantedEmail(order, user, grantedItems, note, credentials = null) {
   const to = String(user?.email || "").trim().toLowerCase();
   if (!to) return { skipped: true };
-  const { subject, html } = buildAccessGrantedEmail(order, user, grantedItems, note);
+  const { subject, html } = buildAccessGrantedEmail(order, user, grantedItems, note, credentials);
   return sendEmail({
     to,
     subject,

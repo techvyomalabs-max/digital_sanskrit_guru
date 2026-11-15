@@ -781,6 +781,47 @@ describe("Access Grant & Fulfilment", () => {
       assert.ok(!setKeys.includes("items.1.accessGrantedAt"));
     });
 
+    it("login details are emailed only: never saved on the order or in the audit log", async () => {
+      const order = createMockOrder();
+      mock.method(Order, "findById", async () => order);
+      let savedUpdate = null;
+      mock.method(Order, "findOneAndUpdate", async (filter, update) => {
+        savedUpdate = update;
+        return { ...order, ...update.$set, items: order.items.map((it) => ({ ...it, accessGrantedAt: new Date() })) };
+      });
+      mock.method(User, "findById", () => ({ select: () => ({ lean: async () => ({ name: "Admin", email: "a@x.test" }) }) }));
+      let auditEntry = null;
+      mock.method(AdminAuditLog, "create", async (entry) => {
+        auditEntry = entry;
+        return {};
+      });
+
+      const res = createMockRes();
+      await grantHandler(
+        {
+          params: { id: order._id.toString() },
+          user: new mongoose.Types.ObjectId().toString(),
+          body: { note: "Log in with your email", credentials: { loginEmail: "c@x.test", tempPassword: "Kp7mQx2Rta" } }
+        },
+        res
+      );
+      assert.equal(res.statusCode, 200);
+      assert.ok(!JSON.stringify(savedUpdate).includes("Kp7mQx2Rta"));
+      assert.ok(!JSON.stringify(auditEntry).includes("Kp7mQx2Rta"));
+      assert.ok(!JSON.stringify(res.jsonBody).includes("Kp7mQx2Rta"));
+    });
+
+    it("rejects bad login details with 400 before granting", async () => {
+      const order = createMockOrder();
+      mock.method(Order, "findById", async () => order);
+      const res = createMockRes();
+      await grantHandler(
+        { params: { id: order._id.toString() }, user: "admin1", body: { credentials: { loginEmail: "nope", tempPassword: "x" } } },
+        res
+      );
+      assert.equal(res.statusCode, 400);
+    });
+
     it("refuses a gift line nobody has redeemed when chosen by index", async () => {
       const order = createMockOrder({
         isGift: true,
