@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { suggestEmailFix, isSameEmail } from "../utils/emailTypo";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
@@ -140,6 +141,9 @@ function Checkout() {
   const [selectedBillingIndex, setSelectedBillingIndex] = useState(0);
   const [isGift, setIsGift] = useState(false);
   const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
+  // Hints for the gift email: a likely typo ("gmial.com") and "that's your own email"
+  const giftEmailSuggestion = useMemo(() => suggestEmailFix(giftRecipientEmail), [giftRecipientEmail]);
+  const giftEmailIsOwn = useMemo(() => isSameEmail(giftRecipientEmail, user?.email), [giftRecipientEmail, user?.email]);
   const [gstInfo, setGstInfo] = useState(EMPTY_GSTIN);
   const [honeyPot, setHoneyPot] = useState("");
   const selectedBillingAddress = addresses[selectedBillingIndex];
@@ -1388,6 +1392,20 @@ function Checkout() {
                         className="checkout-form-input"
                       />
                     </label>
+                    {giftEmailSuggestion ? (
+                      <p className="checkout-gift-hint is-typo" role="status">
+                        Did you mean{" "}
+                        <button type="button" onClick={() => setGiftRecipientEmail(giftEmailSuggestion)}>
+                          {giftEmailSuggestion}
+                        </button>
+                        ?
+                      </p>
+                    ) : null}
+                    {giftEmailIsOwn ? (
+                      <p className="checkout-gift-hint is-own" role="status">
+                        This is your own email. The Gift Pass code will be sent to you — is that what you want?
+                      </p>
+                    ) : null}
                     <p className="checkout-gift-subnote">
                       We email the Gift Pass code to this address right after payment. It also stays in your My Orders.
                     </p>
