@@ -989,7 +989,7 @@ async function sendTestEmail(to, stream = "transactional") {
   return sendEmail({ to, subject: `Test Email — ${SITE_NAME}`, html, type: "test", stream });
 }
 
-async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId }) {
+async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId, accessSetUpByTeam = false }) {
   const safeBuyerName = escapeHtml(buyerName);
   const safeProductName = escapeHtml(productName);
   const safeGiftCode = escapeHtml(giftCode);
@@ -1013,7 +1013,11 @@ async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId
       <li style="margin-bottom: 8px;">Enter the unique Gift Pass code shown above to unlock your copy!</li>
     </ol>
     
-    <p>Once redeemed, the book will be instantly added to your digital library for browser reading.</p>
+    <p>${
+      accessSetUpByTeam
+        ? "Once you redeem it, our team sets up your access (usually within 24–48 hours) and emails you when it's ready. It will then appear in your Digital Library."
+        : "Once redeemed, the book will be instantly added to your digital library for browser reading."
+    }</p>
   `);
 
   return sendEmail({

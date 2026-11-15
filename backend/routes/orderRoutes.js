@@ -94,6 +94,7 @@ const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
+const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
@@ -519,7 +520,8 @@ async function emailIssuedGiftPasses(order, issued) {
         buyerName,
         giftCode: pass.code,
         productName: item?.name || "Digital Item",
-        orderId: String(order._id)
+        orderId: String(order._id),
+        accessSetUpByTeam: item?.giftAccessManual === true
       });
     } catch (err) {
       console.error("[GiftPass] Email send error:", err.message);
@@ -598,8 +600,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     }
 
     const isGift = req.body?.isGift === true;
-    if (isGift && totals.normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    if (isGift) {
+      totals.normalizedItems = holdGiftManualAccess(totals.normalizedItems);
     }
 
     const requestedBilling = req.body.billing || req.body.shipping || {};
@@ -1472,10 +1475,20 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
           pendingItems.push({
             index,
             name: item.name || "Item",
-            quantity: Number(item.quantity) || 1
+            quantity: Number(item.quantity) || 1,
+            giftRecipient: item.giftRecipient
+              ? { name: item.giftRecipient.name || "Gift recipient", email: item.giftRecipient.email || "" }
+              : null
           });
         }
       });
+
+      // Every pending line is a redeemed gift: the person waiting is the recipient
+      const giftOnly = pendingItems.length > 0 && pendingItems.every((it) => it.giftRecipient);
+      if (giftOnly) {
+        customerName = `${pendingItems[0].giftRecipient.name} (gift)`;
+        customerEmail = pendingItems[0].giftRecipient.email || customerEmail;
+      }
 
       return {
         _id: order._id,
@@ -1630,17 +1643,33 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       return res.status(400).json({ message: "Cannot grant access to a refunded order." });
     }
 
+    const { itemIndexes, note } = req.body || {};
+
+    // Gift orders: only lines someone has redeemed (they carry the recipient's details) can
+    // be granted; before that there is nobody to set up access for
+    let targetIndexes = itemIndexes;
     const isGiftOrder = Boolean(order.isGift) ||
       (Array.isArray(order.items) && order.items.some((item) => item?.isGift || item?.giftCode));
     if (isGiftOrder) {
-      return res.status(400).json({ message: "Cannot grant access to a gift order." });
+      const items = Array.isArray(order.items) ? order.items : [];
+      const redeemedPending = items
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item?.accessManual === true && !item.accessGrantedAt && item.giftRecipient)
+        .map(({ idx }) => idx);
+      if (targetIndexes === undefined || targetIndexes === null) {
+        if (redeemedPending.length === 0) {
+          return res.status(400).json({ message: "This gift hasn't been redeemed yet, so there is no one to set up access for." });
+        }
+        targetIndexes = redeemedPending;
+      } else if (!Array.isArray(targetIndexes) || targetIndexes.some((idx) => !redeemedPending.includes(Number(idx)))) {
+        return res.status(400).json({ message: "Only gift items that have been redeemed can be granted." });
+      }
     }
 
-    const { itemIndexes, note } = req.body || {};
     const actor = await getAdminActorSnapshot(req.user);
 
     const grantResult = applyAccessGrant(order.items, {
-      itemIndexes,
+      itemIndexes: targetIndexes,
       adminId: actor.id || actor._id || req.user,
       note,
       now: new Date()
@@ -1713,6 +1742,23 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
     res.json(updated);
 
     fireNotifications(async () => {
+      // Redeemed gifts: the recipient is told, not the buyer
+      const giftGroups = giftRecipientsForLines(updated.items, grantResult.grantedIndexes);
+      const giftIndexes = new Set(giftGroups.flatMap((group) => group.indexes));
+      for (const { recipient, indexes } of giftGroups) {
+        if (recipient.user) await sendPushToUser(recipient.user, accessGrantedPayload(updated));
+        if (recipient.email) {
+          await sendAccessGrantedEmail(
+            updated,
+            { name: recipient.name, email: recipient.email },
+            indexes.map((idx) => updated.items[idx]),
+            sanitizeAccessNote(note)
+          );
+        }
+      }
+      const buyerItems = grantedItems.filter((_, i) => !giftIndexes.has(grantResult.grantedIndexes[i]));
+      if (buyerItems.length === 0) return;
+
       const userId = updated.user?._id || updated.user;
       let buyerUser = null;
       if (userId) {
@@ -1728,7 +1774,7 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       // Digital-only order now fully accessible: its invoice was issued with this grant
       if (invoiceIssuedNow) await sendWhatsAppDigitalAccess(updated, buyerUser);
       if (buyerUser) {
-        await sendAccessGrantedEmail(updated, buyerUser, grantedItems, sanitizeAccessNote(note));
+        await sendAccessGrantedEmail(updated, buyerUser, buyerItems, sanitizeAccessNote(note));
       }
     });
   } catch (err) {
@@ -3279,12 +3325,11 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       }
     }
 
-    const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
-
     const isGift = req.body?.isGift === true;
-    if (isGift && normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-    }
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    const normalizedItems = isGift
+      ? holdGiftManualAccess(Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [])
+      : Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
 
     const initialOrderStatus = rawPaymentStatus === "Paid" && canAutoComplete(normalizedItems)
       ? "Completed"

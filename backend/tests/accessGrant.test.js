@@ -731,7 +731,7 @@ describe("Access Grant & Fulfilment", () => {
       assert.ok(res.jsonBody.message.includes("refunded"));
     });
 
-    it("rejects gift order with 400", async () => {
+    it("rejects a gift order nobody has redeemed yet with 400", async () => {
       const order = createMockOrder({ isGift: true });
       mock.method(Order, "findById", async () => order);
 
@@ -745,6 +745,52 @@ describe("Access Grant & Fulfilment", () => {
       await grantHandler(req, res);
       assert.equal(res.statusCode, 400);
       assert.ok(res.jsonBody.message.includes("gift"));
+    });
+
+    it("grants only the redeemed line of a gift order", async () => {
+      const order = createMockOrder({
+        isGift: true,
+        items: [
+          { name: "Course A", isDigital: true, digitalDelivery: "external", accessManual: true, accessGrantedAt: null,
+            giftAccessManual: true, giftCode: "GIFT-DSG-A", giftRecipient: { name: "Asha", email: "asha@example.com" } },
+          { name: "Course B", isDigital: true, digitalDelivery: "external", accessManual: false, accessGrantedAt: null,
+            giftAccessManual: true, giftCode: "GIFT-DSG-B" }
+        ]
+      });
+      mock.method(Order, "findById", async () => order);
+      let setKeys = [];
+      mock.method(Order, "findOneAndUpdate", async (filter, update) => {
+        setKeys = Object.keys(update.$set);
+        return {
+          ...order,
+          ...update.$set,
+          items: order.items.map((it, idx) =>
+            `items.${idx}.accessGrantedAt` in update.$set ? { ...it, accessGrantedAt: update.$set[`items.${idx}.accessGrantedAt`] } : it
+          )
+        };
+      });
+      mock.method(User, "findById", () => ({ select: () => ({ lean: async () => ({ name: "Admin", email: "a@x.test" }) }) }));
+      mock.method(AdminAuditLog, "create", async () => ({}));
+
+      const req = { params: { id: order._id.toString() }, user: new mongoose.Types.ObjectId().toString(), body: {} };
+      const res = createMockRes();
+      await grantHandler(req, res);
+
+      assert.equal(res.statusCode, 200);
+      assert.ok(setKeys.includes("items.0.accessGrantedAt"));
+      assert.ok(!setKeys.includes("items.1.accessGrantedAt"));
+    });
+
+    it("refuses a gift line nobody has redeemed when chosen by index", async () => {
+      const order = createMockOrder({
+        isGift: true,
+        items: [{ name: "Course", isDigital: true, accessManual: true, accessGrantedAt: null, giftCode: "GIFT-DSG-C" }]
+      });
+      mock.method(Order, "findById", async () => order);
+      const res = createMockRes();
+      await grantHandler({ params: { id: order._id.toString() }, user: "admin1", body: { itemIndexes: [0] } }, res);
+      assert.equal(res.statusCode, 400);
+      assert.match(res.jsonBody.message, /redeemed/);
     });
 
     it("returns 404 when order is not found", async () => {
@@ -838,7 +884,8 @@ describe("Access Grant & Fulfilment", () => {
       assert.deepEqual(o.items[0], {
         index: 1,
         name: "Pending Item 1",
-        quantity: 2
+        quantity: 2,
+        giftRecipient: null
       });
     });
 

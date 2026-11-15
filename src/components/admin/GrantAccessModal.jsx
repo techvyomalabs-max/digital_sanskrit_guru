@@ -207,11 +207,22 @@ export default function GrantAccessModal({
                         <span>
                           {item.name || "Item"}
                           {Number(item.quantity) > 1 ? ` (×${item.quantity})` : ""}
+                          {item.giftRecipient ? ` — gift for ${item.giftRecipient.name}` : ""}
                         </span>
                       </label>
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {pendingList.some(({ item }) => item.giftRecipient) && (
+              <div className="admin-grant-gift-hint">
+                <strong>Gift:</strong> set up access for{" "}
+                {[...new Map(pendingList.filter(({ item }) => item.giftRecipient).map(({ item }) => [item.giftRecipient.email || item.giftRecipient.name, item.giftRecipient])).values()]
+                  .map((r) => `${r.name}${r.email ? ` (${r.email})` : ""}`)
+                  .join(", ")}
+                . The &quot;access is ready&quot; email goes to them, not the buyer.
               </div>
             )}
 

@@ -74,10 +74,6 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         }
       }
 
-      if (o.isGift && (o.items || []).some((it) => it.accessManual)) {
-        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-      }
-
       itemsToCheck = o.items;
       const ic = resolveItemsCurrency(o.items);
       const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
@@ -116,10 +112,6 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         userId: req.user || null,
         settings
       });
-
-      if (req.body.isGift === true && (totals.normalizedItems || []).some((it) => it.accessManual)) {
-        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-      }
 
       itemsToCheck = totals.normalizedItems;
       amount = totals.chargeAmount || totals.totalInInr || totals.total;

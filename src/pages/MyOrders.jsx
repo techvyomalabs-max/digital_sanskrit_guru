@@ -1295,7 +1295,10 @@ function MyOrders() {
                                 <div className="my-order-gift-box">
                                   <div className="my-order-gift-inner">
                                     <div>
-                                      <span className="my-order-gift-title"><Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code</span>
+                                      <span className="my-order-gift-title">
+                                        <Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code
+                                        {item.giftRedeemed ? <span className="my-order-gift-redeemed">Redeemed</span> : null}
+                                      </span>
                                       <code className="my-order-gift-code">
                                         {item.giftCode ||
                                           (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||

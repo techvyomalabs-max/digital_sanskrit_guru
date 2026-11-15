@@ -153,14 +153,10 @@ function Checkout() {
   const current = useDigitalOwnership(cartItems, isGift);
 
   useEffect(() => {
-    if (hasManualAccessItem) {
-      setIsGift(false);
-      return;
-    }
     if (noGift.blocked && noGift.giftAllowed) {
       setIsGift(true);
     }
-  }, [hasManualAccessItem, noGift.blocked, noGift.giftAllowed]);
+  }, [noGift.blocked, noGift.giftAllowed]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const [charges, setCharges] = useState({
@@ -639,8 +635,8 @@ function Checkout() {
         billing,
         couponCode: couponCode || "",
         discount,
-        isGift: hasManualAccessItem ? false : isGift,
-        giftRecipientEmail: !hasManualAccessItem && isGift ? String(giftRecipientEmail || "").trim() : "",
+        isGift,
+        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
@@ -686,7 +682,7 @@ function Checkout() {
     }
 
     // The recipient's email is optional: the Gift Pass codes are always shown in My Orders
-    if (!hasManualAccessItem && isGift && giftRecipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    if (isGift && giftRecipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
       return null;
     }
@@ -749,7 +745,7 @@ function Checkout() {
           billing: billingGst(),
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
-          isGift: hasManualAccessItem ? false : Boolean(isGift)
+          isGift: Boolean(isGift)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -1339,7 +1335,6 @@ function Checkout() {
 
           {/* Digital Gift Option */}
           {hasDigitalItemsInCart && (
-            hasManualAccessItem ? null : (
               <div className="checkout-gift-card">
                 <label className="checkout-gift-toggle-label">
                   <input
@@ -1384,10 +1379,16 @@ function Checkout() {
                     <p className="checkout-gift-subnote">
                       We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
                     </p>
+                    {hasManualAccessItem && (
+                      <p className="checkout-gift-subnote">
+                        Access to some items is set up by our team: once the recipient redeems their Gift Pass, we set up
+                        their access (usually within 24–48 hours) and email them when it&apos;s ready.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-            ))}
+            )}
 
           {/* Available Coupons & Offers in Left Column */}
           {availableCoupons.length > 0 && (
@@ -1654,7 +1655,9 @@ function Checkout() {
             <div className="checkout-digital-note">
               <Zap size={14} />
               <span>
-                {hasManualAccessItem
+                {hasManualAccessItem && isGift
+                  ? "Gift order: Gift Pass codes appear in My Orders right after payment; access is set up when each recipient redeems."
+                  : hasManualAccessItem
                   ? "Digital order: our team will set up your access within 24–48 hours and email you when it's ready."
                   : hasExternalDelivery(cartItems)
                     ? "Digital order: your access link will appear in My Library after payment."

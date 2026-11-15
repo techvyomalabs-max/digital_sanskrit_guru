@@ -44,6 +44,11 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
 
     base.accessPending = isPending;
     base.accessGrantedAt = it?.accessGrantedAt || null;
+    // Who redeemed a gift is for the admin only; customers just see that it was redeemed
+    if (base.giftRecipient) {
+      base.giftRedeemed = true;
+      delete base.giftRecipient;
+    }
     if (isGranted) {
       base.accessNote = String(it?.accessNote || "");
     } else {
@@ -83,6 +88,8 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
       const allowed = (!isGiftLine || redeemedByViewer) && hasItemDigitalAccess(plain, it);
       const mapped = mapItem(it, allowed);
       if (redeemedByViewer) mapped.redeemedByViewer = true;
+      // A gift someone else redeemed: any wait for access is theirs, not the buyer's
+      else if (isGiftLine) mapped.accessPending = false;
       return mapped;
     });
   }
