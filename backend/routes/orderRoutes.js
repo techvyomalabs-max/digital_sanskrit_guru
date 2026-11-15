@@ -95,6 +95,7 @@ const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementSto
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
 const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
+const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
@@ -650,7 +651,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : ""
       },
       isGift: req.body?.isGift === true,
-      giftRecipientEmail: req.body?.isGift === true ? String(req.body?.giftRecipientEmail || "").trim() : "",
+      // Payment was already taken here, so a bad or missing email is stored as empty rather
+      // than refusing the order (checkout and /api/payment/create-order require it first)
+      giftRecipientEmail: req.body?.isGift === true ? checkGiftRecipientEmail(req.body?.giftRecipientEmail).email || "" : "",
       refundStatus: "Not Applicable",
       currencyDisplay: {
         currency: totals.orderCurrency,

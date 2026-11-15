@@ -1,4 +1,5 @@
 const express = require("express");
+const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
 const mongoose = require("mongoose");
 const protect = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
@@ -88,6 +89,11 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       receipt = `ord_${id}`;
       notes.orderId = id;
     } else if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
+      // Checked before any money is taken: a gift needs the recipient's email
+      if (req.body.isGift === true) {
+        const recipient = checkGiftRecipientEmail(req.body.giftRecipientEmail);
+        if (recipient.error) return res.status(400).json({ message: recipient.error });
+      }
       if (req.user) {
         const ownershipCheck = await checkDigitalOwnership({
           userId: req.user,

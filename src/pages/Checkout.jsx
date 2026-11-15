@@ -681,9 +681,15 @@ function Checkout() {
       return null;
     }
 
-    // The recipient's email is optional: the Gift Pass codes are always shown in My Orders
-    if (isGift && giftRecipientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    // A gift needs the recipient's email: the Gift Pass code is sent there
+    if (isGift && !giftRecipientEmail.trim()) {
+      setCheckoutMessage("Please enter the recipient's email address to send this as a gift.");
+      document.getElementById("gift-recipient-email")?.focus();
+      return null;
+    }
+    if (isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
+      document.getElementById("gift-recipient-email")?.focus();
       return null;
     }
 
@@ -745,7 +751,8 @@ function Checkout() {
           billing: billingGst(),
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
-          isGift: Boolean(isGift)
+          isGift: Boolean(isGift),
+          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : ""
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -1367,9 +1374,14 @@ function Checkout() {
                       Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
                     </p>
                     <label className="checkout-form-label">
-                      <span>Recipient's Email Address (Optional):</span>
+                      <span>
+                        Recipient&apos;s Email Address <span className="checkout-required-star" aria-hidden="true">*</span>
+                      </span>
                       <input
+                        id="gift-recipient-email"
                         type="email"
+                        required
+                        autoComplete="off"
                         placeholder="recipient@example.com"
                         value={giftRecipientEmail}
                         onChange={(e) => setGiftRecipientEmail(e.target.value)}
@@ -1377,7 +1389,7 @@ function Checkout() {
                       />
                     </label>
                     <p className="checkout-gift-subnote">
-                      We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
+                      We email the Gift Pass code to this address right after payment. It also stays in your My Orders.
                     </p>
                     {hasManualAccessItem && (
                       <p className="checkout-gift-subnote">

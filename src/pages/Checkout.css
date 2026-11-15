@@ -1271,3 +1271,8 @@
     padding: 16px;
   }
 }
+
+.checkout-required-star {
+  color: #dc2626;
+  font-weight: 700;
+}
