@@ -238,7 +238,9 @@ function MyLibrary() {
 
       order.items.forEach((item, itemIdx) => {
         const isGiftItem = Boolean(order.isGift || item.giftCode);
-        if (isGiftItem && !order.isRedeemedGift) {
+        // A gift shows here for the person who redeemed it (the recipient, or the buyer if they
+        // redeemed their own pass)
+        if (isGiftItem && !order.isRedeemedGift && !item.redeemedByViewer) {
           return;
         }
 

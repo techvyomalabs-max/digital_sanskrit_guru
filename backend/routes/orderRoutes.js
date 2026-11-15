@@ -7,7 +7,6 @@ const Product = require("../models/Product");
 const User = require("../models/User");
 const Wishlist = require("../models/Wishlist");
 const GiftPass = require("../models/GiftPass");
-const { generateGiftCode } = require("./giftRoutes");
 const { resolveDeliveryCharge, isDigitalItem, getDeliveryPricingDetails } = require("../utils/deliveryPricing");
 const { applyComboWeights } = require("../utils/comboWeight");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
@@ -95,6 +94,9 @@ const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
+const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
+const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
+const { cleanAccessCredentials } = require("../utils/accessCredentials");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
@@ -482,66 +484,23 @@ router.post("/digital-ownership", protect, estimateRateLimiter, async (req, res)
   }
 });
 
+// Paid gift orders whose digital lines have no pass yet (e.g. issuing failed after payment) get
+// them here when the buyer opens My Orders. Same rules as at payment: digital lines only, one
+// pass per line, and the recipient is emailed only for passes created now.
 const ensureGiftPassesForOrder = async (order) => {
-  if (!order || String(order.paymentStatus) !== "Paid") return order;
-
-  const items = Array.isArray(order.items) ? [...order.items] : [];
-  let updated = false;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const isDigital = Boolean(
-      item.isDigital ||
-      item.webReaderLink ||
-      item.externalAccessLink ||
-      item.kindleLink ||
-      String(item.name || "").toLowerCase().includes("flipbook") ||
-      String(item.name || "").toLowerCase().includes("web") ||
-      String(item.name || "").toLowerCase().includes("kindle") ||
-      String(item.format || "").toLowerCase().includes("web") ||
-      String(item.format || "").toLowerCase().includes("flipbook")
-    );
-
-    if ((order.isGift || item.isGift) && !item.giftCode) {
-      const code = generateGiftCode();
-      try {
-        await GiftPass.create({
-          code,
-          product: item.product || item._id || item.id,
-          productName: item.name || "Digital Item",
-          order: order._id,
-          buyer: order.user,
-          recipientEmail: order.giftRecipientEmail || "",
-          isRedeemed: false
-        });
-        item.giftCode = code;
-        updated = true;
-
-        if (order.giftRecipientEmail) {
-          const User = require("../models/User");
-          const buyerUser = await User.findById(order.user).lean();
-          const buyerName = buyerUser ? (buyerUser.name || buyerUser.email) : "A friend";
-          
-          const { sendGiftPassEmail } = require("../utils/email");
-          await sendGiftPassEmail({
-            to: order.giftRecipientEmail,
-            buyerName,
-            giftCode: code,
-            productName: item.name || "Digital Item",
-            orderId: String(order._id)
-          });
-        }
-      } catch (err) {
-        console.error("[GiftPass] Creation/Email error:", err.message);
-      }
-    }
+  if (!order || String(order.paymentStatus) !== "Paid" || !order.isGift || order.status === "Cancelled") return order;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const missing = items.some((item) => item?.isDigital === true && !item.giftCode);
+  if (!missing) return order;
+  try {
+    const issued = await issueGiftPassesForOrder(order._id);
+    emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
+    const fresh = await Order.findById(order._id).lean();
+    return fresh ? { ...order, items: fresh.items } : order;
+  } catch (err) {
+    console.error("[GiftPass] Issuing missing passes failed:", err?.message);
+    return order;
   }
-
-  if (updated) {
-    await Order.updateOne({ _id: order._id }, { $set: { items } });
-    order.items = items;
-  }
-  return order;
 };
 
 async function emailIssuedGiftPasses(order, issued) {
@@ -563,7 +522,8 @@ async function emailIssuedGiftPasses(order, issued) {
         buyerName,
         giftCode: pass.code,
         productName: item?.name || "Digital Item",
-        orderId: String(order._id)
+        orderId: String(order._id),
+        accessSetUpByTeam: item?.giftAccessManual === true
       });
     } catch (err) {
       console.error("[GiftPass] Email send error:", err.message);
@@ -642,8 +602,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     }
 
     const isGift = req.body?.isGift === true;
-    if (isGift && totals.normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    if (isGift) {
+      totals.normalizedItems = holdGiftManualAccess(totals.normalizedItems);
     }
 
     const requestedBilling = req.body.billing || req.body.shipping || {};
@@ -691,7 +652,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : ""
       },
       isGift: req.body?.isGift === true,
-      giftRecipientEmail: req.body?.isGift === true ? String(req.body?.giftRecipientEmail || "").trim() : "",
+      // Payment was already taken here, so a bad or missing email is stored as empty rather
+      // than refusing the order (checkout and /api/payment/create-order require it first)
+      giftRecipientEmail: req.body?.isGift === true ? checkGiftRecipientEmail(req.body?.giftRecipientEmail).email || "" : "",
       refundStatus: "Not Applicable",
       currencyDisplay: {
         currency: totals.orderCurrency,
@@ -1516,10 +1479,20 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
           pendingItems.push({
             index,
             name: item.name || "Item",
-            quantity: Number(item.quantity) || 1
+            quantity: Number(item.quantity) || 1,
+            giftRecipient: item.giftRecipient
+              ? { name: item.giftRecipient.name || "Gift recipient", email: item.giftRecipient.email || "" }
+              : null
           });
         }
       });
+
+      // Every pending line is a redeemed gift: the person waiting is the recipient
+      const giftOnly = pendingItems.length > 0 && pendingItems.every((it) => it.giftRecipient);
+      if (giftOnly) {
+        customerName = `${pendingItems[0].giftRecipient.name} (gift)`;
+        customerEmail = pendingItems[0].giftRecipient.email || customerEmail;
+      }
 
       return {
         _id: order._id,
@@ -1674,17 +1647,40 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       return res.status(400).json({ message: "Cannot grant access to a refunded order." });
     }
 
+    const { itemIndexes, note } = req.body || {};
+    // Optional login details for an account the admin made on the other website: emailed
+    // once, never saved or logged
+    const credentialCheck = cleanAccessCredentials(req.body?.credentials);
+    if (credentialCheck.error) {
+      return res.status(400).json({ message: credentialCheck.error });
+    }
+    const credentials = credentialCheck.credentials;
+
+    // Gift orders: only lines someone has redeemed (they carry the recipient's details) can
+    // be granted; before that there is nobody to set up access for
+    let targetIndexes = itemIndexes;
     const isGiftOrder = Boolean(order.isGift) ||
       (Array.isArray(order.items) && order.items.some((item) => item?.isGift || item?.giftCode));
     if (isGiftOrder) {
-      return res.status(400).json({ message: "Cannot grant access to a gift order." });
+      const items = Array.isArray(order.items) ? order.items : [];
+      const redeemedPending = items
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item?.accessManual === true && !item.accessGrantedAt && item.giftRecipient)
+        .map(({ idx }) => idx);
+      if (targetIndexes === undefined || targetIndexes === null) {
+        if (redeemedPending.length === 0) {
+          return res.status(400).json({ message: "This gift hasn't been redeemed yet, so there is no one to set up access for." });
+        }
+        targetIndexes = redeemedPending;
+      } else if (!Array.isArray(targetIndexes) || targetIndexes.some((idx) => !redeemedPending.includes(Number(idx)))) {
+        return res.status(400).json({ message: "Only gift items that have been redeemed can be granted." });
+      }
     }
 
-    const { itemIndexes, note } = req.body || {};
     const actor = await getAdminActorSnapshot(req.user);
 
     const grantResult = applyAccessGrant(order.items, {
-      itemIndexes,
+      itemIndexes: targetIndexes,
       adminId: actor.id || actor._id || req.user,
       note,
       now: new Date()
@@ -1750,13 +1746,34 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       summary: `Granted access to ${grantResult.grantedIndexes.length} item(s)`,
       details: {
         itemNames,
-        hasNote: Boolean(sanitizeAccessNote(note))
+        hasNote: Boolean(sanitizeAccessNote(note)),
+        // whether login details were emailed (never the password itself)
+        sentLoginDetails: Boolean(credentials),
+        sentPassword: Boolean(credentials?.tempPassword)
       }
     });
 
     res.json(updated);
 
     fireNotifications(async () => {
+      // Redeemed gifts: the recipient is told, not the buyer
+      const giftGroups = giftRecipientsForLines(updated.items, grantResult.grantedIndexes);
+      const giftIndexes = new Set(giftGroups.flatMap((group) => group.indexes));
+      for (const { recipient, indexes } of giftGroups) {
+        if (recipient.user) await sendPushToUser(recipient.user, accessGrantedPayload(updated));
+        if (recipient.email) {
+          await sendAccessGrantedEmail(
+            updated,
+            { name: recipient.name, email: recipient.email },
+            indexes.map((idx) => updated.items[idx]),
+            sanitizeAccessNote(note),
+            credentials
+          );
+        }
+      }
+      const buyerItems = grantedItems.filter((_, i) => !giftIndexes.has(grantResult.grantedIndexes[i]));
+      if (buyerItems.length === 0) return;
+
       const userId = updated.user?._id || updated.user;
       let buyerUser = null;
       if (userId) {
@@ -1772,7 +1789,7 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       // Digital-only order now fully accessible: its invoice was issued with this grant
       if (invoiceIssuedNow) await sendWhatsAppDigitalAccess(updated, buyerUser);
       if (buyerUser) {
-        await sendAccessGrantedEmail(updated, buyerUser, grantedItems, sanitizeAccessNote(note));
+        await sendAccessGrantedEmail(updated, buyerUser, buyerItems, sanitizeAccessNote(note), credentials);
       }
     });
   } catch (err) {
@@ -3046,10 +3063,24 @@ router.get("/my", protect, async (req, res) => {
       return it;
     };
 
+    // Codes from this buyer's gift orders that someone has used, so My Orders can say so
+    const giftOrderIds = orders.filter((o) => o?.isGift && String(o.user?._id || o.user) === String(req.user)).map((o) => o._id);
+    const usedGiftCodes = new Set(
+      giftOrderIds.length
+        ? (await GiftPass.find({ order: { $in: giftOrderIds }, isRedeemed: true }).select("code").lean()).map((gp) => gp.code)
+        : []
+    );
+
     const serializedOrders = orders.map((o) => {
       const oId = String(o._id);
       const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
+      // Also covers a buyer who redeemed a pass from their own gift order
       const serialized = serializeOrderForOwner(o, req.user, { redeemedProductIds });
+      if (serialized && usedGiftCodes.size && Array.isArray(serialized.items)) {
+        serialized.items.forEach((item) => {
+          if (item?.giftCode && usedGiftCodes.has(item.giftCode)) item.giftRedeemed = true;
+        });
+      }
       const isWp = Boolean(o.isWpArchive || String(o._id || "").startsWith("wp_") || serialized?.isWpArchive);
       if (isWp && serialized) {
         serialized.legacyAccess = true;
@@ -3322,12 +3353,11 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       }
     }
 
-    const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
-
     const isGift = req.body?.isGift === true;
-    if (isGift && normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-    }
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    const normalizedItems = isGift
+      ? holdGiftManualAccess(Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [])
+      : Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
 
     const initialOrderStatus = rawPaymentStatus === "Paid" && canAutoComplete(normalizedItems)
       ? "Completed"

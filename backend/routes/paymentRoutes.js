@@ -1,9 +1,11 @@
 const express = require("express");
+const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
 const mongoose = require("mongoose");
 const protect = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const PaymentIntent = require("../models/PaymentIntent");
+const User = require("../models/User");
 const StoreSettings = require("../models/StoreSettings");
 const getRazorpayClient = require("../utils/razorpay");
 const { toMinorUnits, resolveItemsCurrency, normalizeCurrencyCode } = require("../utils/currency");
@@ -74,10 +76,6 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         }
       }
 
-      if (o.isGift && (o.items || []).some((it) => it.accessManual)) {
-        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-      }
-
       itemsToCheck = o.items;
       const ic = resolveItemsCurrency(o.items);
       const s = await StoreSettings.findOne().select("currencyConversionRates").lean();
@@ -92,6 +90,18 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
       receipt = `ord_${id}`;
       notes.orderId = id;
     } else if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
+      // Checked before any money is taken: a gift needs someone else's email
+      if (req.body.isGift === true) {
+        const ownEmails = [req.body?.billing?.email];
+        if (req.user) {
+          const buyer = await User.findById(req.user).select("email").lean();
+          ownEmails.push(buyer?.email);
+        }
+        const recipient = checkGiftRecipientEmail(req.body.giftRecipientEmail, ownEmails);
+        if (recipient.error) {
+          return res.status(400).json({ message: recipient.error, code: recipient.code, field: "giftRecipientEmail" });
+        }
+      }
       if (req.user) {
         const ownershipCheck = await checkDigitalOwnership({
           userId: req.user,
@@ -116,10 +126,6 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
         userId: req.user || null,
         settings
       });
-
-      if (req.body.isGift === true && (totals.normalizedItems || []).some((it) => it.accessManual)) {
-        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-      }
 
       itemsToCheck = totals.normalizedItems;
       amount = totals.chargeAmount || totals.totalInInr || totals.total;

@@ -1771,12 +1771,12 @@ function Product() {
                         <p className="product-purchased-alert-title">
                           <AlertTriangle size={16} className="ui-inline-icon" aria-hidden="true" />{digitalOwnership.message || "You have already purchased this web version."}
                         </p>
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
                             Tick &quot;Purchase as a gift for someone else&quot; below to proceed.
                           </p>
                         )}
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <label className="product-purchased-gift-label">
                             <input
                               type="checkbox"
@@ -1828,7 +1828,7 @@ function Product() {
                             </div>
                           );
                         })()}
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
                             <input
                               type="checkbox"

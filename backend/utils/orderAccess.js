@@ -44,6 +44,11 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
 
     base.accessPending = isPending;
     base.accessGrantedAt = it?.accessGrantedAt || null;
+    // Who redeemed a gift is for the admin only; customers just see that it was redeemed
+    if (base.giftRecipient) {
+      base.giftRedeemed = true;
+      delete base.giftRecipient;
+    }
     if (isGranted) {
       base.accessNote = String(it?.accessNote || "");
     } else {
@@ -72,10 +77,20 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
       return mapItem(it, allowed);
     });
   } else {
+    const selfRedeemed = options.redeemedProductIds
+      ? new Set(Array.from(options.redeemedProductIds).map(String))
+      : new Set();
     plain.items = (plain.items || []).map((it) => {
-      // For the buyer, if an item is a gift, digital links are stripped because the gift pass is for the recipient
-      const allowed = !(isGiftOrder || it?.giftCode) && hasItemDigitalAccess(plain, it);
-      return mapItem(it, allowed);
+      // For the buyer, gift lines have their digital links stripped because the pass is for the
+      // recipient, unless the buyer redeemed that pass themselves (then it's theirs to read).
+      const isGiftLine = isGiftOrder || Boolean(it?.giftCode);
+      const redeemedByViewer = isGiftLine && selfRedeemed.has(String(it?.product || it?._id || it?.id || ""));
+      const allowed = (!isGiftLine || redeemedByViewer) && hasItemDigitalAccess(plain, it);
+      const mapped = mapItem(it, allowed);
+      if (redeemedByViewer) mapped.redeemedByViewer = true;
+      // A gift someone else redeemed: any wait for access is theirs, not the buyer's
+      else if (isGiftLine) mapped.accessPending = false;
+      return mapped;
     });
   }
 

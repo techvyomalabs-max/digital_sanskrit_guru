@@ -432,7 +432,11 @@ function AdminOrderDetails() {
             {showPendingAccessCard && (
               <div className="admin-order-pending-access-banner">
                 <div>
-                  <h2>Customer is waiting for access</h2>
+                  <h2>
+                    {pendingItems.length > 0 && pendingItems.every(({ item }) => item.giftRecipient)
+                      ? "Gift recipient is waiting for access"
+                      : "Customer is waiting for access"}
+                  </h2>
                   <p>
                     {pendingItems.length === 1
                       ? "1 digital item requires manual access to be granted on the external website."
@@ -526,16 +530,39 @@ function AdminOrderDetails() {
                                 ) : null}
                               </div>
                             )}
+                            {item.giftAccessManual === true && item.accessManual !== true && (
+                              <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <span className="admin-item-access-badge gift-waiting">Gift · not redeemed yet</span>
+                                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
+                                  Nothing to do yet. When someone redeems this Gift Pass, it appears under Access Pending
+                                  with their name and email.
+                                </p>
+                              </div>
+                            )}
                             {item.accessManual === true && (
                               <div style={{ marginTop: "8px" }}>
                                 {!item.accessGrantedAt ? (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                                     <span className="admin-item-access-badge pending">
-                                      Access pending
+                                      {item.giftRecipient ? "Gift redeemed · access pending" : "Access pending"}
                                     </span>
-                                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
-                                      Set up this customer&apos;s access on the other website, then click Grant access.
-                                    </p>
+                                    {item.giftRecipient ? (
+                                      <p className="admin-gift-recipient">
+                                        Set up access for the <strong>gift recipient</strong>, not the buyer:{" "}
+                                        <strong>{item.giftRecipient.name}</strong>
+                                        {item.giftRecipient.email ? (
+                                          <>
+                                            {" "}
+                                            (<a href={`mailto:${item.giftRecipient.email}`}>{item.giftRecipient.email}</a>)
+                                          </>
+                                        ) : null}
+                                        {item.giftRecipient.redeemedAt ? ` · redeemed ${formatDateTime(item.giftRecipient.redeemedAt)}` : ""}
+                                      </p>
+                                    ) : (
+                                      <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--admin-muted, #64748b)" }}>
+                                        Set up this customer&apos;s access on the other website, then click Grant access.
+                                      </p>
+                                    )}
                                   </div>
                                 ) : (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>

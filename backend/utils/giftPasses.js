@@ -15,6 +15,8 @@ async function issueGiftPassesForOrder(orderId) {
   for (let i = 0; i < (o.items || []).length; i++) {
     const it = o.items[i];
     if (it?.isDigital !== true) continue;
+    // Already has a pass (possibly made by older code with a different line number): don't make a second one
+    if (it.giftCode) continue;
 
     let pass = null;
     let inserted = false;
