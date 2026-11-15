@@ -51,7 +51,9 @@ export function isAccessPending(item) {
   if (!item) return false;
   if (item.accessGrantedAt) return false;
   if (String(item.returnRequest?.status || "").trim().toLowerCase() === "refunded") return false;
-  if (item.accessPending === true) return true;
+  // Customer pages get the server's answer (e.g. a gift someone else redeemed is not the
+  // buyer's wait); admin pages see raw lines and fall back to accessManual
+  if (typeof item.accessPending === "boolean") return item.accessPending;
   if (item.accessManual === true) return true;
   return false;
 }
