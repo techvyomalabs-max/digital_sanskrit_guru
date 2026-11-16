@@ -14,6 +14,22 @@ import { useDocumentMetadata, HOME_TITLE, DEFAULT_DESCRIPTION } from "../hooks/u
 import { absoluteUrl } from "../utils/seo";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { productPath } from "../utils/productLink";
+import { getCategoryIcon } from "../utils/categoryIcons";
+import { useSliderEdges } from "../hooks/useSliderEdges";
+
+// Shortcuts under the banner. Names match the store's categories (the Collection page also
+// resolves close spellings), so each tile opens that category.
+const HOME_CATEGORIES = [
+  "Book-Paperback",
+  "Web Version",
+  "Combo",
+  "Learning Path",
+  "Flipbook",
+  "Audio Device",
+  "USB Stick",
+  "E-Book - Kindle"
+];
+
 
 const HOME_REQUEST_RETRY_DELAYS = [800, 1800];
 
@@ -182,9 +198,14 @@ function Home() {
     };
   }, []);
 
+  // Arrow buttons move a row by about one screenful of cards (the row snaps to a whole card)
   const scrollRow = (targetRef, direction) => {
-    targetRef?.current?.scrollBy({ left: direction * 340, behavior: "smooth" });
+    const row = targetRef?.current;
+    if (!row) return;
+    row.scrollBy({ left: direction * Math.max(280, row.clientWidth * 0.85), behavior: "smooth" });
   };
+
+  useSliderEdges(".home-page");
 
   // Handle scrollTo query param from navbar quick-nav buttons
   useEffect(() => {
@@ -457,11 +478,11 @@ function Home() {
               {heroBanners.length > 1 ? (
                 <>
                   <button type="button" className="home-banner-nav prev" onClick={(e) => { e.preventDefault(); showPreviousHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <ChevronLeft size={52} strokeWidth={3.5} />
+                    <ChevronLeft size={22} strokeWidth={2.5} />
                     <span className="sr-only">Previous banner</span>
                   </button>
                   <button type="button" className="home-banner-nav next" onClick={(e) => { e.preventDefault(); showNextHeroBanner(); }} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <ChevronRight size={52} strokeWidth={3.5} />
+                    <ChevronRight size={22} strokeWidth={2.5} />
                     <span className="sr-only">Next banner</span>
                   </button>
                 </>
@@ -486,11 +507,11 @@ function Home() {
               {heroBanners.length > 1 ? (
                 <>
                   <button type="button" className="home-banner-nav prev" onClick={showPreviousHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <ChevronLeft size={52} strokeWidth={3.5} />
+                    <ChevronLeft size={22} strokeWidth={2.5} />
                     <span className="sr-only">Previous banner</span>
                   </button>
                   <button type="button" className="home-banner-nav next" onClick={showNextHeroBanner} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <ChevronRight size={52} strokeWidth={3.5} />
+                    <ChevronRight size={22} strokeWidth={2.5} />
                     <span className="sr-only">Next banner</span>
                   </button>
                 </>
@@ -527,6 +548,29 @@ function Home() {
         </section>
       )}
 
+      <nav className="home-categories" aria-label="Shop by category">
+        <div className="home-categories-head">
+          <h2>Shop by category</h2>
+          <Link to="/collection" className="home-categories-all">
+            View all <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        </div>
+        <ul className="home-categories-list">
+          {HOME_CATEGORIES.map((category) => {
+            const Icon = getCategoryIcon(category);
+            return (
+              <li key={category}>
+                <Link to={`/collection?category=${encodeURIComponent(category)}`} className="home-category-tile">
+                  <span className="home-category-icon" aria-hidden="true"><Icon size={22} /></span>
+                  <span className="home-category-name">{category}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+
       <section id="home-section-top-rated" className="home-section">
         <div className="home-section-head">
           <div>
@@ -543,7 +587,7 @@ function Home() {
             onClick={() => scrollRow(spotlightRef, -1)}
             aria-label="Previous items"
           >
-            <ChevronLeft size={52} strokeWidth={3.5} />
+            <ChevronLeft size={22} strokeWidth={2.5} />
           </button>
 
           <div ref={spotlightRef} className="home-spotlight-row">
@@ -564,7 +608,7 @@ function Home() {
             onClick={() => scrollRow(spotlightRef, 1)}
             aria-label="Next items"
           >
-            <ChevronRight size={52} strokeWidth={3.5} />
+            <ChevronRight size={22} strokeWidth={2.5} />
           </button>
         </div>
       </section>
@@ -610,7 +654,11 @@ function Home() {
                     <span>{formatPrice(getDisplayPrice(product, selectedAddress?.country))}</span>
                   </div>
                   <strong>{product.name}</strong>
-                  <span>{getAverageRating(product).toFixed(1)} rated by readers</span>
+                  <span>
+                    {getAverageRating(product) > 0
+                      ? `${getAverageRating(product).toFixed(1)} rated by readers`
+                      : "New arrival"}
+                  </span>
                 </Link>
               ))
             )}
@@ -718,7 +766,7 @@ function Home() {
                   onClick={() => scrollRow(festiveRef, -1)}
                   aria-label="Previous festive offers"
                 >
-                  <ChevronLeft size={52} strokeWidth={3.5} />
+                  <ChevronLeft size={22} strokeWidth={2.5} />
                 </button>
               ) : null}
 
@@ -746,7 +794,7 @@ function Home() {
                   onClick={() => scrollRow(festiveRef, 1)}
                   aria-label="Next festive offers"
                 >
-                  <ChevronRight size={52} strokeWidth={3.5} />
+                  <ChevronRight size={22} strokeWidth={2.5} />
                 </button>
               ) : null}
             </div>
@@ -772,7 +820,7 @@ function Home() {
                 onClick={() => scrollRow(bundleRef, -1)}
                 aria-label="Previous bundle products"
               >
-                <ChevronLeft size={52} strokeWidth={3.5} />
+                <ChevronLeft size={22} strokeWidth={2.5} />
               </button>
             ) : null}
 
@@ -799,7 +847,7 @@ function Home() {
                 onClick={() => scrollRow(bundleRef, 1)}
                 aria-label="Next bundle products"
               >
-                <ChevronRight size={52} strokeWidth={3.5} />
+                <ChevronRight size={22} strokeWidth={2.5} />
               </button>
             ) : null}
           </div>
@@ -811,7 +859,10 @@ function Home() {
       </DeferredHomeSection>
 
       <DeferredHomeSection isReady={showSecondarySections} skeletonCount={4} label="Loading AI recommendations">
-        <RecommendedForYou className="home-deferred-section" />
+        <RecommendedForYou
+          className="home-deferred-section"
+          excludeIds={topRatedProducts.map((product) => product._id)}
+        />
       </DeferredHomeSection>
 
       <DeferredHomeSection isReady={showSecondarySections} skeletonCount={5} label="Loading catalog preview">
@@ -832,7 +883,7 @@ function Home() {
                 onClick={() => scrollRow(catalogPreviewRef, -1)}
                 aria-label="Previous catalog items"
               >
-                <ChevronLeft size={52} strokeWidth={3.5} />
+                <ChevronLeft size={22} strokeWidth={2.5} />
               </button>
             ) : null}
 
@@ -860,7 +911,7 @@ function Home() {
                 onClick={() => scrollRow(catalogPreviewRef, 1)}
                 aria-label="Next catalog items"
               >
-                <ChevronRight size={52} strokeWidth={3.5} />
+                <ChevronRight size={22} strokeWidth={2.5} />
               </button>
             ) : null}
           </div>
