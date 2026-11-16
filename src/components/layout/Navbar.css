@@ -2198,7 +2198,9 @@ body.category-menu-open {
 }
 
 body.category-menu-open .chat-launcher-wrap,
-body.category-menu-open .whatsapp-float-container {
+body.category-menu-open .whatsapp-float-container,
+body.navbar-overlay-open .chat-launcher-wrap,
+body.navbar-overlay-open .whatsapp-float-container {
   display: none;
 }
 
