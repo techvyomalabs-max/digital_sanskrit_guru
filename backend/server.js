@@ -239,7 +239,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use(createRedirectMiddleware(legacyRedirectMap));
 
   // ── robots.txt & sitemap.xml (built from SITE_URL and the live catalog) ────
-  const { injectSeoTags, buildRobotsTxt, buildSitemapXml } = require("./utils/seo");
+  const { injectSeoTags, buildRobotsTxt, buildSitemapXml, isKnownPagePath } = require("./utils/seo");
   const SITEMAP_CACHE_KEY = "seo:sitemap";
 
   app.get("/robots.txt", (req, res) => {
@@ -297,7 +297,11 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       let seo = {};
       let status = 200;
       const productMatch = req.path.match(PRODUCT_PAGE);
-      if (productMatch) {
+      if (!isKnownPagePath(req.path)) {
+        // Missing page: the app still shows "page not found", with a real 404 status
+        seo = { noindex: "hard" };
+        status = 404;
+      } else if (productMatch) {
         try {
           const resolved = await resolveProductPage(productMatch[1]);
           if (resolved?.redirect) {
