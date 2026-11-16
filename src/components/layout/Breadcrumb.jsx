@@ -42,6 +42,7 @@ const ROUTE_MAP = {
   "unmatched-payments": { label: "Unmatched Payments", path: "/admin/unmatched-payments", parent: { label: "Admin Console", path: "/admin" } },
   products: { label: "Warehouse", path: "/admin/products", parent: { label: "Admin Console", path: "/admin" } },
   "add-products": { label: "Add & Edit Products", path: "/admin/add-products", parent: { label: "Admin Console", path: "/admin" } },
+  reviews: { label: "Reviews", path: "/admin/reviews", parent: { label: "Admin Console", path: "/admin" } },
   coupons: { label: "Discount Coupons", path: "/admin/coupons", parent: { label: "Admin Console", path: "/admin" } },
   users: { label: "User Insights", path: "/admin/users", parent: { label: "Admin Console", path: "/admin" } },
   "admin-access": { label: "Admin Roles", path: "/admin/admin-access", parent: { label: "Admin Console", path: "/admin" } },
@@ -241,6 +242,10 @@ export default function Breadcrumb() {
         items.push(mapped.parent);
       }
       items.push({ label: mapped.label, path: mapped.path });
+
+      if (primarySegment === "my-library" && segments[1] === "pack") {
+        items.push({ label: "Combo Pack", path: location.pathname });
+      }
 
       // Handle My Account Subsections (via Hash or Search Params)
       if (primarySegment === "account") {

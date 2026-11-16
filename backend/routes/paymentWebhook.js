@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const WebhookEvent = require("../models/WebhookEvent");
 const PaymentIntent = require("../models/PaymentIntent");
+const { recordFailedPayment: recordFailedPaymentOnIntent } = require("../utils/failedPayments");
 const Order = require("../models/Order");
 const { recordWebhookRefund } = require("../utils/refunds");
 
@@ -28,33 +29,11 @@ function verifyWebhookSignature(rawBody, signature, secret) {
 
 /**
  * A failed payment try (Razorpay payment.failed): kept on the checkout's payment intent so the
- * finance "Payment attempts" report shows why payments failed. Doesn't change its status.
+ * finance "Payment attempts" report and the admin order page show why payments failed.
+ * Doesn't change its status. See utils/failedPayments.js.
  */
-async function recordFailedPayment(payment) {
-  const failure = {
-    paymentId: String(payment.id || ""),
-    code: String(payment.error_code || ""),
-    description: String(payment.error_description || "").slice(0, 300),
-    reason: String(payment.error_reason || ""),
-    source: String(payment.error_source || ""),
-    step: String(payment.error_step || ""),
-    method: String(payment.method || ""),
-    at: payment.created_at ? new Date(Number(payment.created_at) * 1000) : new Date()
-  };
-  await PaymentIntent.findOneAndUpdate(
-    { razorpayOrderId: String(payment.order_id) },
-    {
-      $inc: { failedAttempts: 1 },
-      $set: { lastFailure: failure },
-      $setOnInsert: {
-        amountMinor: Number(payment.amount) || 0,
-        currency: payment.currency || "INR",
-        mode: "checkout",
-        status: "created"
-      }
-    },
-    { upsert: true }
-  );
+function recordFailedPayment(payment) {
+  return recordFailedPaymentOnIntent(payment, { PaymentIntent });
 }
 
 /**

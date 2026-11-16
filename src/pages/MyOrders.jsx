@@ -8,7 +8,7 @@ import { formatCurrencyExact, formatOrderDisplayCurrency } from "../utils/curren
 import { formatDate } from "../utils/date";
 import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
-import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess } from "../utils/accessStatus";
+import { isDigitalLikeItem, isAccessPending, orderHasPendingAccess, itemGivesOnlineAccess } from "../utils/accessStatus";
 import { isKindleProduct } from "../utils/kindle";
 import { loadRazorpayCheckout } from "../utils/loadRazorpay";
 import {
@@ -47,6 +47,7 @@ import {
   Link2
 } from "lucide-react";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+import PackIncludes from "../components/orders/PackIncludes";
 import ReturnPhotoPicker from "../components/orders/ReturnPhotoPicker";
 import "./MyOrders.css";
 import { creditNoteList, downloadCreditNote, downloadInvoice } from "../utils/downloadInvoice";
@@ -630,7 +631,12 @@ function MyOrders() {
 
       rzp.on("payment.failed", async (response) => {
         try {
-          await updateOrderPaymentStatus(order._id, { paymentStatus: "Failed" });
+          await updateOrderPaymentStatus(order._id, {
+            paymentStatus: "Failed",
+            // So the failed payment (pay_…) shows on the admin order page
+            razorpayOrderId: response?.error?.metadata?.order_id || "",
+            failedPaymentId: response?.error?.metadata?.payment_id || ""
+          });
           await loadOrders();
         } catch {
           // Ignore
@@ -930,32 +936,10 @@ function MyOrders() {
                       const itemId = String(item?._id || item?.id || item?.product || "").trim();
                       const returnRequestStatus = String(item?.returnRequest?.status || "Not Requested").trim();
                       const returnWindow = getReturnWindowInfo(order, item);
-                      const isItemDigital = Boolean(
-                        item.isDigital ||
-                          isExternalDelivery(item) ||
-                          item.legacyAccess ||
-                          item.webReaderLink ||
-                          item.kindleLink ||
-                          String(item.name || "").toLowerCase().includes("web") ||
-                          String(item.name || "").toLowerCase().includes("kindle") ||
-                          String(item.name || "").toLowerCase().includes("flipbook") ||
-                          String(item.format || "").toLowerCase().includes("web") ||
-                          String(item.format || "").toLowerCase().includes("flipbook")
-                      );
-                      const comboHasDigital = Boolean(
-                        Array.isArray(item.bundleItems) &&
-                          item.bundleItems.some(
-                            (bi) =>
-                              bi.isDigital ||
-                              isExternalDelivery(bi) ||
-                              bi.webReaderLink ||
-                              bi.kindleLink ||
-                              String(bi.name || "").toLowerCase().includes("web") ||
-                              String(bi.name || "").toLowerCase().includes("flipbook") ||
-                              String(bi.name || "").toLowerCase().includes("kindle")
-                          )
-                      );
-                      const showDigitalBox = isItemDigital || comboHasDigital;
+                      const hasComponents = Array.isArray(item.bundleItems) && item.bundleItems.length > 0;
+                      // Whole item is digital (no return); a mixed combo still has things to return.
+                      const isItemDigital = hasComponents ? item.isDigital === true : itemGivesOnlineAccess(item);
+                      const showDigitalBox = itemGivesOnlineAccess(item);
                       const isComboItem = Boolean(
                         item.productType === "bundle" ||
                           (Array.isArray(item.bundleItems) && item.bundleItems.length > 0)
@@ -1008,30 +992,7 @@ function MyOrders() {
                               {item.productType === "bundle" &&
                                 Array.isArray(item.bundleItems) &&
                                 item.bundleItems.length > 0 && (
-                                  <div className="my-order-item-bundle-details">
-                                    <p style={{ margin: "0 0 4px 0", fontSize: "12px", fontWeight: "bold", color: "var(--site-text-soft)" }}>
-                                      Pack Includes:
-                                    </p>
-                                    <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                                      {item.bundleItems.map((bi, idx) => (
-                                        <li
-                                          key={idx}
-                                          style={{
-                                            fontSize: "12.5px",
-                                            color: "var(--site-text)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            marginBottom: "2px"
-                                          }}
-                                        >
-                                          <span style={{ color: "var(--site-text-soft)" }}>•</span>
-                                          <span>{bi.name}</span>
-                                          <span style={{ color: "var(--site-text-soft)" }}>(Qty: {bi.quantity * (item.quantity || 1)})</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
+                                  <PackIncludes items={item.bundleItems} multiplier={item.quantity || 1} />
                                 )}
 
                               {Number(item.upgradeCredit) > 0 && (
@@ -1202,7 +1163,7 @@ function MyOrders() {
                               {/* Digital Reader Access Box */}
                               {isPaid &&
                                 showDigitalBox &&
-                                (order.isRedeemedGift || !(order.isGift || item.giftCode)) && (
+                                (order.isRedeemedGift || item.redeemedByViewer || !(order.isGift || item.giftCode)) && (
                                   isWpOrder ? (
                                     <div
                                       className="my-order-legacy-note-box"
@@ -1330,16 +1291,33 @@ function MyOrders() {
                                 )}
 
                               {/* 1-Time Gift Passcode */}
-                              {isPaid && (order.isGift || item.giftCode) && (
-                                <div className="my-order-gift-box">
+                              {isPaid && !order.isRedeemedGift && !item.redeemedByViewer && (item.giftCode || (order.isGift && item.isDigital === true)) && (
+                                <div className={`my-order-gift-box${item.giftRedeemed ? " is-redeemed" : ""}`}>
+                                  {item.giftRedeemed ? (
+                                    // Used already: no point showing or copying the code
+                                    <div className="my-order-gift-inner">
+                                      <div>
+                                        <span className="my-order-gift-title">
+                                          <Ticket size={15} className="ui-inline-icon" aria-hidden="true" />Gift Pass
+                                          <span className="my-order-gift-redeemed">Redeemed</span>
+                                        </span>
+                                        <p className="my-order-gift-redeemed-note">
+                                          This gift has been redeemed by the person you shared it with.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
                                   <div className="my-order-gift-inner">
                                     <div>
-                                      <span className="my-order-gift-title"><Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code</span>
+                                      <span className="my-order-gift-title">
+                                        <Ticket size={15} className="ui-inline-icon" aria-hidden="true" />1-Time Gift Pass Code
+                                      </span>
                                       <code className="my-order-gift-code">
                                         {item.giftCode ||
                                           (Array.isArray(order.giftPasses) && order.giftPasses[i]?.code) ||
-                                          "GIFT-PASS-GENERATED"}
+                                          "Being created… refresh in a minute"}
                                       </code>
+                                      <p className="my-order-gift-redeemed-note">Share this code with the person you are gifting.</p>
                                     </div>
                                     <button
                                       type="button"
@@ -1357,6 +1335,7 @@ function MyOrders() {
                                       <Copy size={14} className="ui-inline-icon" aria-hidden="true" />Copy Code
                                     </button>
                                   </div>
+                                  )}
                                 </div>
                               )}
                             </div>

@@ -2,15 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-MRSLKKT9');</script>
-    <!-- End Google Tag Manager -->
-
-    <!-- Google Tag Manager and Consent Mode v2 Setup (GDPR & DPDP Act 2023 Compliant) -->
+    <!-- Consent Mode v2 defaults (GDPR & DPDP Act 2023). Must come BEFORE the GTM snippet below,
+         so GTM reads the consent state before its first event (gtm.js / Container Loaded). -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
@@ -32,6 +25,30 @@
         'security_storage': 'granted' // Necessary cookies are always granted
       });
     </script>
+    <!-- Google Tag Manager — loaded on the visitor's first scroll, tap, click or key press,
+         or 6 s after the page has loaded, whichever comes first. Its ~300 KB of scripts
+         (GTM + GA4) then never compete with the store loading. Events pushed to dataLayer
+         before that are queued and still sent. Trade-off: a visitor who leaves within ~6 s
+         without touching the page is not counted.
+         Only runs on the live domain, so staging, the server IP and PageSpeed tests don't
+         show up in the live Analytics. On other hosts it runs only while GTM Preview /
+         Tag Assistant is connected (?gtm_debug=… in the URL; remembered for the tab). -->
+    <script>(function(w,d,s,l,i){
+    var live=/(^|\.)digitalsanskritguru\.com$/i.test(location.hostname),debug=false;
+    try{if(/[?&]gtm_debug=/.test(location.search))sessionStorage.setItem('dsg-gtm-debug','1');
+    debug=sessionStorage.getItem('dsg-gtm-debug')==='1';}catch(e){debug=/[?&]gtm_debug=/.test(location.search);}
+    if(!live&&!debug)return;
+    w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var done=false,events=['scroll','pointerdown','keydown','touchstart','mousemove'];
+    var load=function(){if(done)return;done=true;events.forEach(function(e){w.removeEventListener(e,load,{passive:true});});
+    var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);};
+    events.forEach(function(e){w.addEventListener(e,load,{passive:true,once:true});});
+    var fallback=function(){setTimeout(load,6000);};
+    if(d.readyState==='complete'){fallback();}else{w.addEventListener('load',fallback,{once:true});}
+    })(window,document,'script','dataLayer','GTM-MRSLKKT9');</script>
+    <!-- End Google Tag Manager -->
+
     <!-- Immediate site theme pre-restore and fast fetch for new browsers -->
     <script>
       (function() {
@@ -65,11 +82,39 @@
       })();
     </script>
 
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Home page: start loading the home data (and the hero banner image) right away,
+         instead of waiting for the JS bundle and the Home chunk to download first.
+         Home.jsx picks up window.__dsgHomePrefetch and falls back to its own request. -->
+    <script>
+      (function() {
+        try {
+          if (location.pathname !== "/" || !window.fetch) return;
+          var base = "%VITE_API_BASE_URL%";
+          if (base.charAt(0) === "%") base = ""; // env var not set: same-origin API
+          base = base.trim().replace(/\/$/, "");
+          var request = fetch(base + "/api/products/home")
+            .then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function(data) {
+              var banner = data && Array.isArray(data.heroBanners) ? data.heroBanners[0] : null;
+              if (banner && banner.image) {
+                var isMobile = window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
+                var link = document.createElement("link");
+                link.rel = "preload";
+                link.as = "image";
+                link.href = isMobile && banner.mobileImage ? banner.mobileImage : banner.image;
+                link.setAttribute("fetchpriority", "high");
+                document.head.appendChild(link);
+              }
+              return data;
+            });
+          request.catch(function() {});
+          window.__dsgHomePrefetch = request;
+        } catch (e) {}
+      })();
+    </script>
+
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <!-- Google Fonts — Source Sans 3 (Primary UI), Tiro Devanagari Sanskrit, Cinzel (Classical Serif), Playfair Display, Montserrat -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Montserrat:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600;1,700&family=Source+Sans+3:ital,wght@0,300..900;1,300..900&family=Tiro+Devanagari+Sanskrit:ital@0;1&display=swap" rel="stylesheet" />
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f62b3" />
@@ -88,14 +133,51 @@
     <meta name="twitter:image" content="/logo.png" />
 
     <title>Digital Sanskrit Guru | Sanskrit Books, Courses &amp; Learning Kits</title>
+    <script>
+      // Paint the loading skeleton in the colours of the theme last shown in this browser
+      // (saved by applySiteTheme), so the first frame already looks like the site.
+      (function () {
+        try {
+          var c = JSON.parse(localStorage.getItem("dsg-shell-colors") || "null");
+          if (!c) return;
+          var r = document.documentElement.style;
+          if (c.header) r.setProperty("--shell-header", c.header);
+          if (c.navBottom) r.setProperty("--shell-nav", c.navBottom);
+          if (c.bg) r.setProperty("--shell-bg", c.bg);
+        } catch (e) {}
+      })();
+    </script>
     <style>
-      /* Pre-render summary inside #root (replaced by React) */
-      .seo-fallback { max-width: 880px; margin: 0 auto; padding: 24px 16px; font-family: "Source Sans 3", system-ui, sans-serif; color: #1f2937; line-height: 1.6; }
-      .seo-fallback a { color: #0f62b3; }
-      .seo-fallback h1 { font-size: 28px; margin: 16px 0 8px; }
-      .seo-fallback h2 { font-size: 20px; margin: 20px 0 6px; }
-      .seo-fallback ul { columns: 2; padding-left: 18px; }
+      /* Shown inside #root until React renders (React replaces everything in #root). */
+      body { margin: 0; background: var(--shell-bg, #fbfaf7); }
+      .app-shell { min-height: 100vh; background: var(--shell-bg, #fbfaf7); }
+      .app-shell-bar { height: 72px; background: var(--shell-header, #0f62b3); }
+      .app-shell-nav { height: 42px; background: var(--shell-nav, #1e293b); }
+      .app-shell-main { max-width: 1240px; margin: 0 auto; padding: 24px 16px; }
+      .app-shell-block { border-radius: 14px; background: linear-gradient(90deg, #ecebe7 0%, #f6f5f2 50%, #ecebe7 100%); background-size: 200% 100%; animation: app-shell-shine 1.4s ease-in-out infinite; }
+      .app-shell-hero { height: clamp(180px, 34vw, 420px); }
+      .app-shell-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+      .app-shell-card { height: 260px; }
+      @media (max-width: 760px) {
+        .app-shell-bar { height: 108px; }
+        .app-shell-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .app-shell-card { height: 210px; }
+      }
+      @keyframes app-shell-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+      @media (prefers-reduced-motion: reduce) { .app-shell-block { animation: none; } }
+      /* Crawlable summary of the store: kept in the HTML for search engines and screen
+         readers, but not drawn on screen (visitors see the skeleton, then the real page). */
+      .seo-fallback { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
     </style>
+    <noscript>
+      <style>
+        /* Without JavaScript the real page never renders, so show the plain summary instead. */
+        .app-shell { display: none; }
+        .seo-fallback { position: static; width: auto; height: auto; margin: 0 auto; padding: 24px 16px; overflow: visible; clip: auto; clip-path: none; white-space: normal; max-width: 880px; font-family: "Source Sans 3", system-ui, sans-serif; color: #1f2937; line-height: 1.6; }
+        .seo-fallback a { color: #0f62b3; }
+        .seo-fallback ul { columns: 2; padding-left: 18px; }
+      </style>
+    </noscript>
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
@@ -103,6 +185,19 @@
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
     <div id="root">
+      <div class="app-shell" aria-hidden="true">
+        <div class="app-shell-bar"></div>
+        <div class="app-shell-nav"></div>
+        <div class="app-shell-main">
+          <div class="app-shell-block app-shell-hero"></div>
+          <div class="app-shell-row">
+            <div class="app-shell-block app-shell-card"></div>
+            <div class="app-shell-block app-shell-card"></div>
+            <div class="app-shell-block app-shell-card"></div>
+            <div class="app-shell-block app-shell-card"></div>
+          </div>
+        </div>
+      </div>
       <!-- Crawlable summary of the store, shown until React renders (it replaces everything inside #root).
            Keep it truthful and in line with the live home page. -->
       <div class="seo-fallback">

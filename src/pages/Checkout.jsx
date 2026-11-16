@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { suggestEmailFix, isSameEmail } from "../utils/emailTypo";
 import { useCart } from "../hooks/useCart";
 import { useAuth } from "../hooks/useAuth";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
@@ -140,6 +141,9 @@ function Checkout() {
   const [selectedBillingIndex, setSelectedBillingIndex] = useState(0);
   const [isGift, setIsGift] = useState(false);
   const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
+  // Hints for the gift email: a likely typo ("gmial.com") and "that's your own email"
+  const giftEmailSuggestion = useMemo(() => suggestEmailFix(giftRecipientEmail), [giftRecipientEmail]);
+  const giftEmailIsOwn = useMemo(() => isSameEmail(giftRecipientEmail, user?.email), [giftRecipientEmail, user?.email]);
   const [gstInfo, setGstInfo] = useState(EMPTY_GSTIN);
   const [honeyPot, setHoneyPot] = useState("");
   const selectedBillingAddress = addresses[selectedBillingIndex];
@@ -153,14 +157,10 @@ function Checkout() {
   const current = useDigitalOwnership(cartItems, isGift);
 
   useEffect(() => {
-    if (hasManualAccessItem) {
-      setIsGift(false);
-      return;
-    }
     if (noGift.blocked && noGift.giftAllowed) {
       setIsGift(true);
     }
-  }, [hasManualAccessItem, noGift.blocked, noGift.giftAllowed]);
+  }, [noGift.blocked, noGift.giftAllowed]);
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || "";
 
   const [charges, setCharges] = useState({
@@ -639,13 +639,15 @@ function Checkout() {
         billing,
         couponCode: couponCode || "",
         discount,
-        isGift: hasManualAccessItem ? false : isGift,
-        giftRecipientEmail: !hasManualAccessItem && isGift ? String(giftRecipientEmail || "").trim() : "",
+        isGift,
+        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
         razorpaySignature: paymentInfo?.razorpaySignature || "",
+        // Failed checkout only: the payment that failed (the server checks it with Razorpay)
+        failedPaymentId: paymentInfo?.failedPaymentId || "",
         currencyDisplay: {
           currency: displayCurrency,
           amount: finalTotal,
@@ -658,8 +660,8 @@ function Checkout() {
     return data;
   };
 
-  const createFailedOrderAttempt = async (selected, message) => {
-    await createOrderWithPaymentStatus(selected, "Failed");
+  const createFailedOrderAttempt = async (selected, message, paymentInfo = {}) => {
+    await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
     navigate("/my-orders", {
       state: {
         message: message || "Payment failed. The order is saved in My Orders. You can retry payment there."
@@ -683,13 +685,22 @@ function Checkout() {
       return null;
     }
 
-    if (!hasManualAccessItem && isGift && !giftRecipientEmail.trim()) {
-      setCheckoutMessage("Please enter the recipient's email address to purchase as a gift.");
+    // A gift needs the recipient's email: the Gift Pass code is sent there
+    if (isGift && !giftRecipientEmail.trim()) {
+      setCheckoutMessage("Please enter the recipient's email address to send this as a gift.");
+      document.getElementById("gift-recipient-email")?.focus();
       return null;
     }
-
-    if (!hasManualAccessItem && isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
+    if (isGift && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(giftRecipientEmail.trim())) {
       setCheckoutMessage("Please enter a valid recipient email address.");
+      document.getElementById("gift-recipient-email")?.focus();
+      return null;
+    }
+    if (isGift && giftEmailIsOwn) {
+      setCheckoutMessage(
+        "That's your own email. A gift is sent to someone else, so please enter their email."
+      );
+      document.getElementById("gift-recipient-email")?.focus();
       return null;
     }
 
@@ -723,10 +734,15 @@ function Checkout() {
     let checkoutOpened = false;
     let hasRecordedFailedAttempt = false;
 
-    const recordFailedAttempt = async (message) => {
+    // Razorpay order ID (order_…) of this checkout; set once the payment window is created.
+    let razorpayOrderIdForAttempt = "";
+    const recordFailedAttempt = async (message, failedPaymentId = "") => {
       if (hasRecordedFailedAttempt) return;
       hasRecordedFailedAttempt = true;
-      await createFailedOrderAttempt(selected, message);
+      await createFailedOrderAttempt(selected, message, {
+        razorpayOrderId: razorpayOrderIdForAttempt,
+        failedPaymentId
+      });
     };
 
     try {
@@ -746,11 +762,13 @@ function Checkout() {
           billing: billingGst(),
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
-          isGift: hasManualAccessItem ? false : Boolean(isGift)
+          isGift: Boolean(isGift),
+          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : ""
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
 
+      razorpayOrderIdForAttempt = String(data?.id || "");
       const cleanPhone = String(selected.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       const cleanEmail = String(user?.email || selected?.email || "").trim();
 
@@ -846,7 +864,7 @@ function Checkout() {
           "Payment failed. Failed order saved in My Orders.";
         console.error("Razorpay payment failed:", response?.error);
         setCheckoutMessage(`Payment failed: ${failReason}`);
-        await recordFailedAttempt(`Payment failed: ${failReason}`);
+        await recordFailedAttempt(`Payment failed: ${failReason}`, response?.error?.metadata?.payment_id || "");
       });
 
       checkoutOpened = true;
@@ -1335,7 +1353,6 @@ function Checkout() {
 
           {/* Digital Gift Option */}
           {hasDigitalItemsInCart && (
-            hasManualAccessItem ? null : (
               <div className="checkout-gift-card">
                 <label className="checkout-gift-toggle-label">
                   <input
@@ -1368,22 +1385,47 @@ function Checkout() {
                       Unique 1-time Gift Pass Codes (e.g. <code>GIFT-DSG-XXXXXX</code>) will be generated under <strong>My Orders</strong>.
                     </p>
                     <label className="checkout-form-label">
-                      <span>Recipient's Email Address (Optional):</span>
+                      <span>
+                        Recipient&apos;s Email Address <span className="checkout-required-star" aria-hidden="true">*</span>
+                      </span>
                       <input
+                        id="gift-recipient-email"
                         type="email"
+                        required
+                        autoComplete="off"
                         placeholder="recipient@example.com"
                         value={giftRecipientEmail}
                         onChange={(e) => setGiftRecipientEmail(e.target.value)}
                         className="checkout-form-input"
                       />
                     </label>
+                    {giftEmailSuggestion ? (
+                      <p className="checkout-gift-hint is-typo" role="status">
+                        Did you mean{" "}
+                        <button type="button" onClick={() => setGiftRecipientEmail(giftEmailSuggestion)}>
+                          {giftEmailSuggestion}
+                        </button>
+                        ?
+                      </p>
+                    ) : null}
+                    {giftEmailIsOwn ? (
+                      <p className="checkout-gift-hint is-own" role="alert">
+                        That&apos;s your own email. A gift is sent to someone else, so please enter their email.
+                      </p>
+                    ) : null}
                     <p className="checkout-gift-subnote">
-                      We will automatically email the generated Gift Pass code directly to this address upon successful checkout!
+                      We email the Gift Pass code to this address right after payment. It also stays in your My Orders.
                     </p>
+                    {hasManualAccessItem && (
+                      <p className="checkout-gift-subnote">
+                        Access to some items is set up by our team: once the recipient redeems their Gift Pass, we set up
+                        their access (usually within 24–48 hours) and email them when it&apos;s ready.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-            ))}
+            )}
 
           {/* Available Coupons & Offers in Left Column */}
           {availableCoupons.length > 0 && (
@@ -1650,7 +1692,9 @@ function Checkout() {
             <div className="checkout-digital-note">
               <Zap size={14} />
               <span>
-                {hasManualAccessItem
+                {hasManualAccessItem && isGift
+                  ? "Gift order: Gift Pass codes appear in My Orders right after payment; access is set up when each recipient redeems."
+                  : hasManualAccessItem
                   ? "Digital order: our team will set up your access within 24–48 hours and email you when it's ready."
                   : hasExternalDelivery(cartItems)
                     ? "Digital order: your access link will appear in My Library after payment."

@@ -1271,3 +1271,40 @@
     padding: 16px;
   }
 }
+
+.checkout-required-star {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+/* Gift email hints: likely typo and "your own email" */
+.checkout-gift-hint {
+  margin: 6px 0 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.checkout-gift-hint.is-typo {
+  color: #1e3a8a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.checkout-gift-hint.is-typo button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 800;
+  color: #1d4ed8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.checkout-gift-hint.is-own {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}

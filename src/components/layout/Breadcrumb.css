@@ -12,7 +12,7 @@
 }
 
 .site-breadcrumb-container {
-  max-width: 1300px;
+  max-width: 1500px; /* same as the navbar and the store pages, so the trail lines up */
   margin: 0 auto;
   padding: 0 16px;
   overflow-x: auto;
@@ -103,5 +103,27 @@
     margin: 0;
     padding-left: 24px;
     padding-right: 24px;
+  }
+}
+
+/* Phones: keep the trail on one line (it wrapped to two, e.g. "Store / Catalog");
+   it scrolls sideways if it's longer than the screen. */
+@media (max-width: 768px) {
+  .site-breadcrumb-nav {
+    padding: 6px 0;
+    margin-bottom: 8px;
+  }
+
+  .site-breadcrumb-link,
+  .site-breadcrumb-item {
+    white-space: nowrap;
+  }
+
+  .site-breadcrumb-list {
+    font-size: 13px;
+  }
+
+  .site-breadcrumb-current {
+    max-width: 200px;
   }
 }

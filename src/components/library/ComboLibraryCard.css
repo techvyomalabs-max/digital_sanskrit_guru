@@ -219,3 +219,341 @@
     text-align: center;
   }
 }
+
+/* ---- Compact combo card (full list is on the pack page) ---- */
+.combo-card-cover-link {
+  display: flex;
+  text-decoration: none;
+}
+
+.combo-card-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.combo-card-title-link:hover {
+  color: var(--site-link, #2563eb);
+}
+
+/* Whole card clickable via the title link */
+.my-library-combo-card {
+  position: relative;
+}
+
+.combo-card-stack {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 0 14px;
+}
+
+.combo-card-stack-thumb,
+.combo-card-stack-more {
+  position: relative;
+  width: 34px;
+  height: 44px;
+  margin-right: -10px;
+  border-radius: 6px;
+  border: 2px solid var(--site-card-bg, #fff);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+  object-fit: cover;
+  background: var(--site-bg-soft, #f3f4f6);
+}
+
+.combo-card-stack-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--site-text, #111827);
+  margin-left: 14px;
+  margin-right: 0;
+  z-index: 5;
+}
+
+.combo-card-stack-text {
+  margin-left: 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--site-text-soft, #6b7280);
+}
+
+.combo-card-open-btn {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s ease, gap 0.15s ease;
+}
+
+.combo-card-open-btn:hover {
+  background: #1d4ed8;
+  gap: 10px;
+}
+
+.combo-card-open-btn.is-pending {
+  background: transparent;
+  color: #b45309;
+  border: 1.5px solid rgba(217, 119, 6, 0.45);
+}
+
+.combo-card-open-btn.is-pending:hover {
+  background: rgba(217, 119, 6, 0.08);
+}
+
+/* ---- Pack page ---- */
+.combo-pack-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.combo-pack-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--site-link, #2563eb);
+  text-decoration: none;
+}
+
+.combo-pack-back:hover {
+  text-decoration: underline;
+}
+
+.combo-pack-hero {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  padding: 20px;
+  border: 1px solid var(--site-border, #e5e7eb);
+  border-radius: 16px;
+  background: var(--site-card-bg, #fff);
+}
+
+.combo-pack-hero-cover {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--site-bg-soft, #f3f4f6);
+}
+
+.combo-pack-hero-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.combo-pack-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(17, 24, 39, 0.85);
+}
+
+.combo-pack-kicker.is-pending {
+  background: rgba(180, 83, 9, 0.9);
+}
+
+.combo-pack-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+  color: var(--site-text, #111827);
+}
+
+.combo-pack-meta {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--site-text-soft, #6b7280);
+}
+
+.combo-pack-pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #92400e;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.combo-pack-pending svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.combo-pack-main-btn {
+  flex: 0 0 auto;
+  margin-top: 6px;
+}
+
+.combo-pack-items {
+  padding: 18px 20px;
+  border: 1px solid var(--site-border, #e5e7eb);
+  border-radius: 16px;
+  background: var(--site-card-bg, #fff);
+}
+
+.combo-pack-items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.combo-pack-items-head h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--site-text, #111827);
+}
+
+.combo-pack-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 40px;
+  min-width: min(280px, 100%);
+  border: 1px solid var(--site-border, #d1d5db);
+  border-radius: 10px;
+  color: var(--site-text-soft, #6b7280);
+  background: var(--site-bg, #fff);
+}
+
+.combo-pack-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 16px; /* no iOS zoom */
+  color: var(--site-text, #111827);
+}
+
+.combo-pack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 10px;
+}
+
+.combo-pack-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--site-border, #e5e7eb);
+  border-radius: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.combo-pack-item:hover {
+  border-color: color-mix(in srgb, #2563eb 40%, var(--site-border, #e5e7eb));
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.combo-pack-item-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 56px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--site-bg-soft, #f3f4f6);
+}
+
+.combo-pack-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--site-text, #111827);
+}
+
+.combo-pack-item-action {
+  flex: 0 0 auto;
+}
+
+.combo-pack-item-action .combo-action-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.combo-pack-item-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .combo-pack-hero {
+    grid-template-columns: 1fr;
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .combo-pack-title {
+    font-size: 20px;
+  }
+
+  .combo-pack-items {
+    padding: 14px;
+  }
+
+  .combo-pack-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .combo-pack-hero-cover {
+    max-height: 180px;
+  }
+
+  .combo-pack-item {
+    padding: 8px 10px;
+    gap: 10px;
+  }
+
+  .combo-pack-item-action .combo-action-btn {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .combo-pack-search {
+    width: 100%;
+  }
+}

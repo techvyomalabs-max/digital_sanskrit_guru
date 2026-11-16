@@ -660,13 +660,16 @@
     flex-wrap: nowrap !important;
   }
 
+  /* Natural width (not stretched across the banner), so "Shop now" is the same compact
+     button on phones, tablets and desktop. 40px tall for easy tapping. */
   .home-spotlight-btn {
-    flex: 1 !important;
+    flex: 0 0 auto !important;
+    min-width: 128px !important;
     justify-content: center !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85rem !important;
     font-weight: 700 !important;
-    padding: 7px 12px !important;
-    min-height: 34px !important;
+    padding: 9px 18px !important;
+    min-height: 40px !important;
     border-radius: 9999px !important;
     text-align: center !important;
     white-space: nowrap !important;
@@ -997,12 +1000,16 @@
 
 .home-mini-card-ambient-bg {
   position: absolute;
+  display: block;
+  width: calc(100% + 30px);
+  height: calc(100% + 30px);
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
   top: -15px;
   left: -15px;
   right: -15px;
   bottom: -15px;
-  background-size: cover;
-  background-position: center;
   filter: blur(16px) saturate(1.3) brightness(0.96);
   opacity: 0.45;
   transform: scale(1.15);
@@ -1648,6 +1655,51 @@
 #home-section-new-arrivals,
 #home-section-budget-picks {
   scroll-margin-top: 130px;
+}
+
+/* ── Phone banner without a separate mobile image ───────────────────────────
+   The desktop banner is wide (e.g. 1920×600). Cropping it into a phone-shaped box
+   showed only its middle, and a different part at each screen size. Without a
+   mobile image, show the whole picture and put the text and button below it.
+   Banners with a mobile image keep the text over the picture. */
+@media (max-width: 768px) {
+  .home-hero-spotlight-card:not(.has-mobile-image) {
+    display: block !important;
+    aspect-ratio: auto !important;
+    min-height: 0 !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-backdrop-picture {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-bg-img {
+    height: auto !important;
+    object-fit: contain !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-overlay {
+    display: none !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-content-layer {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    padding: 12px 16px 16px !important;
+    background: #0b1120 !important;
+  }
+
+  .home-hero-spotlight-card:not(.has-mobile-image) .home-spotlight-content.overlay-glass {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 /* ── Tablets (iPad portrait and landscape) ──────────────────────────────── */

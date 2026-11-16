@@ -9,6 +9,7 @@ import { isOptionsParent, getOptionCount } from "../utils/productOptions";
 import { htmlToPlainText } from "../utils/plainText";
 import "./ProductCard.css";
 import { productPath, productUrl } from "../utils/productLink";
+import { getShownMrp } from "../utils/productMrp";
 
 function getProductFormat(product) {
   if (isOptionsParent(product)) {
@@ -65,17 +66,20 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
   const festiveSavings = Math.max(0, festiveOriginalPrice - displayPrice);
-  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
-  const listPrice = hasActiveMarketSale
+  // Crossed-out price only when there is a real one (no made-up price x 1.1).
+  const shownMrp = getShownMrp(product, pricing, displayPrice);
+  const listPrice = shownMrp
+    ? shownMrp
+    : hasActiveMarketSale
     ? marketRegularPrice
     : isBundle && bundleOriginalTotal > displayPrice
       ? bundleOriginalTotal
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
-        : fallbackOriginalPrice;
+        : displayPrice;
 
-  // A real saving only (market sale, festive offer, bundle), not the default list price
-  const hasRealDiscount = hasActiveMarketSale || (isBundle && bundleOriginalTotal > displayPrice) || festiveOriginalPrice > displayPrice;
+  // A real saving only (printed M.R.P., market sale, festive offer, bundle)
+  const hasRealDiscount = shownMrp > 0 || hasActiveMarketSale || (isBundle && bundleOriginalTotal > displayPrice) || festiveOriginalPrice > displayPrice;
   const discountPercent = hasRealDiscount && listPrice > displayPrice
     ? Math.round(((listPrice - displayPrice) / listPrice) * 100)
     : 0;
@@ -152,9 +156,14 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
 
       <Link to={productPath(product)} className="product-image-wrap">
         {product.image && (
-          <div
+          // A real <img> (not a CSS background) so the browser can lazy-load it.
+          // Same URL as the main image, so it costs no extra download.
+          <img
+            src={product.image}
+            alt=""
             className="product-image-ambient-bg"
-            style={{ backgroundImage: `url(${product.image})` }}
+            loading="lazy"
+            decoding="async"
             aria-hidden="true"
           />
         )}
@@ -192,7 +201,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
               / copy
             </span>
           ) : null}
-          {!isOptionsParent(product) ? (
+          {!isOptionsParent(product) && listPrice > displayPrice ? (
             <span className="original-price">
               {formatCurrencyExact(listPrice, displayCurrency)}
             </span>

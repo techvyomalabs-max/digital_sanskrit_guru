@@ -5,7 +5,6 @@ import Navbar from "./components/layout/Navbar";
 import Breadcrumb from "./components/layout/Breadcrumb";
 import Footer from "./components/layout/Footer";
 import WhatsAppButton from "./components/layout/WhatsAppButton";
-import ChatWidget from "./components/layout/ChatWidget";
 import { BackToTop, NetworkNotice, PageContent } from "./components/layout/SiteHelpers";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import SeoTags from "./components/common/SeoTags";
@@ -14,15 +13,24 @@ import CookieConsent from "./components/layout/CookieConsent";
 import ProtectedRoute from "./components/ProtectedRoute";
 import CartPopup from "./components/ui/CartPopup";
 import AdminRoute from "./components/AdminRoute";
-import FestiveAnimation from "./components/FestiveAnimation";
 import FestiveBanner from "./components/FestiveBanner";
 import { requestLocationPermissionForCurrency } from "./utils/currency";
 import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils/siteTheme";
 import { storePricingConfig } from "./utils/productPricing";
 import { useAuth } from "./hooks/useAuth";
 import { pushUnsupportedReason, syncPushSubscription } from "./utils/pushSubscription";
+import { isChatbotEnabled } from "./utils/chatbotEnabled";
+// Home is bundled with the app (not lazy) so the banner can render without waiting
+// for a second JS file to download first (PageSpeed: LCP "element render delay").
+import Home from "./pages/Home";
 
-const Home = lazy(() => import("./pages/Home"));
+// Extras that no page needs in order to show: each loads as its own small file after
+// the page is up. If one fails to load (say, mid-deploy) it is simply left out.
+const lazyExtra = (load) => lazy(() => load().catch(() => ({ default: () => null })));
+const ChatWidget = lazyExtra(() => import("./components/layout/ChatWidget"));
+const PageTour = lazyExtra(() => import("./components/layout/PageTour"));
+const FestiveAnimation = lazyExtra(() => import("./components/FestiveAnimation"));
+
 const Collection = lazy(() => import("./pages/Collection"));
 const SearchResults = lazy(() => import("./pages/SearchResults"));
 const Product = lazy(() => import("./pages/Product"));
@@ -53,6 +61,7 @@ const AdminSecurityLogs = lazy(() => import("./pages/AdminSecurityLogs"));
 const AdminTrash = lazy(() => import("./pages/AdminTrash"));
 const AdminSupportRequests = lazy(() => import("./pages/AdminSupportRequests"));
 const AdminUnmatchedPayments = lazy(() => import("./pages/AdminUnmatchedPayments"));
+const AdminReviews = lazy(() => import("./pages/AdminReviews"));
 const WpArchiveDashboard = lazy(() => import("./pages/admin/WpArchiveDashboard"));
 const GuestBuy = lazy(() => import("./pages/GuestBuy"));
 const About = lazy(() => import("./pages/About"));
@@ -280,13 +289,17 @@ function App() {
           }}
         />
       )}
-      <FestiveAnimation
-        enabled={festiveAnimation.enabled}
-        type={festiveAnimation.type}
-        intensity={festiveAnimation.intensity}
-        customColors={festiveAnimation.customColors}
-        customAnimations={festiveAnimation.customAnimations || []}
-      />
+      {festiveAnimation.enabled && (
+        <Suspense fallback={null}>
+          <FestiveAnimation
+            enabled={festiveAnimation.enabled}
+            type={festiveAnimation.type}
+            intensity={festiveAnimation.intensity}
+            customColors={festiveAnimation.customColors}
+            customAnimations={festiveAnimation.customAnimations || []}
+          />
+        </Suspense>
+      )}
       <a className="ux-skip-link" href="#main-content">Skip to content</a>
       <Navbar bannerActive={isBannerActive} />
       <Breadcrumb />
@@ -329,6 +342,14 @@ function App() {
           />
           <Route
             path="/my-library"
+            element={
+              <ProtectedRoute>
+                <MyLibrary />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-library/pack/:orderId/:itemIndex"
             element={
               <ProtectedRoute>
                 <MyLibrary />
@@ -388,6 +409,14 @@ function App() {
             element={
               <AdminRoute requiredPage="orders">
                 <AdminUnmatchedPayments />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/reviews"
+            element={
+              <AdminRoute requiredPage="products">
+                <AdminReviews />
               </AdminRoute>
             }
           />
@@ -501,11 +530,18 @@ function App() {
 
       <Footer />
       <WhatsAppButton />
-      <ChatWidget />
+      {isChatbotEnabled && (
+        <Suspense fallback={null}>
+          <ChatWidget />
+        </Suspense>
+      )}
       <BackToTop />
       <NetworkNotice />
       <CookieConsent />
       <CartPopup />
+      <Suspense fallback={null}>
+        <PageTour />
+      </Suspense>
     </BrowserRouter>
   );
 }

@@ -51,7 +51,9 @@ export function isAccessPending(item) {
   if (!item) return false;
   if (item.accessGrantedAt) return false;
   if (String(item.returnRequest?.status || "").trim().toLowerCase() === "refunded") return false;
-  if (item.accessPending === true) return true;
+  // Customer pages get the server's answer (e.g. a gift someone else redeemed is not the
+  // buyer's wait); admin pages see raw lines and fall back to accessManual
+  if (typeof item.accessPending === "boolean") return item.accessPending;
   if (item.accessManual === true) return true;
   return false;
 }
@@ -84,4 +86,35 @@ export function pendingAccessItems(order) {
     }
   });
   return result;
+}
+
+const DIGITAL_NAME_WORDS = ["web", "kindle", "flipbook"];
+const hasText = (value) => (typeof value === "string" ? value.trim().length > 0 : Boolean(value));
+
+/**
+ * Does this order item (or combo component) give online access?
+ * Orders saved by the store always carry an isDigital flag, so the name is only used as a
+ * guess for old/imported items without one. A combo decides by its components, never by its
+ * own name: "All Products Bundle Web-version – USB" is a shipped USB, and its components
+ * are plain shipped copies (isDigital false, no links).
+ */
+export function itemGivesOnlineAccess(item) {
+  if (!item) return false;
+  if (Array.isArray(item.bundleItems) && item.bundleItems.length > 0) {
+    return item.isDigital === true || item.bundleItems.some((component) => itemGivesOnlineAccess(component));
+  }
+  if (
+    item.isDigital === true ||
+    item.legacyAccess ||
+    (item.digitalDelivery || item.product?.digitalDelivery) === "external" ||
+    hasText(item.webReaderLink) ||
+    hasText(item.kindleLink) ||
+    hasText(item.externalAccessLink)
+  ) {
+    return true;
+  }
+  if (typeof item.isDigital === "boolean") return false;
+  const name = String(item.name || "").toLowerCase();
+  const format = String(item.format || "").toLowerCase();
+  return DIGITAL_NAME_WORDS.some((word) => name.includes(word)) || format.includes("web") || format.includes("flipbook");
 }

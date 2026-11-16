@@ -816,7 +816,7 @@ function AdminThemeSettings() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <h1>Theme & Site Settings</h1>
           <p style={{ margin: "6px 0 0", fontSize: "13px", color: "var(--admin-muted)" }}>
@@ -1176,6 +1176,10 @@ function AdminThemeSettings() {
                   />
                 )}
                 <span className="field-hint">Recommended ratio: 16:9 or 21:9 landscape (e.g. 1920×600 or 1600×520).</span>
+              <span className="field-hint">
+                Mobile image (optional): 1200×750 (16:10), main subject in the middle. Shown on phones and small
+                tablets with the text over it. Without one, phones show the whole desktop image with the text below.
+              </span>
               </div>
 
               {/* Mobile Image Input */}
@@ -2310,7 +2314,7 @@ function AdminThemeSettings() {
             </p>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

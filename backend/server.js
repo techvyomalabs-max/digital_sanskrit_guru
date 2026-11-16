@@ -80,6 +80,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const { initPaymentReconciler } = require("./services/paymentReconciler");
   const { paymentWebhookHandler } = require("./routes/paymentWebhook");
   const adminPaymentRoutes = require("./routes/adminPaymentRoutes");
+  const reviewAdminRoutes = require("./routes/reviewAdminRoutes");
   const vulnerabilityGuard = require("./middleware/vulnerabilityGuard");
   const { createApiRateLimiter } = require("./utils/apiRateLimit");
   const { buildRedirectMap, createRedirectMiddleware } = require("./utils/legacyRedirects");
@@ -89,7 +90,14 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const app = express();
   app.use(helmet({
     contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    // Store pages are served by this app too. Google sign-in and some bank payment
+    // pages open a popup that must talk back to the store, which the default
+    // "same-origin" blocks.
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    // Send the store's address (never the full page URL) to other sites, so partner
+    // sites and analytics still see where a visitor came from. Default is "no-referrer".
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   }));
   app.set("trust proxy", 1); // Trust Render's load balancer for rate limiting client IPs
 
@@ -101,6 +109,9 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   const isValidMongoUri = (uri) => /^mongodb(\+srv)?:\/\//.test(String(uri || "").trim());
   const clientBuildExists = require("fs").existsSync(DIST_DIR);
   const corsOrigin = String(process.env.CORS_ORIGIN || "").trim();
+  if (IS_PRODUCTION && !corsOrigin) {
+    console.warn("[Security] CORS_ORIGIN is not set, so the API answers browsers on any website. Set it to the store's address in backend/.env.");
+  }
 
   // ── Middleware ──────────────────────────────────────────────────────────────
 
@@ -178,15 +189,12 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api", createApiRateLimiter());
 
   // ── Health check ────────────────────────────────────────────────────────────
+  // Public, so it says only whether the API and database are up (no Node.js
+  // version, process id or database name)
   app.get("/api/health", (req, res) => {
     res.json({
       api: "ok",
-      node: process.version,
-      ipv4FirstSupport: typeof dns.setDefaultResultOrder === "function",
-      worker: process.pid,
-      db: dbConnected ? "connected" : "disconnected",
-      dbName: mongoose.connection?.name || null,
-      readyState: mongoose.connection?.readyState ?? null
+      db: dbConnected ? "connected" : "disconnected"
     });
   });
 
@@ -224,6 +232,7 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
   app.use("/api/trash", requireDatabase, trashRoutes);
   app.use("/api/media", requireDatabase, mediaRoutes);
   app.use("/api/admin/payments", requireDatabase, adminPaymentRoutes);
+  app.use("/api/admin/reviews", requireDatabase, reviewAdminRoutes);
   app.use("/api/admin/wp-archive", requireDatabase, require("./routes/wpArchiveRoutes"));
 
   // ── Legacy URL & trailing-slash redirects ─────────────────────────────────

@@ -1100,7 +1100,7 @@ function AdminDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main">
+      <div className="admin-main">
         <div className="admin-header">
           <div className="admin-header-left">
             <div className="admin-header-title-row">
@@ -2423,7 +2423,7 @@ function AdminDashboard() {
             ) : null}
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

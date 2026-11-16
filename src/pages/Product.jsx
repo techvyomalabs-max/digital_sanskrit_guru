@@ -13,11 +13,13 @@ import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
 import { getProductPriceDetails, isInternationalCountry } from "../utils/productPricing";
 import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
+import { getFormatBlurb } from "../utils/formatBlurb";
 import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct } from "../utils/productOptions";
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
+import { getShownMrp } from "../utils/productMrp";
 import { fetchPublicCatalog } from "../utils/productCatalog";
 import { getRelatedProducts } from "../utils/recommendationEngine";
 import LoadingSpinner from "../components/common/LoadingSpinner";
@@ -46,7 +48,22 @@ import {
   Laptop,
   Mail,
   GraduationCap,
-  Check
+  Check,
+  Tablet,
+  BookOpen,
+  Usb,
+  Music,
+  Disc3,
+  FileText,
+  BookMarked,
+  Book,
+  Truck,
+  Clock,
+  Zap,
+  MonitorSmartphone,
+  Minus,
+  Plus,
+  Camera
 } from "lucide-react";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import {
@@ -58,6 +75,8 @@ import { formatDate } from "../utils/date";
 import { MAX_DIGITAL_COPIES, MAX_RETAIL_QUANTITY, canShareDigitalCopies, maxCartQuantity } from "../utils/orderQuantity";
 import { applySeoTags } from "../utils/seo";
 import { productPath, productUrl } from "../utils/productLink";
+import ReviewPhotoPicker from "../components/reviews/ReviewPhotoPicker";
+import ReviewPhotoStrip from "../components/reviews/ReviewPhotoStrip";
 
 const AVATAR_PALETTES = [
   { bg: "rgba(37, 99, 235, 0.12)", text: "#2563eb" }, // Blue
@@ -331,6 +350,23 @@ function isDigitalOnlyBundle(product) {
   });
 }
 
+// Icons for the format picker and its spotlight (see utils/formatBlurb.js)
+const FORMAT_ICONS = {
+  kindle: Tablet,
+  flipbook: BookOpen,
+  web: Globe,
+  course: GraduationCap,
+  pendrive: Usb,
+  audio: Music,
+  disc: Disc3,
+  ebook: FileText,
+  hardcover: BookMarked,
+  book: Book,
+  digital: Laptop,
+  physical: Package
+};
+const FORMAT_CHIP_ICONS = { ships: Truck, external: ExternalLink, later: Clock, instant: Zap, devices: MonitorSmartphone };
+
 function isManualAccessProduct(product) {
   if (!product) return false;
   if (product.externalAccessManual === true && isExternalDelivery(product)) return true;
@@ -409,6 +445,11 @@ function Product() {
   const [reviewSort, setReviewSort] = useState("newest");
   const [helpfulVotes, setHelpfulVotes] = useState({});
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewPhotos, setReviewPhotos] = useState([]);
+  const [photosOnly, setPhotosOnly] = useState(false);
+  const [showAllBundleItems, setShowAllBundleItems] = useState(false);
+  // { verifiedBuyer, canAddPhotos, maxPhotos } for the signed-in user, checked when the form opens
+  const [photoEligibility, setPhotoEligibility] = useState(null);
 
   useEffect(() => {
     if (!loading && product && (location.hash === "#write-review" || location.hash === "#reviews-section" || location.state?.scrollToReview)) {
@@ -453,6 +494,9 @@ function Product() {
     if (selectedRatingFilter !== null) {
       list = list.filter((r) => Math.round(Number(r.rating || 5)) === selectedRatingFilter);
     }
+    if (photosOnly) {
+      list = list.filter((r) => Array.isArray(r.photos) && r.photos.length > 0);
+    }
     if (reviewSort === "highest") {
       list.sort((a, b) => Number(b.rating || 5) - Number(a.rating || 5));
     } else if (reviewSort === "lowest") {
@@ -461,7 +505,30 @@ function Product() {
       list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
     return list;
-  }, [reviews, selectedRatingFilter, reviewSort]);
+  }, [reviews, selectedRatingFilter, reviewSort, photosOnly]);
+
+  const reviewsWithPhotos = useMemo(
+    () => reviews.filter((r) => Array.isArray(r.photos) && r.photos.length > 0).length,
+    [reviews]
+  );
+  const verifiedReviewCount = useMemo(() => reviews.filter((r) => r.verifiedPurchase === true).length, [reviews]);
+
+  const reviewProductId = product?._id || "";
+  useEffect(() => {
+    if (!isReviewFormOpen || !token || !reviewProductId) return undefined;
+    let cancelled = false;
+    axios
+      .get(`/api/products/${reviewProductId}/reviews/photo-eligibility`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(({ data }) => {
+        if (!cancelled) setPhotoEligibility(data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setPhotoEligibility(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isReviewFormOpen, token, reviewProductId]);
 
   const handleHelpfulClick = (reviewId) => {
     setHelpfulVotes((prev) => {
@@ -977,13 +1044,14 @@ function Product() {
       setSubmittingReview(true);
       await axios.post(
         `/api/products/${product?._id || id}/reviews`,
-        { rating: Number(rating), comment: comment.trim() },
+        { rating: Number(rating), comment: comment.trim(), photos: reviewPhotos },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setRating("5");
       setHoverRating(0);
       setComment("");
+      setReviewPhotos([]);
       setReviewError("");
       setShowReviewSuccessModal(true);
       setIsReviewFormOpen(false);
@@ -999,6 +1067,7 @@ function Product() {
   const handleCancelReview = () => {
     setIsReviewFormOpen(false);
     setComment("");
+    setReviewPhotos([]);
     setRating("5");
     setHoverRating(0);
     setReviewError("");
@@ -1113,6 +1182,10 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // With formats, the category is the chosen format's own (e.g. Kindle), else the listing's
+  const shownCategory = String(
+    (isOptionsParent(product) && String(buyProduct?.category || "").trim()) || product?.category || ""
+  ).trim();
   // Same per-order limit the cart applies: 5, or the stock left if lower
   const retailMaxQty = maxCartQuantity({ stock: buyProduct?.stock });
   const optionParentId = product?.optionParent
@@ -1127,7 +1200,19 @@ function Product() {
   };
   const galleryImages = getGalleryImages(product);
   const extraProductDetails = getExtraProductDetails(product.name);
-  const aboutProductPoints = buildAboutProductPoints(product, extraProductDetails);
+  // With formats, the details shown are the chosen format's own (e.g. the Kindle edition's
+  // description and points), falling back to the listing's where the format has none. The
+  // page title, reviews, share text and search-engine tags stay the listing's.
+  const formatInfo = isOptionsParent(product) && buyProduct ? buyProduct : null;
+  const hasText = (value) => htmlToPlainText(String(value || "")).trim() !== "";
+  const formatAbout = Array.isArray(formatInfo?.aboutProduct)
+    ? formatInfo.aboutProduct.filter((point) => String(point || "").trim())
+    : [];
+  const aboutProductPoints = buildAboutProductPoints(
+    formatInfo ? { ...formatInfo, aboutProduct: formatAbout.length > 0 ? formatAbout : product.aboutProduct } : product,
+    extraProductDetails
+  );
+  const shownDescription = formatInfo && hasText(formatInfo.description) ? formatInfo.description : product.description;
   const bundleItems = Array.isArray(buyProduct?.bundleItems) ? buyProduct.bundleItems : [];
   const isBundle =
     Boolean(buyProduct) &&
@@ -1155,14 +1240,21 @@ function Product() {
     isFestiveOffer && festiveDiscountPercent > 0
       ? Math.round(displayPrice / (1 - festiveDiscountPercent / 100))
       : 0;
-  const fallbackOriginalPrice = Math.round(displayPrice * 1.1 * 100) / 100;
-  const listPrice = hasActiveMarketSale
-    ? marketRegularPrice
-    : isBundle && bundleOriginalTotal > displayPrice
-      ? bundleOriginalTotal
-      : festiveOriginalPrice > displayPrice
-        ? festiveOriginalPrice
-        : fallbackOriginalPrice;
+  // A crossed-out price is shown only when there is a real one: the market's regular price
+  // during a sale, a combo's items bought separately, or the price before the admin's discount.
+  // (It used to fall back to price x 1.1, which showed a made-up "9% off" on every product.)
+  // The admin's M.R.P. (e.g. printed cover price) comes first; for a format, the format's own.
+  const shownMrp = getShownMrp(buyProduct || product, pricing, displayPrice);
+  const listPrice = shownMrp
+    ? shownMrp
+    : hasActiveMarketSale
+      ? marketRegularPrice
+      : isBundle && bundleOriginalTotal > displayPrice
+        ? bundleOriginalTotal
+        : festiveOriginalPrice > displayPrice
+          ? festiveOriginalPrice
+          : displayPrice;
+  const hasListPrice = listPrice > displayPrice;
   const _calculatedTotalListPrice = Math.round(listPrice * currentQty * 100) / 100;
   const calculatedBundleOriginalTotal = Math.round(bundleOriginalTotal * currentQty * 100) / 100;
   const _calculatedBundleSavings = Math.max(0, calculatedBundleOriginalTotal - calculatedTotalPrice);
@@ -1437,11 +1529,11 @@ function Product() {
 
         <div className="product-center">
           <h1 className="product-title product-detail-title">{product.name}</h1>
-          {String(product.category || "").trim() && String(product.category).trim().toLowerCase() !== "general" ? (
+          {shownCategory && shownCategory.toLowerCase() !== "general" ? (
             <p className="product-category-line">
               Category:{" "}
-              <Link to={`/collection?category=${encodeURIComponent(String(product.category).trim())}`}>
-                {String(product.category).trim()}
+              <Link to={`/collection?category=${encodeURIComponent(shownCategory)}`}>
+                {shownCategory}
               </Link>
             </p>
           ) : null}
@@ -1483,16 +1575,21 @@ function Product() {
                   const isSelected = Boolean(optId && optId === selectedOptionId);
                   const available = isOptionAvailable(optProduct);
                   const optPricing = getProductPriceDetails(optProduct, selectedAddress?.country);
+                  const OptionIcon = FORMAT_ICONS[getFormatBlurb(option).kind] || Package;
                   return (
                     <button
                       key={optId || option?.label}
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
+                      aria-describedby={isSelected ? "product-format-spotlight" : undefined}
                       className={`product-format-option-btn${isSelected ? " is-selected" : ""}${!available ? " is-unavailable" : ""}`}
                       onClick={() => handleSelectOption(optProduct)}
                     >
-                      <span className="product-format-option-label">{option?.label}</span>
+                      <span className="product-format-option-label">
+                        <OptionIcon size={15} className="product-format-option-icon" aria-hidden="true" />
+                        {option?.label}
+                      </span>
                       <span className="product-format-option-price">
                         {available ? formatResolvedPrice(optPricing) : "Out of stock"}
                       </span>
@@ -1500,6 +1597,44 @@ function Product() {
                   );
                 })}
               </div>
+              {(() => {
+                const selectedOption = product.publicOptions.find(
+                  (option) => String(option?.product?._id || "") === selectedOptionId
+                );
+                if (!selectedOption) return null;
+                const blurb = getFormatBlurb(selectedOption, product.formatNotes);
+                const SpotIcon = FORMAT_ICONS[blurb.kind] || Package;
+                return (
+                  <div
+                    key={selectedOptionId}
+                    id="product-format-spotlight"
+                    className={`product-format-spotlight kind-${blurb.kind}`}
+                    aria-live="polite"
+                  >
+                    <span className="product-format-spotlight-icon" aria-hidden="true">
+                      <SpotIcon size={22} strokeWidth={2} />
+                    </span>
+                    <div className="product-format-spotlight-body">
+                      <p className="product-format-spotlight-text">
+                        <strong>{selectedOption.label}:</strong> {blurb.text}
+                      </p>
+                      {blurb.chips.length > 0 ? (
+                        <ul className="product-format-spotlight-chips">
+                          {blurb.chips.map((chip) => {
+                            const ChipIcon = FORMAT_CHIP_ICONS[chip.kind] || Check;
+                            return (
+                              <li key={chip.kind} className={`chip-${chip.kind}`}>
+                                <ChipIcon size={13} aria-hidden="true" />
+                                {chip.text}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
           <hr />
@@ -1520,9 +1655,11 @@ function Product() {
                     <strong>You save {formatCurrencyExact(bundleSavings, displayCurrency)}</strong>
                   </div>
                 ) : null}
-                <p className="price-meta">
-                  M.R.P.: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
-                </p>
+                {hasListPrice ? (
+                  <p className="price-meta">
+                    {shownMrp ? "M.R.P." : "Regular price"}: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
+                  </p>
+                ) : null}
                 <p className="tax-note">Inclusive of all taxes</p>
               </div>
               {productOffers.length > 0 && (
@@ -1576,7 +1713,7 @@ function Product() {
               <span className="out-stock">This product is currently unavailable.</span>
             </p>
           )}
-          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description || "") }} />
+          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shownDescription || "") }} />
         </div>
 
         <div className="product-right">
@@ -1636,12 +1773,12 @@ function Product() {
                         <p className="product-purchased-alert-title">
                           <AlertTriangle size={16} className="ui-inline-icon" aria-hidden="true" />{digitalOwnership.message || "You have already purchased this web version."}
                         </p>
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#991b1b" }}>
                             Tick &quot;Purchase as a gift for someone else&quot; below to proceed.
                           </p>
                         )}
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <label className="product-purchased-gift-label">
                             <input
                               type="checkbox"
@@ -1693,7 +1830,7 @@ function Product() {
                             </div>
                           );
                         })()}
-                        {digitalOwnership.giftAllowed && !buyProduct.externalAccessManual && (
+                        {digitalOwnership.giftAllowed && (
                           <label className="product-purchased-gift-label" style={{ marginTop: "10px" }}>
                             <input
                               type="checkbox"
@@ -1708,9 +1845,11 @@ function Product() {
                     ) : null}
 
                     {buyProduct.productType === "bulk" ? (
-                      <div className="qty-box product-bulk-select-wrap">
-                        <span className="product-bulk-select-label">Select Quantity:</span>
+                      <div className="product-bulk-select-wrap">
+                        <label className="product-bulk-select-label" htmlFor="product-bulk-qty">Quantity</label>
+                        <div className="product-bulk-select-field">
                         <select
+                          id="product-bulk-qty"
                           value={qty}
                           onChange={(e) => setQty(Number(e.target.value))}
                           className="product-bulk-select-input"
@@ -1721,6 +1860,8 @@ function Product() {
                             </option>
                           ))}
                         </select>
+                        <ChevronDown size={18} className="product-bulk-select-chevron" aria-hidden="true" />
+                        </div>
                       </div>
                     ) : isDigitalItem(buyProduct) && canShareDigitalCopies({ ...buyProduct, isDigital: true }) ? (
                       <div className="product-digital-badge-wrap">
@@ -1766,11 +1907,21 @@ function Product() {
                       </div>
                     ) : (
                       <div>
-                        <div className="qty-box product-retail-qty-wrap">
-                          <button type="button" className="qty-btn" onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}>-</button>
+                        <div className="product-qty-stepper" role="group" aria-label="Quantity">
+                          <button
+                            type="button"
+                            className="product-qty-btn"
+                            aria-label="Decrease quantity"
+                            disabled={Number(qty || 1) <= 1}
+                            onClick={() => setQty(Number(qty || 1) > 1 ? Number(qty || 1) - 1 : 1)}
+                          >
+                            <Minus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                           <input
                             type="number"
-                            className="qty-input product-retail-qty-input"
+                            inputMode="numeric"
+                            aria-label="Quantity"
+                            className="product-qty-input"
                             value={qty}
                             min="1"
                             max={retailMaxQty}
@@ -1794,9 +1945,13 @@ function Product() {
                           />
                           <button
                             type="button"
-                            className="qty-btn"
+                            className="product-qty-btn"
+                            aria-label="Increase quantity"
+                            disabled={Number(qty || 1) >= retailMaxQty}
                             onClick={() => setQty(Number(qty || 1) < retailMaxQty ? Number(qty || 1) + 1 : Number(qty || 1))}
-                          >+</button>
+                          >
+                            <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                         </div>
                         <p className="product-retail-qty-note">
                           Standard retail order limit: Maximum {MAX_RETAIL_QUANTITY} units.
@@ -1905,11 +2060,18 @@ function Product() {
           ) : null}
         </div>
 
-        {isBundle && bundleItems.length > 0 ? (
-          <div className="product-details-description">
-            <h4>Included in this bundle ({bundleItems.length} Items)</h4>
-            <ul className="product-bundle-list">
-              {bundleItems.map((item, index) => {
+        {isBundle && bundleItems.length > 0 ? (() => {
+          // Big bundles start with the first few items (8 = two full rows; phones show 4) and a "Show all" button
+          const BUNDLE_PREVIEW = 8;
+          const canCollapse = bundleItems.length > BUNDLE_PREVIEW + 2;
+          const visibleItems = canCollapse && !showAllBundleItems ? bundleItems.slice(0, BUNDLE_PREVIEW) : bundleItems;
+          return (
+          <div className="product-details-description product-bundle-section" id="bundle-items">
+            <h4>
+              Included in this bundle <span className="product-bundle-count">{bundleItems.length} items</span>
+            </h4>
+            <ul className={`product-bundle-list ${canCollapse && !showAllBundleItems ? "is-collapsed" : ""}`} id="product-bundle-list">
+              {visibleItems.map((item, index) => {
                 const includedProduct = item?.product;
                 const includedId = includedProduct?._id || item?.product;
                 const includedName = includedProduct?.name || item?.name || "Included Item";
@@ -1924,53 +2086,69 @@ function Product() {
                   includedDigitalType && includedDigitalType.toLowerCase() !== "other" ? includedDigitalType : "Digital";
                 const physicalFormatLabel = String(item?.digitalType || "").trim() || "Physical item";
                 const qty = Math.max(1, Number(item?.quantity || 1));
-                const itemDescription = item?.description || includedProduct?.description || "";
+                const linkTo = includedProduct?._id ? productPath(includedProduct) : "";
 
-                return (
-                  <li key={`${includedId || "bundle-item"}-${index}`} className="bundle-item-card">
-                    {includedImage ? (
-                      <div className="bundle-item-img-wrap">
-                        <img src={includedImage} alt={includedName} className="bundle-item-img" />
-                      </div>
-                    ) : null}
-
+                const body = (
+                  <>
+                    <div className="bundle-item-img-wrap">
+                      {includedImage ? (
+                        <img src={includedImage} alt="" className="bundle-item-img" loading="lazy" />
+                      ) : (
+                        <Package size={22} aria-hidden="true" />
+                      )}
+                    </div>
                     <div className="bundle-item-content">
-                      <div className="bundle-item-header">
-                        <strong>{includedName}</strong>
-                        <span className="bundle-item-qty-badge">x{qty}</span>
-                      </div>
-
+                      <strong className="bundle-item-name" title={includedName}>
+                        {includedName}
+                      </strong>
                       <div className="bundle-item-meta">
                         {isDigitalItem ? (
                           <span className="bundle-format-tag bundle-format-tag--digital"><Laptop size={12} className="ui-inline-icon" aria-hidden="true" />{digitalFormatLabel}</span>
                         ) : (
                           <span className="bundle-format-tag bundle-format-tag--physical"><Package size={12} className="ui-inline-icon" aria-hidden="true" />{physicalFormatLabel}</span>
                         )}
+                        {qty > 1 ? <span className="bundle-item-qty-badge">x{qty}</span> : null}
                         {includedPrice > 0 ? (
-                          <span className="bundle-item-price-val">
-                            Value: {formatCurrencyExact(includedPrice * qty, displayCurrency)}
-                          </span>
+                          <span className="bundle-item-price-val">{formatCurrencyExact(includedPrice * qty, displayCurrency)}</span>
                         ) : null}
                       </div>
-
-                      {itemDescription ? (
-                        <p className="bundle-item-desc">
-                          {itemDescription.length > 120 ? `${itemDescription.substring(0, 120)}...` : itemDescription}
-                        </p>
-                      ) : null}
                     </div>
+                  </>
+                );
 
-                    {includedProduct?._id ? (
-                      <Link to={productPath(includedProduct)} className="bundle-view-link">
-                        View item →
+                return (
+                  <li key={`${includedId || "bundle-item"}-${index}`}>
+                    {linkTo ? (
+                      <Link to={linkTo} className="bundle-item-card is-link" aria-label={`${includedName} – view item`}>
+                        {body}
                       </Link>
-                    ) : null}
+                    ) : (
+                      <div className="bundle-item-card">{body}</div>
+                    )}
                   </li>
                 );
               })}
             </ul>
+            {canCollapse ? (
+              <button
+                type="button"
+                className={`product-bundle-toggle ${showAllBundleItems ? "is-open" : ""}`}
+                aria-expanded={showAllBundleItems}
+                aria-controls="product-bundle-list"
+                onClick={() => {
+                  if (showAllBundleItems) {
+                    document.getElementById("bundle-items")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                  setShowAllBundleItems((v) => !v);
+                }}
+              >
+                {showAllBundleItems ? "Show less" : `Show all ${bundleItems.length} items`}
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
-        ) : null}
+          );
+        })() : null}
 
         <div className="product-details-description">
           <h4>About this product</h4>
@@ -2061,10 +2239,14 @@ function Product() {
             <div className="reviews-score-meta">
               Based on <strong>{reviews.length}</strong> {reviews.length === 1 ? "rating" : "ratings"}
             </div>
-            <div className="reviews-verified-badge-tag">
-              <ShieldCheck size={14} />
-              <span>100% Verified Purchases</span>
-            </div>
+            {verifiedReviewCount > 0 && (
+              <div className="reviews-verified-badge-tag">
+                <ShieldCheck size={14} />
+                <span>
+                  {verifiedReviewCount} verified {verifiedReviewCount === 1 ? "purchase" : "purchases"}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* 2. Rating Breakdown Bars */}
@@ -2219,6 +2401,21 @@ function Product() {
                   )}
                 </div>
 
+                {photoEligibility?.canAddPhotos ? (
+                  <div className="reviews-form-group">
+                    <ReviewPhotoPicker
+                      productId={product?._id || id}
+                      token={token}
+                      photos={reviewPhotos}
+                      onChange={setReviewPhotos}
+                      maxPhotos={photoEligibility.maxPhotos || 4}
+                      disabled={submittingReview}
+                    />
+                  </div>
+                ) : photoEligibility && !photoEligibility.verifiedBuyer ? (
+                  <p className="review-photo-buyers-note">Customers who bought this product can also add photos.</p>
+                ) : null}
+
                 <div className="reviews-form-actions">
                   <button
                     type="button"
@@ -2270,6 +2467,16 @@ function Product() {
               >
                 All ({reviews.length})
               </button>
+              {reviewsWithPhotos > 0 && (
+                <button
+                  type="button"
+                  className={`reviews-chip ${photosOnly ? "active" : ""}`}
+                  aria-pressed={photosOnly}
+                  onClick={() => setPhotosOnly((v) => !v)}
+                >
+                  <Camera size={13} className="ui-inline-icon" aria-hidden="true" /> With photos ({reviewsWithPhotos})
+                </button>
+              )}
               {ratingDistribution
                 .filter((d) => d.count > 0)
                 .map((d) => (
@@ -2338,10 +2545,12 @@ function Product() {
                       <div className="review-user-meta">
                         <div className="review-user-name-row">
                           <strong className="review-user-name">{reviewerName}</strong>
-                          <span className="review-verified-tag">
-                            <CheckCircle2 size={13} className="check-icon" />
-                            Verified Buyer
-                          </span>
+                          {r.verifiedPurchase === true && (
+                            <span className="review-verified-tag">
+                              <CheckCircle2 size={13} className="check-icon" />
+                              Verified Buyer
+                            </span>
+                          )}
                         </div>
                         {r.createdAt && (
                           <span className="review-date-text">
@@ -2359,6 +2568,7 @@ function Product() {
 
                   <div className="review-card-content">
                     <p className="review-comment-text">{r.comment}</p>
+                    <ReviewPhotoStrip photos={r.photos} reviewerName={reviewerName} />
                   </div>
 
                   <div className="review-card-footer">

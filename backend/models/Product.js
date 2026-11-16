@@ -220,6 +220,14 @@ const productSchema = new mongoose.Schema(
       min: 0
     },
 
+    // M.R.P. (e.g. the price printed on the cover), in rupees. Optional and display-only:
+    // shown crossed out next to the price, never used for totals, GST or invoices.
+    mrp: {
+      type: Number,
+      default: null,
+      min: 0
+    },
+
     internationalPrice: {
       type: Number,
       default: null,
@@ -306,6 +314,20 @@ const productSchema = new mongoose.Schema(
     digitalType: {
       type: String,
       default: "Web Version"
+    },
+
+    // One-line description per format, shown under "Choose format" (optional; see utils/formatNotes.js)
+    formatNotes: {
+      type: [
+        new mongoose.Schema(
+          {
+            label: { type: String, trim: true, maxlength: 40 },
+            note: { type: String, trim: true, maxlength: 140 }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
     },
 
     webReaderLink: {

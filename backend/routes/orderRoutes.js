@@ -7,7 +7,6 @@ const Product = require("../models/Product");
 const User = require("../models/User");
 const Wishlist = require("../models/Wishlist");
 const GiftPass = require("../models/GiftPass");
-const { generateGiftCode } = require("./giftRoutes");
 const { resolveDeliveryCharge, isDigitalItem, getDeliveryPricingDetails } = require("../utils/deliveryPricing");
 const { applyComboWeights } = require("../utils/comboWeight");
 const { convertCurrencyAmount, normalizeCurrencyCode } = require("../utils/currency");
@@ -39,6 +38,7 @@ const {
   sendAccessPendingAdminAlert
 } = require("../utils/email");
 const { sendWelcomeSetPasswordEmail } = require("../utils/passwordReset");
+const { sendWhatsAppOrderStatus, sendWhatsAppDigitalAccess } = require("../utils/whatsapp");
 const {
   isPhysicalItem,
   isReturnOverdue,
@@ -64,7 +64,9 @@ const { orderRateLimiter, estimateRateLimiter, honeypotMiddleware } = require(".
 const rateLimit = require("express-rate-limit");
 const { perWorker } = require("../utils/workerCount");
 const getRazorpayClient = require("../utils/razorpay");
+const { applyPaidPaymentMeta } = require("../utils/paidPaymentMeta");
 const PaymentIntent = require("../models/PaymentIntent");
+const { findOwnedIntent, noteUnpaidCheckout, linkPaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
 const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
@@ -93,6 +95,9 @@ const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementSto
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
 const { planDigitalCopies, codesForLine } = require("../utils/digitalCopies");
+const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
+const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
+const { cleanAccessCredentials } = require("../utils/accessCredentials");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
@@ -499,7 +504,8 @@ async function emailIssuedGiftPasses(order, issued) {
         buyerName,
         giftCode: pass.code,
         productName: item?.name || "Digital Item",
-        orderId: String(order._id)
+        orderId: String(order._id),
+        accessSetUpByTeam: item?.giftAccessManual === true
       });
     } catch (err) {
       console.error("[GiftPass] Email send error:", err.message);
@@ -578,8 +584,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     }
 
     const isGift = req.body?.isGift === true;
-    if (isGift && totals.normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    if (isGift) {
+      totals.normalizedItems = holdGiftManualAccess(totals.normalizedItems);
     }
     // Several copies of a digital product: one for the buyer (unless they already have it or
     // it's a gift), the rest become shareable codes when the order is paid
@@ -591,6 +598,13 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     const billingGst = billingGstFields(req.body.billing);
     if (billingGst.error) billingGst.gstin = billingGst.businessName = "";
     const initialStatus = rawPaymentStatus === "Paid" && canAutoComplete(totals.normalizedItems) ? "Completed" : "Pending";
+
+    // A failed or abandoned checkout: keep its Razorpay order ID (order_…) so admins can find it
+    // in Razorpay, but only if our server created that checkout for this customer.
+    const unpaidIntent = !verifiedPayment && razorpayOrderId
+      ? await findOwnedIntent({ razorpayOrderId, userId: req.user }, { PaymentIntent }).catch(() => null)
+      : null;
+    const unpaidRazorpayOrderId = unpaidIntent && !unpaidIntent.orderId ? unpaidIntent.razorpayOrderId : "";
 
     const order = await Order.create({
       user: req.user,
@@ -616,14 +630,16 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       status: initialStatus,
       paymentStatus: rawPaymentStatus,
       paymentMeta: {
-        razorpayOrderId: verifiedPayment ? razorpayOrderId : "",
+        razorpayOrderId: verifiedPayment ? razorpayOrderId : unpaidRazorpayOrderId,
         razorpayPaymentId: verifiedPayment ? razorpayPaymentId : "",
         paidAt: verifiedPayment ? new Date() : null,
         paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : null,
         paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : ""
       },
       isGift: req.body?.isGift === true,
-      giftRecipientEmail: req.body?.isGift === true ? String(req.body?.giftRecipientEmail || "").trim() : "",
+      // Payment was already taken here, so a bad or missing email is stored as empty rather
+      // than refusing the order (checkout and /api/payment/create-order require it first)
+      giftRecipientEmail: req.body?.isGift === true ? checkGiftRecipientEmail(req.body?.giftRecipientEmail).email || "" : "",
       refundStatus: "Not Applicable",
       currencyDisplay: {
         currency: totals.orderCurrency,
@@ -673,6 +689,20 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
+    }
+
+    if (verifiedPayment) {
+      // Mark the checkout paid now (the webhook does too, but it can be late or never arrive)
+      linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
+    }
+
+    if (unpaidRazorpayOrderId) {
+      // Link the checkout to this order and record the failed payment (pay_…) if there was one.
+      // Bookkeeping only: runs after the reply and never fails the order.
+      noteUnpaidCheckout(
+        { razorpayOrderId: unpaidRazorpayOrderId, failedPaymentId: req.body?.failedPaymentId, userId: req.user, orderId: order._id },
+        { PaymentIntent, fetchPayment: (id) => getRazorpayClient().payments.fetch(id) }
+      );
     }
 
     fireNotifications(async () => {
@@ -1435,10 +1465,20 @@ router.get("/admin/access-pending", protect, admin, requireAdminPage("orders"), 
           pendingItems.push({
             index,
             name: item.name || "Item",
-            quantity: Number(item.quantity) || 1
+            quantity: Number(item.quantity) || 1,
+            giftRecipient: item.giftRecipient
+              ? { name: item.giftRecipient.name || "Gift recipient", email: item.giftRecipient.email || "" }
+              : null
           });
         }
       });
+
+      // Every pending line is a redeemed gift: the person waiting is the recipient
+      const giftOnly = pendingItems.length > 0 && pendingItems.every((it) => it.giftRecipient);
+      if (giftOnly) {
+        customerName = `${pendingItems[0].giftRecipient.name} (gift)`;
+        customerEmail = pendingItems[0].giftRecipient.email || customerEmail;
+      }
 
       return {
         _id: order._id,
@@ -1563,6 +1603,7 @@ router.put("/:id/status", protect, admin, requireAdminPage("orders"), async (req
       }
 
       await sendPushToUser(populatedOrder.user._id, orderPayload(updated, normalizedStatus.toLowerCase()));
+      await sendWhatsAppOrderStatus(updated, populatedOrder.user, normalizedStatus);
       await sendOrderStatusUpdate(updated, populatedOrder.user, normalizedStatus);
     });
   }
@@ -1592,17 +1633,40 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       return res.status(400).json({ message: "Cannot grant access to a refunded order." });
     }
 
+    const { itemIndexes, note } = req.body || {};
+    // Optional login details for an account the admin made on the other website: emailed
+    // once, never saved or logged
+    const credentialCheck = cleanAccessCredentials(req.body?.credentials);
+    if (credentialCheck.error) {
+      return res.status(400).json({ message: credentialCheck.error });
+    }
+    const credentials = credentialCheck.credentials;
+
+    // Gift orders: only lines someone has redeemed (they carry the recipient's details) can
+    // be granted; before that there is nobody to set up access for
+    let targetIndexes = itemIndexes;
     const isGiftOrder = Boolean(order.isGift) ||
       (Array.isArray(order.items) && order.items.some((item) => item?.isGift || item?.giftCode));
     if (isGiftOrder) {
-      return res.status(400).json({ message: "Cannot grant access to a gift order." });
+      const items = Array.isArray(order.items) ? order.items : [];
+      const redeemedPending = items
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item?.accessManual === true && !item.accessGrantedAt && item.giftRecipient)
+        .map(({ idx }) => idx);
+      if (targetIndexes === undefined || targetIndexes === null) {
+        if (redeemedPending.length === 0) {
+          return res.status(400).json({ message: "This gift hasn't been redeemed yet, so there is no one to set up access for." });
+        }
+        targetIndexes = redeemedPending;
+      } else if (!Array.isArray(targetIndexes) || targetIndexes.some((idx) => !redeemedPending.includes(Number(idx)))) {
+        return res.status(400).json({ message: "Only gift items that have been redeemed can be granted." });
+      }
     }
 
-    const { itemIndexes, note } = req.body || {};
     const actor = await getAdminActorSnapshot(req.user);
 
     const grantResult = applyAccessGrant(order.items, {
-      itemIndexes,
+      itemIndexes: targetIndexes,
       adminId: actor.id || actor._id || req.user,
       note,
       now: new Date()
@@ -1649,8 +1713,10 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
 
     // A digital-only order is invoiced once all its access is given; the direct update above
     // skips the save hook that issues it, so save once more when it is now due
+    let invoiceIssuedNow = false;
     if (!updated.invoiceNumber && isInvoiceDue(updated)) {
       await updated.save();
+      invoiceIssuedNow = Boolean(updated.invoiceNumber);
     }
 
     const grantedItems = grantResult.grantedIndexes.map((idx) => updated.items[idx]);
@@ -1666,13 +1732,34 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
       summary: `Granted access to ${grantResult.grantedIndexes.length} item(s)`,
       details: {
         itemNames,
-        hasNote: Boolean(sanitizeAccessNote(note))
+        hasNote: Boolean(sanitizeAccessNote(note)),
+        // whether login details were emailed (never the password itself)
+        sentLoginDetails: Boolean(credentials),
+        sentPassword: Boolean(credentials?.tempPassword)
       }
     });
 
     res.json(updated);
 
     fireNotifications(async () => {
+      // Redeemed gifts: the recipient is told, not the buyer
+      const giftGroups = giftRecipientsForLines(updated.items, grantResult.grantedIndexes);
+      const giftIndexes = new Set(giftGroups.flatMap((group) => group.indexes));
+      for (const { recipient, indexes } of giftGroups) {
+        if (recipient.user) await sendPushToUser(recipient.user, accessGrantedPayload(updated));
+        if (recipient.email) {
+          await sendAccessGrantedEmail(
+            updated,
+            { name: recipient.name, email: recipient.email },
+            indexes.map((idx) => updated.items[idx]),
+            sanitizeAccessNote(note),
+            credentials
+          );
+        }
+      }
+      const buyerItems = grantedItems.filter((_, i) => !giftIndexes.has(grantResult.grantedIndexes[i]));
+      if (buyerItems.length === 0) return;
+
       const userId = updated.user?._id || updated.user;
       let buyerUser = null;
       if (userId) {
@@ -1685,8 +1772,10 @@ router.put("/:id/grant-access", protect, admin, requireAdminPage("orders"), asyn
           email: updated.billing?.email || updated.shipping?.email
         };
       }
+      // Digital-only order now fully accessible: its invoice was issued with this grant
+      if (invoiceIssuedNow) await sendWhatsAppDigitalAccess(updated, buyerUser);
       if (buyerUser) {
-        await sendAccessGrantedEmail(updated, buyerUser, grantedItems, sanitizeAccessNote(note));
+        await sendAccessGrantedEmail(updated, buyerUser, buyerItems, sanitizeAccessNote(note), credentials);
       }
     });
   } catch (err) {
@@ -1833,24 +1922,15 @@ router.put("/:id/payment-status", protect, async (req, res) => {
     ? { by: "customer", source: rawPaymentStatus === "Paid" ? "customer-payment" : "customer-update", reference: razorpayPaymentId }
     : { by: adminEmail || String(req.user), source: "manual-override", reference: manualPaymentReference, note: manualReason };
   if (rawPaymentStatus === "Paid") {
-    order.paymentMeta = {
-      ...(order.paymentMeta || {}),
-      razorpayOrderId: razorpayOrderId || order.paymentMeta?.razorpayOrderId || "",
-      razorpayPaymentId: razorpayPaymentId || order.paymentMeta?.razorpayPaymentId || "",
-      razorpaySignature: razorpaySignature || order.paymentMeta?.razorpaySignature || "",
-      paidAt: order.paymentMeta?.paidAt || new Date(),
-      paidAmountMinor: verifiedPayment ? Number(verifiedPayment.amount) : order.paymentMeta?.paidAmountMinor || null,
-      paidCurrency: verifiedPayment ? String(verifiedPayment.currency).toUpperCase() : order.paymentMeta?.paidCurrency || ""
-    };
-
-    if (!isOwner) {
-      order.paymentMeta.manualOverride = {
-        by: adminEmail || String(req.user),
-        reason: manualReason,
-        paymentReference: manualPaymentReference,
-        at: new Date()
-      };
-    }
+    applyPaidPaymentMeta(order, {
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      verifiedPayment,
+      manualOverride: isOwner
+        ? null
+        : { by: adminEmail || String(req.user), reason: manualReason, paymentReference: manualPaymentReference }
+    });
 
     if (canAutoComplete(order.items)) {
       order.status = "Completed";
@@ -1866,6 +1946,18 @@ router.put("/:id/payment-status", protect, async (req, res) => {
         console.warn("[Order] Coupon claim warning on retry:", couponErr.message);
       }
     }
+  }
+
+  if (rawPaymentStatus === "Paid" && verifiedPayment && razorpayOrderId) {
+    linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
+  }
+
+  if (isOwner && rawPaymentStatus === "Failed" && razorpayOrderId) {
+    // A failed retry from My Orders: record the failed payment on that retry's checkout.
+    noteUnpaidCheckout(
+      { razorpayOrderId, failedPaymentId: req.body?.failedPaymentId, userId: req.user, orderId: order._id },
+      { PaymentIntent, fetchPayment: (id) => getRazorpayClient().payments.fetch(id) }
+    );
   }
 
   let updated;
@@ -2971,10 +3063,24 @@ router.get("/my", protect, async (req, res) => {
       return it;
     };
 
+    // Codes from this buyer's gift orders that someone has used, so My Orders can say so
+    const giftOrderIds = orders.filter((o) => o?.isGift && String(o.user?._id || o.user) === String(req.user)).map((o) => o._id);
+    const usedGiftCodes = new Set(
+      giftOrderIds.length
+        ? (await GiftPass.find({ order: { $in: giftOrderIds }, isRedeemed: true }).select("code").lean()).map((gp) => gp.code)
+        : []
+    );
+
     const serializedOrders = orders.map((o) => {
       const oId = String(o._id);
       const redeemedProductIds = redeemedProductMapByOrder.get(oId) || null;
+      // Also covers a buyer who redeemed a pass from their own gift order
       const serialized = serializeOrderForOwner(o, req.user, { redeemedProductIds });
+      if (serialized && usedGiftCodes.size && Array.isArray(serialized.items)) {
+        serialized.items.forEach((item) => {
+          if (item?.giftCode && usedGiftCodes.has(item.giftCode)) item.giftRedeemed = true;
+        });
+      }
       const isWp = Boolean(o.isWpArchive || String(o._id || "").startsWith("wp_") || serialized?.isWpArchive);
       if (isWp && serialized) {
         serialized.legacyAccess = true;
@@ -2999,7 +3105,24 @@ router.get("/:id", protect, admin, requireAdminPage("orders"), async (req, res) 
     return res.status(404).json({ message: "Order not found" });
   }
 
-  res.json(order);
+  // Every Razorpay checkout for this order (first try and retries), with failed payment IDs
+  let paymentAttempts = [];
+  try {
+    const rzpOrderId = String(order.paymentMeta?.razorpayOrderId || "");
+    const intents = await PaymentIntent.find({
+      $or: [{ orderId: order._id }, ...(rzpOrderId ? [{ razorpayOrderId: rzpOrderId }] : [])]
+    })
+      .select("razorpayOrderId razorpayPaymentId mode status failedAttempts lastFailure createdAt")
+      .lean();
+    paymentAttempts = describePaymentAttempts(intents, {
+      paidRazorpayOrderId: order.paymentStatus === "Paid" || order.paymentStatus === "Refunded" ? rzpOrderId : "",
+      paidRazorpayPaymentId: String(order.paymentMeta?.razorpayPaymentId || "")
+    });
+  } catch (attemptErr) {
+    console.warn("[Order] Could not load payment attempts:", attemptErr?.message || attemptErr);
+  }
+
+  res.json({ ...order, paymentAttempts });
 });
 
 // Get tracking details for a specific order (customer who placed it OR admin)
@@ -3230,12 +3353,11 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
       }
     }
 
-    const normalizedItems = Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
-
     const isGift = req.body?.isGift === true;
-    if (isGift && normalizedItems.some((it) => it.accessManual)) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-    }
+    // Gift lines whose access the admin sets up by hand wait for the recipient to redeem
+    const normalizedItems = isGift
+      ? holdGiftManualAccess(Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [])
+      : Array.isArray(calc.normalizedItems) ? calc.normalizedItems : [];
     // Several copies of a digital product: one for the buyer unless they already have it
     const directBuyOwned = isGift ? new Set() : await getOwnedDigitalIdsForUser(targetUser._id);
     planDigitalCopies(normalizedItems, { ownedIds: directBuyOwned, isGift });
@@ -3295,6 +3417,9 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
         return res.status(409).json({ message: "This payment reference has already been applied to another order." });
       }
       throw err;
+    }
+    if (verifiedPayment) {
+      linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
     }
 
     if (rawPaymentStatus === "Paid") {

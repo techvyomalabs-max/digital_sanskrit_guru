@@ -102,8 +102,10 @@ export function PageContent({ children }) {
   }, [pathname]);
 
   return (
-    <div id="main-content" tabIndex={-1} ref={contentRef}>
+    // The page's single <main> landmark. min-height keeps the footer below the
+    // fold while lazy routes and data load, so it doesn't jump (layout shift).
+    <main id="main-content" className="site-main" tabIndex={-1} ref={contentRef}>
       {children}
-    </div>
+    </main>
   );
 }

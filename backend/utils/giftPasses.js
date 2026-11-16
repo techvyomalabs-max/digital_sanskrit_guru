@@ -22,9 +22,12 @@ async function issueGiftPassesForOrder(orderId) {
     const it = o.items[i];
     const copies = codesForLine(o, it);
     if (copies <= 0) continue;
+    // A line that already shows a code has its first pass (possibly made by older code with a
+    // different line number): never make a second "first" pass, only the missing extra copies
+    const hasFirstCode = Boolean(it.giftCode);
 
-    let firstCode = "";
-    for (let copyIndex = 0; copyIndex < copies; copyIndex++) {
+    let firstCode = hasFirstCode ? it.giftCode : "";
+    for (let copyIndex = hasFirstCode ? 1 : 0; copyIndex < copies; copyIndex++) {
       let pass = null;
       let inserted = false;
       // Older codes were made before copyIndex existed; they count as copy 0

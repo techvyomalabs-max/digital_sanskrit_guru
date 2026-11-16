@@ -215,7 +215,7 @@ function AdminSalesDashboard() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main sd-page">
+      <div className="admin-main sd-page">
         <header className="sd-header">
           <div>
             <h1>Sales Dashboard</h1>
@@ -371,7 +371,7 @@ function AdminSalesDashboard() {
             </p>
           </section>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

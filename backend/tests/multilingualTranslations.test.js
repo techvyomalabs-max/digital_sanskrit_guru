@@ -3,7 +3,8 @@ const assert = require("node:assert/strict");
 
 describe("10-Language Multilingual Search & Format Recognition (Official Team Translations)", async () => {
   const { searchWebsite, scoreProduct } = await import("../../src/utils/searchText.js");
-  const { processIndicQuery, detectIndicScript } = await import("../../src/utils/indicSearch.js");
+  const { processIndicQuery, detectIndicScript, loadProductTranslations } = await import("../../src/utils/indicSearch.js");
+  await loadProductTranslations();
 
   const catalog = [
     {

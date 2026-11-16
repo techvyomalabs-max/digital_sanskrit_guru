@@ -125,7 +125,18 @@ function Home() {
       try {
         let response = null;
 
-        for (let attempt = 0; attempt <= HOME_REQUEST_RETRY_DELAYS.length; attempt += 1) {
+        // index.html starts this request before the app's JS loads; use it once if it worked
+        const prefetched = window.__dsgHomePrefetch;
+        window.__dsgHomePrefetch = null;
+        if (prefetched) {
+          try {
+            response = { data: await prefetched };
+          } catch {
+            response = null;
+          }
+        }
+
+        for (let attempt = 0; !response && attempt <= HOME_REQUEST_RETRY_DELAYS.length; attempt += 1) {
           try {
             response = await axios.get("/api/products/home");
             break;
@@ -352,7 +363,7 @@ function Home() {
         <div className="home-banner-container">
           {activeHeroBanner.title?.trim() ? (
             /* ── Cinematic Spotlight Hero Banner Mode ────────────────────────── */
-            <div className={`home-hero-spotlight-card pos-${activeHeroBanner.textPosition || "middle-left"} align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"} overlay-${activeHeroBanner.overlayType || "feathered"}`}>
+            <div className={`home-hero-spotlight-card${activeHeroBanner.mobileImage?.trim() ? " has-mobile-image" : ""} pos-${activeHeroBanner.textPosition || "middle-left"} align-${activeHeroBanner.textAlign || (activeHeroBanner.textPosition?.includes("center") ? "center" : activeHeroBanner.textPosition?.includes("right") ? "right" : "left")} style-${activeHeroBanner.textStyle || "modern"} overlay-${activeHeroBanner.overlayType || "feathered"}`}>
               {/* Full-bleed background image */}
               <picture className="home-spotlight-backdrop-picture">
                 <source media="(max-width: 768px)" srcSet={activeHeroBanner.mobileImage || activeHeroBanner.image} />
@@ -566,7 +577,7 @@ function Home() {
             <span className="home-section-kicker">Most trusted</span>
             <h2>Top Rated Picks</h2>
           </div>
-          <Link to="/collection" className="home-inline-link">See more</Link>
+          <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> top rated picks</span></Link>
         </div>
 
         <div className="home-slider-wrapper">
@@ -609,7 +620,7 @@ function Home() {
               <span className="home-section-kicker">Fresh drop</span>
               <h2>New Arrivals</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> new arrivals</span></Link>
           </div>
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts ? (
@@ -619,9 +630,12 @@ function Home() {
                 <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
-                      <div
+                      <img
+                        src={product.image}
+                        alt=""
                         className="home-mini-card-ambient-bg"
-                        style={{ backgroundImage: `url(${product.image})` }}
+                        loading="lazy"
+                        decoding="async"
                         aria-hidden="true"
                       />
                     )}
@@ -669,7 +683,7 @@ function Home() {
               <span className="home-section-kicker">Best value</span>
               <h2>Budget Picks</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> budget picks</span></Link>
           </div>
           <div className="home-mini-grid home-desktop-only">
             {isLoadingProducts ? (
@@ -679,9 +693,12 @@ function Home() {
                 <Link key={product._id} to={productPath(product)} className="home-mini-card">
                   <div className="home-mini-card-image-wrap">
                     {product.image && (
-                      <div
+                      <img
+                        src={product.image}
+                        alt=""
                         className="home-mini-card-ambient-bg"
-                        style={{ backgroundImage: `url(${product.image})` }}
+                        loading="lazy"
+                        decoding="async"
                         aria-hidden="true"
                       />
                     )}
@@ -738,7 +755,7 @@ function Home() {
                 <span className="home-section-kicker">Seasonal picks</span>
                 <h2>Festive Offers</h2>
               </div>
-              <Link to="/collection" className="home-inline-link">See more</Link>
+              <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> festive offers</span></Link>
             </div>
 
             <div className="home-slider-wrapper">
@@ -792,7 +809,7 @@ function Home() {
               <span className="home-section-kicker">Bundle deals</span>
               <h2>Bundle Products</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> bundle products</span></Link>
           </div>
 
           <div className="home-slider-wrapper">
@@ -855,7 +872,7 @@ function Home() {
               <span className="home-section-kicker">Catalog</span>
               <h2>Browse the Collection</h2>
             </div>
-            <Link to="/collection" className="home-inline-link">See more</Link>
+            <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> of the collection</span></Link>
           </div>
 
           <div className="home-slider-wrapper">

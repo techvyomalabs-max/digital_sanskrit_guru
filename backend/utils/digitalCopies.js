@@ -31,7 +31,9 @@ function canShareCopies(product) {
 
 /** Normalized order item (from normalizeOrderItem) whose extra copies can become codes. */
 function lineCanShareCopies(item) {
-  return item?.isDigital === true && !isBundleProduct(item) && item?.accessManual !== true;
+  // Lines whose access our team sets up by hand (including gift lines held for a recipient)
+  // keep one code per line
+  return item?.isDigital === true && !isBundleProduct(item) && item?.accessManual !== true && item?.giftAccessManual !== true;
 }
 
 /** Most copies of a digital product one order may hold. */

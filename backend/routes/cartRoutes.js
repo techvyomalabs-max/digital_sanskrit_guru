@@ -111,6 +111,9 @@ router.get("/", protect, async (req, res) => {
 const isDigitalProduct = (product) => {
   if (!product) return false;
   if (product.isDigital === true) return true;
+  // A format (USB, Print, Web Version...) has its digital flag set by the format type, so trust it:
+  // "All Products Bundle Web-version – USB" is shipped even though its name says "Web-version".
+  if (product.optionParent) return false;
   const name = String(product.name || "").toLowerCase();
   const category = String(product.category || "").toLowerCase();
   const format = String(product.format || "").toLowerCase();
@@ -124,7 +127,7 @@ router.post("/", protect, async (req, res) => {
     return res.status(400).json({ message: "productId is required" });
   }
 
-  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType hasOptions");
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType optionParent hasOptions");
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
@@ -179,7 +182,7 @@ router.put("/:productId", protect, async (req, res) => {
     return res.status(404).json({ message: "Cart item not found" });
   }
 
-  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType");
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType optionParent");
   if (product && isKindleProduct(product)) {
     return res.status(400).json({ message: "Kindle editions are sold on Amazon." });
   }

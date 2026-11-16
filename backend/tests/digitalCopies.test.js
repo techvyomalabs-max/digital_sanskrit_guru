@@ -164,3 +164,16 @@ describe("issuing codes for several copies", () => {
     assert.equal(again.length, 0, "running again issues nothing new");
   });
 });
+
+describe("gift lines held for a recipient (access set up by our team)", () => {
+  it("are not planned as several copies; the gift order still gives one code per line", () => {
+    const { holdGiftManualAccess } = require("../utils/giftAccess");
+    const items = holdGiftManualAccess([
+      { product: "m1", isDigital: true, accessManual: true, quantity: 1, name: "Course (web version)" }
+    ]);
+    assert.equal(items[0].giftAccessManual, true);
+    planDigitalCopies(items, { isGift: true });
+    assert.equal(items[0].shareableCopies, undefined);
+    assert.equal(codesForLine({ isGift: true }, items[0]), 1);
+  });
+});

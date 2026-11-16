@@ -26,8 +26,8 @@ import ReturnPhotos from "../components/admin/ReturnPhotos";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { formatBaseCurrency, formatOrderDisplayCurrency, convertCurrencyAmount } from "../utils/currency";
 import { buildOrdersCsv } from "../utils/ordersCsv";
-import { isExternalDelivery, hasExternalDelivery } from "../utils/digitalDelivery";
-import { isDigitalLikeItem, orderHasPendingAccess } from "../utils/accessStatus";
+import { hasExternalDelivery } from "../utils/digitalDelivery";
+import { isDigitalLikeItem, orderHasPendingAccess, itemGivesOnlineAccess } from "../utils/accessStatus";
 import AdminRefundModal from "../components/admin/AdminRefundModal";
 import "./AdminOrders.css";
 import { downloadInvoice } from "../utils/downloadInvoice";
@@ -915,7 +915,7 @@ function AdminOrders() {
     <div className="admin-layout">
       <AdminSidebar />
 
-      <main className="admin-main admin-orders-page">
+      <div className="admin-main admin-orders-page">
         <div className="admin-orders-header">
           <div>
             <p className="admin-orders-kicker">Operations</p>
@@ -1298,19 +1298,7 @@ function AdminOrders() {
                       </td>
                       <td className="col-fulfillment">
                         {(() => {
-                          const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every((item) =>
-                            Boolean(
-                              item.isDigital ||
-                              isExternalDelivery(item) ||
-                              item.webReaderLink ||
-                              item.kindleLink ||
-                              String(item.name || "").toLowerCase().includes("web") ||
-                              String(item.name || "").toLowerCase().includes("kindle") ||
-                              String(item.name || "").toLowerCase().includes("flipbook") ||
-                              String(item.format || "").toLowerCase().includes("web") ||
-                              String(item.format || "").toLowerCase().includes("flipbook")
-                            )
-                          );
+                          const isDigitalOnly = Array.isArray(order.items) && order.items.length > 0 && order.items.every(itemGivesOnlineAccess);
 
                           const currentStepIndex = statusStep[displayStatus] ?? 0;
                           const trackingUrl = getCourierTrackingUrl(order?.courierPartner, order?.trackingId);
@@ -2037,7 +2025,7 @@ function AdminOrders() {
             );
           }}
         />
-      </main>
+      </div>
     </div>
   );
 }

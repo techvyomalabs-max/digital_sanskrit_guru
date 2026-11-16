@@ -14,6 +14,7 @@ describe("failed payments from the Razorpay webhook", () => {
 
   it("are kept on the checkout's payment intent without changing its status", async () => {
     const calls = [];
+    mock.method(PaymentIntent, "findOne", () => ({ select: () => ({ lean: async () => null }) }));
     mock.method(PaymentIntent, "findOneAndUpdate", async (filter, update, opts) => {
       calls.push({ filter, update, opts });
       return null;

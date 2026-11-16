@@ -8,6 +8,16 @@ const Order = require("../models/Order");
 const protect = require("../middleware/authMiddleware");
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { getOwnedDigitalIdsForUser } = require("../services/digitalOwnershipService");
+const User = require("../models/User");
+const { findGiftLineIndex, isGiftAwaitingRecipient, buildGiftRecipient } = require("../utils/giftAccess");
+const { sendPushToUser, accessPendingPayload } = require("../utils/webPush");
+const { sendAccessPendingAdminAlert } = require("../utils/email");
+
+// Notifications never block or fail the response
+const fireNotifications = (fn) =>
+  Promise.resolve()
+    .then(fn)
+    .catch((err) => console.error("[GiftRoutes] Notification error:", err?.message));
 
 const router = express.Router();
 
@@ -33,19 +43,15 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       return res.status(400).json({ message: "Please enter a Gift Pass Code." });
     }
 
-    if (req.body?.isGift === true) {
-      return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
-    }
-
     const existingPass = await GiftPass.findOne({ code: rawCode });
     if (!existingPass) {
       return res.status(404).json({ message: "Invalid Gift Pass Code. Please double check the code." });
     }
 
     if (existingPass.order) {
-      const parentOrder = await Order.findById(existingPass.order).select("isGift items").lean();
-      if ((parentOrder?.isGift || req.body?.isGift) && (parentOrder?.items || []).some((it) => it.accessManual)) {
-        return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
+      const parentOrder = await Order.findById(existingPass.order).select("status refundStatus").lean();
+      if (parentOrder && (parentOrder.status === "Cancelled" || parentOrder.refundStatus === "Refunded")) {
+        return res.status(400).json({ message: "This Gift Pass is no longer valid because the order was cancelled or refunded." });
       }
     }
 
@@ -55,6 +61,14 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
 
     if (existingPass.isRedeemed) {
       return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
+    }
+
+    // A gift is for someone else: the person who bought it can't redeem it
+    if (existingPass.buyer && String(existingPass.buyer) === String(req.user)) {
+      return res.status(400).json({
+        code: "GIFT_OWN_PURCHASE",
+        message: "You bought this gift, so it can't be redeemed on your account. Please share the code with the person you're gifting."
+      });
     }
 
     // Check if the user already owns this product
@@ -86,9 +100,17 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       .select(PUBLIC_PRODUCT_EXCLUDE)
       .lean();
 
+    // Access our team sets up by hand: the order line now waits for the admin, with the
+    // recipient's details, and the admins are told
+    const accessPending = await queueRecipientAccess(giftPass, req.user);
+    const itemName = giftPass.productName || product?.name || "Digital Item";
+
     return res.json({
       success: true,
-      message: `Congratulations! You have successfully redeemed "${giftPass.productName || product?.name || 'Digital Item'}"!`,
+      accessPending,
+      message: accessPending
+        ? `Gift redeemed! Our team is now setting up your access to "${itemName}". We'll email you as soon as it's ready (usually within 24-48 hours).`
+        : `Congratulations! You have successfully redeemed "${itemName}"!`,
       product: toPublicProduct(product)
     });
   } catch (err) {
@@ -127,6 +149,45 @@ router.get("/my-codes", protect, async (req, res) => {
     return res.status(500).json({ message: "Failed to load your codes." });
   }
 });
+
+/**
+ * After a gift is redeemed: if its order line is held for a recipient (access our team
+ * sets up by hand), make it a normal "Access Pending" line with the recipient's name and
+ * email, and alert the admins. Returns true when access still has to be set up.
+ */
+async function queueRecipientAccess(giftPass, userId) {
+  try {
+    if (!giftPass?.order) return false;
+    const order = await Order.findById(giftPass.order).select("_id invoiceNumber items").lean();
+    const idx = findGiftLineIndex(order?.items, giftPass);
+    if (idx < 0 || !isGiftAwaitingRecipient(order.items[idx])) return false;
+
+    const user = await User.findById(userId).select("name email").lean();
+    const recipient = buildGiftRecipient({ _id: userId, ...(user || {}) });
+    const updated = await Order.findOneAndUpdate(
+      { _id: order._id, [`items.${idx}.giftAccessManual`]: true, [`items.${idx}.accessManual`]: { $ne: true } },
+      { $set: { [`items.${idx}.accessManual`]: true, [`items.${idx}.giftRecipient`]: recipient } },
+      { returnDocument: "after" }
+    ).lean();
+    if (!updated) return false;
+
+    const line = updated.items[idx];
+    fireNotifications(async () => {
+      const admins = await User.find({ isAdmin: true }).select("_id").lean();
+      const payload = accessPendingPayload({
+        orderId: updated._id,
+        customerName: `${recipient.name} (gift)`,
+        productNames: [line?.name || "Item"]
+      });
+      for (const adminUser of admins) await sendPushToUser(adminUser._id, payload);
+      await sendAccessPendingAdminAlert(updated, [line], { name: `${recipient.name} (gift recipient)`, email: recipient.email });
+    });
+    return true;
+  } catch (err) {
+    console.error("[GiftRoutes] Queueing recipient access failed:", err.message);
+    return false;
+  }
+}
 
 // Get user's redeemed gift passes
 router.get("/my-redeemed", protect, async (req, res) => {

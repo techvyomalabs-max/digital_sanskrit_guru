@@ -624,9 +624,12 @@ function Navbar({ bannerActive = false }) {
             <div className="navbar-inner">
               <Link to="/" className="navbar-logo navbar-outline" onClick={handleNavClick}>
                 <img
-                  src="/logo.png"
+                  src="/logo-nav.webp"
                   alt="Digital Sanskrit Guru"
                   className="navbar-logo-img"
+                  width="223"
+                  height="108"
+                  fetchPriority="high"
                 />
               </Link>
 

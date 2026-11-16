@@ -11,7 +11,7 @@ function PrivacyPolicy() {
   );
 
   return (
-    <main className="policy-page privacy-policy-page">
+    <div className="policy-page privacy-policy-page">
       <div className="policy-container">
         {/* Header Hero Section */}
         <header className="policy-header">
@@ -195,7 +195,7 @@ function PrivacyPolicy() {
           <Link to="/contact" className="policy-nav-link">Contact Seva</Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
