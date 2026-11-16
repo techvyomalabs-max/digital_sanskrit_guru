@@ -8,7 +8,7 @@ import { useCart } from "../hooks/useCart";
 import "./RecentlyViewed.css";
 import "./RecommendedForYou.css";
 
-function RecommendedForYou({ className = "", initialProducts = [] }) {
+function RecommendedForYou({ className = "", initialProducts = [], excludeIds = [] }) {
   const [catalog, setCatalog] = useState(initialProducts);
   const [viewedHistory, setViewedHistory] = useState([]);
   const { wishlist } = useWishlist();
@@ -45,12 +45,22 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
   }, [initialProducts]);
 
   // Compute AI recommendations based on user history, searches, wishlist, and cart
+  const excludeKey = excludeIds.map(String).join(",");
   const recommendations = useMemo(() => {
     if (catalog.length === 0) return [];
 
     const searchQueries = getRecentSearchQueries();
+    // Without anything personal to go on, "for you" would just repeat the popular rows above
+    const hasPersonalSignal =
+      viewedHistory.length > 0 ||
+      searchQueries.length > 0 ||
+      (Array.isArray(cartItems) && cartItems.length > 0) ||
+      (Array.isArray(wishlist) && wishlist.length > 0);
+    if (!hasPersonalSignal) return [];
+
+    const shownAbove = new Set(excludeKey ? excludeKey.split(",") : []);
     return getAIRecommendations(
-      catalog,
+      catalog.filter((p) => !shownAbove.has(String(p._id || p.id))),
       {
         viewedProducts: viewedHistory,
         searchQueries,
@@ -59,7 +69,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
       },
       { limit: 8 }
     );
-  }, [catalog, viewedHistory, wishlist, cartItems]);
+  }, [catalog, viewedHistory, wishlist, cartItems, excludeKey]);
 
   const scrollRow = (direction) => {
     if (!sliderRef.current) return;
@@ -97,7 +107,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
             onClick={() => scrollRow(-1)}
             aria-label="Previous recommended products"
           >
-            <ChevronLeft size={52} strokeWidth={3.5} />
+            <ChevronLeft size={22} strokeWidth={2.5} />
           </button>
         ) : null}
 
@@ -122,7 +132,7 @@ function RecommendedForYou({ className = "", initialProducts = [] }) {
             onClick={() => scrollRow(1)}
             aria-label="Next recommended products"
           >
-            <ChevronRight size={52} strokeWidth={3.5} />
+            <ChevronRight size={22} strokeWidth={2.5} />
           </button>
         ) : null}
       </div>
