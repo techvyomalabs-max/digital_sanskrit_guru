@@ -92,12 +92,13 @@ const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
+const { planDigitalCopies, codesForLine } = require("../utils/digitalCopies");
 const { processGatewayRefund, previewRefund, RefundError, cancellationRefundEligibility } = require("../utils/refunds");
 const { computeRefundQuote } = require("../utils/refundQuote");
 const refundPolicy = require("../config/refundPolicy");
 const { buildInvoiceRow, buildCreditNoteRows, summarize } = require("../utils/financeLedger");
 const { orderReferenceConditions } = require("../utils/orderSearch");
-const { checkDigitalOwnership } = require("../services/digitalOwnershipService");
+const { checkDigitalOwnership, getOwnedDigitalIdsForUser } = require("../services/digitalOwnershipService");
 const jwt = require("jsonwebtoken");
 
 const router = express.Router();
@@ -479,68 +480,6 @@ router.post("/digital-ownership", protect, estimateRateLimiter, async (req, res)
   }
 });
 
-const ensureGiftPassesForOrder = async (order) => {
-  if (!order || String(order.paymentStatus) !== "Paid") return order;
-
-  const items = Array.isArray(order.items) ? [...order.items] : [];
-  let updated = false;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const isDigital = Boolean(
-      item.isDigital ||
-      item.webReaderLink ||
-      item.externalAccessLink ||
-      item.kindleLink ||
-      String(item.name || "").toLowerCase().includes("flipbook") ||
-      String(item.name || "").toLowerCase().includes("web") ||
-      String(item.name || "").toLowerCase().includes("kindle") ||
-      String(item.format || "").toLowerCase().includes("web") ||
-      String(item.format || "").toLowerCase().includes("flipbook")
-    );
-
-    if ((order.isGift || item.isGift) && !item.giftCode) {
-      const code = generateGiftCode();
-      try {
-        await GiftPass.create({
-          code,
-          product: item.product || item._id || item.id,
-          productName: item.name || "Digital Item",
-          order: order._id,
-          buyer: order.user,
-          recipientEmail: order.giftRecipientEmail || "",
-          isRedeemed: false
-        });
-        item.giftCode = code;
-        updated = true;
-
-        if (order.giftRecipientEmail) {
-          const User = require("../models/User");
-          const buyerUser = await User.findById(order.user).lean();
-          const buyerName = buyerUser ? (buyerUser.name || buyerUser.email) : "A friend";
-          
-          const { sendGiftPassEmail } = require("../utils/email");
-          await sendGiftPassEmail({
-            to: order.giftRecipientEmail,
-            buyerName,
-            giftCode: code,
-            productName: item.name || "Digital Item",
-            orderId: String(order._id)
-          });
-        }
-      } catch (err) {
-        console.error("[GiftPass] Creation/Email error:", err.message);
-      }
-    }
-  }
-
-  if (updated) {
-    await Order.updateOne({ _id: order._id }, { $set: { items } });
-    order.items = items;
-  }
-  return order;
-};
-
 async function emailIssuedGiftPasses(order, issued) {
   if (!order || !order.giftRecipientEmail || !Array.isArray(issued) || issued.length === 0) {
     return;
@@ -642,6 +581,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     if (isGift && totals.normalizedItems.some((it) => it.accessManual)) {
       return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
     }
+    // Several copies of a digital product: one for the buyer (unless they already have it or
+    // it's a gift), the rest become shareable codes when the order is paid
+    planDigitalCopies(totals.normalizedItems, { ownedIds: totals.ownedDigitalIds, isGift });
 
     const requestedBilling = req.body.billing || req.body.shipping || {};
     // GSTIN was already checked before payment (/api/payment/create-order); if it still fails
@@ -726,7 +668,8 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
           await Order.updateOne({ _id: order._id }, { $set: { couponClaimed: true } });
         }
       }
-      if (order.isGift) {
+      // Gift codes and extra copies (issueGiftPassesForOrder skips orders with none)
+      {
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
@@ -2804,10 +2747,24 @@ router.get("/my", protect, async (req, res) => {
       console.error("[MyOrders] WP Archive fetch error:", wpErr.message);
     }
 
-    // Ensure gift pass codes exist for any paid gift orders
+    // Make sure paid orders have all their codes (gift orders and extra copies); only orders
+    // missing some are touched, so a normal visit costs one count per such order
     for (let i = 0; i < orders.length; i++) {
-      if (orders[i].isGift && orders[i].paymentStatus === "Paid") {
-        orders[i] = await ensureGiftPassesForOrder(orders[i]);
+      const o = orders[i];
+      if (o?.paymentStatus !== "Paid" || o?.status === "Cancelled" || o?.isRedeemedGift) continue;
+      const expected = (o.items || []).reduce((sum, it) => sum + codesForLine(o, it), 0);
+      if (expected <= 0) continue;
+      const existing = await GiftPass.countDocuments({ order: o._id });
+      if (existing >= expected) continue;
+      try {
+        const issued = await issueGiftPassesForOrder(o._id);
+        emailIssuedGiftPasses(o, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
+        if (issued.length) {
+          const fresh = await Order.findById(o._id).select("items").lean();
+          if (fresh?.items) orders[i] = { ...o, items: fresh.items };
+        }
+      } catch (err) {
+        console.error(`[GiftPass] Could not issue codes for order ${o._id}:`, err.message);
       }
     }
 
@@ -3279,6 +3236,9 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
     if (isGift && normalizedItems.some((it) => it.accessManual)) {
       return res.status(400).json({ message: "This product cannot be sent as a gift because access is set up by our team." });
     }
+    // Several copies of a digital product: one for the buyer unless they already have it
+    const directBuyOwned = isGift ? new Set() : await getOwnedDigitalIdsForUser(targetUser._id);
+    planDigitalCopies(normalizedItems, { ownedIds: directBuyOwned, isGift });
 
     const initialOrderStatus = rawPaymentStatus === "Paid" && canAutoComplete(normalizedItems)
       ? "Completed"
@@ -3354,7 +3314,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
           console.warn("[Order] Coupon claim warning on direct-buy:", couponErr.message);
         }
       }
-      if (order.isGift) {
+      // Gift codes and extra copies (issueGiftPassesForOrder skips orders with none)
+      {
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
@@ -3496,18 +3457,19 @@ async function resolveAuthorizedDigitalItem(userId, orderId, itemId) {
   const isAdmin = Boolean(userDoc?.isAdmin);
 
   if (!isAdmin) {
-    const isGiftLine = Boolean(order.isGift || line.giftCode);
-    const allowed = isGiftLine
-      ? Boolean(
-          await GiftPass.exists({
-            order: order._id,
-            redeemedBy: userId,
-            isRedeemed: true,
-            isRevoked: { $ne: true },
-            product: line.product
-          })
-        )
-      : String(order.user) === String(userId);
+    // The buyer opens their own copy (not lines that were only gift/shareable codes); anyone
+    // who redeemed one of the order's codes for this product opens theirs
+    const isGiftLine = Boolean(order.isGift || line.giftCode || line.isGift);
+    const isBuyerCopy = !isGiftLine && String(order.user) === String(userId);
+    const allowed = isBuyerCopy || Boolean(
+      await GiftPass.exists({
+        order: order._id,
+        redeemedBy: userId,
+        isRedeemed: true,
+        isRevoked: { $ne: true },
+        product: line.product
+      })
+    );
 
     if (!allowed) throw Object.assign(new Error("Access denied for this digital item."), { status: 403 });
     if (!hasDigitalAccess(order) || line.returnRequest?.status === "Refunded") {

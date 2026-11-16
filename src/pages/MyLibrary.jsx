@@ -7,6 +7,7 @@ import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isAccessPending } from "../utils/accessStatus";
 import ComboLibraryCard from "../components/library/ComboLibraryCard";
+import ShareableCodes from "../components/library/ShareableCodes";
 import "./MyLibrary.css";
 
 const formatDate = (dateString) => {
@@ -233,7 +234,8 @@ function MyLibrary() {
       const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
       order.items.forEach((item, itemIdx) => {
-        const isGiftItem = Boolean(order.isGift || item.giftCode);
+        // Gift lines and lines bought only as shareable codes aren't the buyer's own copy
+        const isGiftItem = Boolean(order.isGift || item.giftCode || item.isGift);
         if (isGiftItem && !order.isRedeemedGift) {
           return;
         }
@@ -560,6 +562,8 @@ function MyLibrary() {
           </button>
         </div>
       </div>
+
+      <ShareableCodes token={token} refreshKey={orders.length} />
 
       {isLoading ? (
         <div className="my-library-loading">

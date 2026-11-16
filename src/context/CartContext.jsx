@@ -6,7 +6,7 @@ import { isDigitalItem } from "../utils/deliveryPricing";
 import { resolveInitialWishlist } from "../utils/wishlistOwnership";
 import { isKindleProduct } from "../utils/kindle";
 import { isOptionsParent } from "../utils/productOptions";
-import { clampCartQuantity } from "../utils/orderQuantity";
+import { canShareDigitalCopies, clampCartQuantity } from "../utils/orderQuantity";
 
 const CartContext = createContext();
 const GUEST_CART_STORAGE_KEY = "guestCartItems";
@@ -14,11 +14,15 @@ const SAVED_FOR_LATER_STORAGE_KEY = "savedForLaterItems";
 
 const isBulkItem = (item) => String(item?.productType || item?.product?.productType || "single").toLowerCase() === "bulk";
 
-// Holds every cart line to the per-order limits (5 retail, 1 digital), including
+// Holds every cart line to the per-order limits (5 retail, 10 shareable digital copies, else 1), including
 // carts saved before the limit existed, so the cart never shows a quantity the
 // order won't be charged for
 const limitCartQuantity = (item, quantity = item?.quantity) =>
-  clampCartQuantity(quantity, { isDigital: isDigitalItem(item), isBulk: isBulkItem(item) });
+  clampCartQuantity(quantity, {
+    isDigital: isDigitalItem(item),
+    isBulk: isBulkItem(item),
+    canShareCopies: canShareDigitalCopies({ ...item, isDigital: isDigitalItem(item) })
+  });
 
 const withQuantityLimits = (items) =>
   (Array.isArray(items) ? items : []).map((item) => {
@@ -349,7 +353,7 @@ export function CartProvider({ children }) {
             description: String(product?.description || "").trim(),
             category: String(product?.category || "General").trim() || "General",
             stock: Number(product?.stock || 0),
-            quantity: clampCartQuantity(nextQty, { isDigital, isBulk }),
+            quantity: clampCartQuantity(nextQty, { isDigital, isBulk, canShareCopies: canShareDigitalCopies({ ...product, isDigital }) }),
             festiveOffer: Boolean(product?.festiveOffer),
             festiveDiscountPercent: Number(product?.festiveDiscountPercent || 0),
             discountType: String(product?.discountType || "").trim(),
@@ -365,12 +369,12 @@ export function CartProvider({ children }) {
         name: String(product?.name || "").trim(),
         price: Number(product?.price || 0),
         image: String(product?.image || "").trim(),
-        quantity: clampCartQuantity(nextQty, { isDigital, isBulk }),
+        quantity: clampCartQuantity(nextQty, { isDigital, isBulk, canShareCopies: canShareDigitalCopies({ ...product, isDigital }) }),
         digitalDelivery: String(product?.digitalDelivery || "onsite"),
         externalAccessManual: Boolean(product?.externalAccessManual)
       });
       setIsPopupOpen(true);
-      showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
+      showToast("Added to cart");
       return true;
     }
 
@@ -392,7 +396,7 @@ export function CartProvider({ children }) {
         quantity: nextQty
       });
       setIsPopupOpen(true);
-      showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
+      showToast("Added to cart");
       return true;
     } catch (err) {
       const status = Number(err?.response?.status || 0);

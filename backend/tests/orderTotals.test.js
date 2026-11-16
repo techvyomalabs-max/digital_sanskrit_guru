@@ -148,7 +148,7 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
     assert.equal(roundMoney(result.normalizedItems[0].price * result.normalizedItems[0].quantity), 1250); // 250 * 5
   });
 
-  it("caps quantities at the per-order limits: 5 for retail, 1 for digital, none for bulk", async () => {
+  it("caps quantities at the per-order limits: 5 for retail, 10 digital copies, none for bulk", async () => {
     mock.method(Product, "find", () => ({
       populate: () => ({
         lean: async () => [
@@ -163,7 +163,7 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       items: [
         { product: "prod_retail", quantity: 4 },
         { product: "prod_retail", quantity: 4 },
-        { product: "prod_digital", quantity: 3 },
+        { product: "prod_digital", quantity: 30 },
         { product: "prod_bulk", quantity: 120 }
       ],
       shipping: { country: "India", state: "Karnataka" },
@@ -174,7 +174,7 @@ describe("orderTotals utility (computeOrderTotals with mocks)", () => {
       result.normalizedItems.map((item) => [String(item.product?._id || item.product), item.quantity])
     );
     assert.equal(qtyById.prod_retail, 5);
-    assert.equal(qtyById.prod_digital, 1);
+    assert.equal(qtyById.prod_digital, 10);
     assert.equal(qtyById.prod_bulk, 120);
   });
 

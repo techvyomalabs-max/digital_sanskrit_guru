@@ -372,6 +372,8 @@ if (IS_PRODUCTION && cluster.isPrimary && maxWorkers > 1) {
       });
       dbConnected = true;
       console.log(`[Worker ${process.pid}] MongoDB connected (${mongoose.connection?.name || "unknown-db"})`);
+      // Multiple copies per order line need the newer gift-code index (one-time, then a no-op)
+      require("./models/GiftPass").migrateCopyIndex().catch(() => {});
     } catch (error) {
       dbConnected = false;
       console.error(`[Worker ${process.pid}] MongoDB connection failed:`, error.message);

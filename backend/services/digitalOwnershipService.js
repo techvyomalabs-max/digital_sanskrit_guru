@@ -3,6 +3,7 @@ const Order = require("../models/Order");
 const GiftPass = require("../models/GiftPass");
 const Product = require("../models/Product");
 const { getOwnedDigitalProductIds, analyzeDigitalOwnership } = require("../utils/digitalOwnership");
+const { canShareCopies } = require("../utils/digitalCopies");
 
 /**
  * Retrieves the Set of digital product IDs owned by a user from Order and GiftPass records.
@@ -54,7 +55,7 @@ async function buildLinesFromCartItems(items) {
   if (validIds.length === 0) return [];
 
   const dbProducts = await Product.find({ _id: { $in: validIds }, isDeleted: { $ne: true } })
-    .select("name isDigital productType bundleItems skipOwnershipRules")
+    .select("name isDigital productType bundleItems skipOwnershipRules digitalDelivery externalAccessManual")
     .populate("bundleItems.product", "name isDigital")
     .lean();
 
@@ -92,6 +93,9 @@ async function buildLinesFromCartItems(items) {
       isDigital: prod.isDigital === true,
       isBundle,
       exempt: prod.skipOwnershipRules === true,
+      // Buying it again gives shareable copies instead of being blocked
+      canShareCopies: canShareCopies(prod),
+      quantity: Math.max(1, Math.floor(Number(it.quantity) || 1)),
       components
     });
   }

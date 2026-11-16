@@ -73,8 +73,9 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
     });
   } else {
     plain.items = (plain.items || []).map((it) => {
-      // For the buyer, if an item is a gift, digital links are stripped because the gift pass is for the recipient
-      const allowed = !(isGiftOrder || it?.giftCode) && hasItemDigitalAccess(plain, it);
+      // For the buyer, if an item is a gift (or every copy of it became a shareable code),
+      // digital links are stripped because the codes are for other people
+      const allowed = !(isGiftOrder || it?.giftCode || it?.isGift) && hasItemDigitalAccess(plain, it);
       return mapItem(it, allowed);
     });
   }

@@ -33,7 +33,9 @@ export function useDigitalOwnership(items, isGift = false, country = "") {
       .map((it) => {
         const raw = it?.product?._id || it?.product || it?.productId || it?._id || it?.id;
         const prodId = typeof raw === "object" && raw !== null ? raw._id : raw;
-        return String(prodId || "").trim();
+        const id = String(prodId || "").trim();
+        // Quantity matters too: extra copies of an owned product are described by count
+        return id ? `${id}x${Math.max(1, Number(it?.quantity) || 1)}` : "";
       })
       .filter(Boolean)
       .sort()

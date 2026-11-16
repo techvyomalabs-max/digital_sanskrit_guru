@@ -72,8 +72,13 @@ function getOwnedDigitalProductIds({ orders = [], redeemedPasses = [] } = {}) {
  * @returns {{ blocked: boolean, giftAllowed: boolean, notice: boolean, ownedItems: string[], message: string }}
  */
 function analyzeDigitalOwnership({ lines = [], ownedIds = new Set(), isGift = false } = {}) {
-  const safeLines = (Array.isArray(lines) ? lines : []).filter((l) => l && l.exempt !== true);
   const ownedSet = ownedIds instanceof Set ? ownedIds : new Set(Array.from(ownedIds || []).map(String));
+  // A digital product that can have shareable copies is never blocked: buying one you already
+  // own gives you codes to pass on. It is reported as an extra copy instead.
+  const extraCopies = (Array.isArray(lines) ? lines : [])
+    .filter((l) => l && l.exempt !== true && !isGift && l.canShareCopies === true && ownedSet.has(String(l.productId)))
+    .map((l) => ({ productId: String(l.productId), name: String(l.name || "Digital Item").trim(), quantity: Math.max(1, Number(l.quantity) || 1) }));
+  const safeLines = (Array.isArray(lines) ? lines : []).filter((l) => l && l.exempt !== true && l.canShareCopies !== true);
 
   const hasBundle = safeLines.some((l) => Boolean(l && l.isBundle));
   const giftAllowed = !hasBundle;
@@ -134,11 +139,19 @@ function analyzeDigitalOwnership({ lines = [], ownedIds = new Set(), isGift = fa
     message = `You already own: ${ownedItems.join(", ")}. They are included again in this purchase.`;
   }
 
+  if (extraCopies.length && !blocked) {
+    const names = extraCopies.map((e) => e.name).join(", ");
+    message = [message, `You already have ${names} in your library, so ${extraCopies.length === 1 && extraCopies[0].quantity === 1 ? "this copy becomes a shareable code" : "these copies become shareable codes"} you can give to anyone.`]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   return {
     blocked,
     giftAllowed,
-    notice,
+    notice: notice || extraCopies.length > 0,
     ownedItems,
+    extraCopies,
     message
   };
 }
