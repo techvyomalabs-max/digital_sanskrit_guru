@@ -1870,12 +1870,22 @@ function Product() {
                             ? <><Globe size={14} className="ui-inline-icon" aria-hidden="true" />External Digital Access</>
                             : <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Web Version – instant access after payment</>}
                         </p>
-                        <div className="qty-box product-retail-qty-wrap" style={{ marginTop: "10px" }}>
-                          <span className="product-bulk-select-label" style={{ marginRight: "8px" }}>Copies:</span>
-                          <button type="button" className="qty-btn" aria-label="Fewer copies" onClick={() => setQty(Math.max(1, Number(qty || 1) - 1))}>-</button>
+                        {/* Same stepper as the quantity box: [ − | 3 | + ] with a label above */}
+                        <p className="product-copies-label" id="product-copies-label">Copies</p>
+                        <div className="product-qty-stepper" role="group" aria-labelledby="product-copies-label">
+                          <button
+                            type="button"
+                            className="product-qty-btn"
+                            aria-label="Fewer copies"
+                            disabled={Number(qty || 1) <= 1}
+                            onClick={() => setQty(Math.max(1, Number(qty || 1) - 1))}
+                          >
+                            <Minus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                           <input
                             type="number"
-                            className="qty-input product-retail-qty-input"
+                            inputMode="numeric"
+                            className="product-qty-input"
                             value={qty}
                             min="1"
                             max={MAX_DIGITAL_COPIES}
@@ -1889,7 +1899,15 @@ function Product() {
                               if (qty === "" || Number.isNaN(num) || num < 1) setQty(1);
                             }}
                           />
-                          <button type="button" className="qty-btn" aria-label="More copies" onClick={() => setQty(Math.min(MAX_DIGITAL_COPIES, Number(qty || 1) + 1))}>+</button>
+                          <button
+                            type="button"
+                            className="product-qty-btn"
+                            aria-label="More copies"
+                            disabled={Number(qty || 1) >= MAX_DIGITAL_COPIES}
+                            onClick={() => setQty(Math.min(MAX_DIGITAL_COPIES, Number(qty || 1) + 1))}
+                          >
+                            <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
+                          </button>
                         </div>
                         <p className="product-retail-qty-note">
                           Buying for family, friends or a class? Copies beyond your own come as shareable codes in My Library (up to {MAX_DIGITAL_COPIES}).

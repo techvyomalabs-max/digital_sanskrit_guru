@@ -20,6 +20,7 @@ const {
   normalizeMarketingEmail,
   eligibleUserFilter,
   ineligibleUserFilter,
+  isInMailmodoScope,
   isMailmodoEligible,
   removalReason,
   buildContact,
@@ -99,7 +100,7 @@ async function addEligibleContacts(config, owner, full, result) {
   let consecutiveFailures = 0;
 
   for (;;) {
-    const filter = eligibleUserFilter();
+    const filter = eligibleUserFilter(config.testEmails);
     if (!full) filter["mailmodo.syncedAt"] = null;
     if (lastId) filter._id = { $gt: lastId };
 
@@ -110,7 +111,7 @@ async function addEligibleContacts(config, owner, full, result) {
 
     const batchUsers = [];
     for (const user of users) {
-      if (!isMailmodoEligible(user)) continue;
+      if (!isMailmodoEligible(user, config.testEmails)) continue;
       // They unsubscribed before; only they can opt back in, so leave them out
       if (user.mailmodo?.removedReason === "opt-out") {
         result.skipped += 1;
@@ -159,7 +160,7 @@ async function removeIneligibleContacts(config, owner, result) {
   let consecutiveFailures = 0;
 
   for (;;) {
-    const filter = { ...ineligibleUserFilter(), "mailmodo.syncedAt": { $ne: null } };
+    const filter = { ...ineligibleUserFilter(config.testEmails), "mailmodo.syncedAt": { $ne: null } };
     if (lastId) filter._id = { $gt: lastId };
 
     const users = await User.find(filter).sort({ _id: 1 }).limit(BATCH_SIZE).select(USER_FIELDS).lean();
@@ -261,6 +262,8 @@ async function syncOptOutToMailmodo(userId) {
   const user = await User.findById(userId).select("email mailmodo").lean();
   const email = normalizeMarketingEmail(user?.email);
   if (!email) return;
+  // Team-only mode: Mailmodo only ever hears about the team's addresses
+  if (!isInMailmodoScope(email, config.testEmails)) return;
 
   try {
     await unsubscribeContact(email, config);
@@ -332,9 +335,9 @@ async function applyMailmodoOptOut(email) {
 async function getMailmodoStatus() {
   const config = getMailmodoConfig();
   const [eligibleCount, syncedCount, pendingCount, optedOutCount, lock] = await Promise.all([
-    User.countDocuments(eligibleUserFilter()),
-    User.countDocuments({ ...eligibleUserFilter(), "mailmodo.syncedAt": { $ne: null } }),
-    User.countDocuments({ ...eligibleUserFilter(), "mailmodo.syncedAt": null, "mailmodo.removedReason": { $ne: "opt-out" } }),
+    User.countDocuments(eligibleUserFilter(config.testEmails)),
+    User.countDocuments({ ...eligibleUserFilter(config.testEmails), "mailmodo.syncedAt": { $ne: null } }),
+    User.countDocuments({ ...eligibleUserFilter(config.testEmails), "mailmodo.syncedAt": null, "mailmodo.removedReason": { $ne: "opt-out" } }),
     User.countDocuments({ isDeleted: { $ne: true }, marketingOptOut: true }),
     JobLock.findById(LOCK_ID).lean()
   ]);
@@ -343,6 +346,8 @@ async function getMailmodoStatus() {
     configured: config.configured,
     listName: config.listName,
     autoSync: config.configured && config.autoSync,
+    teamOnly: config.teamOnly,
+    teamEmailCount: config.testEmails.length,
     webhookConfigured: Boolean(config.webhookSecret),
     eligibleCount,
     syncedCount,
@@ -358,7 +363,7 @@ function initMailmodoScheduler() {
   const config = getMailmodoConfig();
   if (!config.configured) return;
   if (!config.autoSync) {
-    console.log("[Mailmodo] Automatic sync is off (MAILMODO_AUTO_SYNC=false).");
+    console.log(`[Mailmodo] Automatic sync is off (MAILMODO_AUTO_SYNC=false)${config.teamOnly ? "; team-only mode" : ""}.`);
     return;
   }
 
