@@ -76,6 +76,74 @@ function normalizePath(pathname) {
 }
 
 /** Canonical path for a route, or "" when the route should not be indexed. */
+// Every page route in src/App.jsx (":id" = one path segment). Any other path is a missing
+// page: the store still shows its "page not found" screen, but answers with status 404 so
+// search engines don't treat it as a real page. tests/seoRoutes.test.js keeps this in step
+// with App.jsx.
+const APP_ROUTES = [
+  "/",
+  "/about",
+  "/account",
+  "/admin",
+  "/admin/add-products",
+  "/admin/admin-access",
+  "/admin/coupons",
+  "/admin/financial-dashboard",
+  "/admin/marketing",
+  "/admin/orders",
+  "/admin/orders/:id",
+  "/admin/products",
+  "/admin/reviews",
+  "/admin/sales",
+  "/admin/sales-dashboard",
+  "/admin/security-logs",
+  "/admin/support-requests",
+  "/admin/theme",
+  "/admin/trash",
+  "/admin/unmatched-payments",
+  "/admin/users",
+  "/admin/wp-archive",
+  "/buy/:id",
+  "/cart",
+  "/checkout",
+  "/collection",
+  "/contact",
+  "/faq",
+  "/login",
+  "/my-library",
+  "/my-library/pack/:orderId/:itemIndex",
+  "/my-orders",
+  "/privacy",
+  "/privacy-policy",
+  "/product/:id",
+  "/redeem-gift",
+  "/refund-policy",
+  "/register",
+  "/reset-password",
+  "/search",
+  "/shipping-refund-policy",
+  "/support-us",
+  "/terms",
+  "/terms-and-conditions",
+  "/terms-conditions",
+  "/wishlist"
+];
+
+const APP_ROUTE_PATTERNS = APP_ROUTES.map(
+  (route) => new RegExp(`^${route.replace(/:[A-Za-z]+/g, "[^/]+")}$`, "i")
+);
+
+/** True when the path is one of the store's pages (not a missing page). */
+function isKnownPagePath(pathname) {
+  let p;
+  try {
+    p = normalizePath(decodeURIComponent(pathname));
+  } catch {
+    return false;
+  }
+  return APP_ROUTE_PATTERNS.some((pattern) => pattern.test(p));
+}
+
 function canonicalPathFor(pathname) {
   const p = normalizePath(pathname);
   if (CANONICAL_PATHS[p]) return CANONICAL_PATHS[p];
@@ -284,6 +352,8 @@ module.exports = {
   getSeoSiteUrl,
   isProductionHost,
   canonicalPathFor,
+  APP_ROUTES,
+  isKnownPagePath,
   seoHeadTags,
   injectSeoTags,
   productShareInfo,
