@@ -271,7 +271,7 @@ export const WEBSITE_PAGES = [
     url: "/privacy-policy",
     icon: "Shield",
     badge: "Legal",
-    keywords: ["privacy", "privacy policy", "data protection", "gdpr", "dpdp", "cookies", "security"],
+    keywords: ["privacy", "privacy policy", "data protection", "dpdp", "cookies", "security"],
     description: "Learn how we protect and safeguard your personal information in compliance with DPDP Act 2023."
   },
   {

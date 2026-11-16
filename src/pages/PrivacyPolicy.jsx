@@ -1,4 +1,5 @@
 import React from "react";
+import { openCookieSettings } from "../utils/cookieConsent";
 import { Link } from "react-router-dom";
 import { ShieldCheck, Lock, Eye, FileText, Globe, Phone, Mail, CheckCircle2, ExternalLink, Landmark } from "lucide-react";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
@@ -145,6 +146,17 @@ function PrivacyPolicy() {
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
                   <span><strong>Essential Cookies:</strong> We utilize essential session cookies to remember your shopping cart items, theme preferences, and active login state.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span>
+                    <strong>Change or Withdraw Cookie Consent:</strong> Analytics and marketing cookies are off
+                    until you allow them. You can change or withdraw that choice at any time from{" "}
+                    <button type="button" className="policy-inline-button" onClick={openCookieSettings}>
+                      Cookie settings
+                    </button>{" "}
+                    (also at the bottom of every page).
+                  </span>
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />

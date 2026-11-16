@@ -1,4 +1,5 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
+import { openCookieSettings } from "../../utils/cookieConsent";
 import { Link, useLocation } from "react-router-dom";
 import {
   MapPin,
@@ -183,6 +184,11 @@ function Footer() {
             </li>
             <li>
               <Link to="/privacy-policy">Privacy Policy</Link>
+            </li>
+            <li>
+              <button type="button" className="footer-tour-link" onClick={openCookieSettings}>
+                Cookie settings
+              </button>
             </li>
             <li>
               <Link to="/shipping-refund-policy">Shipping & Refund Policy</Link>
