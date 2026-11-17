@@ -623,36 +623,43 @@ function Checkout() {
     return gst.error ? { gstin: "", businessName: "" } : gst;
   };
 
-  const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
+  // The order as /api/orders receives it (without payment details). Also sent when payment
+  // starts, so the server can still create the order if this tab closes after paying.
+  const buildOrderDraft = (selected) => {
     const checkoutCountry = String(selected?.country || "").trim().toUpperCase();
     const billing = {
       ...(isBillingSame ? selected : (addresses[selectedBillingIndex] || selected)),
       ...billingGst()
     };
+    return {
+      items: cartItems,
+      total: finalTotal,
+      shipping: selected,
+      billing,
+      couponCode: couponCode || "",
+      discount,
+      isGift,
+      giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+      currencyDisplay: {
+        currency: displayCurrency,
+        amount: finalTotal,
+        detectedCountry: checkoutCountry
+      }
+    };
+  };
 
+  const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
     const { data } = await axios.post(
       "/api/orders",
       {
-        items: cartItems,
-        total: finalTotal,
-        shipping: selected,
-        billing,
-        couponCode: couponCode || "",
-        discount,
-        isGift,
-        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+        ...buildOrderDraft(selected),
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
         razorpaySignature: paymentInfo?.razorpaySignature || "",
         // Failed checkout only: the payment that failed (the server checks it with Razorpay)
-        failedPaymentId: paymentInfo?.failedPaymentId || "",
-        currencyDisplay: {
-          currency: displayCurrency,
-          amount: finalTotal,
-          detectedCountry: checkoutCountry
-        }
+        failedPaymentId: paymentInfo?.failedPaymentId || ""
       },
       getOrderHeaders()
     );
@@ -661,7 +668,17 @@ function Checkout() {
   };
 
   const createFailedOrderAttempt = async (selected, message, paymentInfo = {}) => {
-    await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
+    try {
+      await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
+    } catch (err) {
+      // The checkout was paid after all (e.g. a retry in the Razorpay window): no failed order
+      if (err?.response?.data?.code === "CHECKOUT_ALREADY_PAID") {
+        await clearCart();
+        navigate("/my-orders", { state: { message: err.response.data.message } });
+        return;
+      }
+      throw err;
+    }
     navigate("/my-orders", {
       state: {
         message: message || "Payment failed. The order is saved in My Orders. You can retry payment there."
@@ -736,6 +753,10 @@ function Checkout() {
 
     // Razorpay order ID (order_…) of this checkout; set once the payment window is created.
     let razorpayOrderIdForAttempt = "";
+    // A failed try inside the Razorpay window. The window stays open so the customer can try
+    // again, so this is only remembered; a "Failed" order is saved only if they then close it.
+    let lastFailure = null;
+    let paymentSucceeded = false;
     const recordFailedAttempt = async (message, failedPaymentId = "") => {
       if (hasRecordedFailedAttempt) return;
       hasRecordedFailedAttempt = true;
@@ -763,7 +784,8 @@ function Checkout() {
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
           isGift: Boolean(isGift),
-          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : ""
+          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+          orderDraft: buildOrderDraft(selected)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
@@ -790,12 +812,17 @@ function Checkout() {
         modal: {
           ondismiss: async () => {
             setIsPaying(false);
+            if (paymentSucceeded) return;
             await recordFailedAttempt(
-              "Payment was cancelled. Failed order saved in My Orders. You can retry payment there."
+              lastFailure
+                ? `${lastFailure.message} Failed order saved in My Orders. You can retry payment there.`
+                : "Payment was cancelled. Failed order saved in My Orders. You can retry payment there.",
+              lastFailure?.paymentId || ""
             );
           }
         },
         handler: async (response) => {
+          paymentSucceeded = true;
           try {
             const verify = await axios.post("/api/payment/verify", response);
 
@@ -856,15 +883,15 @@ function Checkout() {
         }
       });
 
-      rzp.on("payment.failed", async (response) => {
-        setIsPaying(false);
-        const failReason =
-          response?.error?.description ||
-          response?.error?.reason ||
-          "Payment failed. Failed order saved in My Orders.";
+      rzp.on("payment.failed", (response) => {
+        // Razorpay keeps its window open for another try: don't save a failed order yet
+        const failReason = response?.error?.description || response?.error?.reason || "Payment failed.";
         console.error("Razorpay payment failed:", response?.error);
-        setCheckoutMessage(`Payment failed: ${failReason}`);
-        await recordFailedAttempt(`Payment failed: ${failReason}`, response?.error?.metadata?.payment_id || "");
+        lastFailure = {
+          message: `Payment failed: ${failReason}`,
+          paymentId: response?.error?.metadata?.payment_id || ""
+        };
+        setCheckoutMessage(`Payment failed: ${failReason} You can try again in the payment window.`);
       });
 
       checkoutOpened = true;

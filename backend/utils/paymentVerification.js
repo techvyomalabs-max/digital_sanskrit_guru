@@ -40,7 +40,26 @@ async function verifyRazorpayPaymentForOrder({
   if (!verifyRazorpaySignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature })) {
     return { ok: false, reason: "INVALID_SIGNATURE" };
   }
+  return checkPaymentWithRazorpay({ razorpayOrderId, razorpayPaymentId, expectedAmount, expectedCurrency, toleranceMinor });
+}
 
+/**
+ * The same checks without the browser's signature: for the server's own order recovery,
+ * which looks the payment up at Razorpay with our API key (so the answer can be trusted).
+ * Never call this with ids that came straight from a request.
+ */
+async function verifyRazorpayPaymentByLookup({
+  razorpayOrderId,
+  razorpayPaymentId,
+  expectedAmount,
+  expectedCurrency,
+  toleranceMinor = 0
+}) {
+  if (!razorpayOrderId || !razorpayPaymentId) return { ok: false, reason: "PAYMENT_NOT_FOUND" };
+  return checkPaymentWithRazorpay({ razorpayOrderId, razorpayPaymentId, expectedAmount, expectedCurrency, toleranceMinor });
+}
+
+async function checkPaymentWithRazorpay({ razorpayOrderId, razorpayPaymentId, expectedAmount, expectedCurrency, toleranceMinor = 0 }) {
   const currency = String(expectedCurrency || "").toUpperCase();
   const expectedMinor = toMinorUnits(expectedAmount, currency);
   if (!currency || !Number.isInteger(expectedMinor) || expectedMinor <= 0) {
@@ -111,6 +130,7 @@ module.exports = {
   verifyRazorpaySignature,
   getSettlementCharge,
   verifyRazorpayPaymentForOrder,
+  verifyRazorpayPaymentByLookup,
   sendPaymentVerificationError,
   isDuplicatePaymentIdError
 };

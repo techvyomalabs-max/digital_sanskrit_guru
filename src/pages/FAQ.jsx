@@ -269,8 +269,8 @@ const FAQ_CATEGORIES = [
         id: "q-g-privacy",
         question: "What is your data privacy policy?",
         answer:
-          "Vyoma Linguistic Labs Foundation upholds strict data protection ethics. We never sell or share your personal data with third-party advertisers. All transactions are SSL-encrypted, and we comply with India's DPDP Act 2023 and GDPR guidelines. Read our full policy at /privacy-policy or view the foundation policy at https://vyoma.org/privacy/.",
-        tags: ["Privacy", "Security", "GDPR", "DPDP"],
+          "Vyoma Linguistic Labs Foundation upholds strict data protection ethics. We never sell or share your personal data with third-party advertisers. All transactions are SSL-encrypted, and we follow India's Information Technology Act, 2000 (and applicable Rules thereunder) and the Digital Personal Data Protection (DPDP) Act, 2023. Read our full policy at /privacy-policy or view the foundation policy at https://vyoma.org/privacy/.",
+        tags: ["Privacy", "Security", "DPDP"],
         isInternalLink: true,
         actionUrl: "/privacy-policy",
         actionLabel: "View Privacy Policy"

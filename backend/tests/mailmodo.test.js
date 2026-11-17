@@ -115,3 +115,41 @@ test("failure messages explain a bad API key without echoing it", () => {
   assert.match(describeFailure(401, null), /API key/);
   assert.match(describeFailure(500, { message: "boom" }), /500.*boom/);
 });
+
+
+const {
+  parseTestEmails,
+  eligibleUserFilter: eligible,
+  ineligibleUserFilter: ineligible,
+  isInMailmodoScope,
+  isMailmodoEligible: isEligible
+} = require("../utils/mailmodo");
+
+test("team-only mode: reads a clean list of team addresses and turns the mode on", () => {
+  assert.deepEqual(parseTestEmails(" A@Team.com, b@team.com;a@team.com  not-an-email "), ["a@team.com", "b@team.com"]);
+  assert.deepEqual(parseTestEmails(""), []);
+  const config = getMailmodoConfig({ MAILMODO_API_KEY: "k", MAILMODO_LIST_NAME: "DSG Test", MAILMODO_TEST_EMAILS: "a@team.com" });
+  assert.equal(config.teamOnly, true);
+  assert.deepEqual(config.testEmails, ["a@team.com"]);
+  assert.equal(getMailmodoConfig({}).teamOnly, false);
+});
+
+test("team-only mode: limits both the add and the remove queries to the team", () => {
+  const team = ["a@team.com"];
+  for (const filter of [eligible(team), ineligible(team)]) {
+    assert.ok(Array.isArray(filter.$and));
+    assert.deepEqual(filter.$and[1], { email: { $in: team } });
+  }
+  // Without the mode the filters are unchanged
+  assert.equal(eligible().$and, undefined);
+  assert.equal(ineligible([]).$and, undefined);
+});
+
+test("team-only mode: keeps real customers out of scope", () => {
+  const team = ["a@team.com"];
+  assert.equal(isInMailmodoScope("A@team.com", team), true);
+  assert.equal(isInMailmodoScope("customer@gmail.com", team), false);
+  assert.equal(isInMailmodoScope("customer@gmail.com", []), true);
+  assert.equal(isEligible({ email: "customer@gmail.com" }, team), false);
+  assert.equal(isEligible({ email: "a@team.com" }, team), true);
+});

@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const protect = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const { cleanOrderDraft } = require("../utils/orderDraft");
 const PaymentIntent = require("../models/PaymentIntent");
 const User = require("../models/User");
 const StoreSettings = require("../models/StoreSettings");
@@ -177,13 +178,17 @@ router.post("/create-order", paymentRateLimiter, honeypotMiddleware, protectIfOr
     });
 
     try {
+      const isNewCheckout = !req.body?.orderId;
       await PaymentIntent.create({
         razorpayOrderId: order.id,
         amountMinor: minor,
         currency,
         user: req.user || null,
-        mode: req.body?.orderId ? "retry" : "checkout",
-        orderId: req.body?.orderId ? req.body.orderId : null
+        mode: isNewCheckout ? "checkout" : "retry",
+        orderId: req.body?.orderId ? req.body.orderId : null,
+        // Signed-in checkout: keep the order details so the order can still be created if
+        // the customer's browser closes after paying (services/orderRecovery.js)
+        orderDraft: isNewCheckout && req.user ? cleanOrderDraft(req.body?.orderDraft) : null
       });
     } catch (intentErr) {
       console.error("[Payment] Failed to record PaymentIntent:", intentErr?.message || intentErr);

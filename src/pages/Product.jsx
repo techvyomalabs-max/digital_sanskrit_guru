@@ -200,12 +200,9 @@ const PRODUCT_EXTRA_DETAILS = {
         value: "Giri Trading Agency Pvt Ltd 372/1, Pattur Koot Road, Mangadu, Chennai, Tamil Nadu 600122 IN"
       },
       { label: "Generic Name", value: "Book" }
-    ],
-    extraMeta: [
-      { label: "Best Sellers Rank", value: "#80,868 in Books" },
-      { label: "Category Rank", value: "#3,405 in Hinduism (Books)" },
-      { label: "Customer Reviews", value: "4.4 out of 5 stars (142)" }
     ]
+    // No sales ranks or review counts here: those must come from this store's real orders
+    // and reviews, never typed in (Dark Patterns Guidelines, 2023: false popularity)
   }
 };
 
@@ -2125,16 +2122,6 @@ function Product() {
           </ul>
         </div>
 
-        {extraProductDetails?.extraMeta?.length > 0 && (
-          <div className="product-extra-meta">
-            {extraProductDetails.extraMeta.map((item) => (
-              <div key={item.label} className="product-extra-meta-row">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Customer Reviews Section ─────────────────────────────────── */}

@@ -10,6 +10,9 @@
  *   MAILMODO_LIST_NAME       the contact list customers are synced to
  *   MAILMODO_WEBHOOK_SECRET  shared secret for /api/mailmodo/webhook (unsubscribe sync)
  *   MAILMODO_AUTO_SYNC       "false" turns off the scheduled sync (manual sync still works)
+ *   MAILMODO_TEST_EMAILS     team-only mode: comma-separated emails. When set, syncs, removals,
+ *                            unsubscribes and status counts cover only these accounts, so
+ *                            real customers are never added, removed or marked.
  */
 
 const crypto = require("crypto");
@@ -28,12 +31,15 @@ function getMailmodoConfig(env = process.env) {
   const apiKey = String(env.MAILMODO_API_KEY || "").trim();
   const listName = String(env.MAILMODO_LIST_NAME || "").trim();
   const webhookSecret = String(env.MAILMODO_WEBHOOK_SECRET || "").trim();
+  const testEmails = parseTestEmails(env.MAILMODO_TEST_EMAILS);
   return {
     configured: Boolean(apiKey && listName),
     apiKey,
     listName,
     webhookSecret,
-    autoSync: String(env.MAILMODO_AUTO_SYNC || "true").trim().toLowerCase() !== "false"
+    autoSync: String(env.MAILMODO_AUTO_SYNC || "true").trim().toLowerCase() !== "false",
+    testEmails,
+    teamOnly: testEmails.length > 0
   };
 }
 
@@ -43,32 +49,55 @@ function normalizeMarketingEmail(email) {
   return value;
 }
 
+/** Team-only mode addresses: comma, semicolon or space separated; invalid ones dropped. */
+function parseTestEmails(value) {
+  const emails = String(value || "")
+    .split(/[\s,;]+/)
+    .map(normalizeMarketingEmail)
+    .filter(Boolean);
+  return [...new Set(emails)].slice(0, 50);
+}
+
+/** Limits a filter to the team-only addresses when that mode is on. */
+function withinScope(filter, testEmails = []) {
+  if (!Array.isArray(testEmails) || testEmails.length === 0) return filter;
+  return { $and: [filter, { email: { $in: testEmails } }] };
+}
+
 /**
  * The Mongo filter for customers Mailmodo may hold. isMailmodoEligible must agree with it.
+ * With testEmails (team-only mode) only those accounts are considered.
  */
-function eligibleUserFilter() {
-  return {
+function eligibleUserFilter(testEmails = []) {
+  return withinScope({
     isDeleted: { $ne: true },
     isBlocked: { $ne: true },
     marketingOptOut: { $ne: true },
     email: { $type: "string", $gt: "" }
-  };
+  }, testEmails);
 }
 
-function ineligibleUserFilter() {
-  return {
+function ineligibleUserFilter(testEmails = []) {
+  return withinScope({
     $or: [
       { isDeleted: true },
       { isBlocked: true },
       { marketingOptOut: true }
     ]
-  };
+  }, testEmails);
 }
 
-function isMailmodoEligible(user) {
+/** Whether an email is one Mailmodo may be told about (always true outside team-only mode). */
+function isInMailmodoScope(email, testEmails = []) {
+  if (!Array.isArray(testEmails) || testEmails.length === 0) return true;
+  return testEmails.includes(normalizeMarketingEmail(email));
+}
+
+function isMailmodoEligible(user, testEmails = []) {
   if (!user) return false;
   if (user.isDeleted === true || user.isBlocked === true || user.marketingOptOut === true) return false;
-  return Boolean(normalizeMarketingEmail(user.email));
+  const email = normalizeMarketingEmail(user.email);
+  return Boolean(email) && isInMailmodoScope(email, testEmails);
 }
 
 /** Why a synced customer must come off the Mailmodo list. */
@@ -230,8 +259,10 @@ module.exports = {
   MailmodoError,
   getMailmodoConfig,
   normalizeMarketingEmail,
+  parseTestEmails,
   eligibleUserFilter,
   ineligibleUserFilter,
+  isInMailmodoScope,
   isMailmodoEligible,
   removalReason,
   buildContact,

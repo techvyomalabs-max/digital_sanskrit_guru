@@ -5,16 +5,24 @@
 
 .cookie-banner-overlay {
   position: fixed;
-  bottom: var(--space-6, 24px);
+  /* Clear of the iPhone home bar */
+  bottom: calc(var(--space-6, 24px) + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 32px);
   max-width: 640px;
-  z-index: 9999;
+  /* Above the chat and WhatsApp buttons */
+  z-index: 10050;
   animation: cookieSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .cookie-card {
+  /* Never taller than the visible screen (dvh follows the phone's browser bars): the
+     text scrolls inside and the buttons always stay reachable */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   background: var(--site-surface, #ffffff);
   border: 1px solid var(--site-border, #E2E8F0);
   border-radius: var(--radius-lg, 16px);
@@ -145,8 +153,18 @@
   background: var(--site-text-soft, #64748B);
 }
 
+.cookie-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Footer layout */
 .cookie-footer {
+  flex-shrink: 0;
+  padding-top: var(--space-3, 12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -224,25 +242,53 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile responsive fixes */
+/* Mobile: compact, so the whole banner usually fits without scrolling */
 @media (max-width: 480px) {
+  .cookie-banner-overlay {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 20px);
+  }
+  .cookie-card {
+    padding: 14px;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+  .cookie-header {
+    margin-bottom: 8px;
+  }
+  .cookie-title-group h3 {
+    font-size: 1rem;
+  }
+  .cookie-compliance-badge {
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+  .cookie-body p {
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+  }
   .cookie-footer {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
-  
+  /* Reject and Accept side by side, same size */
   .cookie-btn-group {
-    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 8px;
   }
-  
+  .cookie-btn-group .cookie-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
   .cookie-btn {
     width: 100%;
     padding: 10px 16px;
   }
-
   .cookie-btn.link-btn {
     justify-content: center;
     order: 3;
-    margin-top: 4px;
+    margin-top: 2px;
   }
 }
