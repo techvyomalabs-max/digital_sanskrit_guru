@@ -37,7 +37,8 @@ async function runPaymentReconciliation() {
       const order = await Order.findOne({
         $or: [
           { "paymentMeta.razorpayPaymentId": intent.razorpayPaymentId },
-          { "paymentMeta.razorpayOrderId": intent.razorpayOrderId }
+          // A "Failed" order from an earlier attempt on this checkout doesn't count
+          { "paymentMeta.razorpayOrderId": intent.razorpayOrderId, paymentStatus: "Paid" }
         ]
       }).select("_id").lean();
 

@@ -533,6 +533,32 @@ async function emailIssuedGiftPasses(order, issued) {
 
 // Create order (logged-in user)
 /**
+ * A failed attempt inside the Razorpay window can leave a "Failed" order, and then a retry in
+ * the same window succeeds. Once that checkout is paid, the "Failed" order is only confusing
+ * (and its "Continue payment" would charge again), so it is removed. It never held money:
+ * no stock, coupon or gift codes are reserved for an unpaid order. Never throws.
+ */
+async function removeSupersededFailedOrders({ userId, razorpayOrderId, paidOrderId }) {
+  if (!userId || !razorpayOrderId) return 0;
+  try {
+    const result = await Order.deleteMany({
+      _id: { $ne: paidOrderId },
+      user: userId,
+      "paymentMeta.razorpayOrderId": razorpayOrderId,
+      paymentStatus: { $in: ["Failed", "Pending"] },
+      $or: [{ "paymentMeta.razorpayPaymentId": "" }, { "paymentMeta.razorpayPaymentId": { $exists: false } }]
+    });
+    if (result?.deletedCount) {
+      console.info(`[Order] Removed ${result.deletedCount} failed attempt(s) of checkout ${razorpayOrderId}, paid in order ${paidOrderId}`);
+    }
+    return result?.deletedCount || 0;
+  } catch (err) {
+    console.warn("[Order] Could not remove the failed attempt order:", err?.message || err);
+    return 0;
+  }
+}
+
+/**
  * Places an order (POST /api/orders). Also used by services/orderRecovery.js to create the
  * order for a payment whose browser closed before it could: then req.serverRecovery is true,
  * there is no browser signature, and the payment is checked directly with Razorpay instead.
@@ -635,6 +661,21 @@ async function placeOrder(req, res) {
       : null;
     const unpaidRazorpayOrderId = unpaidIntent && !unpaidIntent.orderId ? unpaidIntent.razorpayOrderId : "";
 
+    // This checkout was paid after all (a retry inside the Razorpay window succeeded): no
+    // "Failed" order, or the customer could be asked to pay twice
+    if (!verifiedPayment && unpaidIntent) {
+      const paidAlready =
+        ["captured", "recovering", "linked"].includes(unpaidIntent.status) && unpaidIntent.razorpayPaymentId
+          ? true
+          : Boolean(await Order.exists({ "paymentMeta.razorpayOrderId": unpaidIntent.razorpayOrderId, paymentStatus: "Paid" }));
+      if (paidAlready) {
+        return res.status(409).json({
+          code: "CHECKOUT_ALREADY_PAID",
+          message: "This payment went through. Your order is in My Orders."
+        });
+      }
+    }
+
     const order = await Order.create({
       user: req.user,
       items: totals.normalizedItems,
@@ -722,6 +763,7 @@ async function placeOrder(req, res) {
     if (verifiedPayment) {
       // Mark the checkout paid now (the webhook does too, but it can be late or never arrive)
       linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
+      removeSupersededFailedOrders({ userId: req.user, razorpayOrderId, paidOrderId: order._id });
     }
 
     if (unpaidRazorpayOrderId) {
@@ -3715,4 +3757,5 @@ router.get("/digital-stream/:orderId/:itemId", authStream, async (req, res) => {
 });
 
 router.placeOrder = placeOrder;
+router.removeSupersededFailedOrders = removeSupersededFailedOrders;
 module.exports = router;
