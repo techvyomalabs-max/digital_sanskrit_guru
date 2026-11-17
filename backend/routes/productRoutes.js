@@ -1681,11 +1681,14 @@ router.get("/cleanup-imported-data", protect, admin, requireAdminPage("products"
 router.get("/recommend/:productId", async (req, res) => {
   try {
     const { productId } = req.params;
+    // Only real product ids get a cache entry, so made-up ids can't fill the cache
+    if (!mongoose.isValidObjectId(productId)) return res.json([]);
     const cacheKey = `recommend:${productId}`;
     const cached = appCache.get(cacheKey);
     if (cached) return res.json(cached);
 
     const currentProduct = await Product.findById(productId).select("category");
+    if (!currentProduct) return res.json([]);
     const category = currentProduct ? currentProduct.category : null;
 
     const orders = await Order.find({

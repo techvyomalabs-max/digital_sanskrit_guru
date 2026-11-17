@@ -8,11 +8,22 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const User = require("../models/User");
 
+// The MySQL password comes only from the environment (never written in the code):
+//   PowerShell:  $env:MYSQL_PASSWORD="..."; node backend/scripts/<this script>.js
+function requireMysqlPassword() {
+  const value = process.env.MYSQL_PASSWORD;
+  if (!value) {
+    console.error("Set MYSQL_PASSWORD before running this script.");
+    process.exit(1);
+  }
+  return value;
+}
+
 const MYSQL_CONFIG = {
   host: process.env.MYSQL_HOST || "127.0.0.1",
   port: Number(process.env.MYSQL_PORT || 3306),
   user: process.env.MYSQL_USER || "root",
-  password: process.env.MYSQL_PASSWORD || "Suppi070897",
+  password: requireMysqlPassword(),
   database: process.env.MYSQL_DB || "wp_old_export"
 };
 

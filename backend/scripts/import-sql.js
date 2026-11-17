@@ -3,9 +3,20 @@ const path = require("path");
 const { spawn, execSync } = require("child_process");
 const readline = require("readline");
 
+// The MySQL password comes only from the environment (never written in the code):
+//   PowerShell:  $env:MYSQL_PASSWORD="..."; node backend/scripts/<this script>.js
+function requireMysqlPassword() {
+  const value = process.env.MYSQL_PASSWORD;
+  if (!value) {
+    console.error("Set MYSQL_PASSWORD before running this script.");
+    process.exit(1);
+  }
+  return value;
+}
+
 const sqlFilePath = "C:/Users/Vyoma-Intern/Downloads/u827042911_fEppv.sql";
 const mysqlBinPath = "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe";
-const password = process.env.MYSQL_PASSWORD || "Suppi070897";
+const password = requireMysqlPassword();
 
 async function runImport() {
   console.log("Cleaning and recreating wp_old_export database...");
