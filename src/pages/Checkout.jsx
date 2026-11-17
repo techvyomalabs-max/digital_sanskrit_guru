@@ -668,7 +668,17 @@ function Checkout() {
   };
 
   const createFailedOrderAttempt = async (selected, message, paymentInfo = {}) => {
-    await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
+    try {
+      await createOrderWithPaymentStatus(selected, "Failed", paymentInfo);
+    } catch (err) {
+      // The checkout was paid after all (e.g. a retry in the Razorpay window): no failed order
+      if (err?.response?.data?.code === "CHECKOUT_ALREADY_PAID") {
+        await clearCart();
+        navigate("/my-orders", { state: { message: err.response.data.message } });
+        return;
+      }
+      throw err;
+    }
     navigate("/my-orders", {
       state: {
         message: message || "Payment failed. The order is saved in My Orders. You can retry payment there."
@@ -743,6 +753,10 @@ function Checkout() {
 
     // Razorpay order ID (order_…) of this checkout; set once the payment window is created.
     let razorpayOrderIdForAttempt = "";
+    // A failed try inside the Razorpay window. The window stays open so the customer can try
+    // again, so this is only remembered; a "Failed" order is saved only if they then close it.
+    let lastFailure = null;
+    let paymentSucceeded = false;
     const recordFailedAttempt = async (message, failedPaymentId = "") => {
       if (hasRecordedFailedAttempt) return;
       hasRecordedFailedAttempt = true;
@@ -798,12 +812,17 @@ function Checkout() {
         modal: {
           ondismiss: async () => {
             setIsPaying(false);
+            if (paymentSucceeded) return;
             await recordFailedAttempt(
-              "Payment was cancelled. Failed order saved in My Orders. You can retry payment there."
+              lastFailure
+                ? `${lastFailure.message} Failed order saved in My Orders. You can retry payment there.`
+                : "Payment was cancelled. Failed order saved in My Orders. You can retry payment there.",
+              lastFailure?.paymentId || ""
             );
           }
         },
         handler: async (response) => {
+          paymentSucceeded = true;
           try {
             const verify = await axios.post("/api/payment/verify", response);
 
@@ -864,15 +883,15 @@ function Checkout() {
         }
       });
 
-      rzp.on("payment.failed", async (response) => {
-        setIsPaying(false);
-        const failReason =
-          response?.error?.description ||
-          response?.error?.reason ||
-          "Payment failed. Failed order saved in My Orders.";
+      rzp.on("payment.failed", (response) => {
+        // Razorpay keeps its window open for another try: don't save a failed order yet
+        const failReason = response?.error?.description || response?.error?.reason || "Payment failed.";
         console.error("Razorpay payment failed:", response?.error);
-        setCheckoutMessage(`Payment failed: ${failReason}`);
-        await recordFailedAttempt(`Payment failed: ${failReason}`, response?.error?.metadata?.payment_id || "");
+        lastFailure = {
+          message: `Payment failed: ${failReason}`,
+          paymentId: response?.error?.metadata?.payment_id || ""
+        };
+        setCheckoutMessage(`Payment failed: ${failReason} You can try again in the payment window.`);
       });
 
       checkoutOpened = true;

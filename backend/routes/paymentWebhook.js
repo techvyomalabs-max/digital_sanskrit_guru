@@ -114,7 +114,8 @@ async function paymentWebhookHandler(req, res) {
           const orderExists = await Order.exists({
             $or: [
               { "paymentMeta.razorpayPaymentId": paymentIdFromRzp },
-              { "paymentMeta.razorpayOrderId": orderIdFromRzp }
+              // A "Failed" order from an earlier attempt on this checkout doesn't count
+              { "paymentMeta.razorpayOrderId": orderIdFromRzp, paymentStatus: "Paid" }
             ]
           });
 
