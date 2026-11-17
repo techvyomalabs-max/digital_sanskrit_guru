@@ -67,7 +67,7 @@ const getRazorpayClient = require("../utils/razorpay");
 const { applyPaidPaymentMeta } = require("../utils/paidPaymentMeta");
 const PaymentIntent = require("../models/PaymentIntent");
 const { findOwnedIntent, noteUnpaidCheckout, linkPaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
-const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
+const { verifyRazorpayPaymentForOrder, verifyRazorpayPaymentByLookup, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
   canAutoComplete,
@@ -532,8 +532,14 @@ async function emailIssuedGiftPasses(order, issued) {
 }
 
 // Create order (logged-in user)
-router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res) => {
+/**
+ * Places an order (POST /api/orders). Also used by services/orderRecovery.js to create the
+ * order for a payment whose browser closed before it could: then req.serverRecovery is true,
+ * there is no browser signature, and the payment is checked directly with Razorpay instead.
+ */
+async function placeOrder(req, res) {
   try {
+    const isServerRecovery = req.serverRecovery === true;
     const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
     if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
       return res.status(400).json({ message: "Invalid payment status." });
@@ -552,7 +558,8 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       settings
     });
 
-    if (req.body.total !== undefined && Math.abs(totals.total - Number(req.body.total)) > 0.05) {
+    // (Recovery skips this: the amount actually paid is checked against Razorpay below)
+    if (!isServerRecovery && req.body.total !== undefined && Math.abs(totals.total - Number(req.body.total)) > 0.05) {
       return res.status(400).json({
         message: `Order total mismatch. Server calculated: ${totals.total}, Client provided: ${req.body.total}`
       });
@@ -564,7 +571,7 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
 
     let verifiedPayment = null;
     if (rawPaymentStatus === "Paid") {
-      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      if (!razorpayOrderId || !razorpayPaymentId || (!razorpaySignature && !isServerRecovery)) {
         return res.status(400).json({ message: "Payment reference is required to place paid order." });
       }
 
@@ -572,13 +579,20 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         return res.status(409).json({ message: "Payment already used" });
       }
 
-      const v = await verifyRazorpayPaymentForOrder({
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        expectedAmount: totals.chargeAmount,
-        expectedCurrency: totals.chargeCurrency
-      });
+      const v = isServerRecovery
+        ? await verifyRazorpayPaymentByLookup({
+            razorpayOrderId,
+            razorpayPaymentId,
+            expectedAmount: totals.chargeAmount,
+            expectedCurrency: totals.chargeCurrency
+          })
+        : await verifyRazorpayPaymentForOrder({
+            razorpayOrderId,
+            razorpayPaymentId,
+            razorpaySignature,
+            expectedAmount: totals.chargeAmount,
+            expectedCurrency: totals.chargeCurrency
+          });
 
       if (!v.ok) {
         return sendPaymentVerificationError(res, v, razorpayPaymentId);
@@ -742,7 +756,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     const status = err instanceof OrderTotalsError || err?.status ? err.status : 500;
     return res.status(status).json({ message: err.message || "Failed to place order." });
   }
-});
+}
+
+router.post("/", protect, orderRateLimiter, honeypotMiddleware, placeOrder);
 
 const autoCompletePaidDigitalOrders = async (orders) => {
   if (!Array.isArray(orders) || orders.length === 0) return orders;
@@ -3698,4 +3714,5 @@ router.get("/digital-stream/:orderId/:itemId", authStream, async (req, res) => {
   }
 });
 
+router.placeOrder = placeOrder;
 module.exports = router;

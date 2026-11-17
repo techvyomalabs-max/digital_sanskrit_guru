@@ -39,12 +39,24 @@ const paymentIntentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["created", "captured", "linked", "orphan", "refunding", "refunded", "resolved"],
+      enum: ["created", "captured", "recovering", "linked", "orphan", "refunding", "refunded", "resolved"],
       default: "created"
     },
     capturedAt: {
       type: Date,
       default: null
+    },
+    // The order the customer was paying for, as checkout would send it to /api/orders.
+    // If the browser closes after payment, the server creates the order from this.
+    orderDraft: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+    recovery: {
+      attempts: { type: Number, default: 0 },
+      lastAttemptAt: { type: Date, default: null },
+      lastError: { type: String, default: "" },
+      recoveredAt: { type: Date, default: null }
     },
     orphanedAt: {
       type: Date,
