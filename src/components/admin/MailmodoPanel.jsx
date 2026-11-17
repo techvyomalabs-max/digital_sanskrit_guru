@@ -120,6 +120,14 @@ function MailmodoPanel({ getAuthHeaders, defaultTestEmail = "" }) {
           <StatusItem on={status.marketingSmtpConfigured} label="Site promotions use a separate email server" offLabel="Site promotions use the main email server" />
         </ul>
 
+        {status.configured && status.teamOnly && (
+          <p className="mkt-hint mailmodo-warn">
+            <strong>Team-only test mode:</strong> syncs cover only the {status.teamEmailCount} address
+            {status.teamEmailCount === 1 ? "" : "es"} in <code>MAILMODO_TEST_EMAILS</code>. No other customer is added,
+            removed or changed in Mailmodo. Remove that setting to sync real customers.
+          </p>
+        )}
+
         {!status.configured && (
           <div className="mailmodo-setup">
             <p><strong>To connect Mailmodo</strong>, add these to the server settings (<code>backend/.env</code>) and restart the server:</p>
