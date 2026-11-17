@@ -87,6 +87,8 @@ export default function CookieConsent() {
       aria-describedby="dsg-cookie-text"
     >
       <div className="cookie-card">
+        {/* Text and preferences scroll; the buttons below always stay on screen */}
+        <div className="cookie-scroll">
         <div className="cookie-header">
           <div className="cookie-icon"><Cookie size={26} aria-hidden="true" /></div>
           <div className="cookie-title-group">
@@ -150,6 +152,8 @@ export default function CookieConsent() {
             </div>
           </div>
         )}
+
+        </div>
 
         <div className="cookie-footer">
           <button type="button" className="cookie-btn link-btn" onClick={() => setShowPreferences(!showPreferences)}>
