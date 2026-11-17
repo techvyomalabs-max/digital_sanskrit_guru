@@ -118,6 +118,8 @@ function createEmptySingleFormat(kind = "new") {
     hsnSac: "",
     gstRate: "",
     mrp: "",
+    // "" = same category as the product
+    category: "",
     productId: ""
   };
 }
@@ -1984,6 +1986,7 @@ function AdminAddProducts() {
                   hsnSac: String(row.hsnSac || "").replace(/\s+/g, ""),
                   gstRate: String(row.gstRate ?? "") === "" ? null : Number(row.gstRate),
                   mrp: String(row.mrp ?? "").trim() === "" ? null : Number(row.mrp),
+                  category: String(row.category || "").trim(),
                   position
                 }))
             : [],
@@ -2149,7 +2152,13 @@ function AdminAddProducts() {
             hsnSac: String(optionProduct?.hsnSac || ""),
             gstRate:
               optionProduct?.gstRate === null || optionProduct?.gstRate === undefined ? "" : String(optionProduct.gstRate),
-            mrp: optionProduct?.mrp === null || optionProduct?.mrp === undefined ? "" : String(optionProduct.mrp)
+            mrp: optionProduct?.mrp === null || optionProduct?.mrp === undefined ? "" : String(optionProduct.mrp),
+            // Show its own category only when it differs from the product's
+            category:
+              optionProduct?.category &&
+              String(optionProduct.category).trim().toLowerCase() !== String(product.category || "").trim().toLowerCase()
+                ? String(optionProduct.category)
+                : ""
           };
         })
       );
@@ -4194,6 +4203,26 @@ function AdminAddProducts() {
                                             <option value="" disabled>Choose…</option>
                                             <option value="physical">Physical</option>
                                             <option value="digital">Digital</option>
+                                          </select>
+                                        </label>
+                                        <label className="pf-formats-pack-field pf-format-category-field">
+                                          <span>Category</span>
+                                          <select
+                                            value={row.category || ""}
+                                            title={row.category || `Same as product (${category || "General"})`}
+                                            onChange={(e) => updateSingleFormat(row.rowKey, "category", e.target.value)}
+                                          >
+                                            <option value="">Same as product ({category || "General"})</option>
+                                            {row.category && !categoryOptions.includes(row.category) ? (
+                                              <option value={row.category}>{row.category}</option>
+                                            ) : null}
+                                            {categoryOptions
+                                              .filter((option) => option !== category)
+                                              .map((option) => (
+                                                <option key={option} value={option}>
+                                                  {option}
+                                                </option>
+                                              ))}
                                           </select>
                                         </label>
                                         <label className="pf-formats-pack-field">
