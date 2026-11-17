@@ -8,6 +8,21 @@ const { sendOrphanPaymentAlert } = require("../utils/email");
  * or mark as orphan and alert admins.
  */
 async function runPaymentReconciliation() {
+  // First: create the orders for paid checkouts whose browser closed (one try each)
+  try {
+    // Loaded here: the order routes load most of the app
+    const { placeOrder } = require("../routes/orderRoutes");
+    const { recoverPaidCheckouts } = require("./orderRecovery");
+    // A try interrupted by a restart: hand it to the orphan check below
+    await PaymentIntent.updateMany(
+      { status: "recovering", "recovery.lastAttemptAt": { $lte: new Date(Date.now() - 10 * 60 * 1000) } },
+      { $set: { status: "captured", "recovery.lastError": "Interrupted (server restart)" } }
+    );
+    await recoverPaidCheckouts({ PaymentIntent, Order, placeOrder });
+  } catch (err) {
+    console.error("[PaymentReconciler] Order recovery error:", err?.message || err);
+  }
+
   try {
     const cutoff15m = new Date(Date.now() - 15 * 60 * 1000);
 
@@ -78,7 +93,8 @@ async function runPaymentReconciliation() {
 }
 
 /**
- * Initialize 10-minute background interval for Payment Reconciliation.
+ * Background check every 5 minutes: recover orders for paid checkouts, then flag
+ * payments still without an order as orphans.
  */
 function initPaymentReconciler() {
   // Initial check after 1 minute on server boot
@@ -86,13 +102,13 @@ function initPaymentReconciler() {
     runPaymentReconciliation().catch(() => {});
   }, 60000);
 
-  // Run every 10 minutes
-  const INTERVAL_10_MIN = 10 * 60 * 1000;
+  // Every 5 minutes, so a recovered order arrives within about 3–8 minutes of payment
+  const INTERVAL_5_MIN = 5 * 60 * 1000;
   setInterval(() => {
     runPaymentReconciliation().catch(() => {});
-  }, INTERVAL_10_MIN);
+  }, INTERVAL_5_MIN);
 
-  console.log("[PaymentReconciler] Scheduler initialized (10-minute check).");
+  console.log("[PaymentReconciler] Scheduler initialized (5-minute check).");
 }
 
 module.exports = {

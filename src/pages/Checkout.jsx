@@ -623,36 +623,43 @@ function Checkout() {
     return gst.error ? { gstin: "", businessName: "" } : gst;
   };
 
-  const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
+  // The order as /api/orders receives it (without payment details). Also sent when payment
+  // starts, so the server can still create the order if this tab closes after paying.
+  const buildOrderDraft = (selected) => {
     const checkoutCountry = String(selected?.country || "").trim().toUpperCase();
     const billing = {
       ...(isBillingSame ? selected : (addresses[selectedBillingIndex] || selected)),
       ...billingGst()
     };
+    return {
+      items: cartItems,
+      total: finalTotal,
+      shipping: selected,
+      billing,
+      couponCode: couponCode || "",
+      discount,
+      isGift,
+      giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+      currencyDisplay: {
+        currency: displayCurrency,
+        amount: finalTotal,
+        detectedCountry: checkoutCountry
+      }
+    };
+  };
 
+  const createOrderWithPaymentStatus = async (selected, paymentStatus, paymentInfo = {}) => {
     const { data } = await axios.post(
       "/api/orders",
       {
-        items: cartItems,
-        total: finalTotal,
-        shipping: selected,
-        billing,
-        couponCode: couponCode || "",
-        discount,
-        isGift,
-        giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+        ...buildOrderDraft(selected),
         paymentStatus,
         honey_pot_field: honeyPot,
         razorpayOrderId: paymentInfo?.razorpayOrderId || "",
         razorpayPaymentId: paymentInfo?.razorpayPaymentId || "",
         razorpaySignature: paymentInfo?.razorpaySignature || "",
         // Failed checkout only: the payment that failed (the server checks it with Razorpay)
-        failedPaymentId: paymentInfo?.failedPaymentId || "",
-        currencyDisplay: {
-          currency: displayCurrency,
-          amount: finalTotal,
-          detectedCountry: checkoutCountry
-        }
+        failedPaymentId: paymentInfo?.failedPaymentId || ""
       },
       getOrderHeaders()
     );
@@ -763,7 +770,8 @@ function Checkout() {
           couponCode: couponCode || "",
           honey_pot_field: honeyPot,
           isGift: Boolean(isGift),
-          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : ""
+          giftRecipientEmail: isGift ? String(giftRecipientEmail || "").trim() : "",
+          orderDraft: buildOrderDraft(selected)
         },
         token ? { headers: { Authorization: `Bearer ${token}` } } : {}
       );
