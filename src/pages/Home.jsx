@@ -530,7 +530,7 @@ function Home() {
       <section id="home-section-top-rated" className="home-section">
         <div className="home-section-head">
           <div>
-            <span className="home-section-kicker">Most trusted</span>
+            <span className="home-section-kicker">Customer ratings</span>
             <h2>Top Rated Picks</h2>
           </div>
           <Link to="/collection" className="home-inline-link">See more<span className="sr-only"> top rated picks</span></Link>

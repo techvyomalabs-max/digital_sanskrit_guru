@@ -1,4 +1,5 @@
 import React from "react";
+import { openCookieSettings } from "../utils/cookieConsent";
 import { Link } from "react-router-dom";
 import { ShieldCheck, Lock, Eye, FileText, Globe, Phone, Mail, CheckCircle2, ExternalLink, Landmark } from "lucide-react";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
@@ -31,7 +32,7 @@ function PrivacyPolicy() {
         <div className="policy-alert-banner privacy-source-banner">
           <div className="alert-icon"><Landmark size={28} aria-hidden="true" /></div>
           <div className="alert-text">
-            <strong>Official Organization Policy:</strong> Digital Sanskrit Guru is operated by <strong>Vyoma Linguistic Labs Foundation</strong> (a registered non-profit organization). This policy aligns with the official organization privacy governance available at{" "}
+            <strong>Official Organization Policy:</strong> Digital Sanskrit Guru is operated by <strong>Vyoma Linguistic Labs Foundation</strong> (a registered non-profit organization). This Privacy Policy has to be read in conjunction with the comprehensive Privacy Policy of Vyoma Linguistic Labs Foundation at{" "}
             <a
               href="https://vyoma.org/privacy/"
               target="_blank"
@@ -39,7 +40,8 @@ function PrivacyPolicy() {
               className="privacy-source-link"
             >
               vyoma.org/privacy <ExternalLink size={13} style={{ display: "inline", verticalAlign: "middle" }} />
-            </a>.
+            </a>{" "}
+            and with our <Link to="/terms-and-conditions" className="privacy-source-link">Terms and Conditions</Link>.
           </div>
         </div>
 
@@ -148,7 +150,22 @@ function PrivacyPolicy() {
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
+                  <span>
+                    <strong>Change or Withdraw Cookie Consent:</strong> Analytics and marketing cookies are off
+                    until you allow them. You can change or withdraw that choice at any time from{" "}
+                    <button type="button" className="policy-inline-button" onClick={openCookieSettings}>
+                      Cookie settings
+                    </button>{" "}
+                    (also at the bottom of every page).
+                  </span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
                   <span><strong>Access & Correction:</strong> You can review, update, or edit your account details at any time from the <Link to="/login">My Account</Link> dashboard.</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} className="list-icon" />
+                  <span><strong>Children&apos;s Privacy:</strong> We do not knowingly collect personally identifiable information from children under 18.</span>
                 </li>
                 <li>
                   <CheckCircle2 size={16} className="list-icon" />
