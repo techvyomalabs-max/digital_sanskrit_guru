@@ -2453,8 +2453,38 @@ function AdminAddProducts() {
     setBundleItems((current) => [...current, createEmptyBundleItem()]);
   };
 
+  // Once a product has formats, customers can buy only those formats. So the first time a
+  // format is added, the product as it is now is added as a format too (pre-filled, editable),
+  // and stays buyable next to the new one.
+  const currentVersionAsSingleFormat = () => {
+    const digital = isDigital === true;
+    const positive = (value) => (Number(value) > 0 ? String(value) : "");
+    return {
+      ...createEmptySingleFormat("new"),
+      label: digital ? "Web Version" : "Print",
+      type: digital ? "digital" : "physical",
+      price: String(price ?? ""),
+      mrp: String(mrp ?? ""),
+      stock: digital ? "" : String(stock ?? ""),
+      weight: digital ? "" : positive(weight),
+      length: digital ? "" : positive(length),
+      width: digital ? "" : positive(width),
+      height: digital ? "" : positive(height),
+      hsnSac: String(hsnSac || ""),
+      gstRate: String(gstRate ?? ""),
+      isCurrentVersion: true
+    };
+  };
+
   const addSingleFormat = (kind) => {
-    setSingleFormats((current) => (current.length >= 8 ? current : [...current, createEmptySingleFormat(kind)]));
+    setSingleFormats((current) => {
+      if (current.length >= 8) return current;
+      const isFirst = current.length === 0 && editingProduct?.hasOptions !== true;
+      const hasCurrentVersion = isFirst && String(price ?? "").trim() !== "";
+      return hasCurrentVersion
+        ? [currentVersionAsSingleFormat(), createEmptySingleFormat(kind)]
+        : [...current, createEmptySingleFormat(kind)];
+    });
   };
 
   const updateSingleFormat = (rowKey, field, value) => {
@@ -2477,6 +2507,35 @@ function AdminAddProducts() {
   };
 
   const addBundleFormat = () => {
+    // First format of a combo: the combo as it is now (all its items) becomes a format too, so it
+    // stays buyable next to the new one (e.g. Web Version and USB)
+    const isFirst = bundleFormats.length === 0;
+    const hasItem = (item) => Boolean(item && (item.productId || item.product || String(item.name || "").trim()));
+    const itemIsDigital = (item) => {
+      if (item?.isDigital === true || item?.product?.isDigital === true) return true;
+      const id = String(item?.productId || item?.product?._id || item?.product || "");
+      return products.some((candidate) => String(candidate?._id) === id && candidate?.isDigital === true);
+    };
+    const filledItems = bundleItems.filter(hasItem);
+    if (isFirst && filledItems.length > 0) {
+      const allDigital = filledItems.every(itemIsDigital);
+      const anyDigital = filledItems.some(itemIsDigital);
+      const current = {
+        ...createEmptyBundleFormat(),
+        label: allDigital ? "Web Version" : anyDigital ? "Complete" : "Print",
+        type: allDigital ? "digital" : anyDigital ? "" : "physical",
+        isCurrentVersion: true
+      };
+      setBundleFormats([current, createEmptyBundleFormat()]);
+      setBundleItems((items) =>
+        items.map((item) =>
+          hasItem(item)
+            ? { ...item, formats: [...new Set([...(Array.isArray(item.formats) ? item.formats : []), current.rowKey])] }
+            : item
+        )
+      );
+      return;
+    }
     setBundleFormats((current) => (current.length >= 8 ? current : [...current, createEmptyBundleFormat()]));
   };
 
@@ -3815,6 +3874,13 @@ function AdminAddProducts() {
                               <button type="button" onClick={addBundleFormat}>＋ Add format</button>
                             ) : null}
                           </div>
+                          {bundleFormats.some((format) => format.isCurrentVersion) ? (
+                            <p className="pf-hint pf-hint-current">
+                              <strong>Customers can buy only the formats listed here.</strong> So the combo as it is
+                              now (all its items) was added as the first format: rename it, set its price, or remove it
+                              if it should no longer be sold. Then tick the items of each new format below.
+                            </p>
+                          ) : null}
                           {bundleFormats.length > 0 ? (
                             <div className="pf-formats-table">
                               <div className="pf-formats-row pf-formats-row--head">
@@ -4113,6 +4179,13 @@ function AdminAddProducts() {
                           ) : null}
                         </div>
 
+                        {singleFormats.some((row) => row.isCurrentVersion) ? (
+                          <p className="pf-hint pf-hint-current">
+                            <strong>Customers can buy only the formats listed here.</strong> So the product as it
+                            is now was added as the first format (pre-filled with its type, price and stock): rename
+                            or change it if needed, or remove it if it should no longer be sold.
+                          </p>
+                        ) : null}
                         {singleFormats.length > 0 ? (
                           <div className="pf-single-formats-list">
                             {singleFormats.map((row, index) => {
@@ -4121,7 +4194,7 @@ function AdminAddProducts() {
                                 <div key={row.rowKey} className="pf-single-format-card">
                                   <div className="pf-single-format-top">
                                     <span className={`pf-single-format-kind ${row.kind}`}>
-                                      {row.kind === "linked" ? "Linked product" : "New format"}
+                                      {row.kind === "linked" ? "Linked product" : row.isCurrentVersion ? "This product as it is now" : "New format"}
                                     </span>
                                     <div className="pf-single-format-tools">
                                       <button
