@@ -729,3 +729,181 @@
   }
 }
 
+
+/* ══ Modern card (Nov 2026) ═══════════════════════════════════════════════
+   Quieter meta line, compact rating, real-discount chip and a light CTA,
+   so the cover and the price carry the card instead of heavy buttons. */
+
+.product-card {
+  border: 1px solid color-mix(in srgb, var(--site-text, #0f172a) 9%, transparent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px -6px rgba(15, 23, 42, 0.08);
+}
+
+.product-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--site-link, #0f62b3) 30%, transparent);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04), 0 14px 30px -10px rgba(15, 23, 42, 0.18);
+}
+
+.product-info {
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+
+/* "Web Version · Digital" as one small line instead of two pills */
+.product-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--site-text-soft, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-card .product-card-meta .product-category,
+.product-card .product-card-meta .product-format-pill {
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--site-link, #0f62b3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-card .product-card-meta .product-format-pill {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--site-text-soft, #64748b);
+}
+
+.product-card-meta .product-format-pill::before {
+  content: "·";
+  margin: 0 6px;
+}
+
+.product-card .product-title {
+  font-size: 15.5px;
+  line-height: 1.35;
+}
+
+.price-box {
+  align-items: center;
+  margin-top: 2px;
+}
+
+.discount-price {
+  font-size: 19px;
+}
+
+.product-discount-chip {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Rating: one star, the score and the count */
+.product-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 13px;
+  color: #b45309;
+}
+
+.product-rating strong {
+  color: var(--site-text, #0f172a);
+  font-weight: 700;
+}
+
+.product-rating-meta {
+  margin-left: 0;
+  font-size: 12.5px;
+}
+
+/* Call to action: the site's own button colours (as before), a little more compact */
+.product-actions {
+  padding-top: 8px;
+}
+
+.product-card .product-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--site-button-bg);
+  color: var(--site-button-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.product-cta svg {
+  transition: transform 0.15s ease;
+}
+
+.product-card .product-cta:hover {
+  background: var(--site-button-hover, var(--site-button-bg));
+  color: var(--site-button-text);
+  transform: none;
+}
+
+.product-card .product-cta:hover svg,
+.product-card:hover .product-cta svg {
+  transform: translateX(3px);
+}
+
+.product-cta:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--site-button-bg, #c9922a) 50%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-cta,
+  .product-cta svg {
+    transition: none;
+  }
+
+  .product-card:hover {
+    transform: none;
+  }
+}
+
+/* Deal notes as one slim line ("Launch deal · Save ₹37"), same colours, so a card on offer
+   isn't much taller than its neighbours (a row stretches every card to the tallest one) */
+.product-card .product-festive-savings,
+.product-card .product-bundle-savings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.35;
+}
+
+.product-card .product-festive-savings strong,
+.product-card .product-bundle-savings strong {
+  font-size: 12px;
+}

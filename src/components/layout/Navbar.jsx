@@ -300,10 +300,13 @@ function Navbar({ bannerActive = false }) {
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // Lets CSS hide the floating chat/WhatsApp buttons, which would sit on top of the menu
+    document.body.classList.add("navbar-overlay-open");
     window.addEventListener("keydown", handleEscape);
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("navbar-overlay-open");
       window.removeEventListener("keydown", handleEscape);
     };
   }, [isAddressModalOpen, addressToDelete, showSignOutModal, isMenuOpen]);

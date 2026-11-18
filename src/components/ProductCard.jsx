@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Share2, Heart } from "lucide-react";
+import { Share2, Heart, Star, ArrowRight } from "lucide-react";
 import { useWishlist } from "../hooks/useWishlist";
 import { useDeliveryLocation } from "../hooks/useDeliveryLocation";
 import { formatCurrencyExact, formatResolvedPrice } from "../utils/currency";
@@ -41,7 +41,6 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       ? reviews.reduce((sum, r) => sum + Number(r?.rating || 0), 0) / reviews.length
       : 0;
   const displayRating = Number(product?.rating || averageFromReviews || 0);
-  const roundedStars = Math.max(0, Math.min(5, Math.round(displayRating)));
 
   const isWishlisted = wishlist.some((p) => p._id === product._id);
   const pricing = getProductPriceDetails(product, selectedAddress?.country);
@@ -78,6 +77,12 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       : festiveOriginalPrice > displayPrice
         ? festiveOriginalPrice
         : displayPrice;
+
+  // A real saving only (market sale, festive offer, bundle), not the default list price
+  const hasRealDiscount = hasActiveMarketSale || (isBundle && bundleOriginalTotal > displayPrice) || festiveOriginalPrice > displayPrice;
+  const discountPercent = hasRealDiscount && listPrice > displayPrice
+    ? Math.round(((listPrice - displayPrice) / listPrice) * 100)
+    : 0;
 
   const [copied, setCopied] = useState(false);
 
@@ -173,10 +178,10 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       </Link>
 
       <div className="product-info">
-        <div className="product-card-pills">
+        <p className="product-card-meta">
           <span className="product-category">{product.category || "General"}</span>
           <span className="product-format-pill">{getProductFormat(product)}</span>
-        </div>
+        </p>
 
         <Link to={productPath(product)} className="product-title-link" title={product.name}>
           <h3 className="product-title">{product.name}</h3>
@@ -200,6 +205,9 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
               {formatCurrencyExact(listPrice, displayCurrency)}
             </span>
           ) : null}
+          {!isOptionsParent(product) && discountPercent >= 1 ? (
+            <span className="product-discount-chip">-{discountPercent}%</span>
+          ) : null}
         </div>
 
         {!isOptionsParent(product) && isFestiveOffer && festiveSavings > 0 ? (
@@ -216,22 +224,21 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
           </div>
         ) : null}
 
-        <p className="product-rating">
-          {"\u2605".repeat(roundedStars)}
-          {"\u2606".repeat(5 - roundedStars)}
-          <span className="product-rating-meta">
-            {" "}
-            ({displayRating.toFixed(1)}){" "}
-            {reviewCount > 0
-              ? `| ${reviewCount} review${reviewCount > 1 ? "s" : ""}`
-              : "| No reviews"}
-          </span>
-        </p>
+        {reviewCount > 0 ? (
+          <p className="product-rating" aria-label={`Rated ${displayRating.toFixed(1)} out of 5 from ${reviewCount} review${reviewCount > 1 ? "s" : ""}`}>
+            <Star size={14} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            <strong>{displayRating.toFixed(1)}</strong>
+            <span className="product-rating-meta">
+              ({reviewCount} review{reviewCount > 1 ? "s" : ""})
+            </span>
+          </p>
+        ) : null}
 
         {variant !== "wishlist" && (
           <div className="product-actions">
-            <Link to={productPath(product)}>
-              <button className="product-cta">{isOptionsParent(product) ? "Choose format" : "View Product"}</button>
+            <Link to={productPath(product)} className="product-cta">
+              {isOptionsParent(product) ? "Choose format" : "View details"}
+              <ArrowRight size={15} aria-hidden="true" />
             </Link>
           </div>
         )}
