@@ -36,3 +36,13 @@ test("orderQuantity (cart): stepper limit and stored quantity follow the same ru
   assert.equal(clampCartQuantity(30, { isDigital: true, canShareCopies: true }), 10);
   assert.equal(clampCartQuantity(undefined, {}), 1);
 });
+
+test("orderQuantity (saved cart): digital copies follow the checkout limit", () => {
+  const { cartQuantityLimit } = require("../utils/orderQuantity");
+  assert.equal(cartQuantityLimit({ isDigital: true, productType: "single" }, true), 10);
+  assert.equal(cartQuantityLimit({ isDigital: true, productType: "single", digitalDelivery: "external", externalAccessManual: true }, true), 1);
+  assert.equal(cartQuantityLimit({ isDigital: true, productType: "bundle" }, true), 1);
+  assert.equal(cartQuantityLimit({ isDigital: false, name: "Gita web version" }, true), 1, "only guessed digital stays at 1");
+  assert.equal(cartQuantityLimit({ isDigital: false }, false), 5);
+  assert.equal(cartQuantityLimit({ productType: "bulk" }, false), 99999);
+});

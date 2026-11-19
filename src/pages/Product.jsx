@@ -15,7 +15,7 @@ import { isDigitalItem } from "../utils/deliveryPricing";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { getFormatBlurb } from "../utils/formatBlurb";
 import { isKindleProduct } from "../utils/kindle";
-import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct } from "../utils/productOptions";
+import { isOptionsParent, isOptionAvailable, pickDefaultOptionId, getBuyProduct, orderFormatOptions } from "../utils/productOptions";
 import { couponsForProduct } from "../utils/couponMatching";
 import { useDocumentMetadata } from "../hooks/useDocumentMetadata";
 import { htmlToPlainText } from "../utils/plainText";
@@ -76,6 +76,8 @@ import { MAX_DIGITAL_COPIES, MAX_RETAIL_QUANTITY, canShareDigitalCopies, maxCart
 import { applySeoTags } from "../utils/seo";
 import { productPath, productUrl } from "../utils/productLink";
 import ReviewPhotoPicker from "../components/reviews/ReviewPhotoPicker";
+import ProductRow from "../components/product/ProductRow";
+import { otherEditions, editionOf } from "../utils/editions";
 import ReviewPhotoStrip from "../components/reviews/ReviewPhotoStrip";
 
 const AVATAR_PALETTES = [
@@ -351,6 +353,14 @@ function isDigitalOnlyBundle(product) {
 }
 
 // Icons for the format picker and its spotlight (see utils/formatBlurb.js)
+// Short "how you get it" line on each format card (from the delivery chip kind)
+const FORMAT_HINTS = {
+  ships: "Ships to you",
+  instant: "Instant access",
+  later: "Access in 24–48h",
+  external: "On Amazon"
+};
+
 const FORMAT_ICONS = {
   kindle: Tablet,
   flipbook: BookOpen,
@@ -573,24 +583,75 @@ function Product() {
     setShowLightbox(false);
   }, [id]);
 
+  const [storeSettings, setStoreSettings] = useState(null);
+
+  useEffect(() => {
+    axios.get("/api/settings/public")
+      .then((res) => setStoreSettings(res.data))
+      .catch(() => setStoreSettings(null));
+  }, []);
+
+  // Slim buy bar: shown once the side buy box has scrolled up out of view
+  const [showBuyBar, setShowBuyBar] = useState(false);
+  const [editions, setEditions] = useState([]);
+  // The buy box element itself (a callback ref follows it when the page re-renders it)
+  const [buyBoxEl, setBuyBoxEl] = useState(null);
+  useEffect(() => {
+    if (!buyBoxEl || typeof IntersectionObserver === "undefined") {
+      setShowBuyBar(false);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      // Shown whenever the buy box is off screen: above (scrolled past) or, on a phone, still below
+      ([entry]) => setShowBuyBar(!entry.isIntersecting),
+      // The sticky menu bar covers the top of the window, so a box behind it counts as out of view
+      { threshold: 0, rootMargin: "-110px 0px 0px 0px" }
+    );
+    observer.observe(buyBoxEl);
+    return () => observer.disconnect();
+  }, [buyBoxEl]);
+  useEffect(() => {
+    document.body.classList.toggle("product-buybar-open", showBuyBar);
+    return () => document.body.classList.remove("product-buybar-open");
+  }, [showBuyBar]);
+
+  // How formats are ordered and which can be bought here (see orderFormatOptions)
+  const formatContext = useMemo(
+    () => ({
+      isInternational: isInternationalCountry(selectedAddress?.country),
+      physicalAbroad: storeSettings?.internationalDelivery?.enabled !== false,
+      typeOrder: (Array.isArray(storeSettings?.productFormatTypes) ? storeSettings.productFormatTypes : []).map((t) => t.key)
+    }),
+    [selectedAddress?.country, storeSettings]
+  );
+  const formatTypeNotes = useMemo(
+    () =>
+      Object.fromEntries(
+        (Array.isArray(storeSettings?.productFormatTypes) ? storeSettings.productFormatTypes : [])
+          .filter((t) => t?.key && t?.note)
+          .map((t) => [t.key, t.note])
+      ),
+    [storeSettings]
+  );
+
   useEffect(() => {
     if (isOptionsParent(product)) {
-      const nextOptionId = pickDefaultOptionId(product.publicOptions, formatParam);
+      const nextOptionId = pickDefaultOptionId(product.publicOptions, formatParam, formatContext);
       setSelectedOptionId(nextOptionId);
       const initialOpt = getBuyProduct(product, nextOptionId);
       setQty(initialOpt?.productType === "bulk" ? 10 : 1);
     } else {
       setSelectedOptionId("");
     }
-  }, [product, formatParam]);
+  }, [product, formatParam, formatContext]);
 
   // Until the effect above has stored the choice (first render, or right after moving to another
   // product), fall back to the default option so the page never flashes "currently unavailable".
   const memoBuyProduct = useMemo(
     () =>
       getBuyProduct(product, selectedOptionId) ||
-      (isOptionsParent(product) ? getBuyProduct(product, pickDefaultOptionId(product.publicOptions, formatParam)) : null),
-    [product, selectedOptionId, formatParam]
+      (isOptionsParent(product) ? getBuyProduct(product, pickDefaultOptionId(product.publicOptions, formatParam, formatContext)) : null),
+    [product, selectedOptionId, formatParam, formatContext]
   );
 
   useEffect(() => {
@@ -623,13 +684,6 @@ function Product() {
     return isDigital || isCombo ? [{ product: memoBuyProduct._id, quantity: copies }] : [];
   }, [memoBuyProduct, qty]);
   const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift, selectedAddress?.country);
-  const [storeSettings, setStoreSettings] = useState(null);
-
-  useEffect(() => {
-    axios.get("/api/settings/public")
-      .then((res) => setStoreSettings(res.data))
-      .catch(() => setStoreSettings(null));
-  }, []);
 
   // Public coupons, to show offers made for this product
   const [publicCoupons, setPublicCoupons] = useState([]);
@@ -861,6 +915,15 @@ function Product() {
       const productRes = await axios.get(`/api/products/${id}`).catch(() => ({ data: null }));
       const found = productRes?.data?._id ? productRes.data : null;
 
+      // A format's own page (an old link to "X Web Version") opens the main product with that format chosen
+      const parentRef = found?.optionParent
+        ? typeof found.optionParent === "object" ? found.optionParent : { _id: found.optionParent }
+        : null;
+      if (parentRef && (parentRef._id || parentRef.slug) && String(parentRef._id || "") !== String(found._id)) {
+        navigate(`${productPath(parentRef)}?format=${encodeURIComponent(String(found._id))}`, { replace: true });
+        return;
+      }
+
       const galleryImages = found ? getGalleryImages(found) : [];
 
       setProduct(found);
@@ -930,7 +993,11 @@ function Product() {
     fetchPublicCatalog()
       .then((catalog) => {
         // Every product that matches (no limit)
-        if (!cancelled) setManagedRelatedProducts(getRelatedProducts(product, catalog, Infinity));
+        if (!cancelled) {
+          setManagedRelatedProducts(getRelatedProducts(product, catalog, Infinity));
+          // Same title in other editions, sold as separate products (until grouped into types)
+          setEditions(isOptionsParent(product) || product?.optionParent ? [] : otherEditions(product, catalog));
+        }
       })
       .catch(() => { });
     return () => {
@@ -1188,6 +1255,34 @@ function Product() {
   ).trim();
   // Same per-order limit the cart applies: 5, or the stock left if lower
   const retailMaxQty = maxCartQuantity({ stock: buyProduct?.stock });
+  // Products not worth suggesting here: this one, its formats (already in the picker), its
+  // bundle items (listed above), hidden products, and repeats of a title already shown
+  const relatedSkipIds = new Set([
+    String(product?._id || ""),
+    ...(Array.isArray(product?.publicOptions) ? product.publicOptions : []).map((o) => String(o?.product?._id || "")),
+    ...(Array.isArray(product?.options) ? product.options : []).map((o) => String(o?.product?._id || o?.product || "")),
+    ...(Array.isArray(product?.bundleItems) ? product.bundleItems : []).map((b) => String(b?.product?._id || b?.product || "")),
+    ...editions.map((e) => String(e.product?._id || ""))
+  ].filter(Boolean));
+  const relatedTitleKey = (p) => String(p?.name || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const pickRelated = (list, seen, limit = 8) => {
+    const out = [];
+    for (const p of Array.isArray(list) ? list : []) {
+      if (!p?._id || out.length >= limit) continue;
+      const pid = String(p._id);
+      const parentId = String(p.optionParent?._id || p.optionParent || "");
+      if (relatedSkipIds.has(pid) || parentId === String(product?._id || "") || p.hideFromListings) continue;
+      const key = relatedTitleKey(p);
+      if (seen.has(pid) || (key && seen.has(key))) continue;
+      seen.add(pid);
+      if (key) seen.add(key);
+      out.push(p);
+    }
+    return out;
+  };
+  const relatedSeen = new Set();
+  const relatedRow = pickRelated(managedRelatedProducts, relatedSeen);
+  const alsoLikeRow = pickRelated(relatedProducts, relatedSeen);
   const optionParentId = product?.optionParent
     ? String(product.optionParent?._id || product.optionParent).trim()
     : "";
@@ -1213,6 +1308,34 @@ function Product() {
     extraProductDetails
   );
   const shownDescription = formatInfo && hasText(formatInfo.description) ? formatInfo.description : product.description;
+
+  // About points written per format ("Audio Device: Preloaded with...", "OTG Version: ...") belong in
+  // the Compare formats table; About then keeps only the general points, so nothing is said twice.
+  const compareOptions = isOptionsParent(product) && Array.isArray(product.publicOptions) && product.publicOptions.length > 1
+    ? product.publicOptions
+    : [];
+  const aboutForFormat = new Map();
+  const generalAboutPoints = [];
+  for (const point of aboutProductPoints) {
+    const text = String(point || "").trim();
+    const colon = text.indexOf(":");
+    const head = colon > 0 && colon <= 60 ? text.slice(0, colon).trim() : "";
+    const headKey = head.toLowerCase();
+    const match = head
+      ? compareOptions.find((o) => {
+          const label = String(o?.label || "").trim().toLowerCase();
+          return label && !aboutForFormat.has(String(o?.product?._id || "")) && (headKey === label || headKey.startsWith(`${label} `) || headKey.startsWith(`${label}(`));
+        })
+      : null;
+    if (match) {
+      // Keep any detail in brackets after the format's name: "Book (Vol I, 1-25 Daśaka-s): ..."
+      const extra = head.slice(String(match.label).trim().length).trim().replace(/^\((.*)\)$/, "$1").trim();
+      const body = text.slice(colon + 1).trim();
+      aboutForFormat.set(String(match?.product?._id || ""), extra && !/^version$/i.test(extra) ? `${extra}: ${body}` : body);
+    } else {
+      generalAboutPoints.push(point);
+    }
+  }
   const bundleItems = Array.isArray(buyProduct?.bundleItems) ? buyProduct.bundleItems : [];
   const isBundle =
     Boolean(buyProduct) &&
@@ -1565,17 +1688,35 @@ function Product() {
               {reviewCount} {reviewCount === 1 ? "customer review" : "customer reviews"}
             </a>
           </div>
+          {!isOptionsParent(product) && editions.length > 0 ? (
+            <div className="product-editions" aria-label="Also available as">
+              <div className="product-format-picker-heading">Also available as</div>
+              <div className="product-editions-list">
+                <span className="product-edition-chip is-current" aria-current="true">
+                  <Check size={15} aria-hidden="true" />
+                  {editionOf(product).label} (this page) · {formatResolvedPrice(getProductPriceDetails(product, selectedAddress?.country))}
+                </span>
+                {editions.map((edition) => (
+                  <Link key={edition.product._id} to={productPath(edition.product)} className="product-edition-chip">
+                    {edition.label} · {formatResolvedPrice(getProductPriceDetails(edition.product, selectedAddress?.country))}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {isOptionsParent(product) && Array.isArray(product.publicOptions) && product.publicOptions.length > 0 && (
             <div className="product-format-picker">
               <div className="product-format-picker-heading">Choose format</div>
               <div className="product-format-picker-options" role="radiogroup" aria-label="Choose format">
-                {product.publicOptions.map((option) => {
+                {orderFormatOptions(product.publicOptions, formatContext).map((option) => {
                   const optProduct = option?.product;
                   const optId = String(optProduct?._id || "");
                   const isSelected = Boolean(optId && optId === selectedOptionId);
-                  const available = isOptionAvailable(optProduct);
+                  const available = option.status === "available";
                   const optPricing = getProductPriceDetails(optProduct, selectedAddress?.country);
-                  const OptionIcon = FORMAT_ICONS[getFormatBlurb(option).kind] || Package;
+                  const optBlurb = getFormatBlurb(option);
+                  const OptionIcon = FORMAT_ICONS[optBlurb.kind] || Package;
+                  const optHint = FORMAT_HINTS[optBlurb.chips[0]?.kind] || "";
                   return (
                     <button
                       key={optId || option?.label}
@@ -1585,14 +1726,22 @@ function Product() {
                       aria-describedby={isSelected ? "product-format-spotlight" : undefined}
                       className={`product-format-option-btn${isSelected ? " is-selected" : ""}${!available ? " is-unavailable" : ""}`}
                       onClick={() => handleSelectOption(optProduct)}
+                      disabled={!available && !isSelected}
+                      title={option.status === "not-in-country" ? "Not delivered to your country" : undefined}
                     >
+                      {isSelected ? <Check size={14} className="product-format-option-check" aria-hidden="true" /> : null}
                       <span className="product-format-option-label">
                         <OptionIcon size={15} className="product-format-option-icon" aria-hidden="true" />
                         {option?.label}
                       </span>
                       <span className="product-format-option-price">
-                        {available ? formatResolvedPrice(optPricing) : "Out of stock"}
+                        {available
+                          ? formatResolvedPrice(optPricing)
+                          : option.status === "not-in-country"
+                            ? "Not available in your country"
+                            : "Out of stock"}
                       </span>
+                      {available && optHint ? <span className="product-format-option-hint">{optHint}</span> : null}
                     </button>
                   );
                 })}
@@ -1602,7 +1751,11 @@ function Product() {
                   (option) => String(option?.product?._id || "") === selectedOptionId
                 );
                 if (!selectedOption) return null;
-                const blurb = getFormatBlurb(selectedOption, product.formatNotes);
+                const blurb = getFormatBlurb(
+                  selectedOption,
+                  product.formatNotes,
+                  formatTypeNotes[String(selectedOption?.product?.formatTypeKey || "")] || ""
+                );
                 const SpotIcon = FORMAT_ICONS[blurb.kind] || Package;
                 return (
                   <div
@@ -1713,7 +1866,6 @@ function Product() {
               <span className="out-stock">This product is currently unavailable.</span>
             </p>
           )}
-          <div className="description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shownDescription || "") }} />
         </div>
 
         <div className="product-right">
@@ -1722,7 +1874,7 @@ function Product() {
               Also available in other formats — See all formats
             </Link>
           ) : null}
-          <div className="buy-box">
+          <div className="buy-box" ref={setBuyBoxEl}>
             {!buyProduct ? (
               <>
                 <p className="out-stock">This product is currently unavailable.</p>
@@ -1749,7 +1901,7 @@ function Product() {
                         ? "Kindle edition: sold and delivered by Amazon Kindle."
                         : (buyProduct.isDigital === true || isDigitalOnlyBundle(buyProduct))
                           ? "Digital product: read it in My Digital Library right after you pay. No shipping needed."
-                          : "Delivery available at your selected location."}
+                          : ""}
                 </p>
 
                 {isKindleBook ? (
@@ -2042,41 +2194,99 @@ function Product() {
 
             {/* <p className="secure-line">Secure transaction</p> */}
           </div>
+          {/* Description after the buy buttons, so Add to Cart sits right under the price */}
+          <div className="description product-right-description" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shownDescription || "") }} />
         </div>
       </div>
 
-      <div className="product-details-section">
+      <div className="product-details-section" id="product-details">
         <div className="product-details-head">
           <h3>Product Details</h3>
           <p>Key information about this item before you place your order.</p>
         </div>
 
-        <div className="product-details-grid">
-          <div className="product-detail-card">
-            <span>Product Name</span>
-            <strong>{product.name}</strong>
-          </div>
-          {buyProduct && buyProduct.isDigital !== true && (
-            <div className="product-detail-card">
-              <span>Availability</span>
-              <strong>{buyProduct.stock > 0 ? `${buyProduct.stock} in stock` : "Out of stock"}</strong>
+        {/* Only facts not already shown at the top of the page (name, rating and reviews are) */}
+        {(() => {
+          const facts = [];
+          const selectedLabel = isOptionsParent(product)
+            ? (product.publicOptions || []).find((o) => String(o?.product?._id || "") === selectedOptionId)?.label
+            : "";
+          if (selectedLabel) facts.push({ label: "Format", value: selectedLabel });
+          // Stock and category are already shown at the top of the page
+          if (isBundle) {
+            facts.push({ label: "In this bundle", value: `${bundleItems.length} ${bundleItems.length === 1 ? "product" : "products"}` });
+          }
+          return facts.length > 0 ? (
+            <div className="product-details-grid product-details-facts">
+              {facts.map((fact) => (
+                <div key={fact.label} className="product-detail-card">
+                  <span>{fact.label}</span>
+                  <strong>{fact.value}</strong>
+                </div>
+              ))}
             </div>
-          )}
-          <div className="product-detail-card">
-            <span>Rating</span>
-            <strong>{Number(product.rating || 0).toFixed(1)} / 5</strong>
-          </div>
-          <div className="product-detail-card">
-            <span>Reviews</span>
-            <strong>{Array.isArray(product.reviews) ? product.reviews.length : 0} customer reviews</strong>
-          </div>
-          {isBundle ? (
-            <div className="product-detail-card">
-              <span>Bundle Items</span>
-              <strong>{bundleItems.length} products included</strong>
+          ) : null;
+        })()}
+
+        {/* Compare formats: what each one gives, how it arrives and its price. A row selects it. */}
+        {compareOptions.length > 0 ? (
+          <div className="product-details-description product-compare">
+            <h4>Compare formats</h4>
+            <div className="product-compare-table" role="table" aria-label="Compare formats">
+              <div className="product-compare-row product-compare-head" role="row">
+                <span role="columnheader">Format</span>
+                <span role="columnheader">What you get</span>
+                <span role="columnheader">Delivery</span>
+                <span role="columnheader">Price</span>
+              </div>
+              {orderFormatOptions(product.publicOptions, formatContext).map((option) => {
+                const optProduct = option?.product;
+                const optId = String(optProduct?._id || "");
+                const blurb = getFormatBlurb(option, product.formatNotes, formatTypeNotes[String(optProduct?.formatTypeKey || "")] || "");
+                const RowIcon = FORMAT_ICONS[blurb.kind] || Package;
+                // The admin's own line for this format wins, then its "About" point, then the automatic line
+                const ownNote = (Array.isArray(product.formatNotes) ? product.formatNotes : []).find(
+                  (n) => String(n?.label || "").trim().toLowerCase() === String(option?.label || "").trim().toLowerCase() && String(n?.note || "").trim()
+                );
+                const whatYouGet = ownNote ? String(ownNote.note).trim() : aboutForFormat.get(optId) || blurb.text;
+                const available = option.status === "available";
+                const isSelected = optId === selectedOptionId;
+                return (
+                  <div
+                    key={optId || option?.label}
+                    role="row"
+                    className={`product-compare-row${isSelected ? " is-selected" : ""}${available ? "" : " is-unavailable"}`}
+                  >
+                    <span role="cell" className="product-compare-format">
+                      <RowIcon size={16} aria-hidden="true" />
+                      <strong>{option?.label}</strong>
+                    </span>
+                    <span role="cell" className="product-compare-text">{whatYouGet}</span>
+                    <span role="cell" className="product-compare-delivery">{blurb.chips[0]?.text || "—"}</span>
+                    <span role="cell" className="product-compare-price">
+                      {available ? (
+                        <>
+                          <strong>{formatResolvedPrice(getProductPriceDetails(optProduct, selectedAddress?.country))}</strong>
+                          {isSelected ? (
+                            <span className="product-compare-chosen"><Check size={13} aria-hidden="true" />Chosen</span>
+                          ) : (
+                            <button type="button" className="product-compare-choose" onClick={() => handleSelectOption(optProduct)}>
+                              Choose
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="product-compare-status">
+                          {option.status === "not-in-country" ? "Not available in your country" : "Out of stock"}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {isBundle && bundleItems.length > 0 ? (() => {
           // Big bundles start with the first few items (8 = two full rows; phones show 4) and a "Show all" button
@@ -2086,7 +2296,8 @@ function Product() {
           return (
           <div className="product-details-description product-bundle-section" id="bundle-items">
             <h4>
-              Included in this bundle <span className="product-bundle-count">{bundleItems.length} items</span>
+              Included in this bundle{" "}
+              <span className="product-bundle-count">{bundleItems.length} {bundleItems.length === 1 ? "item" : "items"}</span>
             </h4>
             <ul className={`product-bundle-list ${canCollapse && !showAllBundleItems ? "is-collapsed" : ""}`} id="product-bundle-list">
               {visibleItems.map((item, index) => {
@@ -2168,13 +2379,55 @@ function Product() {
           );
         })() : null}
 
-        <div className="product-details-description">
-          <h4>About this product</h4>
-          <ul className="product-about-list">
-            {aboutProductPoints.map((point) => (
-              <li key={point}>{point}</li>
-            ))}
-          </ul>
+        {(compareOptions.length > 0 ? generalAboutPoints : aboutProductPoints).length > 0 ? (
+          <div className="product-details-description">
+            <h4>About this product</h4>
+            <ul className="product-about-list">
+              {(compareOptions.length > 0 ? generalAboutPoints : aboutProductPoints).map((point) => (
+                // Points typed with their own bullet ("•Laṭ – ...") would show two
+                <li key={point}>{String(point).replace(/^[\s•·\u2022\-–]+/, "")}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* Seller and policy information (what Indian e-commerce rules ask a listing to show) */}
+        <div className="product-details-description product-seller-info" id="seller-information">
+          <h4>Seller &amp; policies</h4>
+          <dl className="product-seller-list">
+            {storeSettings?.sellerDetails?.legalName ? (
+              <>
+                <dt>Sold by</dt>
+                <dd>{storeSettings.sellerDetails.legalName}</dd>
+              </>
+            ) : null}
+            {storeSettings?.sellerDetails?.address ? (
+              <>
+                <dt>Address</dt>
+                <dd>{storeSettings.sellerDetails.address}</dd>
+              </>
+            ) : null}
+            {storeSettings?.sellerDetails?.gstin ? (
+              <>
+                <dt>GSTIN</dt>
+                <dd>{storeSettings.sellerDetails.gstin}</dd>
+              </>
+            ) : null}
+            <dt>Price</dt>
+            <dd>M.R.P. and selling price include all taxes (GST). Delivery charges, if any, are shown before you pay.</dd>
+            <dt>Delivery</dt>
+            <dd>
+              {buyProduct?.isDigital === true
+                ? "Digital item: no shipping. You open it from your Digital Library after payment."
+                : "Shipped to your address. We email you when your order is on its way."}
+            </dd>
+            <dt>Returns &amp; refunds</dt>
+            <dd><Link to="/shipping-refund-policy">Read the shipping, cancellation, returns and refund policy</Link></dd>
+            <dt>Customer care</dt>
+            <dd><Link to="/contact">Contact us</Link> · <Link to="/faq">Frequently asked questions</Link></dd>
+            <dt>Terms</dt>
+            <dd><Link to="/terms-and-conditions">Terms and conditions</Link> · <Link to="/privacy-policy">Privacy policy</Link></dd>
+          </dl>
         </div>
 
         {extraProductDetails?.extraMeta?.length > 0 && (
@@ -2660,60 +2913,61 @@ function Product() {
         </div>
       </div>
 
-      {/* ── Fix #7: Link > button → Link with button styling ── */}
-      <div className="related-section">
-        <h3>Related Products</h3>
-        <div className="related-products">
-          {managedRelatedProducts.length > 0 ? (
-            managedRelatedProducts.map((p) => (
-              <div key={p._id} className="related-card">
-                <div className="related-card-img-wrapper">
-                  <img
-                    src={p.image || "/no-image.webp"}
-                    alt={p.name}
-                    width="200"
-                    height="200"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-                <h4>{p.name}</h4>
-                <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={productPath(p)} className="view-btn">View Product</Link>
+      {/* Related rows: this product's own formats and bundle items are already on the page,
+          and the same title is shown once */}
+      <ProductRow title="Related Products" products={relatedRow} emptyText="No related products found." />
+      <ProductRow title="You may also like" products={alsoLikeRow} />
+      {/* Slim buy bar, so Add to Cart stays within reach while reading the rest of the page */}
+      {buyProduct && !isKindleBook && buyProduct.productType !== "bulk" ? (() => {
+        const cannotBuy = (buyProduct.isDigital !== true && buyProduct.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted;
+        const chosenLabel = isOptionsParent(product)
+          ? (product.publicOptions || []).find((o) => String(o?.product?._id || "") === selectedOptionId)?.label
+          : "";
+        return (
+          <div className={`product-buybar${showBuyBar ? " is-visible" : ""}`} aria-hidden={!showBuyBar} role="region" aria-label="Quick buy">
+            <div className="product-buybar-inner">
+              {product.image ? <img src={String(buyProduct.image || product.image)} alt="" className="product-buybar-img" /> : null}
+              <div className="product-buybar-info">
+                <strong className="product-buybar-name">{product.name}</strong>
+                <span className="product-buybar-meta">
+                  {chosenLabel ? (
+                    <button
+                      type="button"
+                      className="product-buybar-format"
+                      tabIndex={showBuyBar ? 0 : -1}
+                      onClick={() => document.querySelector(".product-format-picker")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                    >
+                      {chosenLabel} · Change
+                    </button>
+                  ) : null}
+                  <span className="product-buybar-price">{formatResolvedPrice(getProductPriceDetails(buyProduct, selectedAddress?.country))}</span>
+                </span>
               </div>
-            ))
-          ) : (
-            <p className="related-empty">No related products found.</p>
-          )}
-        </div>
-      </div>
+              <div className="product-buybar-actions">
+                <button
+                  type="button"
+                  className="add-cart-btn"
+                  tabIndex={showBuyBar ? 0 : -1}
+                  disabled={cannotBuy}
+                  onClick={() => addToCart(buyProduct, qty)}
+                >
+                  {cannotBuy ? "Unavailable" : "Add to Cart"}
+                </button>
+                <button
+                  type="button"
+                  className="buy-now-btn"
+                  tabIndex={showBuyBar ? 0 : -1}
+                  disabled={cannotBuy}
+                  onClick={handleBuyNow}
+                >
+                  Buy Now
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
-      <div className="related-section">
-        <h3>You may also like</h3>
-        <div className="related-products">
-          {relatedProducts.length > 0 ? (
-            relatedProducts.map((p) => (
-              <div key={p._id} className="related-card">
-                <div className="related-card-img-wrapper">
-                  <img
-                    src={p.image || "/no-image.webp"}
-                    alt={p.name}
-                    width="200"
-                    height="200"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-                <h4>{p.name}</h4>
-                <p className="related-card-price">{formatResolvedPrice(getProductPriceDetails(p, selectedAddress?.country))}</p>
-                <Link to={productPath(p)} className="view-btn">View Product</Link>
-              </div>
-            ))
-          ) : (
-            <p className="related-empty">No related products found.</p>
-          )}
-        </div>
-      </div>
       {/* ── Wholesale / Bulk Enquiry Modal Overlay ── */}
       {showBulkModal && (
         <div className="product-bulk-modal-backdrop">

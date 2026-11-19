@@ -19,4 +19,16 @@ function clampOrderQuantity(product, quantity) {
   return Math.min(maxOrderQuantity(product), wanted);
 }
 
-module.exports = { MAX_RETAIL_QUANTITY, MAX_BULK_QUANTITY, maxOrderQuantity, clampOrderQuantity };
+/**
+ * The saved cart's limit for a product. looksDigital is the cart's wider "is this digital"
+ * guess (name keywords for older products). A product marked digital may hold several copies
+ * when they can become shareable codes; one only guessed digital stays at 1.
+ */
+function cartQuantityLimit(product, looksDigital = false) {
+  if (String(product?.productType || "single").toLowerCase() === "bulk") return MAX_BULK_QUANTITY;
+  if (product?.isDigital === true) return maxDigitalCopies(product);
+  if (looksDigital) return 1;
+  return MAX_RETAIL_QUANTITY;
+}
+
+module.exports = { MAX_RETAIL_QUANTITY, MAX_BULK_QUANTITY, maxOrderQuantity, clampOrderQuantity, cartQuantityLimit };

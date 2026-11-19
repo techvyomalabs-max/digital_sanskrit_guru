@@ -27,6 +27,13 @@ const {
   summarizeOptionsForPublic
 } = require("../utils/productOptions");
 const { normalizeFormatNotes } = require("../utils/formatNotes");
+const { resolveProductFormatTypes, findType, effectiveFormatTax } = require("../utils/productFormatTypes");
+const { suggestFormatGroups, normalizeGroupApproval, isGroupable } = require("../utils/formatGrouping");
+
+async function loadProductFormatTypes() {
+  const settings = await StoreSettings.findOne().select("productFormatTypes").lean();
+  return resolveProductFormatTypes(settings?.productFormatTypes || []);
+}
 const rateLimit = require("express-rate-limit");
 const { perWorker } = require("../utils/workerCount");
 const { createPresignedUpload, getMediaConfig } = require("../utils/mediaPresign");
@@ -602,6 +609,24 @@ async function resolveOptionsPayload(body = {}, existingProduct = null) {
   };
 }
 
+// A product sold in formats shows its own reviews and those written on its formats
+// (for example the reviews a book's web version had before it was grouped under the book).
+function reviewScopeIds(product) {
+  const ids = [String(product?._id || "")];
+  if (product?.hasOptions === true && Array.isArray(product.options)) {
+    for (const o of product.options) ids.push(String(o?.product?._id ?? o?.product ?? ""));
+  }
+  return [...new Set(ids.filter((id) => mongoose.Types.ObjectId.isValid(id)))].map((id) => new mongoose.Types.ObjectId(id));
+}
+
+async function combinedReviewStats(ids) {
+  const stats = await Review.aggregate([
+    { $match: { product: { $in: ids } } },
+    { $group: { _id: null, avgRating: { $avg: "$rating" }, count: { $sum: 1 } } }
+  ]);
+  return stats[0] ? { rating: Math.round(stats[0].avgRating * 10) / 10, count: stats[0].count } : { rating: 0, count: 0 };
+}
+
 async function syncSingleOptionParent(parent) {
   const opts = Array.isArray(parent?.options) ? parent.options : [];
   const ids = opts.map((o) => String(o?.product?._id ?? o?.product ?? "")).filter(Boolean);
@@ -622,6 +647,20 @@ async function syncSingleOptionParent(parent) {
         stock
       }
     : { stock: 0 };
+
+  // Rating shown on the shop card: all reviews of the product and its formats
+  // (skipped without a database connection, e.g. in unit tests; a failure never blocks the price sync)
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const reviews = await combinedReviewStats(reviewScopeIds({ _id: parent._id, hasOptions: true, options: opts }));
+      if (reviews.count > 0) {
+        update.rating = reviews.rating;
+        update.reviewsCount = reviews.count;
+      }
+    } catch (err) {
+      console.error("Failed to combine format reviews:", err.message);
+    }
+  }
 
   await Product.updateOne({ _id: parent._id }, { $set: update });
 }
@@ -879,8 +918,12 @@ async function reconcileSingleFormats(parent, formats, linked, actor = {}) {
       })
       .filter(Boolean);
   } else {
+    const types = formats.some((f) => f.typeKey) ? await loadProductFormatTypes() : [];
     for (const format of formats) {
-      const fields = buildSingleFormatChildFields(parentPlain, format);
+      // Tax follows the product type unless the admin set the format's own HSN/SAC or GST
+      const type = format.typeKey ? findType(types, format.typeKey) : null;
+      const tax = type ? effectiveFormatTax(format, type) : null;
+      const fields = buildSingleFormatChildFields(parentPlain, format, tax);
       let child = childByKey.get(format.key);
       if (child) {
         child.set({ ...fields, ...stamp, deletedBy: { name: "", email: "" } });
@@ -941,6 +984,10 @@ async function reconcileSingleFormats(parent, formats, linked, actor = {}) {
       key: format.key,
       label: format.label,
       type: format.type || "",
+      typeKey: String(format.typeKey || ""),
+      // The admin's own tax for the format ("" / null = follow the type)
+      hsnSac: format.typeKey ? String(format.hsnSac || "") : "",
+      gstRate: format.typeKey && format.gstRate !== undefined ? format.gstRate : null,
       price: format.price,
       weight: Number(format.weight) || 0,
       length: Number(format.length) || 0,
@@ -1441,6 +1488,115 @@ router.get("/admin/all", protect, admin, requireAdminPage("products"), async (re
   }
 });
 
+// ── Admin: units sold per product (paid, not cancelled orders), all time and last 30 days ──
+router.get("/admin/format-sales", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await Order.aggregate([
+      { $match: { paymentStatus: "Paid", status: { $ne: "Cancelled" } } },
+      { $project: { createdAt: 1, items: { product: 1, quantity: 1 } } },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.product",
+          all: { $sum: { $ifNull: ["$items.quantity", 1] } },
+          last30: { $sum: { $cond: [{ $gte: ["$createdAt", since] }, { $ifNull: ["$items.quantity", 1] }, 0] } }
+        }
+      }
+    ]);
+    const sales = {};
+    for (const row of rows) {
+      if (row._id) sales[String(row._id)] = { all: row.all, last30: row.last30 };
+    }
+    res.json({ sales });
+  } catch {
+    res.status(500).json({ message: "Failed to load sales." });
+  }
+});
+
+// ── Admin: suggest existing products to group under one main product (nothing changes) ──
+router.get("/admin/format-groups/preview", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    const [products, types] = await Promise.all([
+      Product.find({ isDeleted: { $ne: true }, productType: "single", hasOptions: { $ne: true }, optionParent: null, bundleFormatKey: { $in: ["", null] } })
+        .select("_id name slug price stock isDigital digitalType productType hasOptions optionParent bundleFormatKey isDeleted category")
+        .lean(),
+      loadProductFormatTypes()
+    ]);
+    res.json({ groups: suggestFormatGroups(products, types), types });
+  } catch {
+    res.status(500).json({ message: "Failed to build the grouping preview." });
+  }
+});
+
+// ── Admin: group approved products under one new main product ─────────────────────
+// The products are linked as formats (like "Link existing product"): they keep their own
+// orders, stock, reviews, links and My Library access, and are hidden from the shop while
+// linked. Moving the main product to the Recycle Bin puts them back in the shop.
+router.post("/admin/format-groups/apply", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    const approval = normalizeGroupApproval(req.body);
+    if (approval.error) return res.status(400).json({ message: approval.error });
+
+    const ids = approval.members.map((m) => m.product);
+    const docs = await Product.find({ _id: { $in: ids } }).lean();
+    const byId = new Map(docs.map((d) => [String(d._id), d]));
+    for (const m of approval.members) {
+      const doc = byId.get(m.product);
+      if (!doc) return res.status(400).json({ message: "A product in the group was not found." });
+      if (!isGroupable(doc)) {
+        return res.status(409).json({ message: `"${doc.name}" is already part of another product or can't be grouped. Refresh the preview.` });
+      }
+    }
+
+    const ordered = approval.members.map((m) => byId.get(m.product));
+    // The main product's details come from the printed edition when there is one
+    const source = ordered.find((d) => d.isDigital !== true) || ordered[0];
+    const actor = await getAdminActorSnapshot(req.user);
+    const parent = await Product.create({
+      name: approval.name,
+      productType: "single",
+      price: Math.min(...ordered.map((d) => Math.max(0, Number(d.price) || 0))),
+      stock: 0,
+      category: source.category || "General",
+      description: source.description || "",
+      aboutProduct: Array.isArray(source.aboutProduct) ? source.aboutProduct : [],
+      image: source.image || "",
+      images: Array.isArray(source.images) ? source.images : source.image ? [source.image] : [],
+      trailerVideoUrl: source.trailerVideoUrl || "",
+      isDigital: ordered.every((d) => d.isDigital === true),
+      lastUpdatedByName: actor.name,
+      lastUpdatedByEmail: actor.email,
+      lastUpdatedAt: new Date()
+    });
+
+    const linked = approval.members.map((m, position) => ({ product: m.product, label: m.label, position }));
+    await reconcileSingleFormats(parent, [], linked, actor);
+    for (const m of approval.members) {
+      if (m.typeKey) await Product.updateOne({ _id: m.product }, { $set: { formatTypeKey: m.typeKey } });
+    }
+    const saved = await Product.findById(parent._id).select("_id options").lean();
+    await syncSingleOptionParent({ _id: parent._id, options: saved?.options || [] });
+
+    await logAdminAction({
+      req,
+      action: "product-formats-grouped",
+      entityType: "product",
+      entityId: String(parent._id),
+      entityLabel: approval.name,
+      summary: `Grouped ${approval.members.length} products under ${approval.name}`,
+      details: { members: approval.members }
+    });
+
+    invalidateProductCache();
+    res.json({ message: `Grouped ${approval.members.length} products under "${approval.name}".`, product: await Product.findById(parent._id).lean() });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to group the products.", error: error.message });
+  }
+});
+
 // Get products with pagination — cached in-memory only to prevent client configuration lag
 router.get("/", async (req, res) => {
   try {
@@ -1811,8 +1967,12 @@ router.get("/:id/reviews", async (req, res) => {
     const skip = Math.max(0, parseInt(req.query.skip) || 0);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
 
-    // Try fetching from the new standalone Reviews collection first
-    const reviews = await Review.find({ product: req.params.id })
+    // Try fetching from the new standalone Reviews collection first (with its formats' reviews)
+    const scopeProduct = mongoose.Types.ObjectId.isValid(String(req.params.id))
+      ? await Product.findById(req.params.id).select("_id hasOptions options").lean()
+      : null;
+    const scopeIds = scopeProduct ? reviewScopeIds(scopeProduct) : [];
+    const reviews = await Review.find({ product: scopeIds.length ? { $in: scopeIds } : req.params.id })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -1890,9 +2050,10 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Try loading reviews from the new standalone collection
-    const reviewsCount = await Review.countDocuments({ product: product._id });
-    const latestReviews = await Review.find({ product: product._id })
+    // Try loading reviews from the new standalone collection (with its formats' reviews)
+    const reviewIds = reviewScopeIds(product);
+    const reviewsCount = await Review.countDocuments({ product: { $in: reviewIds } });
+    const latestReviews = await Review.find({ product: { $in: reviewIds } })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();
@@ -1904,6 +2065,7 @@ router.get("/:id", async (req, res) => {
         user: r.userName
       }));
       product.reviewsCount = reviewsCount;
+      if (reviewIds.length > 1) product.rating = (await combinedReviewStats(reviewIds)).rating;
     } else {
       // Fallback: use old embedded reviews array if standalone is empty
       const embeddedReviews = Array.isArray(product.reviews) ? product.reviews : [];
@@ -1995,7 +2157,7 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
 
     // 2. Recalculate average rating & reviews count using MongoDB aggregation
     const stats = await Review.aggregate([
-      { $match: { product: product._id } },
+      { $match: { product: { $in: reviewScopeIds(product) } } },
       {
         $group: {
           _id: "$product",
@@ -2027,8 +2189,11 @@ router.post("/:id/reviews", protect, reviewRateLimiter, async (req, res) => {
 
     await product.save();
 
+    // A review written on a format also counts for the product it is sold under
+    if (product.optionParent) await syncOptionParents(product._id);
+
     // 4. Retrieve latest 5 reviews to send back as expected shape
-    const latestReviews = await Review.find({ product: req.params.id })
+    const latestReviews = await Review.find({ product: { $in: reviewScopeIds(product) } })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();

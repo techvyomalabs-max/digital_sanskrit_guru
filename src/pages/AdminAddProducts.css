@@ -1674,3 +1674,30 @@ body.admin-dark .pf-badge--hidden {
     gap: 4px;
   }
 }
+
+/* ── Product types on a single product's formats ─────────────────────────── */
+.pf-type-picker {
+  margin: 12px 0 4px;
+}
+
+.pf-formats-pack .pf-field-wide {
+  grid-column: span 2;
+}
+
+.pf-formats-pack .pf-check-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  grid-column: span 2;
+}
+
+.pf-formats-pack .pf-check-field input {
+  width: auto;
+}
+
+@media (max-width: 720px) {
+  .pf-formats-pack .pf-field-wide,
+  .pf-formats-pack .pf-check-field {
+    grid-column: 1 / -1;
+  }
+}

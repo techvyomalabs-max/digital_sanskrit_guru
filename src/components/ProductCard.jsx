@@ -181,7 +181,10 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       <div className="product-info">
         <p className="product-card-meta">
           <span className="product-category">{product.category || "General"}</span>
-          <span className="product-format-pill">{getProductFormat(product)}</span>
+          {/* Skip the format when it only repeats the category ("Combo · Combo") */}
+          {getProductFormat(product).toLowerCase() !== String(product.category || "General").trim().toLowerCase() ? (
+            <span className="product-format-pill">{getProductFormat(product)}</span>
+          ) : null}
         </p>
 
         <Link to={productPath(product)} className="product-title-link" title={product.name}>
