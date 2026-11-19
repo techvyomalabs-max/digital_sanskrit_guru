@@ -86,38 +86,75 @@ async function releaseRefundLock(orderId, token) {
   }
 }
 
-function previewRefund({ order, refundAmount }) {
+/**
+ * @param {number} [usedCodesValueInInr] value of the order's codes already redeemed; they were
+ *   used, so that much of the balance can't be refunded
+ * @param {boolean} [clipToRemaining] refund at most what can be refunded instead of refusing
+ */
+function previewRefund({ order, refundAmount, usedCodesValueInInr = 0, clipToRemaining = false }) {
   if (!order) {
     throw new RefundError("Order not found.", 404);
   }
 
   const totalInInr = Number(order.totalInInr || order.total || 0);
   const refundedInInr = Number(order.refundedAmountInInr || 0);
-  const remainingInInr = Math.max(0, Math.round((totalInInr - refundedInInr) * 100) / 100);
+  const usedValue = Math.max(0, Number(usedCodesValueInInr) || 0);
+  const remainingInInr = Math.max(0, Math.round((totalInInr - refundedInInr - usedValue) * 100) / 100);
 
-  const requestedAmount = Number.isFinite(Number(refundAmount)) && Number(refundAmount) > 0
+  let requestedAmount = Number.isFinite(Number(refundAmount)) && Number(refundAmount) > 0
     ? Number(refundAmount)
     : remainingInInr;
+  if (clipToRemaining) requestedAmount = Math.min(requestedAmount, remainingInInr);
 
+  const usedNote = usedValue > 0 ? ` ₹${Math.round(usedValue * 100) / 100} is for codes already used, which can't be refunded.` : "";
   if (requestedAmount <= 0) {
-    throw new RefundError("No refundable balance remaining for this order.", 400);
+    throw new RefundError(`No refundable balance remaining for this order.${usedNote}`, 400);
   }
 
   if (requestedAmount > remainingInInr + 0.01) {
-    throw new RefundError(`Refund amount (₹${requestedAmount}) exceeds remaining balance (₹${remainingInInr}).`, 400);
+    throw new RefundError(`Refund amount (₹${requestedAmount}) exceeds remaining balance (₹${remainingInInr}).${usedNote}`, 400);
   }
 
   return {
     orderId: order._id,
     totalInInr,
     alreadyRefundedInInr: refundedInInr,
+    usedCodesValueInInr: Math.round(usedValue * 100) / 100,
     remainingRefundableInInr: remainingInInr,
     proposedRefundAmountInInr: requestedAmount,
     currency: "INR"
   };
 }
 
-async function processGatewayRefund({ orderId, refundAmount, reason = "Admin requested refund", actor, isManualOnly = false, forceManual = false, itemIds = [] }) {
+/** The order's codes (only looked up when it has some). */
+async function loadOrderCodes(order) {
+  const { orderHasCodes } = require("./codeRefunds");
+  if (!orderHasCodes(order)) return [];
+  const GiftPass = require("../models/GiftPass");
+  return GiftPass.find({ order: order._id }).select("lineIndex isRedeemed isRevoked").lean();
+}
+
+/**
+ * After a refund, the refunded items' codes that nobody has used yet stop working. Used codes
+ * keep working: they were not refunded. (A full refund still revokes every code, below.)
+ */
+async function revokeUnusedCodesOfRefundedItems(order, itemIds) {
+  try {
+    const { orderHasCodes, refundedLineIndexes } = require("./codeRefunds");
+    if (!orderHasCodes(order)) return;
+    const lines = refundedLineIndexes(order, itemIds);
+    if (lines.length === 0) return;
+    const GiftPass = require("../models/GiftPass");
+    await GiftPass.updateMany(
+      { order: order._id, lineIndex: { $in: lines }, isRedeemed: { $ne: true }, isRevoked: { $ne: true } },
+      { $set: { isRevoked: true, revokedAt: new Date(), revokedReason: "item-refunded" } }
+    );
+  } catch (err) {
+    console.error(`[Refund] Could not stop the unused codes of order ${order?._id}:`, err.message);
+  }
+}
+
+async function processGatewayRefund({ orderId, refundAmount, reason = "Admin requested refund", actor, isManualOnly = false, forceManual = false, itemIds = [], clipToRefundable = false }) {
   const actorId = actor?._id || actor?.id || "admin";
   const { order: lockedOrder, token } = await acquireRefundLock(orderId, actorId);
 
@@ -136,7 +173,16 @@ async function processGatewayRefund({ orderId, refundAmount, reason = "Admin req
       );
     }
 
-    const preview = previewRefund({ order: lockedOrder, refundAmount });
+    // Codes already redeemed were used: their value is not refunded
+    const { usedCodesValue } = require("./codeRefunds");
+    const codePasses = await loadOrderCodes(lockedOrder);
+    const usedCodes = usedCodesValue(lockedOrder, codePasses);
+    const preview = previewRefund({
+      order: lockedOrder,
+      refundAmount,
+      usedCodesValueInInr: usedCodes.valueInInr,
+      clipToRemaining: clipToRefundable
+    });
     const amountToRefund = preview.proposedRefundAmountInInr;
     const amountInPaise = Math.round(amountToRefund * 100);
 
@@ -266,6 +312,7 @@ async function processGatewayRefund({ orderId, refundAmount, reason = "Admin req
     lockedOrder.lastUpdatedAt = new Date();
 
     const savedOrder = await lockedOrder.save();
+    await revokeUnusedCodesOfRefundedItems(savedOrder, itemIds);
     await revokeCodesIfFullyRefunded(savedOrder);
     return {
       success: true,

@@ -94,6 +94,7 @@ const { computeOrderTotals, OrderTotalsError, getWarehouseState } = require("../
 const { reserveStockForOrder, releaseStockForOrder, incrementStock, decrementStock, expandItemsForStock } = require("../utils/stock");
 const { claimCoupon, releaseCouponForOrder } = require("../utils/coupons");
 const { issueGiftPassesForOrder, revokeGiftPassesForOrder } = require("../utils/giftPasses");
+const { orderHasCodes } = require("../utils/codeRefunds");
 const { planDigitalCopies, codesForLine } = require("../utils/digitalCopies");
 const { holdGiftManualAccess, giftRecipientsForLines } = require("../utils/giftAccess");
 const { checkGiftRecipientEmail } = require("../utils/giftRecipientEmail");
@@ -2314,12 +2315,18 @@ router.get("/:id/refund-quote", protect, admin, requireAdminPage("orders"), asyn
     ? String(req.query.itemIds).split(",").map((s) => s.trim()).filter(Boolean)
     : [];
 
+  // Codes already redeemed are not refunded (see utils/codeRefunds.js)
+  const codePasses = orderHasCodes(order)
+    ? await GiftPass.find({ order: order._id }).select("lineIndex isRedeemed isRevoked").lean()
+    : [];
+
   const quote = computeRefundQuote({
     order,
     itemIds: rawItemIds,
     reason: validReason,
     gatewayFeePaise,
-    policy: refundPolicy
+    policy: refundPolicy,
+    codePasses
   });
 
   res.json(quote);
@@ -2349,7 +2356,9 @@ router.put("/:id/approve-cancellation-refund", protect, admin, requireAdminPage(
       reason: "Cancelled before dispatch: full refund",
       actor,
       isManualOnly: forceManual,
-      forceManual
+      forceManual,
+      // Less any codes already used (they can't be refunded)
+      clipToRefundable: true
     });
 
     await logAdminAction({
@@ -2447,7 +2456,10 @@ router.put("/:id/refund-status", protect, admin, requireAdminPage("orders"), asy
           itemIds,
           reason: validReason,
           gatewayFeePaise,
-          policy: refundPolicy
+          policy: refundPolicy,
+          codePasses: orderHasCodes(order)
+            ? await GiftPass.find({ order: order._id }).select("lineIndex isRedeemed isRevoked").lean()
+            : []
         });
       } catch (quoteErr) {
         console.warn("[RefundStatus] Failed to compute pre-refund quote for email:", quoteErr.message);

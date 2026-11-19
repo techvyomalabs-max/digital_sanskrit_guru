@@ -1,4 +1,5 @@
 const defaultPolicy = require("../config/refundPolicy");
+const { usedCodesValue } = require("./codeRefunds");
 
 const round2 = (num) => Math.round((Number(num) || 0) * 100) / 100;
 
@@ -12,9 +13,10 @@ const round2 = (num) => Math.round((Number(num) || 0) * 100) / 100;
  * @param {string} [params.reason="customer_choice"] - "store_fault" or "customer_choice"
  * @param {number|null} [params.gatewayFeePaise=null] - Razorpay fee in paise
  * @param {Object} [params.policy] - Refund policy config override
+ * @param {Array} [params.codePasses] - The order's shareable/gift codes; used ones are not refunded
  * @returns {Object} Quote breakdown and refundable amount
  */
-function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewayFeePaise = null, policy }) {
+function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewayFeePaise = null, policy, codePasses = [] }) {
   if (!order) {
     throw new Error("Order is required to compute refund quote");
   }
@@ -115,7 +117,11 @@ function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewa
     }
   }
 
-  const refundBase = round2(itemsValue + deliveryIncluded);
+  // Codes someone already redeemed were used, so they are not refunded
+  const usedCodes = usedCodesValue(order, codePasses, rawItemIds);
+  const usedCodesDeduction = Math.min(itemsValue, usedCodes.valueInInr);
+
+  const refundBase = round2(itemsValue - usedCodesDeduction + deliveryIncluded);
 
   // Gateway fee share logic (customer_choice only, if policy enabled)
   let feeShare = 0;
@@ -147,6 +153,13 @@ function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewa
   const lines = [
     { label: "Items", amount: itemsValue }
   ];
+
+  if (usedCodesDeduction > 0) {
+    lines.push({
+      label: `Codes already used (${usedCodes.count})`,
+      amount: -round2(usedCodesDeduction)
+    });
+  }
 
   if (deliveryIncluded > 0) {
     lines.push({ label: "Delivery charges", amount: deliveryIncluded });
@@ -180,6 +193,8 @@ function computeRefundQuote({ order, itemIds, reason = "customer_choice", gatewa
     returnShipping,
     refundable,
     remainingBefore,
+    usedCodesCount: usedCodes.count,
+    usedCodesValue: round2(usedCodesDeduction),
     feeUnknown,
     lines
   };
