@@ -483,6 +483,24 @@ const storeSettingsSchema = new mongoose.Schema(
       type: [String],
       default: () => [...DEFAULT_DIGITAL_FORMAT_TYPES]
     },
+    // Types a product can come in (Paper, Pendrive, Web Version...): see utils/productFormatTypes.js.
+    // Empty = the built-in defaults.
+    productFormatTypes: {
+      type: [
+        new mongoose.Schema(
+          {
+            key: { type: String, trim: true },
+            label: { type: String, trim: true },
+            kind: { type: String, enum: ["physical", "digital", "kindle"] },
+            hsnSac: { type: String, default: "" },
+            gstRate: { type: Number, default: null },
+            note: { type: String, default: "" }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
+    },
     heroBannerImage: {
       type: String,
       default: "",

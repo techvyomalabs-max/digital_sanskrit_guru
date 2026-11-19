@@ -989,6 +989,11 @@ async function sendTestEmail(to, stream = "transactional") {
   return sendEmail({ to, subject: `Test Email — ${SITE_NAME}`, html, type: "test", stream });
 }
 
+/** A test of a real campaign: the admin's own subject and content, to one address. */
+async function sendCampaignTestEmail({ to, subject, html, stream = "transactional" }) {
+  return sendEmail({ to, subject: `[TEST] ${cleanSubject(subject)}`, html, type: "test", stream });
+}
+
 async function sendGiftPassEmail({ to, buyerName, giftCode, productName, orderId, accessSetUpByTeam = false }) {
   const safeBuyerName = escapeHtml(buyerName);
   const safeProductName = escapeHtml(productName);
@@ -1405,6 +1410,7 @@ module.exports = {
   sendWishlistLowStockAlert,
   sendBroadcastEmail,
   sendTestEmail,
+  sendCampaignTestEmail,
   sendGiftPassEmail,
   sendBulkEnquiryEmail,
   sendSupportInterestEmail,
