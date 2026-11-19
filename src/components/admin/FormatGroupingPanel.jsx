@@ -68,12 +68,12 @@ function FormatGroupingPanel({ getAuthHeaders, productTypes = [], onGrouped }) {
     }
   };
 
-  // Undo straight away: the new main product goes to the Recycle Bin, the products return to the shop
+  // Undo straight away: the products return to the shop and the new (now empty) main product goes to the Recycle Bin
   const revert = async (group) => {
     updateGroup(group.key, { status: "reverting" });
     try {
-      await axios.delete(`/api/products/${group.parentId}`, { headers: getAuthHeaders() });
-      updateGroup(group.key, { status: "", parentId: "", message: "Reverted. The products are back in the shop as before." });
+      const res = await axios.post(`/api/products/admin/format-groups/${group.parentId}/revert`, {}, { headers: getAuthHeaders() });
+      updateGroup(group.key, { status: "", parentId: "", message: res.data?.message || "Reverted. The products are back in the shop as before." });
       onGrouped?.();
     } catch (err) {
       updateGroup(group.key, { status: "done", message: err.response?.data?.message || "Could not revert." });

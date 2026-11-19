@@ -1597,6 +1597,77 @@ router.post("/admin/format-groups/apply", protect, admin, requireAdminPage("prod
   }
 });
 
+// ── Admin: revert a grouping — unlink the existing products grouped under a main product ──
+// The linked products go back to the shop on their own. The main product and the types created
+// inside it (e.g. "+ Paper") are kept; only a main product left with nothing in it (one made by
+// "Group products") goes to the Recycle Bin. Nothing the admin created is deleted.
+router.post("/admin/format-groups/:id/revert", protect, admin, requireAdminPage("products"), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(req.params.id || ""))) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    const parent = await Product.findById(req.params.id);
+    if (!parent || parent.isDeleted === true) return res.status(404).json({ message: "Product not found" });
+    if (parent.productType !== "single" || parent.hasOptions !== true) {
+      return res.status(400).json({ message: "This product has no grouped products." });
+    }
+
+    const createdIds = new Set(
+      (Array.isArray(parent.bundleFormats) ? parent.bundleFormats : []).map((f) => String(f?.product || "")).filter(Boolean)
+    );
+    const options = Array.isArray(parent.options) ? parent.options : [];
+    const linkedIds = options.map((o) => String(o?.product || "")).filter((id) => id && !createdIds.has(id));
+    if (linkedIds.length === 0) {
+      return res.status(400).json({ message: "This product has no grouped products to revert." });
+    }
+
+    const actor = await getAdminActorSnapshot(req.user);
+    await Product.updateMany(
+      { _id: { $in: linkedIds }, optionParent: parent._id },
+      { $set: { optionParent: null, hideFromListings: false } }
+    );
+
+    const remaining = options.filter((o) => createdIds.has(String(o?.product || "")));
+    parent.options = remaining;
+    let movedToBin = false;
+    if (remaining.length === 0) {
+      // Only an empty main product is removed: nothing is left to sell under it
+      parent.hasOptions = false;
+      parent.isDeleted = true;
+      parent.deletedAt = new Date();
+      parent.deletedBy = { name: actor.name, email: actor.email };
+      movedToBin = true;
+    }
+    parent.lastUpdatedByName = actor.name;
+    parent.lastUpdatedByEmail = actor.email;
+    parent.lastUpdatedAt = new Date();
+    await parent.save();
+    if (!movedToBin) await syncSingleOptionParent({ _id: parent._id, options: remaining });
+
+    await logAdminAction({
+      req,
+      action: "product-formats-ungrouped",
+      entityType: "product",
+      entityId: String(parent._id),
+      entityLabel: String(parent.name || ""),
+      summary: `Reverted grouping of ${parent.name}: ${linkedIds.length} product${linkedIds.length === 1 ? "" : "s"} unlinked`,
+      details: { unlinked: linkedIds, keptTypes: remaining.length, movedToRecycleBin: movedToBin }
+    });
+
+    invalidateProductCache();
+    res.json({
+      message: movedToBin
+        ? `Reverted "${parent.name}". Its ${linkedIds.length} product${linkedIds.length === 1 ? " is" : "s are"} back in the shop, and the empty main product is in the Recycle Bin.`
+        : `Reverted "${parent.name}". Its ${linkedIds.length} grouped product${linkedIds.length === 1 ? " is" : "s are"} back in the shop; the types created inside it stay.`,
+      unlinked: linkedIds.length,
+      keptTypes: remaining.length,
+      movedToRecycleBin: movedToBin
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Could not revert the grouping.", error: error.message });
+  }
+});
+
 // Get products with pagination — cached in-memory only to prevent client configuration lag
 router.get("/", async (req, res) => {
   try {
