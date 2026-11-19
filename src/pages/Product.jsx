@@ -72,7 +72,7 @@ import {
 } from "../utils/countryPhoneCodes";
 import WhatsAppOtpModal from "../components/common/WhatsAppOtpModal";
 import { formatDate } from "../utils/date";
-import { MAX_DIGITAL_COPIES, MAX_RETAIL_QUANTITY, canShareDigitalCopies, maxCartQuantity } from "../utils/orderQuantity";
+import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
 import { applySeoTags } from "../utils/seo";
 import { productPath, productUrl } from "../utils/productLink";
 import ReviewPhotoPicker from "../components/reviews/ReviewPhotoPicker";
@@ -676,10 +676,8 @@ function Product() {
     const isCombo =
       memoBuyProduct.productType === "bundle" ||
       (Array.isArray(memoBuyProduct.bundleItems) && memoBuyProduct.bundleItems.length > 0);
-    // Copies count for digital products: extra copies of one you own become shareable codes
-    const copies = isDigital && !isCombo ? Math.max(1, Number(qty) || 1) : 1;
-    return isDigital || isCombo ? [{ product: memoBuyProduct._id, quantity: copies }] : [];
-  }, [memoBuyProduct, qty]);
+    return isDigital || isCombo ? [{ product: memoBuyProduct._id, quantity: 1 }] : [];
+  }, [memoBuyProduct]);
   const digitalOwnership = useDigitalOwnership(digitalOwnershipItems, purchaseAsGift, selectedAddress?.country);
 
   // Public coupons, to show offers made for this product
@@ -2011,56 +2009,6 @@ function Product() {
                         </select>
                         <ChevronDown size={18} className="product-bulk-select-chevron" aria-hidden="true" />
                         </div>
-                      </div>
-                    ) : isDigitalItem(buyProduct) && canShareDigitalCopies({ ...buyProduct, isDigital: true }) ? (
-                      <div className="product-digital-badge-wrap">
-                        <p className="product-digital-badge-pill">
-                          {isExternalDelivery(buyProduct)
-                            ? <><Globe size={14} className="ui-inline-icon" aria-hidden="true" />External Digital Access</>
-                            : <><Laptop size={14} className="ui-inline-icon" aria-hidden="true" />Web Version – instant access after payment</>}
-                        </p>
-                        {/* Same stepper as the quantity box: [ − | 3 | + ] with a label above */}
-                        <p className="product-copies-label" id="product-copies-label">Copies</p>
-                        <div className="product-qty-stepper" role="group" aria-labelledby="product-copies-label">
-                          <button
-                            type="button"
-                            className="product-qty-btn"
-                            aria-label="Fewer copies"
-                            disabled={Number(qty || 1) <= 1}
-                            onClick={() => setQty(Math.max(1, Number(qty || 1) - 1))}
-                          >
-                            <Minus size={18} strokeWidth={2.5} aria-hidden="true" />
-                          </button>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            className="product-qty-input"
-                            value={qty}
-                            min="1"
-                            max={MAX_DIGITAL_COPIES}
-                            aria-label="Number of copies"
-                            onChange={(e) => {
-                              const num = parseInt(e.target.value, 10);
-                              setQty(e.target.value === "" ? "" : Number.isNaN(num) ? qty : Math.max(1, Math.min(MAX_DIGITAL_COPIES, num)));
-                            }}
-                            onBlur={() => {
-                              const num = parseInt(qty, 10);
-                              if (qty === "" || Number.isNaN(num) || num < 1) setQty(1);
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="product-qty-btn"
-                            aria-label="More copies"
-                            disabled={Number(qty || 1) >= MAX_DIGITAL_COPIES}
-                            onClick={() => setQty(Math.min(MAX_DIGITAL_COPIES, Number(qty || 1) + 1))}
-                          >
-                            <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
-                          </button>
-                        </div>
-                        <p className="product-retail-qty-note">
-                          Buying for family, friends or a class? Copies beyond your own come as shareable codes in My Library (up to {MAX_DIGITAL_COPIES}).
-                        </p>
                       </div>
                     ) : isDigitalItem(buyProduct) ? (
                       <div className="product-digital-badge-wrap">

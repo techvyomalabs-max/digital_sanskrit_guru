@@ -9,7 +9,7 @@ import { getDeliveryPricingDetails } from "../utils/deliveryPricing";
 import { reverseGeocodeCoordinates, getCurrentDevicePosition } from "../utils/geoAddress";
 import { isKindleProduct } from "../utils/kindle";
 import { getAttribution, clearAttribution } from "../utils/attribution";
-import { canShareDigitalCopies, clampCartQuantity } from "../utils/orderQuantity";
+import { clampCartQuantity } from "../utils/orderQuantity";
 import "./Checkout.css";
 import GstinFields from "../components/GstinFields";
 import { EMPTY_GSTIN, gstinPayload } from "../utils/gstin";
@@ -29,11 +29,7 @@ function GuestBuy() {
   const parsedQty = Math.max(1, Number(rawQty || (isBulkProduct ? 10 : 1)));
   // Same limits the server applies when it prices the order (5 retail, 1 digital),
   // so the total shown here is the total charged
-  const buyQuantity = clampCartQuantity(parsedQty, {
-    isBulk: isBulkProduct,
-    isDigital: product?.isDigital === true,
-    canShareCopies: canShareDigitalCopies(product)
-  });
+  const buyQuantity = clampCartQuantity(parsedQty, { isBulk: isBulkProduct, isDigital: product?.isDigital === true });
 
   // Customer guest details
   const [name, setName] = useState("");

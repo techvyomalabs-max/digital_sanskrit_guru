@@ -39,7 +39,7 @@ import {
   Info
 } from "lucide-react";
 import "./Cart.css";
-import { MAX_RETAIL_QUANTITY, canShareDigitalCopies, maxCartQuantity } from "../utils/orderQuantity";
+import { MAX_RETAIL_QUANTITY, maxCartQuantity } from "../utils/orderQuantity";
 import { itemGstRate } from "../utils/tax";
 
 
@@ -74,10 +74,8 @@ function CartQtyInput({ item, currentQty, updateQty }) {
 
   const isBulk = String(item.productType || item.product?.productType || "").toLowerCase() === "bulk";
   const isDigital = isDigitalItem(item);
-  // Shareable digital products can be bought as several copies; others stay at one
-  const canShareCopies = canShareDigitalCopies({ ...item, isDigital });
 
-  if (isDigital && !canShareCopies) {
+  if (isDigital) {
     return (
       <div className="cart-digital-pill">
         <Zap size={12} />
@@ -106,7 +104,7 @@ function CartQtyInput({ item, currentQty, updateQty }) {
   }
 
   // Same limit the cart enforces: 5 per order (or the stock left, if lower)
-  const maxQty = maxCartQuantity({ isDigital, isBulk, stock: item.stock, canShareCopies });
+  const maxQty = maxCartQuantity({ isDigital, isBulk, stock: item.stock });
   const atLimit = Number(currentQty) >= maxQty;
 
   const applyQty = (value) => {
@@ -173,14 +171,7 @@ function CartQtyInput({ item, currentQty, updateQty }) {
       </div>
       {atLimit && (
         <span className="cart-qty-limit-note">
-          {isDigital
-            ? `Max ${maxQty} copies per order`
-            : maxQty < MAX_RETAIL_QUANTITY ? `Only ${maxQty} in stock` : `Max ${maxQty} per order`}
-        </span>
-      )}
-      {isDigital && Number(currentQty) > 1 && (
-        <span className="cart-qty-limit-note">
-          Copies beyond your own come as shareable codes in My Library
+          {maxQty < MAX_RETAIL_QUANTITY ? `Only ${maxQty} in stock` : `Max ${maxQty} per order`}
         </span>
       )}
     </div>

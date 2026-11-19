@@ -4,7 +4,6 @@ const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 const protect = require("../middleware/authMiddleware");
 const { isKindleProduct } = require("../utils/kindle");
-const { cartQuantityLimit } = require("../utils/orderQuantity");
 
 const router = express.Router();
 
@@ -128,7 +127,7 @@ router.post("/", protect, async (req, res) => {
     return res.status(400).json({ message: "productId is required" });
   }
 
-  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType optionParent hasOptions bundleItems digitalDelivery externalAccessManual");
+  const product = await Product.findById(productId).select("_id productType stock name category isDigital format kindleLink digitalType optionParent hasOptions");
   if (!product) {
     return res.status(404).json({ message: "Product not found" });
   }
@@ -147,14 +146,18 @@ router.post("/", protect, async (req, res) => {
   const index = cart.items.findIndex((item) => getProductId(item.product) === productKey);
   const addQty = normalizeQuantity(qty);
   const isBulk = String(product.productType || "single").toLowerCase() === "bulk";
-  // Digital products whose extra copies become shareable codes may hold several copies
-  const maxQty = cartQuantityLimit(product, isDigitalProduct(product));
+  const isDigital = isDigitalProduct(product);
+  const maxQty = isDigital ? 1 : isBulk ? 99999 : 5;
 
   if (index >= 0) {
-    const totalQty = Number(cart.items[index].quantity || 1) + addQty;
-    cart.items[index].quantity = isBulk ? totalQty : Math.min(maxQty, totalQty);
+    if (isDigital) {
+      cart.items[index].quantity = 1;
+    } else {
+      const totalQty = Number(cart.items[index].quantity || 1) + addQty;
+      cart.items[index].quantity = isBulk ? totalQty : Math.min(maxQty, totalQty);
+    }
   } else {
-    cart.items.push({ product: product._id, quantity: isBulk ? addQty : Math.min(maxQty, addQty) });
+    cart.items.push({ product: product._id, quantity: isDigital ? 1 : (isBulk ? addQty : Math.min(maxQty, addQty)) });
   }
 
   await cart.save();
@@ -186,9 +189,10 @@ router.put("/:productId", protect, async (req, res) => {
 
   const itemProduct = cart.items[index].product;
   const isBulk = String(itemProduct?.productType || "single").toLowerCase() === "bulk";
-  const maxQty = cartQuantityLimit(itemProduct, isDigitalProduct(itemProduct));
+  const isDigital = isDigitalProduct(itemProduct);
+  const maxQty = isDigital ? 1 : isBulk ? 99999 : 5;
 
-  cart.items[index].quantity = isBulk ? nextQty : Math.min(maxQty, nextQty);
+  cart.items[index].quantity = isDigital ? 1 : (isBulk ? nextQty : Math.min(maxQty, nextQty));
   await cart.save();
   await cart.populate(CART_POPULATE);
 

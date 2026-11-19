@@ -55,10 +55,6 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
       }
     }
 
-    if (existingPass.isRevoked) {
-      return res.status(400).json({ message: "This code is no longer valid (the order it came from was refunded or cancelled)." });
-    }
-
     if (existingPass.isRedeemed) {
       return res.status(400).json({ message: "This Gift Pass has already been redeemed." });
     }
@@ -81,7 +77,7 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
 
     // Atomically claim the gift pass
     const giftPass = await GiftPass.findOneAndUpdate(
-      { code: rawCode, isRedeemed: false, isRevoked: { $ne: true } },
+      { code: rawCode, isRedeemed: false },
       {
         $set: {
           isRedeemed: true,
@@ -116,37 +112,6 @@ router.post("/redeem", protect, giftRedeemLimiter, async (req, res) => {
   } catch (err) {
     console.error("[GiftRoutes] Redeem error:", err.message);
     return res.status(500).json({ message: "Failed to redeem Gift Pass. Please try again." });
-  }
-});
-
-// GET /api/gifts/my-codes — the shareable codes this user bought (gift orders and extra
-// copies), newest first, with their status. The redeemer is shown by first name only.
-router.get("/my-codes", protect, async (req, res) => {
-  try {
-    const passes = await GiftPass.find({ buyer: req.user })
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .populate("redeemedBy", "name")
-      .populate("order", "paymentStatus status createdAt")
-      .lean();
-    const codes = passes
-      .filter((p) => p.order && p.order.paymentStatus === "Paid")
-      .map((p) => ({
-        id: String(p._id),
-        code: p.isRevoked ? "" : p.code,
-        productId: String(p.product),
-        productName: p.productName || "Digital item",
-        orderId: String(p.order._id),
-        orderRef: String(p.order._id).slice(-8).toUpperCase(),
-        purchasedAt: p.order.createdAt || p.createdAt,
-        status: p.isRevoked ? "revoked" : p.isRedeemed ? "redeemed" : "available",
-        redeemedAt: p.redeemedAt || null,
-        redeemedByName: p.isRedeemed ? String(p.redeemedBy?.name || "").split(/\s+/)[0] || "Someone" : ""
-      }));
-    return res.json({ success: true, codes });
-  } catch (err) {
-    console.error("[GiftRoutes] my-codes error:", err.message);
-    return res.status(500).json({ message: "Failed to load your codes." });
   }
 });
 

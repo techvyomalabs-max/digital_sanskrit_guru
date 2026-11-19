@@ -81,10 +81,9 @@ function serializeOrderForOwner(order, viewerUserId, options = {}) {
       ? new Set(Array.from(options.redeemedProductIds).map(String))
       : new Set();
     plain.items = (plain.items || []).map((it) => {
-      // For the buyer, gift lines (and lines where every copy became a shareable code) have their
-      // digital links stripped because the codes are for other people, unless the buyer
-      // redeemed that pass themselves (then it's theirs to read).
-      const isGiftLine = isGiftOrder || Boolean(it?.giftCode) || it?.isGift === true;
+      // For the buyer, gift lines have their digital links stripped because the pass is for the
+      // recipient, unless the buyer redeemed that pass themselves (then it's theirs to read).
+      const isGiftLine = isGiftOrder || Boolean(it?.giftCode);
       const redeemedByViewer = isGiftLine && selfRedeemed.has(String(it?.product || it?._id || it?.id || ""));
       const allowed = (!isGiftLine || redeemedByViewer) && hasItemDigitalAccess(plain, it);
       const mapped = mapItem(it, allowed);

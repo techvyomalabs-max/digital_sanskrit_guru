@@ -15,20 +15,6 @@ class RefundError extends Error {
   }
 }
 
-/**
- * A fully refunded order's shareable/gift codes stop working (redeemed ones lose access too),
- * the same as when an order is cancelled. Loaded lazily to keep module loading simple.
- */
-async function revokeCodesIfFullyRefunded(order) {
-  if (String(order?.refundStatus || "") !== "Refunded") return;
-  try {
-    const { revokeGiftPassesForOrder } = require("./giftPasses");
-    await revokeGiftPassesForOrder(order._id, "order-refunded");
-  } catch (err) {
-    console.error(`[Refund] Could not revoke codes for order ${order?._id}:`, err.message);
-  }
-}
-
 async function acquireRefundLock(orderId, actorId) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + REFUND_LOCK_TIMEOUT_MS);
@@ -266,7 +252,6 @@ async function processGatewayRefund({ orderId, refundAmount, reason = "Admin req
     lockedOrder.lastUpdatedAt = new Date();
 
     const savedOrder = await lockedOrder.save();
-    await revokeCodesIfFullyRefunded(savedOrder);
     return {
       success: true,
       order: savedOrder,
@@ -396,7 +381,6 @@ async function recordWebhookRefund(refund) {
 
     // The order's save hook gives the new refund its credit note number
     const saved = await lockedOrder.save();
-    await revokeCodesIfFullyRefunded(saved);
     const entry = saved.paymentMeta.refunds.find((r) => r.refundId === plan.entry.refundId);
     return {
       action: "recorded",

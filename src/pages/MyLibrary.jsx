@@ -7,7 +7,6 @@ import { useToast } from "../hooks/useToast";
 import { isExternalDelivery } from "../utils/digitalDelivery";
 import { isAccessPending } from "../utils/accessStatus";
 import ComboLibraryCard from "../components/library/ComboLibraryCard";
-import ShareableCodes from "../components/library/ShareableCodes";
 import ComboPackView from "../components/library/ComboPackView";
 import { comboPackKey } from "../components/library/comboPack";
 import "./MyLibrary.css";
@@ -238,10 +237,9 @@ function MyLibrary() {
       const isOrderLegacy = Boolean(order.isWpArchive || order.legacyAccess || String(order._id || "").startsWith("wp_"));
 
       order.items.forEach((item, itemIdx) => {
-        // Gift lines and lines bought only as shareable codes aren't the buyer's own copy. A gift
-        // shows here for the person who redeemed it (the recipient, or the buyer if they
+        const isGiftItem = Boolean(order.isGift || item.giftCode);
+        // A gift shows here for the person who redeemed it (the recipient, or the buyer if they
         // redeemed their own pass)
-        const isGiftItem = Boolean(order.isGift || item.giftCode || item.isGift);
         if (isGiftItem && !order.isRedeemedGift && !item.redeemedByViewer) {
           return;
         }
@@ -578,8 +576,6 @@ function MyLibrary() {
           </button>
         </div>
       </div>
-
-      <ShareableCodes token={token} refreshKey={orders.length} />
 
       {isLoading ? (
         <div className="my-library-loading">

@@ -273,8 +273,6 @@ async function computeOrderTotals({
     total,
     fxRateToInr,
     totalInInr: roundMoney(total * fxRateToInr),
-    // What the buyer already owns (for deciding which digital copies go to them)
-    ownedDigitalIds: ownedSet || new Set(),
     taxDetails,
     chargeAmount: settlement.amount,
     chargeCurrency: settlement.currency,
