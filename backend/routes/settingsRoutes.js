@@ -15,6 +15,11 @@ const {
   DEFAULT_DIGITAL_FORMAT_TYPES,
   PRODUCT_SETTINGS_KEYS
 } = require("../utils/digitalFormatTypes");
+const {
+  normalizeProductFormatTypes,
+  resolveProductFormatTypes,
+  publicProductFormatTypes
+} = require("../utils/productFormatTypes");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -346,6 +351,9 @@ function normalizeSettings(settings) {
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
+    productFormatTypes: resolveProductFormatTypes(
+      (settings?.productFormatTypes || []).map((t) => (t?.toObject ? t.toObject() : t))
+    ),
     heroBannerImage: heroBanners[0]?.image || "",
     heroBannerProductId: heroBanners[0]?.productId || "",
     heroBanners,
@@ -489,7 +497,8 @@ function buildPublicSettingsPayload(settings) {
       enableOtpVerification: normalized.whatsappSettings.mode === "api" && normalized.whatsappSettings.enableOtpVerification !== false
     },
     sponsors:         normalized.sponsors,
-    storeIcons:       normalized.storeIcons
+    storeIcons:       normalized.storeIcons,
+    productFormatTypes: publicProductFormatTypes(normalized.productFormatTypes)
   };
 }
 
@@ -512,6 +521,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
+  if (JSON.stringify(previousSettings?.productFormatTypes || []) !== JSON.stringify(nextSettings?.productFormatTypes || [])) changes.push("product types");
   if (JSON.stringify(previousSettings?.heroBanners || []) !== JSON.stringify(nextSettings?.heroBanners || [])) changes.push("hero banners");
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
@@ -697,6 +707,13 @@ router.put("/", protect, admin, (req, res, next) => {
       digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
     }
   }
+  const hasProductFormatTypes = Array.isArray(req.body?.productFormatTypes);
+  let productFormatTypes = null;
+  if (hasProductFormatTypes) {
+    const typesRes = normalizeProductFormatTypes(req.body.productFormatTypes);
+    if (typesRes.error) return res.status(400).json({ message: typesRes.error });
+    productFormatTypes = typesRes.types;
+  }
   const hasSponsors = Array.isArray(req.body?.sponsors);
   const sponsors = hasSponsors
     ? normalizeSponsors(req.body?.sponsors)
@@ -818,6 +835,7 @@ router.put("/", protect, admin, (req, res, next) => {
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
   settings.digitalFormatTypes = digitalFormatTypes;
+  if (productFormatTypes) settings.productFormatTypes = productFormatTypes;
   settings.sponsors = sponsors;
   const nextHeroBanners = hasHeroBanners
     ? normalizeHeroBanners(req.body?.heroBanners || [])
@@ -934,6 +952,15 @@ router.put("/", protect, admin, (req, res, next) => {
       changedSections
     }
   });
+
+  if (productFormatTypes && changedSections.includes("product types")) {
+    try {
+      const { syncFormatTypeTax } = require("../services/formatTypeSync");
+      await syncFormatTypeTax(normalizedSettings.productFormatTypes);
+    } catch (err) {
+      console.error("[Settings] Product type tax sync failed:", err.message);
+    }
+  }
 
   res.json(sanitizeSettingsForResponse(normalizedSettings, req.adminLevel));
   // Settings change may affect pricing/home data — flush all relevant caches

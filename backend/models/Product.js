@@ -177,6 +177,11 @@ const bundleFormatSchema = new mongoose.Schema(
     length: { type: Number, default: 0, min: 0 },
     width: { type: Number, default: 0, min: 0 },
     height: { type: Number, default: 0, min: 0 },
+    // Single products: the product type it is (see utils/productFormatTypes.js), and the admin's own
+    // HSN/SAC and GST for it ("" / null = follow the type). The format's product holds the values used.
+    typeKey: { type: String, default: "" },
+    hsnSac: { type: String, default: "" },
+    gstRate: { type: Number, default: null },
     // Manual price; null = the total of the format's items.
     price: {
       type: Number,
@@ -500,6 +505,11 @@ const productSchema = new mongoose.Schema(
     },
     // Set on the hidden products the server creates for a combo's formats (the format's key).
     bundleFormatKey: {
+      type: String,
+      default: ""
+    },
+    // On a single product's format: which product type it is (Paper, Web Version...)
+    formatTypeKey: {
       type: String,
       default: ""
     }
