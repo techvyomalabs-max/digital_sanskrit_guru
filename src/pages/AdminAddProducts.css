@@ -1701,3 +1701,12 @@ body.admin-dark .pf-badge--hidden {
     grid-column: 1 / -1;
   }
 }
+
+/* "The product as it is now was added as a format" note */
+.pf-hint.pf-hint-current {
+  padding: 8px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+}

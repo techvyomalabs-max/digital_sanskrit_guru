@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Consent Mode v2 defaults (GDPR & DPDP Act 2023). Must come BEFORE the GTM snippet below,
+    <!-- Consent Mode v2 defaults (DPDP Act 2023). Must come BEFORE the GTM snippet below,
          so GTM reads the consent state before its first event (gtm.js / Container Loaded). -->
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -10,10 +10,15 @@
 
       // Fetch stored consent preferences or default to denied
       window.dsgConsentSettings = { analytics: false, marketing: false };
+      // A choice counts only if made under the current cookie policy version
+      // (COOKIE_POLICY_VERSION in src/utils/cookieConsent.js: change both together)
       try {
-        const storedConsent = localStorage.getItem("dsg-cookie-consent");
-        if (storedConsent) {
-          window.dsgConsentSettings = JSON.parse(storedConsent);
+        const storedConsent = JSON.parse(localStorage.getItem("dsg-cookie-consent") || "null");
+        if (storedConsent && Number(storedConsent.version) === 2) {
+          window.dsgConsentSettings = {
+            analytics: storedConsent.analytics === true,
+            marketing: storedConsent.marketing === true
+          };
         }
       } catch (e) {}
 

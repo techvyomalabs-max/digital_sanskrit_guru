@@ -145,6 +145,8 @@ function createEmptySingleFormat(kind = "new", productType = null) {
     hsnSac: "",
     gstRate: "",
     mrp: "",
+    // "" = same category as the product
+    category: "",
     productId: ""
   };
 }
@@ -2104,6 +2106,7 @@ function AdminAddProducts() {
                         }
                       }
                     : {}),
+                  category: String(row.category || "").trim(),
                   position
                 }))
             : [],
@@ -2286,7 +2289,13 @@ function AdminAddProducts() {
             externalAccessLabel: String(optionProduct?.externalAccessLabel || ""),
             externalAccessManual: optionProduct?.externalAccessManual === true,
             kindleLink: String(optionProduct?.kindleLink || ""),
-            digitalInstructions: String(optionProduct?.digitalInstructions || "")
+            digitalInstructions: String(optionProduct?.digitalInstructions || ""),
+            // Show its own category only when it differs from the product's
+            category:
+              optionProduct?.category &&
+              String(optionProduct.category).trim().toLowerCase() !== String(product.category || "").trim().toLowerCase()
+                ? String(optionProduct.category)
+                : ""
           };
         })
       );
@@ -2604,8 +2613,55 @@ function AdminAddProducts() {
     setBundleItems((current) => [...current, createEmptyBundleItem()]);
   };
 
+  // Once a product has formats, customers can buy only those formats. So the first time a
+  // format is added, the product as it is now is added as a format too (pre-filled, editable),
+  // and stays buyable next to the new one. It gets the matching product type (Paper / Web
+  // Version) but keeps this product's own tax and online access, so nothing changes for it.
+  const currentVersionAsSingleFormat = () => {
+    const digital = isDigital === true;
+    const positive = (value) => (Number(value) > 0 ? String(value) : "");
+    const type = productTypes.find((t) => t.key === (digital ? "web-version" : "paper")) || null;
+    return {
+      ...createEmptySingleFormat("new", type),
+      label: type?.label || (digital ? "Web Version" : "Print"),
+      type: digital ? "digital" : "physical",
+      price: String(price ?? ""),
+      mrp: String(mrp ?? ""),
+      stock: digital ? "" : String(stock ?? ""),
+      weight: digital ? "" : positive(weight),
+      length: digital ? "" : positive(length),
+      width: digital ? "" : positive(width),
+      height: digital ? "" : positive(height),
+      hsnSac: String(hsnSac || ""),
+      gstRate: String(gstRate ?? ""),
+      internationalPrice: String(internationalPrice ?? ""),
+      ...(digital
+        ? {
+            digitalType: String(digitalType || ""),
+            webReaderLink: String(webReaderLink || ""),
+            kindleLink: String(kindleLink || ""),
+            digitalInstructions: String(digitalInstructions || ""),
+            digitalDelivery: digitalDelivery === "external" ? "external" : "onsite",
+            externalAccessLink: String(externalAccessLink || ""),
+            externalAccessLabel: String(externalAccessLabel || ""),
+            externalAccessManual: externalAccessManual === true
+          }
+        : {}),
+      isCurrentVersion: true
+    };
+  };
+
   const addSingleFormat = (kind, productType = null) => {
-    setSingleFormats((current) => (current.length >= 8 ? current : [...current, createEmptySingleFormat(kind, productType)]));
+    setSingleFormats((current) => {
+      if (current.length >= 8) return current;
+      const isFirst = current.length === 0 && editingProduct?.hasOptions !== true;
+      const hasCurrentVersion = isFirst && String(price ?? "").trim() !== "";
+      if (!hasCurrentVersion) return [...current, createEmptySingleFormat(kind, productType)];
+      const currentVersion = currentVersionAsSingleFormat();
+      // Adding the same type the product already is: just keep the product as that type
+      if (productType && productType.key === currentVersion.typeKey) return [currentVersion];
+      return [currentVersion, createEmptySingleFormat(kind, productType)];
+    });
   };
 
   const updateSingleFormat = (rowKey, field, value) => {
@@ -2628,6 +2684,35 @@ function AdminAddProducts() {
   };
 
   const addBundleFormat = () => {
+    // First format of a combo: the combo as it is now (all its items) becomes a format too, so it
+    // stays buyable next to the new one (e.g. Web Version and USB)
+    const isFirst = bundleFormats.length === 0;
+    const hasItem = (item) => Boolean(item && (item.productId || item.product || String(item.name || "").trim()));
+    const itemIsDigital = (item) => {
+      if (item?.isDigital === true || item?.product?.isDigital === true) return true;
+      const id = String(item?.productId || item?.product?._id || item?.product || "");
+      return products.some((candidate) => String(candidate?._id) === id && candidate?.isDigital === true);
+    };
+    const filledItems = bundleItems.filter(hasItem);
+    if (isFirst && filledItems.length > 0) {
+      const allDigital = filledItems.every(itemIsDigital);
+      const anyDigital = filledItems.some(itemIsDigital);
+      const current = {
+        ...createEmptyBundleFormat(),
+        label: allDigital ? "Web Version" : anyDigital ? "Complete" : "Print",
+        type: allDigital ? "digital" : anyDigital ? "" : "physical",
+        isCurrentVersion: true
+      };
+      setBundleFormats([current, createEmptyBundleFormat()]);
+      setBundleItems((items) =>
+        items.map((item) =>
+          hasItem(item)
+            ? { ...item, formats: [...new Set([...(Array.isArray(item.formats) ? item.formats : []), current.rowKey])] }
+            : item
+        )
+      );
+      return;
+    }
     setBundleFormats((current) => (current.length >= 8 ? current : [...current, createEmptyBundleFormat()]));
   };
 
@@ -3966,6 +4051,13 @@ function AdminAddProducts() {
                               <button type="button" onClick={addBundleFormat}>＋ Add format</button>
                             ) : null}
                           </div>
+                          {bundleFormats.some((format) => format.isCurrentVersion) ? (
+                            <p className="pf-hint pf-hint-current">
+                              <strong>Customers can buy only the formats listed here.</strong> So the combo as it is
+                              now (all its items) was added as the first format: rename it, set its price, or remove it
+                              if it should no longer be sold. Then tick the items of each new format below.
+                            </p>
+                          ) : null}
                           {bundleFormats.length > 0 ? (
                             <div className="pf-formats-table">
                               <div className="pf-formats-row pf-formats-row--head">
@@ -4284,6 +4376,13 @@ function AdminAddProducts() {
                           </div>
                         ) : null}
 
+                        {singleFormats.some((row) => row.isCurrentVersion) ? (
+                          <p className="pf-hint pf-hint-current">
+                            <strong>Customers can buy only the formats listed here.</strong> So the product as it
+                            is now was added as the first format (pre-filled with its type, price and stock): rename
+                            or change it if needed, or remove it if it should no longer be sold.
+                          </p>
+                        ) : null}
                         {singleFormats.length > 0 ? (
                           <div className="pf-single-formats-list">
                             {singleFormats.map((row, index) => {
@@ -4294,11 +4393,13 @@ function AdminAddProducts() {
                                     <span className={`pf-single-format-kind ${row.kind}`}>
                                       {row.kind === "linked"
                                         ? "Linked product"
-                                        : productTypeOf(row)
-                                          ? `${productTypeOf(row).label} · ${
-                                              rowKindOf(row) === "kindle" ? "sold on Amazon" : rowKindOf(row) === "digital" ? "digital" : "shipped"
-                                            }`
-                                          : "Other format"}
+                                        : `${row.isCurrentVersion ? "This product as it is now · " : ""}${
+                                            productTypeOf(row)
+                                              ? `${productTypeOf(row).label} · ${
+                                                  rowKindOf(row) === "kindle" ? "sold on Amazon" : rowKindOf(row) === "digital" ? "digital" : "shipped"
+                                                }`
+                                              : "Other format"
+                                          }`}
                                     </span>
                                     <div className="pf-single-format-tools">
                                       <button
@@ -4384,6 +4485,26 @@ function AdminAddProducts() {
                                             </select>
                                           </label>
                                         )}
+                                        <label className="pf-formats-pack-field pf-format-category-field">
+                                          <span>Category</span>
+                                          <select
+                                            value={row.category || ""}
+                                            title={row.category || `Same as product (${category || "General"})`}
+                                            onChange={(e) => updateSingleFormat(row.rowKey, "category", e.target.value)}
+                                          >
+                                            <option value="">Same as product ({category || "General"})</option>
+                                            {row.category && !categoryOptions.includes(row.category) ? (
+                                              <option value={row.category}>{row.category}</option>
+                                            ) : null}
+                                            {categoryOptions
+                                              .filter((option) => option !== category)
+                                              .map((option) => (
+                                                <option key={option} value={option}>
+                                                  {option}
+                                                </option>
+                                              ))}
+                                          </select>
+                                        </label>
                                         <label className="pf-formats-pack-field">
                                           <span>Price (Rs)</span>
                                           <input

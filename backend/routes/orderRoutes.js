@@ -67,7 +67,7 @@ const getRazorpayClient = require("../utils/razorpay");
 const { applyPaidPaymentMeta } = require("../utils/paidPaymentMeta");
 const PaymentIntent = require("../models/PaymentIntent");
 const { findOwnedIntent, noteUnpaidCheckout, linkPaidCheckout, describePaymentAttempts } = require("../utils/failedPayments");
-const { verifyRazorpayPaymentForOrder, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
+const { verifyRazorpayPaymentForOrder, verifyRazorpayPaymentByLookup, getSettlementCharge, sendPaymentVerificationError, isDuplicatePaymentIdError } = require("../utils/paymentVerification");
 const { hasDigitalAccess, hasItemDigitalAccess, stripDigitalFields, serializeOrderForOwner } = require("../utils/orderAccess");
 const {
   canAutoComplete,
@@ -514,8 +514,40 @@ async function emailIssuedGiftPasses(order, issued) {
 }
 
 // Create order (logged-in user)
-router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res) => {
+/**
+ * A failed attempt inside the Razorpay window can leave a "Failed" order, and then a retry in
+ * the same window succeeds. Once that checkout is paid, the "Failed" order is only confusing
+ * (and its "Continue payment" would charge again), so it is removed. It never held money:
+ * no stock, coupon or gift codes are reserved for an unpaid order. Never throws.
+ */
+async function removeSupersededFailedOrders({ userId, razorpayOrderId, paidOrderId }) {
+  if (!userId || !razorpayOrderId) return 0;
   try {
+    const result = await Order.deleteMany({
+      _id: { $ne: paidOrderId },
+      user: userId,
+      "paymentMeta.razorpayOrderId": razorpayOrderId,
+      paymentStatus: { $in: ["Failed", "Pending"] },
+      $or: [{ "paymentMeta.razorpayPaymentId": "" }, { "paymentMeta.razorpayPaymentId": { $exists: false } }]
+    });
+    if (result?.deletedCount) {
+      console.info(`[Order] Removed ${result.deletedCount} failed attempt(s) of checkout ${razorpayOrderId}, paid in order ${paidOrderId}`);
+    }
+    return result?.deletedCount || 0;
+  } catch (err) {
+    console.warn("[Order] Could not remove the failed attempt order:", err?.message || err);
+    return 0;
+  }
+}
+
+/**
+ * Places an order (POST /api/orders). Also used by services/orderRecovery.js to create the
+ * order for a payment whose browser closed before it could: then req.serverRecovery is true,
+ * there is no browser signature, and the payment is checked directly with Razorpay instead.
+ */
+async function placeOrder(req, res) {
+  try {
+    const isServerRecovery = req.serverRecovery === true;
     const rawPaymentStatus = String(req.body?.paymentStatus || "Pending").trim();
     if (!allowedPaymentStatuses.has(rawPaymentStatus)) {
       return res.status(400).json({ message: "Invalid payment status." });
@@ -534,7 +566,8 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       settings
     });
 
-    if (req.body.total !== undefined && Math.abs(totals.total - Number(req.body.total)) > 0.05) {
+    // (Recovery skips this: the amount actually paid is checked against Razorpay below)
+    if (!isServerRecovery && req.body.total !== undefined && Math.abs(totals.total - Number(req.body.total)) > 0.05) {
       return res.status(400).json({
         message: `Order total mismatch. Server calculated: ${totals.total}, Client provided: ${req.body.total}`
       });
@@ -546,7 +579,7 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
 
     let verifiedPayment = null;
     if (rawPaymentStatus === "Paid") {
-      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      if (!razorpayOrderId || !razorpayPaymentId || (!razorpaySignature && !isServerRecovery)) {
         return res.status(400).json({ message: "Payment reference is required to place paid order." });
       }
 
@@ -554,13 +587,20 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
         return res.status(409).json({ message: "Payment already used" });
       }
 
-      const v = await verifyRazorpayPaymentForOrder({
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        expectedAmount: totals.chargeAmount,
-        expectedCurrency: totals.chargeCurrency
-      });
+      const v = isServerRecovery
+        ? await verifyRazorpayPaymentByLookup({
+            razorpayOrderId,
+            razorpayPaymentId,
+            expectedAmount: totals.chargeAmount,
+            expectedCurrency: totals.chargeCurrency
+          })
+        : await verifyRazorpayPaymentForOrder({
+            razorpayOrderId,
+            razorpayPaymentId,
+            razorpaySignature,
+            expectedAmount: totals.chargeAmount,
+            expectedCurrency: totals.chargeCurrency
+          });
 
       if (!v.ok) {
         return sendPaymentVerificationError(res, v, razorpayPaymentId);
@@ -605,6 +645,21 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
       ? await findOwnedIntent({ razorpayOrderId, userId: req.user }, { PaymentIntent }).catch(() => null)
       : null;
     const unpaidRazorpayOrderId = unpaidIntent && !unpaidIntent.orderId ? unpaidIntent.razorpayOrderId : "";
+
+    // This checkout was paid after all (a retry inside the Razorpay window succeeded): no
+    // "Failed" order, or the customer could be asked to pay twice
+    if (!verifiedPayment && unpaidIntent) {
+      const paidAlready =
+        ["captured", "recovering", "linked"].includes(unpaidIntent.status) && unpaidIntent.razorpayPaymentId
+          ? true
+          : Boolean(await Order.exists({ "paymentMeta.razorpayOrderId": unpaidIntent.razorpayOrderId, paymentStatus: "Paid" }));
+      if (paidAlready) {
+        return res.status(409).json({
+          code: "CHECKOUT_ALREADY_PAID",
+          message: "This payment went through. Your order is in My Orders."
+        });
+      }
+    }
 
     const order = await Order.create({
       user: req.user,
@@ -684,8 +739,8 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
           await Order.updateOne({ _id: order._id }, { $set: { couponClaimed: true } });
         }
       }
-      // Gift codes and extra copies (issueGiftPassesForOrder skips orders with none)
-      {
+      // Gift codes and extra copies: only orders that have some
+      if ((order.items || []).some((it) => codesForLine(order, it) > 0)) {
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
@@ -694,6 +749,7 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     if (verifiedPayment) {
       // Mark the checkout paid now (the webhook does too, but it can be late or never arrive)
       linkPaidCheckout({ razorpayOrderId, razorpayPaymentId, orderId: order._id }, { PaymentIntent });
+      removeSupersededFailedOrders({ userId: req.user, razorpayOrderId, paidOrderId: order._id });
     }
 
     if (unpaidRazorpayOrderId) {
@@ -728,7 +784,9 @@ router.post("/", protect, orderRateLimiter, honeypotMiddleware, async (req, res)
     const status = err instanceof OrderTotalsError || err?.status ? err.status : 500;
     return res.status(status).json({ message: err.message || "Failed to place order." });
   }
-});
+}
+
+router.post("/", protect, orderRateLimiter, honeypotMiddleware, placeOrder);
 
 const autoCompletePaidDigitalOrders = async (orders) => {
   if (!Array.isArray(orders) || orders.length === 0) return orders;
@@ -3439,8 +3497,8 @@ router.post("/direct-buy", orderRateLimiter, honeypotMiddleware, async (req, res
           console.warn("[Order] Coupon claim warning on direct-buy:", couponErr.message);
         }
       }
-      // Gift codes and extra copies (issueGiftPassesForOrder skips orders with none)
-      {
+      // Gift codes and extra copies: only orders that have some
+      if ((order.items || []).some((it) => codesForLine(order, it) > 0)) {
         const issued = await issueGiftPassesForOrder(order._id);
         emailIssuedGiftPasses(order, issued).catch((err) => console.error("[GiftPass] Background email error:", err?.message));
       }
@@ -3703,4 +3761,6 @@ router.get("/digital-stream/:orderId/:itemId", authStream, async (req, res) => {
   }
 });
 
+router.placeOrder = placeOrder;
+router.removeSupersededFailedOrders = removeSupersededFailedOrders;
 module.exports = router;

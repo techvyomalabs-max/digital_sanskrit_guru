@@ -117,7 +117,7 @@ function RecommendedForYou({ className = "", initialProducts = [], excludeIds = 
           <p className="home-section-subtitle">
             {viewedHistory.length > 0
               ? "Tailored based on your recent Sanskrit browsing & learning history"
-              : "Top trending study recommendations for Sanskrit enthusiasts"}
+              : "Study recommendations for Sanskrit enthusiasts"}
           </p>
         </div>
       </div>

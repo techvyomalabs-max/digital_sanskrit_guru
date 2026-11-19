@@ -197,11 +197,17 @@ function normalizeBundleFormatsInput(input) {
     const digitalRes = normalizeFormatDigital(raw.digital, label);
     if (digitalRes.error) return { formats: [], error: digitalRes.error };
 
+    // A single product's format can have its own category (e.g. Paperback in "Book - Paperback");
+    // blank = the same as the product
+    const category =
+      raw.category === undefined ? undefined : String(raw.category ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+
     const position = Number(raw.position);
     formats.push({
       key,
       label,
       type: normalizeFormatType(raw.type),
+      ...(category !== undefined ? { category } : {}),
       price,
       stock,
       ...pack,
@@ -515,6 +521,8 @@ function buildSingleFormatChildFields(parent, format, tax = null) {
     fields[field] = isDigital ? 0 : Math.max(0, Number(format[field]) || 0);
   }
   if (format.stock !== null && format.stock !== undefined) fields.stock = format.stock;
+  // Its own category when one was chosen; otherwise the product's (copied above)
+  if (typeof format.category === "string" && format.category) fields.category = format.category;
   return fields;
 }
 

@@ -224,7 +224,7 @@ export function getAIRecommendations(
     // 5. If still no personalized reason, default to curated reason
     if (!primaryReason) {
       primaryReason = product.category
-        ? `Popular in ${product.category}`
+        ? `More in ${product.category}`
         : "Curated for your learning journey";
     }
 
@@ -375,6 +375,6 @@ function getColdStartRecommendations(catalog, limit = 8) {
     .map((product) => ({
       ...product,
       _aiScore: 10,
-      _recommendationReason: "Popular starter recommendation for Sanskrit learners"
+      _recommendationReason: "A good place to start for Sanskrit learners"
     }));
 }

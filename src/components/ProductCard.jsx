@@ -132,7 +132,6 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         </span>
       ) : null}
       {!isFestiveOffer && isBundle ? <span className="product-badge bundle">Bundle</span> : null}
-      {reviewCount > 5 && <span className="product-badge">Best Seller</span>}
       <button
         type="button"
         className="share-product-btn"
