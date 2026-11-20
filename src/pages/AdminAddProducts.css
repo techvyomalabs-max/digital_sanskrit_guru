@@ -1710,3 +1710,20 @@ body.admin-dark .pf-badge--hidden {
   background: #fffbeb;
   color: #92400e;
 }
+
+/* A type of another product: whether a content field follows the main product or is its own */
+.pf-own-content-note {
+  display: block;
+  margin-top: 4px;
+}
+
+.pf-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #9a5b00;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

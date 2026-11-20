@@ -445,6 +445,41 @@ const SINGLE_COPY_FIELDS = [
   "festiveDiscountPercent"
 ];
 
+// Content a type of a product can make its own: edited on the type, it stays when the main
+// product is saved. "images" covers the primary image and the gallery together.
+const FORMAT_OWN_CONTENT_FIELDS = ["description", "aboutProduct", "images", "trailerVideoUrl"];
+const OWN_CONTENT_PATHS = {
+  description: ["description"],
+  aboutProduct: ["aboutProduct"],
+  images: ["image", "images"],
+  trailerVideoUrl: ["trailerVideoUrl"]
+};
+
+const normText = (v) => String(v ?? "").trim();
+const normList = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+
+function sameContent(field, a, b) {
+  if (field === "images") {
+    return normText(a?.image) === normText(b?.image) && normList(a?.images).join("\n") === normList(b?.images).join("\n");
+  }
+  if (field === "aboutProduct") return normList(a?.aboutProduct).join("\n") === normList(b?.aboutProduct).join("\n");
+  return normText(a?.[field]) === normText(b?.[field]);
+}
+
+/** The content fields where a type differs from what the main product would give it. */
+function ownContentDiff(child, expected) {
+  return FORMAT_OWN_CONTENT_FIELDS.filter((field) => !sameContent(field, child, expected));
+}
+
+/** Leaves a type's own content out of the fields copied from the main product. */
+function withoutOwnContent(fields, owned = []) {
+  const next = { ...fields };
+  for (const field of Array.isArray(owned) ? owned : []) {
+    for (const path of OWN_CONTENT_PATHS[field] || []) delete next[path];
+  }
+  return next;
+}
+
 // A digital format's own empty link/notes fall back to the main product's
 const FALLBACK_DIGITAL_FIELDS = ["webReaderLink", "kindleLink", "courseLink", "digitalInstructions"];
 
@@ -540,5 +575,9 @@ module.exports = {
   isItemDigital,
   computeFormatTotal,
   buildFormatChildFields,
-  buildSingleFormatChildFields
+  buildSingleFormatChildFields,
+  FORMAT_OWN_CONTENT_FIELDS,
+  OWN_CONTENT_PATHS,
+  ownContentDiff,
+  withoutOwnContent
 };

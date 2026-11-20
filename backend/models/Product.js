@@ -508,6 +508,12 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    // A type of another product that has its own description / About / images / trailer video:
+    // those fields are no longer copied from the main product when it is saved
+    ownContentFields: {
+      type: [String],
+      default: []
+    },
     // On a single product's format: which product type it is (Paper, Web Version...)
     formatTypeKey: {
       type: String,
