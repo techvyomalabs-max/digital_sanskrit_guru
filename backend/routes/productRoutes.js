@@ -1373,7 +1373,13 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
       product.hasOptions === true &&
       (singleFormats === null ? storedFormatCount === 0 : singleFormats.length === 0) &&
       (singleLinked === null ? storedLinkedCount === 0 : singleLinked.length === 0);
-    if (singleFormatsSent && !clearsSingleFormats && (product.optionParent || product.bundleFormatKey)) {
+    // The form always sends an (empty) format list for a single product; that only changes formats
+    // when the product has formats or the list isn't empty. A format of another product (or a
+    // product linked into one) can then still be edited on its own.
+    const changesSingleFormats =
+      singleFormatsSent &&
+      (product.hasOptions === true || (singleFormats || []).length > 0 || (singleLinked || []).length > 0);
+    if (changesSingleFormats && !clearsSingleFormats && (product.optionParent || product.bundleFormatKey)) {
       return res.status(400).json({ message: "This product is a format of another product, so it can't have formats of its own." });
     }
     const nextImageValue = req.body.image ?? product.image;
@@ -1408,11 +1414,13 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     // Remember the links before saving, so reconcileSingleFormats can unlink what was removed
     const optionsBeforeSave = clearsSingleFormats ? optionsRes.options : null;
     let updatedProduct = await product.save();
-    if (singleFormatsSent) {
+    if (changesSingleFormats) {
       const parentForReconcile = optionsBeforeSave
         ? { ...updatedProduct.toObject(), options: optionsBeforeSave, hasOptions: true }
         : updatedProduct;
       updatedProduct = await reconcileSingleFormats(parentForReconcile, singleFormats, singleLinked, actor);
+    } else if (singleFormatsSent) {
+      // A single product without formats, saved with none: nothing to change
     } else if (formatsRes.formats !== undefined) {
       updatedProduct = await reconcileBundleFormats(updatedProduct, formatsRes.formats, actor);
     }
