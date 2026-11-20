@@ -502,7 +502,7 @@ const summarizeProductChanges = (before = {}, after = {}) => {
 };
 
 const OPTION_TARGET_SELECT =
-  "price internationalPrice internationalCountryPrices marketPrices isDeleted hasOptions isDigital stock";
+  "price internationalPrice internationalCountryPrices marketPrices isDeleted hasOptions isDigital stock productType";
 
 async function resolveOptionsPayload(body = {}, existingProduct = null) {
   const selfId = existingProduct ? String(existingProduct._id || "") : "";
@@ -1559,7 +1559,7 @@ router.get("/admin/format-groups/preview", protect, admin, requireAdminPage("pro
   try {
     res.setHeader("Cache-Control", "no-store");
     const [products, types] = await Promise.all([
-      Product.find({ isDeleted: { $ne: true }, productType: "single", hasOptions: { $ne: true }, optionParent: null, bundleFormatKey: { $in: ["", null] } })
+      Product.find({ isDeleted: { $ne: true }, productType: { $in: ["single", "bulk"] }, hasOptions: { $ne: true }, optionParent: null, bundleFormatKey: { $in: ["", null] } })
         .select("_id name slug price stock isDigital digitalType productType hasOptions optionParent bundleFormatKey isDeleted category")
         .lean(),
       loadProductFormatTypes()

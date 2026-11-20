@@ -80,7 +80,8 @@ function FormatGroupingPanel({ getAuthHeaders, productTypes = [], onGrouped }) {
     }
   };
 
-  const labelFor = (typeKey) => productTypes.find((t) => t.key === typeKey)?.label || typeKey;
+  const labelFor = (typeKey) =>
+    productTypes.find((t) => t.key === typeKey)?.label || (typeKey === "bulk" ? "Bulk (10+ copies)" : typeKey);
 
   return (
     <section className="card fgp">
@@ -91,7 +92,9 @@ function FormatGroupingPanel({ getAuthHeaders, productTypes = [], onGrouped }) {
             Finds products that are one title in several types, like &quot;Gita Dhyanam&quot; and &quot;Gita Dhyanam - Web
             Version&quot;. Check each suggestion, untick anything that doesn&apos;t belong, then press Group. Each product keeps
             its orders, reviews, stock, My Library access and old link (it opens the main product with that type chosen).
-            To undo, move the new main product to the Recycle Bin: the products come back to the shop.
+            Names match even when one has its Sanskrit name in brackets or an offer note like &quot;Festival
+            Offer&quot;. Bulk products are listed as the Bulk type. Products already in a group, hidden products and combos are not listed. To undo, use Revert
+            grouping: the products come back to the shop.
           </p>
         </div>
         <button type="button" onClick={loadPreview} disabled={isLoading}>
@@ -156,7 +159,10 @@ function FormatGroupingPanel({ getAuthHeaders, productTypes = [], onGrouped }) {
                           <option key={t.key} value={t.key}>{t.label}</option>
                         ))}
                         {/* A suggested type that isn't in Settings yet stays as suggested, never silently changed */}
-                        {m.typeKey && !productTypes.some((t) => t.key === m.typeKey) ? (
+                        {m.productType === "bulk" || m.typeKey === "bulk" ? (
+                          <option value="bulk">Bulk (10+ copies)</option>
+                        ) : null}
+                        {m.typeKey && m.typeKey !== "bulk" && !productTypes.some((t) => t.key === m.typeKey) ? (
                           <option value={m.typeKey}>{m.label} (add it in Product types)</option>
                         ) : null}
                       </select>
