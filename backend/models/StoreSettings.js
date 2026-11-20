@@ -477,6 +477,11 @@ const storeSettingsSchema = new mongoose.Schema(
       enum: ["plain", "sky"],
       default: "plain"
     },
+    // An uploaded picture to use instead of the built-in sky (empty: the built-in sky)
+    siteBackgroundImage: {
+      type: String,
+      default: ""
+    },
     customThemes: {
       type: [customThemeSchema],
       default: []

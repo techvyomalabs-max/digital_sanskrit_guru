@@ -409,24 +409,51 @@ export function applySiteTheme(themeValue, customThemes = [], shouldPersist = tr
 
 // ── Site background: "plain" (the theme's colour) or "sky" (a sky picture behind see-through panels)
 export const SITE_BACKGROUNDS = ["plain", "sky"];
+const SITE_BACKGROUND_PATTERNS = SITE_BACKGROUNDS;
 const SITE_BACKGROUND_STORAGE_KEY = "site-background";
+
+const SITE_BACKGROUND_IMAGE_STORAGE_KEY = "site-background-image";
 
 export function readStoredSiteBackground() {
   try {
     const value = window.localStorage.getItem(SITE_BACKGROUND_STORAGE_KEY);
-    return SITE_BACKGROUNDS.includes(value) ? value : "plain";
+    return SITE_BACKGROUND_PATTERNS.includes(value) ? value : "plain";
   } catch {
     return "plain";
   }
 }
 
-export function applySiteBackground(mode, shouldPersist = true) {
+export function readStoredSiteBackgroundImage() {
+  try {
+    return String(window.localStorage.getItem(SITE_BACKGROUND_IMAGE_STORAGE_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
+const safeImageUrl = (url) => (/^https?:\/\/[^\s"'()<>]+$/i.test(String(url || "").trim()) ? String(url).trim() : "");
+
+/**
+ * mode: "plain" or "sky". imageUrl (optional): an uploaded picture used instead of the built-in
+ * sky; empty means the built-in sky.
+ */
+export function applySiteBackground(mode, shouldPersist = true, imageUrl = "") {
   if (typeof document === "undefined") return;
-  const value = SITE_BACKGROUNDS.includes(mode) ? mode : "plain";
-  document.documentElement.setAttribute("data-site-background", value);
+  const value = SITE_BACKGROUND_PATTERNS.includes(mode) ? mode : "plain";
+  const image = safeImageUrl(imageUrl);
+  const root = document.documentElement;
+  root.setAttribute("data-site-background", value);
+  if (image) {
+    root.setAttribute("data-site-background-custom", "1");
+    root.style.setProperty("--site-background-image", `url("${image}")`);
+  } else {
+    root.removeAttribute("data-site-background-custom");
+    root.style.removeProperty("--site-background-image");
+  }
   if (shouldPersist) {
     try {
       window.localStorage.setItem(SITE_BACKGROUND_STORAGE_KEY, value);
+      window.localStorage.setItem(SITE_BACKGROUND_IMAGE_STORAGE_KEY, image);
     } catch {
       // Storage blocked: the background still applies for this visit
     }

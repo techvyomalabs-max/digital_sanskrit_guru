@@ -350,6 +350,7 @@ function normalizeSettings(settings) {
     },
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     siteBackground: settings?.siteBackground === "sky" ? "sky" : "plain",
+    siteBackgroundImage: normalizeSiteBackgroundImage(settings?.siteBackgroundImage),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
@@ -488,6 +489,7 @@ function buildPublicSettingsPayload(settings) {
     currencyConversionRates: normalized.currencyConversionRates,
     siteTheme: normalized.siteTheme,
     siteBackground: normalized.siteBackground,
+    siteBackgroundImage: normalized.siteBackgroundImage,
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
@@ -522,6 +524,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.currencyConversionRates || {}) !== JSON.stringify(nextSettings?.currencyConversionRates || {})) changes.push("conversion rates");
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
   if (String(previousSettings?.siteBackground || "plain") !== String(nextSettings?.siteBackground || "plain")) changes.push("site background");
+  if (String(previousSettings?.siteBackgroundImage || "") !== String(nextSettings?.siteBackgroundImage || "")) changes.push("site background picture");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
@@ -544,9 +547,18 @@ async function getOrCreateSettings() {
   return settings;
 }
 
+// A site background picture: a web address only (uploads go to S3), never inline image data,
+// which would make every page's settings download large
+function normalizeSiteBackgroundImage(value) {
+  const url = String(value || "").trim();
+  if (!url || url.length > 2048) return "";
+  return /^https?:\/\/[^\s"'()<>]+$/i.test(url) ? url : "";
+}
+
 const THEME_KEYS = new Set([
   "siteTheme",
   "siteBackground",
+  "siteBackgroundImage",
   "customThemes",
   "heroBanners",
   "heroBannerImage",
@@ -933,6 +945,14 @@ router.put("/", protect, admin, (req, res, next) => {
       : DEFAULT_THEME;
   if (req.body?.siteBackground !== undefined) {
     settings.siteBackground = req.body.siteBackground === "sky" ? "sky" : "plain";
+  }
+  if (req.body?.siteBackgroundImage !== undefined) {
+    const raw = String(req.body.siteBackgroundImage || "").trim();
+    const url = normalizeSiteBackgroundImage(raw);
+    if (raw && !url) {
+      return res.status(400).json({ message: "The background picture must be a web address (https://...). Upload it again." });
+    }
+    settings.siteBackgroundImage = url;
   }
   settings.lastUpdatedByName = actor.name;
   settings.lastUpdatedByEmail = actor.email;

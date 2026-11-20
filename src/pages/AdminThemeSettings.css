@@ -2068,3 +2068,65 @@ color:var(--admin-muted);
     url("/images/sky-clouds.webp") center bottom / cover no-repeat,
     linear-gradient(180deg, var(--site-header-bg, #1565c0), color-mix(in srgb, var(--site-header-bg, #1565c0) 50%, #ffffff));
 }
+
+/* Sky: built-in sky or an uploaded picture */
+.theme-background-picture {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed var(--admin-border, #e2e8f0);
+  border-radius: 12px;
+}
+
+.theme-background-picture-preview {
+  flex-shrink: 0;
+  width: 200px;
+  height: 120px;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border, #e2e8f0);
+  background:
+    url("/images/sky-clouds.webp") center bottom / cover no-repeat,
+    linear-gradient(180deg, var(--site-header-bg, #1565c0), color-mix(in srgb, var(--site-header-bg, #1565c0) 50%, #ffffff));
+}
+
+.theme-background-picture-preview.has-image {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.theme-background-picture-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.theme-background-picture-text small {
+  color: var(--admin-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.theme-background-picture-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.theme-background-upload {
+  cursor: pointer;
+}
+
+.theme-background-upload.is-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.theme-background-picture-tip {
+  font-size: 12px;
+}

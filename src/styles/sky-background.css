@@ -45,6 +45,12 @@ html[data-site-background="sky"][data-site-tone="dark"] body::before {
   background: url("/images/sky-night.svg") center top / cover no-repeat;
 }
 
+/* An uploaded background picture replaces the built-in sky (day and night) */
+html[data-site-background="sky"][data-site-background-custom] body::before,
+html[data-site-background="sky"][data-site-background-custom][data-site-tone="dark"] body::before {
+  background: var(--site-background-image) center center / cover no-repeat, var(--site-header-bg, #1565c0);
+}
+
 /* Large panels: frosted so text stays readable over clouds */
 html[data-site-background="sky"] .home-section,
 html[data-site-background="sky"] .product-container,
