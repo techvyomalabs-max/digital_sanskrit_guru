@@ -38,7 +38,6 @@ html[data-site-background="sky"][data-site-tone="dark"] body::before {
 
 /* Large panels: frosted so text stays readable over clouds */
 html[data-site-background="sky"] .home-section,
-html[data-site-background="sky"] .home-highlight-card,
 html[data-site-background="sky"] .product-container,
 html[data-site-background="sky"] .product-details-section,
 html[data-site-background="sky"] .reviews-section,
@@ -85,4 +84,13 @@ html[data-site-background="sky"] .cookie-consent {
 /* Admin pages keep their own solid background */
 html[data-site-background="sky"] .admin-layout {
   background: var(--admin-bg, #fafaf8);
+}
+
+/* Inside a frosted panel, inner boxes don't frost again (a second blur shows as a lighter
+   rectangle, e.g. around the product page's Add to Cart / Buy Now) */
+html[data-site-background="sky"] .product-container .buy-box,
+html[data-site-background="sky"] .product-container .product-right,
+html[data-site-background="sky"] .home-section .home-highlight-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
