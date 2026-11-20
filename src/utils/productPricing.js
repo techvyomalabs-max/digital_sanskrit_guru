@@ -33,25 +33,6 @@ const COUNTRY_ALIASES = {
   "united arab emirates": "united arab emirates"
 };
 
-let regionNames = null;
-try {
-  regionNames = new Intl.DisplayNames(["en"], { type: "region" });
-} catch {
-  regionNames = null;
-}
-
-// The visitor's country arrives as a two-letter code ("DE", "NZ") from detect-country, while
-// markets and country prices are saved with full names ("Germany", "New Zealand").
-function regionCodeToName(code) {
-  if (!regionNames || !/^[a-z]{2}$/.test(code)) return "";
-  try {
-    const name = regionNames.of(code.toUpperCase());
-    return name && name.toUpperCase() !== code.toUpperCase() ? name.toLowerCase() : "";
-  } catch {
-    return "";
-  }
-}
-
 function normalizeCountry(country) {
   const compact = String(country || "")
     .trim()
@@ -59,10 +40,7 @@ function normalizeCountry(country) {
     .replace(/[.,]/g, "")
     .replace(/\s+/g, " ");
 
-  if (COUNTRY_ALIASES[compact]) return COUNTRY_ALIASES[compact];
-  const fromCode = regionCodeToName(compact);
-  if (fromCode) return COUNTRY_ALIASES[fromCode] || fromCode;
-  return compact;
+  return COUNTRY_ALIASES[compact] || compact;
 }
 
 function normalizePricingMarkets(pricingMarkets = []) {

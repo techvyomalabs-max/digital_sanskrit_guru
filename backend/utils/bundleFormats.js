@@ -11,61 +11,6 @@
  */
 
 const { normalizeProductTax } = require("./productTax");
-const { validateExternalDelivery } = require("./digitalDelivery");
-
-const TYPE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const MAX_URL_LENGTH = 500;
-
-const isWebUrl = (value) => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
-};
-
-/**
- * A digital format's own online access (single products only). Returns { digital } or { error };
- * digital is undefined when the browser sent none (the format then uses the main product's settings).
- */
-function normalizeFormatDigital(raw, label) {
-  if (raw === undefined || raw === null) return { digital: undefined };
-  if (typeof raw !== "object" || Array.isArray(raw)) return { error: `Format "${label}": online access settings are invalid.` };
-  const text = (value, max = MAX_URL_LENGTH) => String(value ?? "").trim().slice(0, max);
-  const links = {
-    webReaderLink: text(raw.webReaderLink),
-    kindleLink: text(raw.kindleLink),
-    courseLink: text(raw.courseLink)
-  };
-  for (const [field, value] of Object.entries(links)) {
-    if (value && !isWebUrl(value)) {
-      const name = field === "kindleLink" ? "Amazon link" : field === "courseLink" ? "course link" : "access link";
-      return { error: `Format "${label}": the ${name} must start with https://.` };
-    }
-  }
-  const delivery = validateExternalDelivery({
-    isDigital: true,
-    productType: "single",
-    digitalDelivery: raw.digitalDelivery,
-    externalAccessLink: raw.externalAccessLink,
-    externalAccessLabel: raw.externalAccessLabel,
-    externalAccessManual: raw.externalAccessManual === true
-  });
-  if (!delivery.isValid) return { error: `Format "${label}": ${delivery.error}` };
-  return {
-    digital: {
-      digitalType: text(raw.digitalType, 40) || "Web Version",
-      ...links,
-      kindleAsin: text(raw.kindleAsin, 20),
-      digitalInstructions: text(raw.digitalInstructions, 2000),
-      digitalDelivery: delivery.digitalDelivery,
-      externalAccessLink: delivery.externalAccessLink,
-      externalAccessLabel: delivery.externalAccessLabel,
-      externalAccessManual: delivery.externalAccessManual
-    }
-  };
-}
 
 const MAX_FORMATS = 8;
 const MAX_LABEL_LENGTH = 40;
@@ -173,30 +118,6 @@ function normalizeBundleFormatsInput(input) {
       }
     }
 
-    // Single products: the format's product type, own image, overseas price and online access
-    const typeKey = String(raw.typeKey ?? "").trim().toLowerCase();
-    if (typeKey && !TYPE_KEY_PATTERN.test(typeKey)) return { formats: [], error: `Format "${label}": unknown product type.` };
-
-    let image;
-    if (raw.image !== undefined) {
-      image = String(raw.image || "").trim();
-      if (image && (image.length > MAX_URL_LENGTH || !/^https:\/\//i.test(image))) {
-        return { formats: [], error: `Format "${label}": the image must be an https:// address.` };
-      }
-    }
-
-    let internationalPrice;
-    if (raw.internationalPrice !== undefined) {
-      internationalPrice = isBlank(raw.internationalPrice) ? null : Number(raw.internationalPrice);
-      if (internationalPrice !== null && (!Number.isFinite(internationalPrice) || internationalPrice < 0)) {
-        return { formats: [], error: `Format "${label}": the international price must be 0 or more (or left blank).` };
-      }
-      if (internationalPrice !== null) internationalPrice = Math.round(internationalPrice * 100) / 100;
-    }
-
-    const digitalRes = normalizeFormatDigital(raw.digital, label);
-    if (digitalRes.error) return { formats: [], error: digitalRes.error };
-
     // A single product's format can have its own category (e.g. Paperback in "Book - Paperback");
     // blank = the same as the product
     const category =
@@ -213,10 +134,6 @@ function normalizeBundleFormatsInput(input) {
       ...pack,
       ...(sentTax ? { hsnSac: tax.hsnSac, gstRate: tax.gstRate } : {}),
       ...(mrp !== undefined ? { mrp } : {}),
-      ...(raw.typeKey !== undefined ? { typeKey } : {}),
-      ...(image !== undefined ? { image } : {}),
-      ...(internationalPrice !== undefined ? { internationalPrice } : {}),
-      ...(digitalRes.digital ? { digital: digitalRes.digital } : {}),
       ...(Number.isFinite(position) ? { position } : {})
     });
   }
@@ -445,44 +362,6 @@ const SINGLE_COPY_FIELDS = [
   "festiveDiscountPercent"
 ];
 
-// Content a type of a product can make its own: edited on the type, it stays when the main
-// product is saved. "images" covers the primary image and the gallery together.
-const FORMAT_OWN_CONTENT_FIELDS = ["description", "aboutProduct", "images", "trailerVideoUrl"];
-const OWN_CONTENT_PATHS = {
-  description: ["description"],
-  aboutProduct: ["aboutProduct"],
-  images: ["image", "images"],
-  trailerVideoUrl: ["trailerVideoUrl"]
-};
-
-const normText = (v) => String(v ?? "").trim();
-const normList = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x ?? "").trim()).filter(Boolean);
-
-function sameContent(field, a, b) {
-  if (field === "images") {
-    return normText(a?.image) === normText(b?.image) && normList(a?.images).join("\n") === normList(b?.images).join("\n");
-  }
-  if (field === "aboutProduct") return normList(a?.aboutProduct).join("\n") === normList(b?.aboutProduct).join("\n");
-  return normText(a?.[field]) === normText(b?.[field]);
-}
-
-/** The content fields where a type differs from what the main product would give it. */
-function ownContentDiff(child, expected) {
-  return FORMAT_OWN_CONTENT_FIELDS.filter((field) => !sameContent(field, child, expected));
-}
-
-/** Leaves a type's own content out of the fields copied from the main product. */
-function withoutOwnContent(fields, owned = []) {
-  const next = { ...fields };
-  for (const field of Array.isArray(owned) ? owned : []) {
-    for (const path of OWN_CONTENT_PATHS[field] || []) delete next[path];
-  }
-  return next;
-}
-
-// A digital format's own empty link/notes fall back to the main product's
-const FALLBACK_DIGITAL_FIELDS = ["webReaderLink", "kindleLink", "courseLink", "digitalInstructions"];
-
 // Online access settings: a Digital format uses the main product's; a Physical one has none.
 const SINGLE_DIGITAL_FIELDS = [
   "digitalType",
@@ -504,10 +383,9 @@ const SINGLE_DIGITAL_FIELDS = [
  * The main product's HSN/SAC and GST rate are never copied, because a printed book and its web
  * version are taxed differently.
  */
-function buildSingleFormatChildFields(parent, format, tax = null) {
+function buildSingleFormatChildFields(parent, format) {
   const src = plain(parent) || {};
   const isDigital = normalizeFormatType(format.type) === "digital";
-  const taxValues = tax || { hsnSac: format.hsnSac || "", gstRate: format.gstRate === undefined ? null : format.gstRate };
   const fields = {
     name: `${String(src.name || "").trim()} – ${format.label}`.slice(0, 200),
     price: Number.isFinite(Number(format.price)) ? Number(format.price) : 0,
@@ -519,34 +397,22 @@ function buildSingleFormatChildFields(parent, format, tax = null) {
     hasOptions: false,
     options: [],
     bundleFormats: [],
-    internationalPrice: format.internationalPrice === undefined ? null : format.internationalPrice,
+    internationalPrice: null,
     internationalCountryPrices: [],
     marketPrices: [],
     isDigital,
     skipOwnershipRules: false,
-    hsnSac: taxValues.hsnSac || "",
-    gstRate: taxValues.gstRate === undefined ? null : taxValues.gstRate,
+    hsnSac: format.hsnSac || "",
+    gstRate: format.gstRate === undefined ? null : format.gstRate,
     mrp: format.mrp === undefined ? null : format.mrp,
-    formatTypeKey: String(format.typeKey || ""),
     isDeleted: false,
     deletedAt: null
   };
   for (const field of SINGLE_COPY_FIELDS) {
     if (src[field] !== undefined) fields[field] = Array.isArray(src[field]) ? [...src[field]] : src[field];
   }
-  // The format's own image comes first; the main product's photos follow
-  if (format.image) {
-    fields.image = format.image;
-    fields.images = [format.image, ...(Array.isArray(src.images) ? src.images : []).filter((img) => img && img !== format.image)];
-  }
   for (const field of SINGLE_DIGITAL_FIELDS) {
-    if (isDigital && format.digital) {
-      // The format's own online access (e.g. Web Version and Audio Book with different links).
-      // A link or note left empty uses the main product's, as formats did before.
-      const own = format.digital[field];
-      const fallsBack = FALLBACK_DIGITAL_FIELDS.includes(field) && !own;
-      fields[field] = fallsBack ? (src[field] || "") : own !== undefined ? own : field === "externalAccessManual" ? false : "";
-    } else if (isDigital) {
+    if (isDigital) {
       if (src[field] !== undefined) fields[field] = src[field];
     } else {
       fields[field] = field === "digitalDelivery" ? "onsite" : field === "externalAccessManual" ? false : "";
@@ -575,9 +441,5 @@ module.exports = {
   isItemDigital,
   computeFormatTotal,
   buildFormatChildFields,
-  buildSingleFormatChildFields,
-  FORMAT_OWN_CONTENT_FIELDS,
-  OWN_CONTENT_PATHS,
-  ownContentDiff,
-  withoutOwnContent
+  buildSingleFormatChildFields
 };

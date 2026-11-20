@@ -9,7 +9,7 @@ const DEFAULT_DIGITAL_FORMAT_TYPES = Object.freeze([
   "Other"
 ]);
 
-const PRODUCT_SETTINGS_KEYS = Object.freeze(new Set(["productCategories", "digitalFormatTypes", "productFormatTypes"]));
+const PRODUCT_SETTINGS_KEYS = Object.freeze(new Set(["productCategories", "digitalFormatTypes"]));
 
 function isBuiltInDigitalFormatType(type) {
   const normalized = String(type || "").trim().toLowerCase();

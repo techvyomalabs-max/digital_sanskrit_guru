@@ -96,10 +96,8 @@ function deliveryChips(product, kind) {
 /**
  * @param {{ label?: string, product?: object }} option  one entry of product.publicOptions
  * @param {Array<{label: string, note: string}>} notes  product.formatNotes (admin-written lines)
- * @param {string} typeNote  the product type's "what you get" line from Settings (used when the
- *   product has no line of its own for this format)
  */
-export function getFormatBlurb(option, notes = [], typeNote = "") {
+export function getFormatBlurb(option, notes = []) {
   const label = String(option?.label || "").trim();
   const product = option?.product || null;
 
@@ -128,7 +126,7 @@ export function getFormatBlurb(option, notes = [], typeNote = "") {
 
   return {
     kind,
-    text: own ? String(own.note).trim() : String(typeNote || "").trim() || autoText,
+    text: own ? String(own.note).trim() : autoText,
     chips: deliveryChips(product, kind)
   };
 }

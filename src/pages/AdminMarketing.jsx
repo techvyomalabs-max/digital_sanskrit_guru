@@ -4,7 +4,6 @@ import axios from "axios";
 import { enablePushNotifications, pushUnsupportedReason } from "../utils/pushSubscription";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import MailmodoPanel from "../components/admin/MailmodoPanel";
-import MailmodoCampaignPanel from "../components/admin/MailmodoCampaignPanel";
 import { useAuth } from "../hooks/useAuth";
 import { uploadImageDataUrl } from "../utils/mediaUpload";
 import "./AdminMarketing.css";
@@ -43,7 +42,6 @@ function AdminMarketing() {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [isConfirmingEmail, setIsConfirmingEmail] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
   const [emailLog, setEmailLog] = useState([]);
   const [isLoadingLog, setIsLoadingLog] = useState(false);
@@ -246,7 +244,6 @@ function AdminMarketing() {
   }, [token]);
 
   useEffect(() => {
-    setIsConfirmingEmail(false);
     loadRecipientPreview();
   }, [filterType, filterValue, token]);
 
@@ -346,12 +343,6 @@ function AdminMarketing() {
     }
   };
 
-  // Image upload for the Mailmodo campaign panel; returns the public URL
-  const uploadCampaignImage = async (file) => {
-    const dataUrl = await downscaleImageFile(file, 1600, 0.85);
-    return uploadImageDataUrl(dataUrl, { kind: "banner", token });
-  };
-
   const buildCampaignHtml = (bodyContent) => {
     const formattedBody = bodyContent
       ? bodyContent.replace(/\n/g, "<br/>")
@@ -393,18 +384,14 @@ function AdminMarketing() {
         subject: emailSubject,
         html: buildCampaignHtml(emailBody),
         filterType,
-        filterValue,
-        confirmCount: recipientCount
+        filterValue
       }, { headers: getAuthHeaders() });
       setEmailMsg(res.data.message || "Sending...");
-      setIsConfirmingEmail(false);
       setEmailSubject("");
       setEmailBody("");
       setTimeout(loadEmailLog, 3000);
     } catch (err) {
       setEmailMsg(err?.response?.data?.message || "Failed to send.");
-      setIsConfirmingEmail(false);
-      if (typeof err?.response?.data?.count === "number") setRecipientCount(err.response.data.count);
     } finally {
       setIsSendingEmail(false);
     }
@@ -417,7 +404,7 @@ function AdminMarketing() {
     try {
       const res = await axios.post("/api/marketing/test-email", {
         to: testEmailTo,
-        subject: emailSubject.trim() || "Campaign Email",
+        subject: emailSubject ? `[TEST] ${emailSubject}` : "[TEST] Campaign Email",
         html: buildCampaignHtml(emailBody || "This is a test marketing email with your customized company logo and branding.")
       }, { headers: getAuthHeaders() });
       setEmailMsg(res.data.message);
@@ -754,12 +741,6 @@ function AdminMarketing() {
         {/* ── Tab 1: Email Campaign ── */}
         {activeTab === 1 && (
           <div className="mkt-section">
-            <MailmodoCampaignPanel
-              getAuthHeaders={getAuthHeaders}
-              targetingOptions={targetingOptions}
-              uploadImage={uploadCampaignImage}
-            />
-
             {/* Campaign Branding Customizer Card */}
             <div className="card mkt-card">
               <div className="mkt-stock-header">
@@ -854,8 +835,8 @@ function AdminMarketing() {
             <div className="mkt-email-split-layout">
               {/* Left Column: Email Composer */}
               <div className="card mkt-card">
-                <h3>Send through the site's email server</h3>
-                <p className="mkt-hint">The older way to send a promotion, without Mailmodo. Prefer the Mailmodo panel above. Live preview is shown on the right.</p>
+                <h3>Send Email Campaign</h3>
+                <p className="mkt-hint">Sends to targeted customers. Live preview is shown on the right.</p>
 
                 <div className="mkt-field">
                   <label>Target Audience Group</label>
@@ -951,30 +932,9 @@ function AdminMarketing() {
                 {emailMsg && <p className="mkt-msg">{emailMsg}</p>}
 
                 <div className="mkt-actions">
-                  {!isConfirmingEmail ? (
-                    <button
-                      className="primary-btn"
-                      onClick={() => {
-                        if (!emailSubject.trim() || !emailBody.trim()) { setEmailMsg("Subject and body are required."); return; }
-                        setIsConfirmingEmail(true);
-                      }}
-                      disabled={isSendingEmail || isLoadingPreview || recipientCount < 1}
-                    >
-                      <Rocket size={14} className="ui-inline-icon" aria-hidden="true" />{`Send Broadcast (${isLoadingPreview ? "..." : recipientCount} recipients)`}
-                    </button>
-                  ) : (
-                    <>
-                      <p className="mkt-msg" style={{ flexBasis: "100%", margin: 0 }}>
-                        Send "{emailSubject.trim()}" to {recipientCount} customer(s)? This can't be undone.
-                      </p>
-                      <button className="primary-btn" onClick={sendEmailCampaign} disabled={isSendingEmail}>
-                        {isSendingEmail ? "Sending..." : "Yes, send it"}
-                      </button>
-                      <button className="secondary-btn" onClick={() => setIsConfirmingEmail(false)} disabled={isSendingEmail}>
-                        Cancel
-                      </button>
-                    </>
-                  )}
+                  <button className="primary-btn" onClick={sendEmailCampaign} disabled={isSendingEmail}>
+                    {isSendingEmail ? "Sending..." : <><Rocket size={14} className="ui-inline-icon" aria-hidden="true" />{`Send Broadcast (${isLoadingPreview ? "..." : recipientCount} recipients)`}</>}
+                  </button>
                 </div>
               </div>
 
