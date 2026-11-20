@@ -2064,5 +2064,7 @@ color:var(--admin-muted);
 }
 
 .theme-background-option--sky .theme-background-swatch {
-  background: url("/images/sky-day.svg") center / cover;
+  background:
+    url("/images/sky-clouds.webp") center bottom / cover no-repeat,
+    linear-gradient(180deg, var(--site-header-bg, #1565c0), color-mix(in srgb, var(--site-header-bg, #1565c0) 50%, #ffffff));
 }

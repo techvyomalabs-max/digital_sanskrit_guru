@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Sky background (Theme & Site → Site background → Sky)
-   A sky picture fixed behind the whole site; page sections become see-through panels in the
+   A sky fixed behind the whole site, starting in the header colour with clouds below; page sections become see-through panels in the
    theme's own colours. Light themes get a day sky, dark themes (e.g. Midnight) a night sky.
    Menus, pop-ups and form fields stay solid so text on them is always easy to read.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -11,7 +11,7 @@ html[data-site-background="sky"] {
   --site-surface: var(--site-surface-glass) !important;
   --site-surface-muted: var(--site-surface-muted-glass) !important;
   --site-section-bg: var(--site-section-glass) !important;
-  background: #9fd0f5;
+  background: var(--site-header-bg, #1565c0);
 }
 
 html[data-site-background="sky"][data-site-tone="dark"] {
@@ -28,12 +28,21 @@ html[data-site-background="sky"] body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url("/images/sky-day.svg") center top / cover no-repeat;
+  /* Clouds over a sky that starts in the header colour, so the header runs into the sky */
+  background:
+    url("/images/sky-clouds.webp") center bottom / cover no-repeat,
+    linear-gradient(
+      180deg,
+      var(--site-header-bg, #1565c0) 0%,
+      color-mix(in srgb, var(--site-header-bg, #1565c0) 82%, #ffffff) 40%,
+      color-mix(in srgb, var(--site-header-bg, #1565c0) 52%, #ffffff) 85%,
+      color-mix(in srgb, var(--site-header-bg, #1565c0) 40%, #ffffff) 100%
+    );
   pointer-events: none;
 }
 
 html[data-site-background="sky"][data-site-tone="dark"] body::before {
-  background-image: url("/images/sky-night.svg");
+  background: url("/images/sky-night.svg") center top / cover no-repeat;
 }
 
 /* Large panels: frosted so text stays readable over clouds */
