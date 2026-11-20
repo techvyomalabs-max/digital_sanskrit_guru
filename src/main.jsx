@@ -16,6 +16,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./fonts"; // self-hosted fonts (were Google Fonts)
 import "./index.css";
+import "./styles/sky-background.css";
 import "./responsive-overrides.css"; // global responsive fixes for all pages/devices
 import "./ux-foundation.css"; // focus, touch, motion and state rules for every page
 import "./lib/api";
@@ -25,7 +26,7 @@ import { WishlistProvider } from "./context/WishlistContext";
 import { ToastProvider } from "./context/ToastContext";
 import { DialogProvider } from "./context/DialogContext";
 import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
-import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME } from "./utils/siteTheme";
+import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME, applySiteBackground, readStoredSiteBackground, readStoredSiteBackgroundImage, readStoredSiteBackgroundAdmin, readStoredSiteBackgroundOpacity } from "./utils/siteTheme";
 import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
 import { captureAttribution } from "./utils/attribution";
 import ErrorBoundary from "./components/common/ErrorBoundary";
@@ -38,6 +39,16 @@ const target =
 if (target) {
   window.history.replaceState(null, "", target);
 }
+
+// The last site background seen (saved settings replace it once they load), so the page
+// doesn't flash the plain colour first
+applySiteBackground(
+  readStoredSiteBackground(),
+  false,
+  readStoredSiteBackgroundImage(),
+  readStoredSiteBackgroundAdmin(),
+  readStoredSiteBackgroundOpacity()
+);
 
 const storedThemeSettings = readStoredSiteTheme();
 if (storedThemeSettings) {

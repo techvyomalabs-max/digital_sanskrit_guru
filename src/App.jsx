@@ -15,7 +15,7 @@ import CartPopup from "./components/ui/CartPopup";
 import AdminRoute from "./components/AdminRoute";
 import FestiveBanner from "./components/FestiveBanner";
 import { requestLocationPermissionForCurrency } from "./utils/currency";
-import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme } from "./utils/siteTheme";
+import { applySiteTheme, DEFAULT_SITE_THEME, readStoredSiteTheme, applySiteBackground } from "./utils/siteTheme";
 import { storePricingConfig } from "./utils/productPricing";
 import { useAuth } from "./hooks/useAuth";
 import { pushUnsupportedReason, syncPushSubscription } from "./utils/pushSubscription";
@@ -214,6 +214,13 @@ function App() {
         .then((res) => {
           if (!active) return;
           applySiteTheme(res.data?.siteTheme || DEFAULT_SITE_THEME, res.data?.customThemes || []);
+          applySiteBackground(
+            res.data?.siteBackground === "sky" ? "sky" : "plain",
+            true,
+            res.data?.siteBackgroundImage || "",
+            res.data?.siteBackgroundAdmin === true,
+            res.data?.siteBackgroundOpacity
+          );
           storePricingConfig({
             pricingMarkets: res.data?.pricingMarkets || [],
             internationalPricingDefaults: res.data?.internationalPricingDefaults || {},
