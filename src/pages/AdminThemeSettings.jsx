@@ -196,6 +196,8 @@ function AdminThemeSettings() {
   // Uploaded picture used instead of the built-in sky ("" = the built-in sky)
   const [siteBackgroundImage, setSiteBackgroundImage] = useState("");
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  // Also show the sky in the admin console
+  const [siteBackgroundAdmin, setSiteBackgroundAdmin] = useState(false);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
   const [editingThemeId, setEditingThemeId] = useState(null);
@@ -287,9 +289,11 @@ function AdminThemeSettings() {
       applySiteTheme(nextTheme, nextCustomThemes);
       const nextBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
       const nextBackgroundImage = String(res.data?.siteBackgroundImage || "");
+      const nextBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
       setSiteBackground(nextBackground);
       setSiteBackgroundImage(nextBackgroundImage);
-      applySiteBackground(nextBackground, true, nextBackgroundImage);
+      setSiteBackgroundAdmin(nextBackgroundAdmin);
+      applySiteBackground(nextBackground, true, nextBackgroundImage, nextBackgroundAdmin);
       const options = getSiteThemeOptions(nextCustomThemes);
       const activeOpt = options.find((o) => o.value === nextTheme) || options[0];
       if (activeOpt) {
@@ -561,7 +565,7 @@ function AdminThemeSettings() {
       }
       setSiteBackgroundImage(publicUrl);
       setSiteBackground("sky");
-      applySiteBackground("sky", false, publicUrl);
+      applySiteBackground("sky", false, publicUrl, siteBackgroundAdmin);
       setThemeMessage("Background picture uploaded. Click Save Theme to show it to visitors.");
     } catch (err) {
       setThemeMessage(err?.message || "Could not upload the background picture.");
@@ -578,7 +582,7 @@ function AdminThemeSettings() {
     try {
       const res = await axios.put(
         "/api/settings",
-        { siteTheme, customThemes, siteBackground, siteBackgroundImage },
+        { siteTheme, customThemes, siteBackground, siteBackgroundImage, siteBackgroundAdmin },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -589,9 +593,11 @@ function AdminThemeSettings() {
       applySiteTheme(nextTheme, nextCustomThemes);
       const savedBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
       const savedBackgroundImage = String(res.data?.siteBackgroundImage || "");
+      const savedBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
       setSiteBackground(savedBackground);
       setSiteBackgroundImage(savedBackgroundImage);
-      applySiteBackground(savedBackground, true, savedBackgroundImage);
+      setSiteBackgroundAdmin(savedBackgroundAdmin);
+      applySiteBackground(savedBackground, true, savedBackgroundImage, savedBackgroundAdmin);
       setThemeMessage("Store theme updated.");
       window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
     } catch (err) {
@@ -1736,7 +1742,7 @@ function AdminThemeSettings() {
                   onClick={() => {
                     setSiteBackground(opt.value);
                     // Preview straight away; visitors see it after Save Theme
-                    applySiteBackground(opt.value, false, siteBackgroundImage);
+                    applySiteBackground(opt.value, false, siteBackgroundImage, siteBackgroundAdmin);
                   }}
                 >
                   <span className="theme-background-swatch" aria-hidden="true" />
@@ -1777,7 +1783,7 @@ function AdminThemeSettings() {
                         className="pricing-link-btn"
                         onClick={() => {
                           setSiteBackgroundImage("");
-                          applySiteBackground("sky", false, "");
+                          applySiteBackground("sky", false, "", siteBackgroundAdmin);
                           setThemeMessage("Back to the built-in sky. Click Save Theme to show it to visitors.");
                         }}
                       >
@@ -1785,6 +1791,18 @@ function AdminThemeSettings() {
                       </button>
                     ) : null}
                   </div>
+                  <label className="theme-background-admin-toggle">
+                    <input
+                      type="checkbox"
+                      checked={siteBackgroundAdmin}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setSiteBackgroundAdmin(on);
+                        applySiteBackground("sky", false, siteBackgroundImage, on);
+                      }}
+                    />
+                    <span>Also show it in the admin console</span>
+                  </label>
                   <small className="theme-background-picture-tip">
                     Tip: a wide picture (at least 1920 × 1080) with calm areas in the middle works best.
                   </small>

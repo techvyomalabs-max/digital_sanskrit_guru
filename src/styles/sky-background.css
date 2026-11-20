@@ -96,9 +96,54 @@ html[data-site-background="sky"] .cookie-consent {
   }
 }
 
-/* Admin pages keep their own solid background */
-html[data-site-background="sky"] .admin-layout {
+/* Admin pages keep their own solid background, unless "Also show it in the admin console" is on */
+html[data-site-background="sky"]:not([data-admin-background="sky"]) .admin-layout {
   background: var(--admin-bg, #fafaf8);
+}
+
+/* ── Admin console with the sky ─────────────────────────────────────────────
+   Cards become frosted panels; the sidebar, tables, forms and pop-ups stay solid so data
+   and inputs are always easy to read. */
+html[data-admin-background="sky"] {
+  --admin-bg: transparent;
+  --admin-surface: rgba(255, 255, 255, 0.8);
+  --admin-surface-2: rgba(245, 243, 239, 0.7);
+}
+
+html[data-admin-background="sky"] body.admin-dark {
+  --admin-bg: transparent;
+  --admin-surface: rgba(30, 41, 59, 0.82);
+  --admin-surface-2: rgba(51, 65, 85, 0.72);
+}
+
+html[data-admin-background="sky"] body,
+html[data-admin-background="sky"] .admin-layout,
+html[data-admin-background="sky"] .admin-main {
+  background: transparent !important;
+}
+
+html[data-admin-background="sky"] .admin-main > .card,
+html[data-admin-background="sky"] .admin-main > section,
+html[data-admin-background="sky"] .admin-main > div > .card,
+html[data-admin-background="sky"] .admin-header {
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+html[data-admin-background="sky"] .admin-main table,
+html[data-admin-background="sky"] .admin-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+html[data-admin-background="sky"] .admin-main select,
+html[data-admin-background="sky"] .admin-main textarea,
+html[data-admin-background="sky"] [role="dialog"] {
+  background-color: #ffffff;
+}
+
+html[data-admin-background="sky"] body.admin-dark .admin-main table,
+html[data-admin-background="sky"] body.admin-dark .admin-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+html[data-admin-background="sky"] body.admin-dark .admin-main select,
+html[data-admin-background="sky"] body.admin-dark .admin-main textarea,
+html[data-admin-background="sky"] body.admin-dark [role="dialog"] {
+  background-color: #1e293b;
 }
 
 /* Inside a frosted panel, inner boxes don't frost again (a second blur shows as a lighter

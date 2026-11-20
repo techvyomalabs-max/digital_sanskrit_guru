@@ -2130,3 +2130,13 @@ color:var(--admin-muted);
 .theme-background-picture-tip {
   font-size: 12px;
 }
+
+.theme-background-admin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--admin-text, #0f172a);
+  cursor: pointer;
+}

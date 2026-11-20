@@ -214,7 +214,12 @@ function App() {
         .then((res) => {
           if (!active) return;
           applySiteTheme(res.data?.siteTheme || DEFAULT_SITE_THEME, res.data?.customThemes || []);
-          applySiteBackground(res.data?.siteBackground === "sky" ? "sky" : "plain", true, res.data?.siteBackgroundImage || "");
+          applySiteBackground(
+            res.data?.siteBackground === "sky" ? "sky" : "plain",
+            true,
+            res.data?.siteBackgroundImage || "",
+            res.data?.siteBackgroundAdmin === true
+          );
           storePricingConfig({
             pricingMarkets: res.data?.pricingMarkets || [],
             internationalPricingDefaults: res.data?.internationalPricingDefaults || {},

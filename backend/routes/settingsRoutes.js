@@ -351,6 +351,7 @@ function normalizeSettings(settings) {
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
     siteBackground: settings?.siteBackground === "sky" ? "sky" : "plain",
     siteBackgroundImage: normalizeSiteBackgroundImage(settings?.siteBackgroundImage),
+    siteBackgroundAdmin: settings?.siteBackgroundAdmin === true,
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
@@ -490,6 +491,7 @@ function buildPublicSettingsPayload(settings) {
     siteTheme: normalized.siteTheme,
     siteBackground: normalized.siteBackground,
     siteBackgroundImage: normalized.siteBackgroundImage,
+    siteBackgroundAdmin: normalized.siteBackgroundAdmin,
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
@@ -525,6 +527,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
   if (String(previousSettings?.siteBackground || "plain") !== String(nextSettings?.siteBackground || "plain")) changes.push("site background");
   if (String(previousSettings?.siteBackgroundImage || "") !== String(nextSettings?.siteBackgroundImage || "")) changes.push("site background picture");
+  if (Boolean(previousSettings?.siteBackgroundAdmin) !== Boolean(nextSettings?.siteBackgroundAdmin)) changes.push("admin background");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
@@ -559,6 +562,7 @@ const THEME_KEYS = new Set([
   "siteTheme",
   "siteBackground",
   "siteBackgroundImage",
+  "siteBackgroundAdmin",
   "customThemes",
   "heroBanners",
   "heroBannerImage",
@@ -945,6 +949,9 @@ router.put("/", protect, admin, (req, res, next) => {
       : DEFAULT_THEME;
   if (req.body?.siteBackground !== undefined) {
     settings.siteBackground = req.body.siteBackground === "sky" ? "sky" : "plain";
+  }
+  if (req.body?.siteBackgroundAdmin !== undefined) {
+    settings.siteBackgroundAdmin = req.body.siteBackgroundAdmin === true;
   }
   if (req.body?.siteBackgroundImage !== undefined) {
     const raw = String(req.body.siteBackgroundImage || "").trim();

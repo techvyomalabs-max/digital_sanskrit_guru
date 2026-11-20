@@ -413,6 +413,15 @@ const SITE_BACKGROUND_PATTERNS = SITE_BACKGROUNDS;
 const SITE_BACKGROUND_STORAGE_KEY = "site-background";
 
 const SITE_BACKGROUND_IMAGE_STORAGE_KEY = "site-background-image";
+const SITE_BACKGROUND_ADMIN_STORAGE_KEY = "site-background-admin";
+
+export function readStoredSiteBackgroundAdmin() {
+  try {
+    return window.localStorage.getItem(SITE_BACKGROUND_ADMIN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function readStoredSiteBackground() {
   try {
@@ -437,12 +446,15 @@ const safeImageUrl = (url) => (/^https?:\/\/[^\s"'()<>]+$/i.test(String(url || "
  * mode: "plain" or "sky". imageUrl (optional): an uploaded picture used instead of the built-in
  * sky; empty means the built-in sky.
  */
-export function applySiteBackground(mode, shouldPersist = true, imageUrl = "") {
+export function applySiteBackground(mode, shouldPersist = true, imageUrl = "", inAdmin = false) {
   if (typeof document === "undefined") return;
   const value = SITE_BACKGROUND_PATTERNS.includes(mode) ? mode : "plain";
   const image = safeImageUrl(imageUrl);
   const root = document.documentElement;
   root.setAttribute("data-site-background", value);
+  // The admin console shows the sky only when asked to
+  if (value === "sky" && inAdmin === true) root.setAttribute("data-admin-background", "sky");
+  else root.removeAttribute("data-admin-background");
   if (image) {
     root.setAttribute("data-site-background-custom", "1");
     root.style.setProperty("--site-background-image", `url("${image}")`);
@@ -454,6 +466,7 @@ export function applySiteBackground(mode, shouldPersist = true, imageUrl = "") {
     try {
       window.localStorage.setItem(SITE_BACKGROUND_STORAGE_KEY, value);
       window.localStorage.setItem(SITE_BACKGROUND_IMAGE_STORAGE_KEY, image);
+      window.localStorage.setItem(SITE_BACKGROUND_ADMIN_STORAGE_KEY, inAdmin === true ? "1" : "0");
     } catch {
       // Storage blocked: the background still applies for this visit
     }

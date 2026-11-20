@@ -26,7 +26,7 @@ import { WishlistProvider } from "./context/WishlistContext";
 import { ToastProvider } from "./context/ToastContext";
 import { DialogProvider } from "./context/DialogContext";
 import { DeliveryLocationProvider } from "./context/DeliveryLocationContext";
-import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME, applySiteBackground, readStoredSiteBackground, readStoredSiteBackgroundImage } from "./utils/siteTheme";
+import { applySiteTheme, readStoredSiteTheme, DEFAULT_SITE_THEME, applySiteBackground, readStoredSiteBackground, readStoredSiteBackgroundImage, readStoredSiteBackgroundAdmin } from "./utils/siteTheme";
 import { legacyHashToPath, legacyQueryToPath } from "./utils/legacyHash";
 import { captureAttribution } from "./utils/attribution";
 import ErrorBoundary from "./components/common/ErrorBoundary";
@@ -42,7 +42,7 @@ if (target) {
 
 // The last site background seen (saved settings replace it once they load), so the page
 // doesn't flash the plain colour first
-applySiteBackground(readStoredSiteBackground(), false, readStoredSiteBackgroundImage());
+applySiteBackground(readStoredSiteBackground(), false, readStoredSiteBackgroundImage(), readStoredSiteBackgroundAdmin());
 
 const storedThemeSettings = readStoredSiteTheme();
 if (storedThemeSettings) {

@@ -482,6 +482,11 @@ const storeSettingsSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    // Show the Sky background in the admin console too (off: admin pages stay plain)
+    siteBackgroundAdmin: {
+      type: Boolean,
+      default: false
+    },
     customThemes: {
       type: [customThemeSchema],
       default: []
