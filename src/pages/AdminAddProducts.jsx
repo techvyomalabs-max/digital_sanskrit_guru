@@ -18,6 +18,8 @@ import { categoryKey } from "../utils/categoryKey";
 import { TAX_CATEGORIES } from "../utils/tax";
 import { absoluteUrl } from "../utils/seo";
 import { slugPreview } from "../utils/productLink";
+import { getStoredPricingConfig, normalizePricingConfig } from "../utils/productPricing";
+import { convertCurrencyAmount, formatCurrencyExact } from "../utils/currency";
 
 const DEFAULT_CATEGORY_OPTIONS = [
   "General",
@@ -162,6 +164,46 @@ function createEmptyMarketPrice() {
 
 function hasNumericInput(value) {
   return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+// Overseas prices are always typed in rupees and converted for the customer. These helpers only
+// build the "₹1,000 ≈ $10.69 for … customers" preview text; they never change what is saved.
+function buildPricingPreviewConfig(settings = {}) {
+  const stored = getStoredPricingConfig();
+  return normalizePricingConfig({
+    pricingMarkets: Array.isArray(settings?.pricingMarkets) ? settings.pricingMarkets : stored.pricingMarkets,
+    internationalPricingDefaults: settings?.internationalPricingDefaults || stored.internationalPricingDefaults,
+    currencyConversionRates: settings?.currencyConversionRates || stored.currencyConversionRates
+  });
+}
+
+function getMarketCurrency(marketName, config) {
+  const key = String(marketName || "").trim().toLowerCase();
+  const market = (config?.pricingMarkets || []).find((item) => item.name.toLowerCase() === key);
+  return market?.currency || config?.internationalPricingDefaults?.currency || "USD";
+}
+
+function getCountryCurrency(country, config) {
+  const key = String(country || "").trim().toLowerCase();
+  const market = (config?.pricingMarkets || []).find((item) =>
+    item.countries.some((entry) => entry.toLowerCase() === key)
+  );
+  return market?.currency || config?.internationalPricingDefaults?.currency || "USD";
+}
+
+function formatInrPreview(value, currency, config, audience) {
+  if (!hasNumericInput(value)) return "";
+  const inr = Number(value);
+  if (!Number.isFinite(inr) || inr < 0) return "";
+  const target = String(currency || "USD").toUpperCase();
+  const inrText = formatCurrencyExact(inr, "INR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  if (target === "INR") return `${inrText} for ${audience}`;
+  const converted = convertCurrencyAmount(inr, {
+    sourceCurrency: "INR",
+    currency: target,
+    rates: config?.currencyConversionRates
+  });
+  return `${inrText} ≈ ${formatCurrencyExact(converted, target)} for ${audience}`;
 }
 
 function isValidHttpUrl(string) {
@@ -477,6 +519,7 @@ function AdminAddProducts() {
   const [category, setCategory] = useState("General");
   const [categoryOptions, setCategoryOptions] = useState(DEFAULT_CATEGORY_OPTIONS);
   const [pricingMarkets, setPricingMarkets] = useState([]);
+  const [pricingPreviewConfig, setPricingPreviewConfig] = useState(() => buildPricingPreviewConfig());
   const [newCategory, setNewCategory] = useState("");
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [categoryMessage, setCategoryMessage] = useState("");
@@ -531,6 +574,7 @@ function AdminAddProducts() {
           : DEFAULT_DIGITAL_FORMAT_TYPES;
         setDigitalFormatTypeOptions(nextDigitalTypes);
         setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
+        setPricingPreviewConfig(buildPricingPreviewConfig(res.data));
         if (Array.isArray(res.data?.productFormatTypes) && res.data.productFormatTypes.length > 0) {
           setProductTypes(res.data.productFormatTypes);
         }
@@ -563,6 +607,7 @@ function AdminAddProducts() {
             : DEFAULT_DIGITAL_FORMAT_TYPES;
           setDigitalFormatTypeOptions(nextDigitalTypes);
           setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
+          setPricingPreviewConfig(buildPricingPreviewConfig(res.data));
           if (Array.isArray(res.data?.productFormatTypes) && res.data.productFormatTypes.length > 0) {
             setProductTypes(res.data.productFormatTypes);
           }
@@ -3912,19 +3957,36 @@ function AdminAddProducts() {
                 <div className="product-composer-panel-head">
                   <div>
                     <h4>Pricing</h4>
-                    <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing.</p>
+                    <p>Control domestic pricing, fallback international pricing, country overrides, and market-based pricing. Enter every price in rupees (₹); overseas customers see it converted to their currency.</p>
                   </div>
                 </div>
                 <div className="form-grid">
                   <label className="admin-field">
-                    <span>International Price</span>
+                    <span>International Price (₹)</span>
                     <input
                       type="number"
                       min="0"
-                      placeholder="Used for all countries except India"
+                      placeholder="In rupees. Used for all countries except India"
                       value={internationalPrice}
                       onChange={(e) => setInternationalPrice(e.target.value)}
                     />
+                    {formatInrPreview(
+                      internationalPrice,
+                      pricingPreviewConfig.internationalPricingDefaults?.currency,
+                      pricingPreviewConfig,
+                      "other countries"
+                    ) ? (
+                      <small className="pf-hint pf-price-preview">
+                        {formatInrPreview(
+                          internationalPrice,
+                          pricingPreviewConfig.internationalPricingDefaults?.currency,
+                          pricingPreviewConfig,
+                          "other countries"
+                        )}
+                      </small>
+                    ) : (
+                      <small className="pf-hint">Enter the amount in rupees; customers see it converted.</small>
+                    )}
                   </label>
                   <div className="admin-field admin-field-wide">
                     <span>Country Specific International Prices</span>
@@ -3939,8 +4001,18 @@ function AdminAddProducts() {
                         {internationalCountryPrices.length === 0 ? (
                           <p className="pf-empty-note">No country overrides yet.</p>
                         ) : null}
-                        {internationalCountryPrices.map((item, index) => (
-                          <div key={`intl-country-price-${index}`} className="admin-bundle-builder-row">
+                        {internationalCountryPrices.map((item, index) => {
+                          const countryPreview = item.country
+                            ? formatInrPreview(
+                                item.price,
+                                getCountryCurrency(item.country, pricingPreviewConfig),
+                                pricingPreviewConfig,
+                                `${item.country} customers`
+                              )
+                            : "";
+                          return (
+                          <div key={`intl-country-price-${index}`} className="pf-price-row-group">
+                          <div className="admin-bundle-builder-row">
                             <select
                               value={item.country}
                               onChange={(e) => updateInternationalCountryPrice(index, "country", e.target.value)}
@@ -3955,7 +4027,8 @@ function AdminAddProducts() {
                             <input
                               type="number"
                               min="0"
-                              placeholder="Price"
+                              placeholder="Price (₹)"
+                              aria-label="Country price in rupees"
                               value={item.price}
                               onChange={(e) => updateInternationalCountryPrice(index, "price", e.target.value)}
                             />
@@ -3963,7 +4036,10 @@ function AdminAddProducts() {
                               Remove
                             </button>
                           </div>
-                        ))}
+                          {countryPreview ? <small className="pf-hint pf-price-preview">{countryPreview}</small> : null}
+                          </div>
+                          );
+                        })}
                       </div>
                       <div className="admin-bundle-preview">
                         <span>How it works</span>
@@ -3984,8 +4060,22 @@ function AdminAddProducts() {
                         {marketPrices.length === 0 ? (
                           <p className="pf-empty-note">No market prices yet.</p>
                         ) : null}
-                        {marketPrices.map((item, index) => (
-                          <div key={`market-price-${index}`} className="admin-bundle-builder-row admin-bundle-builder-row-wrap pf-market-row">
+                        {marketPrices.map((item, index) => {
+                          const marketCurrency = getMarketCurrency(item.market, pricingPreviewConfig);
+                          const marketAudience = `${item.market} customers`;
+                          const regularPreview = item.market
+                            ? formatInrPreview(item.regularPrice, marketCurrency, pricingPreviewConfig, marketAudience)
+                            : "";
+                          const salePreview = item.market
+                            ? formatInrPreview(item.salePrice, marketCurrency, pricingPreviewConfig, marketAudience)
+                            : "";
+                          const saleAboveRegular =
+                            hasNumericInput(item.regularPrice) &&
+                            hasNumericInput(item.salePrice) &&
+                            Number(item.salePrice) > Number(item.regularPrice);
+                          return (
+                          <div key={`market-price-${index}`} className="pf-price-row-group">
+                          <div className="admin-bundle-builder-row admin-bundle-builder-row-wrap pf-market-row">
                             <select
                               value={item.market}
                               onChange={(e) => updateMarketPrice(index, "market", e.target.value)}
@@ -4000,14 +4090,16 @@ function AdminAddProducts() {
                             <input
                               type="number"
                               min="0"
-                              placeholder="Regular price"
+                              placeholder="Regular price (₹)"
+                              aria-label="Regular price in rupees"
                               value={item.regularPrice}
                               onChange={(e) => updateMarketPrice(index, "regularPrice", e.target.value)}
                             />
                             <input
                               type="number"
                               min="0"
-                              placeholder="Sale price (optional)"
+                              placeholder="Sale price (₹, optional)"
+                              aria-label="Sale price in rupees"
                               value={item.salePrice}
                               onChange={(e) => updateMarketPrice(index, "salePrice", e.target.value)}
                             />
@@ -4025,7 +4117,23 @@ function AdminAddProducts() {
                               Remove
                             </button>
                           </div>
-                        ))}
+                          {regularPreview ? (
+                            <small className="pf-hint pf-price-preview">Regular: {regularPreview}</small>
+                          ) : null}
+                          {salePreview ? (
+                            <small className="pf-hint pf-price-preview">
+                              Sale: {salePreview}
+                              {!item.startDate && !item.endDate ? " (no dates set, so the sale is always on)" : ""}
+                            </small>
+                          ) : null}
+                          {saleAboveRegular ? (
+                            <small className="pf-hint pf-price-warning">
+                              The sale price is higher than the regular price.
+                            </small>
+                          ) : null}
+                          </div>
+                          );
+                        })}
                       </div>
                       <div className="admin-bundle-preview">
                         <span>Market priority</span>
@@ -4721,6 +4829,21 @@ function AdminAddProducts() {
                                             value={row.internationalPrice}
                                             onChange={(e) => updateSingleFormat(row.rowKey, "internationalPrice", e.target.value)}
                                           />
+                                          {formatInrPreview(
+                                            row.internationalPrice,
+                                            pricingPreviewConfig.internationalPricingDefaults?.currency,
+                                            pricingPreviewConfig,
+                                            "other countries"
+                                          ) ? (
+                                            <small className="pf-hint pf-price-preview">
+                                              {formatInrPreview(
+                                                row.internationalPrice,
+                                                pricingPreviewConfig.internationalPricingDefaults?.currency,
+                                                pricingPreviewConfig,
+                                                "other countries"
+                                              )}
+                                            </small>
+                                          ) : null}
                                         </label>
                                       </div>
 
