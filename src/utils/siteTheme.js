@@ -226,6 +226,11 @@ function buildThemeVariables(theme) {
     "--site-bg": palette.bg,
     "--site-surface": palette.surface,
     "--site-surface-muted": mixColors(palette.surface, palette.bg, 0.4),
+    // Used by the sky background: see-through panels, and the solid colour for menus and pop-ups
+    "--site-surface-solid": palette.surface,
+    "--site-surface-glass": toRgba(palette.surface, 0.58),
+    "--site-surface-muted-glass": toRgba(mixColors(palette.surface, palette.bg, 0.4), 0.45),
+    "--site-section-glass": toRgba(sectionBgColor, 0.4),
     "--site-text": palette.text,
     "--site-text-soft": getSoftTextColor(palette.text, palette.surface, palette.bg),
     "--site-border": mixColors(palette.text, palette.surface, 0.18),
@@ -373,6 +378,8 @@ export function applySiteTheme(themeValue, customThemes = [], shouldPersist = tr
 
   const root = document.documentElement;
   root.setAttribute("data-site-theme", activeTheme.value);
+  // Light or dark theme: the sky background shows day or night to match
+  root.setAttribute("data-site-tone", relativeLuminance(activeTheme.palette.bg) < 0.25 ? "dark" : "light");
 
   Object.entries(buildThemeVariables(activeTheme)).forEach(([key, value]) => {
     root.style.setProperty(key, value);
@@ -397,5 +404,31 @@ export function applySiteTheme(themeValue, customThemes = [], shouldPersist = tr
 
   if (shouldPersist) {
     persistSiteTheme(activeTheme.value, customThemes);
+  }
+}
+
+// ── Site background: "plain" (the theme's colour) or "sky" (a sky picture behind see-through panels)
+export const SITE_BACKGROUNDS = ["plain", "sky"];
+const SITE_BACKGROUND_STORAGE_KEY = "site-background";
+
+export function readStoredSiteBackground() {
+  try {
+    const value = window.localStorage.getItem(SITE_BACKGROUND_STORAGE_KEY);
+    return SITE_BACKGROUNDS.includes(value) ? value : "plain";
+  } catch {
+    return "plain";
+  }
+}
+
+export function applySiteBackground(mode, shouldPersist = true) {
+  if (typeof document === "undefined") return;
+  const value = SITE_BACKGROUNDS.includes(mode) ? mode : "plain";
+  document.documentElement.setAttribute("data-site-background", value);
+  if (shouldPersist) {
+    try {
+      window.localStorage.setItem(SITE_BACKGROUND_STORAGE_KEY, value);
+    } catch {
+      // Storage blocked: the background still applies for this visit
+    }
   }
 }

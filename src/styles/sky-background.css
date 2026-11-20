@@ -1,0 +1,88 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sky background (Theme & Site → Site background → Sky)
+   A sky picture fixed behind the whole site; page sections become see-through panels in the
+   theme's own colours. Light themes get a day sky, dark themes (e.g. Midnight) a night sky.
+   Menus, pop-ups and form fields stay solid so text on them is always easy to read.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-site-background="sky"] {
+  /* The page colour gives way to the picture; panels use see-through theme colours */
+  --site-bg: transparent !important;
+  --site-surface: var(--site-surface-glass) !important;
+  --site-surface-muted: var(--site-surface-muted-glass) !important;
+  --site-section-bg: var(--site-section-glass) !important;
+  background: #9fd0f5;
+}
+
+html[data-site-background="sky"][data-site-tone="dark"] {
+  background: #0d1b3a;
+}
+
+html[data-site-background="sky"] body {
+  background: transparent !important;
+}
+
+/* A fixed layer (works on phones too, where background-attachment: fixed does not) */
+html[data-site-background="sky"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url("/images/sky-day.svg") center top / cover no-repeat;
+  pointer-events: none;
+}
+
+html[data-site-background="sky"][data-site-tone="dark"] body::before {
+  background-image: url("/images/sky-night.svg");
+}
+
+/* Large panels: frosted so text stays readable over clouds */
+html[data-site-background="sky"] .home-section,
+html[data-site-background="sky"] .home-highlight-card,
+html[data-site-background="sky"] .product-container,
+html[data-site-background="sky"] .product-details-section,
+html[data-site-background="sky"] .reviews-section,
+html[data-site-background="sky"] .related-section,
+html[data-site-background="sky"] .collection-page .card,
+html[data-site-background="sky"] .search-results-page .card,
+html[data-site-background="sky"] .home-page > section {
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border-color: color-mix(in srgb, var(--site-border) 60%, transparent);
+}
+
+/* Things that open over other content, and form fields: solid */
+html[data-site-background="sky"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[data-site-background="sky"] select,
+html[data-site-background="sky"] textarea,
+html[data-site-background="sky"] [role="dialog"],
+html[data-site-background="sky"] [role="listbox"],
+html[data-site-background="sky"] [role="menu"],
+html[data-site-background="sky"] .navbar-search-dropdown,
+html[data-site-background="sky"] .category-sidebar,
+html[data-site-background="sky"] .cookie-banner,
+html[data-site-background="sky"] .cookie-consent {
+  background-color: var(--site-surface-solid);
+}
+
+/* Phones: lighter blur (cheaper to draw while scrolling) */
+@media (max-width: 768px) {
+  html[data-site-background="sky"] .home-section,
+  html[data-site-background="sky"] .product-container,
+  html[data-site-background="sky"] .product-details-section,
+  html[data-site-background="sky"] .home-page > section {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-site-background="sky"] {
+    --site-surface: var(--site-surface-solid) !important;
+  }
+}
+
+/* Admin pages keep their own solid background */
+html[data-site-background="sky"] .admin-layout {
+  background: var(--admin-bg, #fafaf8);
+}

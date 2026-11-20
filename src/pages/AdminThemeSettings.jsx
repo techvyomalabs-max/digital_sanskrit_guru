@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { uploadImageDataUrl, isUploadedImageUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
-import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
+import { applySiteTheme, applySiteBackground, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
 import "./AdminThemeSettings.css";
 
@@ -191,6 +191,8 @@ function AdminThemeSettings() {
   const { token } = useAuth();
   const { confirm, prompt } = useDialog();
   const [siteTheme, setSiteTheme] = useState(DEFAULT_SITE_THEME);
+  // "plain" (theme colour) or "sky" (sky picture behind see-through sections)
+  const [siteBackground, setSiteBackground] = useState("plain");
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
   const [editingThemeId, setEditingThemeId] = useState(null);
@@ -280,6 +282,9 @@ function AdminThemeSettings() {
       setCustomThemes(nextCustomThemes);
       setSiteTheme(nextTheme);
       applySiteTheme(nextTheme, nextCustomThemes);
+      const nextBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
+      setSiteBackground(nextBackground);
+      applySiteBackground(nextBackground);
       const options = getSiteThemeOptions(nextCustomThemes);
       const activeOpt = options.find((o) => o.value === nextTheme) || options[0];
       if (activeOpt) {
@@ -538,7 +543,7 @@ function AdminThemeSettings() {
     try {
       const res = await axios.put(
         "/api/settings",
-        { siteTheme, customThemes },
+        { siteTheme, customThemes, siteBackground },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -547,6 +552,9 @@ function AdminThemeSettings() {
       setCustomThemes(nextCustomThemes);
       setSiteTheme(nextTheme);
       applySiteTheme(nextTheme, nextCustomThemes);
+      const savedBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
+      setSiteBackground(savedBackground);
+      applySiteBackground(savedBackground);
       setThemeMessage("Store theme updated.");
       window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
     } catch (err) {
@@ -1674,6 +1682,33 @@ function AdminThemeSettings() {
               })}
             </div>
           )}
+
+          <div className="theme-background-choice" role="radiogroup" aria-labelledby="theme-background-label">
+            <span id="theme-background-label" className="theme-background-label">Site background</span>
+            <div className="theme-background-options">
+              {[
+                { value: "plain", title: "Plain", desc: "The theme's own page colour" },
+                { value: "sky", title: "Sky", desc: "A sky picture behind see-through sections (a night sky with dark themes)" }
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={siteBackground === opt.value}
+                  className={`theme-background-option theme-background-option--${opt.value}${siteBackground === opt.value ? " is-active" : ""}`}
+                  onClick={() => {
+                    setSiteBackground(opt.value);
+                    // Preview straight away; visitors see it after Save Theme
+                    applySiteBackground(opt.value, false);
+                  }}
+                >
+                  <span className="theme-background-swatch" aria-hidden="true" />
+                  <strong>{opt.title}</strong>
+                  <small>{opt.desc}</small>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="pricing-actions-row">
             <button className="pricing-save-btn" onClick={saveActiveTheme} disabled={isSavingTheme}>

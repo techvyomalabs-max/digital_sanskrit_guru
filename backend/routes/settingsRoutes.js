@@ -349,6 +349,7 @@ function normalizeSettings(settings) {
       lastError: String(settings?.currencyRatesMeta?.lastError || "")
     },
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
+    siteBackground: settings?.siteBackground === "sky" ? "sky" : "plain",
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
@@ -486,6 +487,7 @@ function buildPublicSettingsPayload(settings) {
     internationalPricingDefaults: normalized.internationalPricingDefaults,
     currencyConversionRates: normalized.currencyConversionRates,
     siteTheme: normalized.siteTheme,
+    siteBackground: normalized.siteBackground,
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
@@ -519,6 +521,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.internationalPricingDefaults || {}) !== JSON.stringify(nextSettings?.internationalPricingDefaults || {})) changes.push("fallback currency");
   if (JSON.stringify(previousSettings?.currencyConversionRates || {}) !== JSON.stringify(nextSettings?.currencyConversionRates || {})) changes.push("conversion rates");
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
+  if (String(previousSettings?.siteBackground || "plain") !== String(nextSettings?.siteBackground || "plain")) changes.push("site background");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
@@ -543,6 +546,7 @@ async function getOrCreateSettings() {
 
 const THEME_KEYS = new Set([
   "siteTheme",
+  "siteBackground",
   "customThemes",
   "heroBanners",
   "heroBannerImage",
@@ -927,6 +931,9 @@ router.put("/", protect, admin, (req, res, next) => {
     : allowedThemeIds.has(settings.siteTheme)
       ? settings.siteTheme
       : DEFAULT_THEME;
+  if (req.body?.siteBackground !== undefined) {
+    settings.siteBackground = req.body.siteBackground === "sky" ? "sky" : "plain";
+  }
   settings.lastUpdatedByName = actor.name;
   settings.lastUpdatedByEmail = actor.email;
   settings.lastUpdatedAt = new Date();

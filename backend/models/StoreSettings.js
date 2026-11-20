@@ -471,6 +471,12 @@ const storeSettingsSchema = new mongoose.Schema(
       type: String,
       default: "sunrise"
     },
+    // What is behind the site: the theme's plain colour, or a sky picture with see-through sections
+    siteBackground: {
+      type: String,
+      enum: ["plain", "sky"],
+      default: "plain"
+    },
     customThemes: {
       type: [customThemeSchema],
       default: []
