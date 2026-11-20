@@ -1727,3 +1727,19 @@ body.admin-dark .pf-badge--hidden {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Rupee price previews under the overseas price fields (Pricing section) */
+.pf-price-row-group {
+  display: grid;
+  gap: 2px;
+}
+
+.pf-hint.pf-price-preview {
+  color: var(--admin-text, inherit);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-hint.pf-price-warning {
+  color: var(--admin-danger, #ef4444);
+  font-weight: 600;
+}
