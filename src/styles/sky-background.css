@@ -106,14 +106,14 @@ html[data-site-background="sky"]:not([data-admin-background="sky"]) .admin-layou
    and inputs are always easy to read. */
 html[data-admin-background="sky"] {
   --admin-bg: transparent;
-  --admin-surface: rgba(255, 255, 255, 0.8);
-  --admin-surface-2: rgba(245, 243, 239, 0.7);
+  --admin-surface: rgba(255, 255, 255, 0.9);
+  --admin-surface-2: rgba(245, 243, 239, 0.85);
 }
 
 html[data-admin-background="sky"] body.admin-dark {
   --admin-bg: transparent;
-  --admin-surface: rgba(30, 41, 59, 0.82);
-  --admin-surface-2: rgba(51, 65, 85, 0.72);
+  --admin-surface: rgba(30, 41, 59, 0.9);
+  --admin-surface-2: rgba(51, 65, 85, 0.85);
 }
 
 html[data-admin-background="sky"] body,

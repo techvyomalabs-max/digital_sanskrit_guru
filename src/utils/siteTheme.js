@@ -228,9 +228,9 @@ function buildThemeVariables(theme) {
     "--site-surface-muted": mixColors(palette.surface, palette.bg, 0.4),
     // Used by the sky background: see-through panels, and the solid colour for menus and pop-ups
     "--site-surface-solid": palette.surface,
-    "--site-surface-glass": toRgba(palette.surface, 0.58),
-    "--site-surface-muted-glass": toRgba(mixColors(palette.surface, palette.bg, 0.4), 0.45),
-    "--site-section-glass": toRgba(sectionBgColor, 0.4),
+    "--site-surface-glass": toRgba(palette.surface, 0.82),
+    "--site-surface-muted-glass": toRgba(mixColors(palette.surface, palette.bg, 0.4), 0.7),
+    "--site-section-glass": toRgba(sectionBgColor, 0.65),
     "--site-text": palette.text,
     "--site-text-soft": getSoftTextColor(palette.text, palette.surface, palette.bg),
     "--site-border": mixColors(palette.text, palette.surface, 0.18),
