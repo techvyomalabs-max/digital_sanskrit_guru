@@ -4331,7 +4331,19 @@ function AdminAddProducts() {
                       </div>
                     </div>
                   ) : null}
-                  {productType === "single" ? (
+                  {productType === "single" && (editingProduct?.optionParent || editingProduct?.bundleFormatKey) ? (
+                    <div className="admin-field admin-field-wide">
+                      <span>Formats</span>
+                      <p className="pf-hint">
+                        This product is one of the types of{" "}
+                        <strong>
+                          {products.find((p) => String(p._id) === String(editingProduct.optionParent?._id || editingProduct.optionParent))?.name ||
+                            "another product"}
+                        </strong>
+                        . Its types are managed in that main product.
+                      </p>
+                    </div>
+                  ) : productType === "single" ? (
                     <div className="admin-field admin-field-wide">
                       <span>Formats (optional)</span>
                       <div className="pf-formats-box pf-single-formats">
