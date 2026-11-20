@@ -2412,22 +2412,23 @@ function AdminAddProducts() {
     loadProducts();
   };
 
-  // Undo a grouping: the main product goes to the Recycle Bin and its grouped products return
-  // to the shop as they were (the delete route unlinks them). Restoring it groups them again.
+  // Undo a grouping: the grouped (linked) products return to the shop on their own. The main
+  // product and the types created inside it stay; a main product left empty goes to the Recycle Bin.
   const revertGrouping = async (parent, linkedCount) => {
     const createdCount = (parent.options || []).length - linkedCount;
     const ok = await confirm({
       title: "Revert grouping?",
       message:
-        `"${parent.name}" goes to the Recycle Bin and its ${linkedCount} grouped product${linkedCount === 1 ? "" : "s"} show in the shop again as before.` +
-        (createdCount > 0 ? ` The ${createdCount} type${createdCount === 1 ? "" : "s"} added inside it stay with it in the Recycle Bin.` : "") +
-        " Restore it from the Recycle Bin to group them again.",
+        `The ${linkedCount} grouped product${linkedCount === 1 ? "" : "s"} in "${parent.name}" will show in the shop again on ${linkedCount === 1 ? "its" : "their"} own.` +
+        (createdCount > 0
+          ? ` "${parent.name}" and the ${createdCount} type${createdCount === 1 ? "" : "s"} created inside it stay as they are.`
+          : ` "${parent.name}" has nothing else in it, so it goes to the Recycle Bin.`),
       confirmText: "Revert"
     });
     if (!ok) return;
     try {
-      await axios.delete(`/api/products/${parent._id}`, { headers: { Authorization: `Bearer ${token}` } });
-      setVisibilityMessage(`Reverted "${parent.name}". Its products are back in the shop.`);
+      const res = await axios.post(`/api/products/admin/format-groups/${parent._id}/revert`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setVisibilityMessage(res.data?.message || `Reverted "${parent.name}".`);
     } catch (err) {
       setVisibilityMessage(err.response?.data?.message || "Could not revert the grouping.");
     }
