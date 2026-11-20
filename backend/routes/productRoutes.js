@@ -43,7 +43,11 @@ const {
   normalizeItemFormats,
   applyFormatsToItems,
   buildFormatChildFields,
-  buildSingleFormatChildFields
+  buildSingleFormatChildFields,
+  FORMAT_OWN_CONTENT_FIELDS,
+  OWN_CONTENT_PATHS,
+  ownContentDiff,
+  withoutOwnContent
 } = require("../utils/bundleFormats");
 
 const router = express.Router();
@@ -892,6 +896,29 @@ async function resolveLinkedOptions(raw, selfId = "") {
  * (in the admin's order) as options. formats / linked = null leaves that part as it is.
  * `parent` is the saved product. Returns the refreshed product (lean).
  */
+/**
+ * A type of a product (a created format) saved on its own: description, About, images and trailer
+ * video that now differ from the main product's become the type's own, so saving the main product
+ * no longer overwrites them. Fields listed in `resetFields` go back to the main product's.
+ */
+async function applyFormatOwnContent(product, resetFields) {
+  const parent = await Product.findById(product.optionParent).lean();
+  if (!parent) return;
+  const format = (Array.isArray(parent.bundleFormats) ? parent.bundleFormats : []).find(
+    (f) => f?.key === product.bundleFormatKey
+  );
+  if (!format) return;
+  // What the main product would give this type (its own image from the type row included)
+  const expected = buildSingleFormatChildFields(parent, { ...format, label: format.label || "" });
+  const reset = (Array.isArray(resetFields) ? resetFields : []).filter((f) => FORMAT_OWN_CONTENT_FIELDS.includes(f));
+  for (const field of reset) {
+    for (const path of OWN_CONTENT_PATHS[field]) {
+      product[path] = Array.isArray(expected[path]) ? [...expected[path]] : expected[path] ?? (path === "images" ? [] : "");
+    }
+  }
+  product.ownContentFields = ownContentDiff(product.toObject ? product.toObject() : product, expected);
+}
+
 async function reconcileSingleFormats(parent, formats, linked, actor = {}) {
   const parentId = parent._id;
   const parentPlain = parent.toObject ? parent.toObject() : parent;
@@ -926,7 +953,8 @@ async function reconcileSingleFormats(parent, formats, linked, actor = {}) {
       const fields = buildSingleFormatChildFields(parentPlain, format, tax);
       let child = childByKey.get(format.key);
       if (child) {
-        child.set({ ...fields, ...stamp, deletedBy: { name: "", email: "" } });
+        // Description, images and so on that were edited on the type itself stay its own
+        child.set({ ...withoutOwnContent(fields, child.ownContentFields), ...stamp, deletedBy: { name: "", email: "" } });
         child = await child.save();
       } else {
         child = await Product.create({ ...fields, stock: fields.stock ?? 0, ...stamp });
@@ -1386,6 +1414,9 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     const nextImages = normalizeImages(req.body.images ?? product.images, nextImageValue);
     product.image = nextImages[0] || String(nextImageValue || "").trim();
     product.images = nextImages;
+    if (product.bundleFormatKey && product.optionParent) {
+      await applyFormatOwnContent(product, req.body.resetContentFields);
+    }
     product.hasOptions = optionsRes.hasOptions;
     product.options = optionsRes.options;
     product.hideFromListings = optionsRes.hideFromListings;

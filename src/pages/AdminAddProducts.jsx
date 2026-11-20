@@ -432,6 +432,8 @@ function AdminAddProducts() {
   const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [aboutProduct, setAboutProduct] = useState("");
+  // A type of another product: its own content fields to put back to the main product's on save
+  const [resetContentFields, setResetContentFields] = useState([]);
   const [discountType, setDiscountType] = useState("none");
   const [festiveOffer, setFestiveOffer] = useState(false);
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
@@ -902,6 +904,7 @@ function AdminAddProducts() {
     setTrailerVideoUrl("");
     setDescription("");
     setAboutProduct("");
+    setResetContentFields([]);
     setDiscountType("none");
     setFestiveOffer(false);
     setFestiveDiscountPercent("0");
@@ -2029,6 +2032,7 @@ function AdminAddProducts() {
       trailerVideoUrl: trailerVideoUrl.trim(),
       description: description.trim(),
       aboutProduct,
+      ...(editingProduct?.bundleFormatKey && resetContentFields.length > 0 ? { resetContentFields } : {}),
       discountType,
       festiveOffer: discountType !== "none",
       festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
@@ -2213,6 +2217,7 @@ function AdminAddProducts() {
     setTrailerVideoUrl(String(product.trailerVideoUrl || ""));
     setDescription(product.description || "");
     setAboutProduct(Array.isArray(product.aboutProduct) ? product.aboutProduct.join("\n") : "");
+    setResetContentFields([]);
     const resolvedDiscountType = product.discountType || (product.festiveOffer === true ? "festive" : "none");
     setDiscountType(resolvedDiscountType);
     setFestiveOffer(resolvedDiscountType !== "none");
@@ -2521,6 +2526,36 @@ function AdminAddProducts() {
   };
 
   // Exports every product, formats included, fresh from the server.
+  // Under description, About, images and trailer video of a type of another product: whether the
+  // field follows the main product or is the type's own (kept when the main product is saved).
+  const renderOwnContentNote = (field, label) => {
+    if (!editingProduct?.bundleFormatKey) return null;
+    const own = Array.isArray(editingProduct.ownContentFields) && editingProduct.ownContentFields.includes(field);
+    const resetting = resetContentFields.includes(field);
+    if (resetting) {
+      return (
+        <small className="pf-hint pf-own-content-note">
+          Will use the main product&apos;s {label} when you save.{" "}
+          <button type="button" className="pf-link-btn" onClick={() => setResetContentFields((list) => list.filter((f) => f !== field))}>
+            Undo
+          </button>
+        </small>
+      );
+    }
+    return own ? (
+      <small className="pf-hint pf-own-content-note">
+        This type&apos;s own {label}: saving the main product won&apos;t change it.{" "}
+        <button type="button" className="pf-link-btn" onClick={() => setResetContentFields((list) => [...list, field])}>
+          Use main product&apos;s
+        </button>
+      </small>
+    ) : (
+      <small className="pf-hint pf-own-content-note">
+        From the main product. Change it here to give this type its own {label}.
+      </small>
+    );
+  };
+
   const handleExportProducts = async (fileType) => {
     if (exportingProducts) return;
     setExportingProducts(fileType);
@@ -3518,6 +3553,7 @@ function AdminAddProducts() {
                       onChange={(e) => setDescription(e.target.value)}
                       rows={2}
                     />
+                    {renderOwnContentNote("description", "description")}
                   </label>
                   <label className="admin-field admin-field-wide">
                     <span>Trailer Video URL</span>
@@ -3526,6 +3562,7 @@ function AdminAddProducts() {
                       value={trailerVideoUrl}
                       onChange={(e) => setTrailerVideoUrl(e.target.value)}
                     />
+                    {renderOwnContentNote("trailerVideoUrl", "trailer video")}
                   </label>
                   <label className="admin-field admin-field-wide">
                     <span>About This Product</span>
@@ -3535,6 +3572,7 @@ function AdminAddProducts() {
                       onChange={(e) => setAboutProduct(e.target.value)}
                       rows={3}
                     />
+                    {renderOwnContentNote("aboutProduct", "About points")}
                   </label>
                 </div>
               </section>
@@ -4842,6 +4880,7 @@ function AdminAddProducts() {
                       onChange={(e) => setImagesInput(e.target.value)}
                       rows={4}
                     />
+                    {renderOwnContentNote("images", "images")}
                   </label>
                   <div className="admin-field admin-field-wide">
                     <span>Upload Gallery Images</span>
