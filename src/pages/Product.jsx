@@ -1232,10 +1232,11 @@ function Product() {
     }
   };
 
+  // Buy Now: straight to checkout (no pop-up)
   const handleBuyNow = async () => {
     if (!memoBuyProduct || (memoBuyProduct.isDigital !== true && memoBuyProduct.stock === 0)) return;
-    await addToCart(memoBuyProduct, qty);
-    navigate("/checkout");
+    const added = await addToCart(memoBuyProduct, qty, { silent: true });
+    if (added) navigate("/checkout");
   };
 
   // ── Fix #12: Styled skeleton loader instead of raw <p> ──────────────────────
@@ -1245,6 +1246,19 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // The title's other formats, offered in the cart pop-up ("Also get"). Bulk (10+ copies) and
+  // Kindle (sold on Amazon) are left out: they are bought on their own.
+  const isSoloFormat = (p) => String(p?.productType || "").toLowerCase() === "bulk" || isKindleProduct(p);
+  const formatOptionList = isOptionsParent(product) && Array.isArray(product.publicOptions)
+    ? orderFormatOptions(product.publicOptions, formatContext)
+    : [];
+  const popupFormatSuggestions = formatOptionList
+    .filter((o) => o.status === "available" && !isSoloFormat(o.product) && String(o.product?._id || "") !== selectedOptionId)
+    .map((o) => ({ product: o.product, label: o.label }));
+  const handleAddSelectedToCart = async () => {
+    const label = formatOptionList.find((o) => String(o?.product?._id || "") === selectedOptionId)?.label || "";
+    await addToCart(buyProduct, qty, { formatLabel: label, suggestions: popupFormatSuggestions });
+  };
   // With formats, the category is the chosen format's own (e.g. Kindle), else the listing's
   const shownCategory = String(
     (isOptionsParent(product) && String(buyProduct?.category || "").trim()) || product?.category || ""
@@ -2152,7 +2166,7 @@ function Product() {
                     <button
                       className="add-cart-btn"
                       disabled={(buyProduct.isDigital !== true && buyProduct.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
-                      onClick={() => addToCart(buyProduct, qty)}
+                      onClick={handleAddSelectedToCart}
                       style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                     >
                       {(buyProduct.isDigital !== true && buyProduct.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
@@ -2972,7 +2986,7 @@ function Product() {
                   className="add-cart-btn"
                   tabIndex={showBuyBar ? 0 : -1}
                   disabled={cannotBuy}
-                  onClick={() => addToCart(buyProduct, qty)}
+                  onClick={handleAddSelectedToCart}
                 >
                   {cannotBuy ? "Unavailable" : "Add to Cart"}
                 </button>
