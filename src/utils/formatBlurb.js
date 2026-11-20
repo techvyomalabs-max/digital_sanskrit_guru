@@ -108,8 +108,15 @@ export function getFormatBlurb(option, notes = [], typeNote = "") {
   const hints = [label, product?.isDigital === true ? product?.digitalType : "", product?.category, product?.name]
     .map(lower)
     .filter(Boolean);
-  let match = null;
-  for (const hint of hints) {
+  // A Bulk product is copies of 10+, whatever its name says
+  let match =
+    lower(product?.productType) === "bulk"
+      ? {
+          kind: "book",
+          text: "10 to 100 printed copies for a class, school or study group, shipped together to one address."
+        }
+      : null;
+  for (const hint of match ? [] : hints) {
     match = KINDS.find((k) => k.test(hint));
     if (match) break;
   }
