@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, Download, FileText, Link2, Eye, EyeOff } from "lucide-react";
+import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, Download, FileText, Link2, Eye, EyeOff, Layers } from "lucide-react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
@@ -8,7 +9,7 @@ import { uploadImageDataUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import ProductTypesManager from "../components/admin/ProductTypesManager";
 import ProductTypesTable from "../components/admin/ProductTypesTable";
-import FormatGroupingPanel from "../components/admin/FormatGroupingPanel";
+import { DEFAULT_PRODUCT_TYPES } from "../utils/productTypeDefaults";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
 import { buildProductsCsv, buildProductsJson, parseCsvText } from "../utils/productsCsv";
@@ -38,16 +39,6 @@ const DEFAULT_DIGITAL_FORMAT_TYPES = [
   "Other"
 ];
 const BUILT_IN_DIGITAL_FORMAT_TYPES = ["Web Version", "Flipbook", "Kindle"];
-// Same defaults as backend/utils/productFormatTypes.js (used until Settings load)
-const DEFAULT_PRODUCT_TYPES = [
-  { key: "paper", label: "Paper", kind: "physical", hsnSac: "4901", gstRate: 0, note: "Printed book, delivered to your address." },
-  { key: "pendrive", label: "Pendrive", kind: "physical", hsnSac: "8523", gstRate: 18, note: "Delivered to your address. Plays on any computer." },
-  { key: "audio-device", label: "Audio Device", kind: "physical", hsnSac: "8518", gstRate: 18, note: "A ready-to-play audio device, delivered to your address." },
-  { key: "web-version", label: "Web Version", kind: "digital", hsnSac: "998433", gstRate: 18, note: "Instant access in your Digital Library." },
-  { key: "flipbook", label: "Flipbook", kind: "digital", hsnSac: "998433", gstRate: 18, note: "A digital book with real page-turns, read in your Digital Library." },
-  { key: "audio-book", label: "Audio Book", kind: "digital", hsnSac: "998433", gstRate: 18, note: "Listen instantly in your Digital Library." },
-  { key: "kindle", label: "Kindle", kind: "kindle", hsnSac: "", gstRate: null, note: "Sold on Amazon Kindle." }
-];
 const formatTypeForKind = (kind) => (kind === "physical" ? "physical" : kind === "digital" || kind === "kindle" ? "digital" : "");
 
 const getDigitalFormatTypeLabel = (type) => {
@@ -5086,14 +5077,17 @@ function AdminAddProducts() {
           )}
         </section>
 
-        <FormatGroupingPanel
-          getAuthHeaders={() => ({ Authorization: `Bearer ${token}` })}
-          productTypes={productTypes}
-          onGrouped={() => {
-            loadProducts();
-            loadFormatSales();
-          }}
-        />
+        <section className="card agp-link-card">
+          <div>
+            <h3><Layers size={17} className="ui-inline-icon" aria-hidden="true" />Group existing products into types</h3>
+            <p className="pf-hint">
+              Find products that are one title in several types (Paperback, Web Version, Bulk...) and group them under one main product.
+            </p>
+          </div>
+          <Link to="/admin/add-products/group" className="admin-upload-template-btn">
+            Open Group Products
+          </Link>
+        </section>
 
         <section className="card">
           <h3 style={{ marginBottom: "14px" }}>All Products</h3>
