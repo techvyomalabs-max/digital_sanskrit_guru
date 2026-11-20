@@ -218,7 +218,8 @@ function App() {
             res.data?.siteBackground === "sky" ? "sky" : "plain",
             true,
             res.data?.siteBackgroundImage || "",
-            res.data?.siteBackgroundAdmin === true
+            res.data?.siteBackgroundAdmin === true,
+            res.data?.siteBackgroundOpacity
           );
           storePricingConfig({
             pricingMarkets: res.data?.pricingMarkets || [],

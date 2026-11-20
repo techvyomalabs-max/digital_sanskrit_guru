@@ -228,9 +228,8 @@ function buildThemeVariables(theme) {
     "--site-surface-muted": mixColors(palette.surface, palette.bg, 0.4),
     // Used by the sky background: see-through panels, and the solid colour for menus and pop-ups
     "--site-surface-solid": palette.surface,
-    "--site-surface-glass": toRgba(palette.surface, 0.82),
-    "--site-surface-muted-glass": toRgba(mixColors(palette.surface, palette.bg, 0.4), 0.7),
-    "--site-section-glass": toRgba(sectionBgColor, 0.65),
+    "--site-surface-muted-solid": mixColors(palette.surface, palette.bg, 0.4),
+    "--site-section-solid": sectionBgColor,
     "--site-text": palette.text,
     "--site-text-soft": getSoftTextColor(palette.text, palette.surface, palette.bg),
     "--site-border": mixColors(palette.text, palette.surface, 0.18),
@@ -446,12 +445,40 @@ const safeImageUrl = (url) => (/^https?:\/\/[^\s"'()<>]+$/i.test(String(url || "
  * mode: "plain" or "sky". imageUrl (optional): an uploaded picture used instead of the built-in
  * sky; empty means the built-in sky.
  */
-export function applySiteBackground(mode, shouldPersist = true, imageUrl = "", inAdmin = false) {
+export const DEFAULT_SITE_BACKGROUND_OPACITY = 82;
+const SITE_BACKGROUND_OPACITY_STORAGE_KEY = "site-background-opacity";
+
+const clampOpacity = (value) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.min(100, Math.max(50, n)) : DEFAULT_SITE_BACKGROUND_OPACITY;
+};
+
+export function readStoredSiteBackgroundOpacity() {
+  try {
+    const raw = window.localStorage.getItem(SITE_BACKGROUND_OPACITY_STORAGE_KEY);
+    return raw === null ? DEFAULT_SITE_BACKGROUND_OPACITY : clampOpacity(raw);
+  } catch {
+    return DEFAULT_SITE_BACKGROUND_OPACITY;
+  }
+}
+
+/**
+ * opacity: how solid sections are over the sky, 50-100 (%).
+ */
+export function applySiteBackground(
+  mode,
+  shouldPersist = true,
+  imageUrl = "",
+  inAdmin = false,
+  opacity = DEFAULT_SITE_BACKGROUND_OPACITY
+) {
   if (typeof document === "undefined") return;
   const value = SITE_BACKGROUND_PATTERNS.includes(mode) ? mode : "plain";
   const image = safeImageUrl(imageUrl);
   const root = document.documentElement;
   root.setAttribute("data-site-background", value);
+  const panel = clampOpacity(opacity);
+  root.style.setProperty("--sky-panel-opacity", String(panel));
   // The admin console shows the sky only when asked to
   if (value === "sky" && inAdmin === true) root.setAttribute("data-admin-background", "sky");
   else root.removeAttribute("data-admin-background");
@@ -467,6 +494,7 @@ export function applySiteBackground(mode, shouldPersist = true, imageUrl = "", i
       window.localStorage.setItem(SITE_BACKGROUND_STORAGE_KEY, value);
       window.localStorage.setItem(SITE_BACKGROUND_IMAGE_STORAGE_KEY, image);
       window.localStorage.setItem(SITE_BACKGROUND_ADMIN_STORAGE_KEY, inAdmin === true ? "1" : "0");
+      window.localStorage.setItem(SITE_BACKGROUND_OPACITY_STORAGE_KEY, String(panel));
     } catch {
       // Storage blocked: the background still applies for this visit
     }

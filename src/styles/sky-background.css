@@ -7,10 +7,14 @@
 
 html[data-site-background="sky"] {
   /* The page colour gives way to the picture; panels use see-through theme colours */
+  /* --sky-panel-opacity (50-100) comes from Theme & Site → Sections see-through */
+  --sky-panel: calc(var(--sky-panel-opacity, 82) * 1%);
+  --sky-panel-soft: calc((var(--sky-panel-opacity, 82) - 12) * 1%);
+  --sky-panel-section: calc((var(--sky-panel-opacity, 82) - 17) * 1%);
   --site-bg: transparent !important;
-  --site-surface: var(--site-surface-glass) !important;
-  --site-surface-muted: var(--site-surface-muted-glass) !important;
-  --site-section-bg: var(--site-section-glass) !important;
+  --site-surface: color-mix(in srgb, var(--site-surface-solid) var(--sky-panel), transparent) !important;
+  --site-surface-muted: color-mix(in srgb, var(--site-surface-muted-solid) var(--sky-panel-soft), transparent) !important;
+  --site-section-bg: color-mix(in srgb, var(--site-section-solid) var(--sky-panel-section), transparent) !important;
   background: var(--site-header-bg, #1565c0);
 }
 
@@ -92,7 +96,7 @@ html[data-site-background="sky"] .cookie-consent {
 
 @media (prefers-reduced-transparency: reduce) {
   html[data-site-background="sky"] {
-    --site-surface: var(--site-surface-solid) !important;
+    --sky-panel-opacity: 100 !important;
   }
 }
 
@@ -105,15 +109,18 @@ html[data-site-background="sky"]:not([data-admin-background="sky"]) .admin-layou
    Cards become frosted panels; the sidebar, tables, forms and pop-ups stay solid so data
    and inputs are always easy to read. */
 html[data-admin-background="sky"] {
+  /* Admin cards a little more solid than the store's (8 points), never above 100% */
+  --sky-admin-panel: calc(min(100, var(--sky-panel-opacity, 82) + 8) * 1%);
+  --sky-admin-panel-2: calc(min(100, var(--sky-panel-opacity, 82) + 3) * 1%);
   --admin-bg: transparent;
-  --admin-surface: rgba(255, 255, 255, 0.9);
-  --admin-surface-2: rgba(245, 243, 239, 0.85);
+  --admin-surface: color-mix(in srgb, #ffffff var(--sky-admin-panel), transparent);
+  --admin-surface-2: color-mix(in srgb, #f5f3ef var(--sky-admin-panel-2), transparent);
 }
 
 html[data-admin-background="sky"] body.admin-dark {
   --admin-bg: transparent;
-  --admin-surface: rgba(30, 41, 59, 0.9);
-  --admin-surface-2: rgba(51, 65, 85, 0.85);
+  --admin-surface: color-mix(in srgb, #1e293b var(--sky-admin-panel), transparent);
+  --admin-surface-2: color-mix(in srgb, #334155 var(--sky-admin-panel-2), transparent);
 }
 
 html[data-admin-background="sky"] body,

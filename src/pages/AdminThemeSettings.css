@@ -2140,3 +2140,30 @@ color:var(--admin-muted);
   color: var(--admin-text, #0f172a);
   cursor: pointer;
 }
+
+/* Sections see-through slider */
+.theme-background-opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 360px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--admin-text, #0f172a);
+}
+
+.theme-background-opacity small {
+  color: var(--admin-text-muted, #64748b);
+}
+
+.theme-background-opacity input[type="range"] {
+  width: 100%;
+  accent-color: var(--admin-primary, #d97706);
+}
+
+.theme-background-opacity-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--admin-text-muted, #64748b);
+}

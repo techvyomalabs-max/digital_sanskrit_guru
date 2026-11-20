@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { uploadImageDataUrl, isUploadedImageUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
-import { applySiteTheme, applySiteBackground, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
+import { applySiteTheme, applySiteBackground, DEFAULT_SITE_BACKGROUND_OPACITY, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
 import "./AdminThemeSettings.css";
 
@@ -198,6 +198,8 @@ function AdminThemeSettings() {
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   // Also show the sky in the admin console
   const [siteBackgroundAdmin, setSiteBackgroundAdmin] = useState(false);
+  // How solid sections are over the sky (50-100 %)
+  const [siteBackgroundOpacity, setSiteBackgroundOpacity] = useState(DEFAULT_SITE_BACKGROUND_OPACITY);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
   const [editingThemeId, setEditingThemeId] = useState(null);
@@ -290,10 +292,12 @@ function AdminThemeSettings() {
       const nextBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
       const nextBackgroundImage = String(res.data?.siteBackgroundImage || "");
       const nextBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
+      const nextBackgroundOpacity = Number(res.data?.siteBackgroundOpacity) || DEFAULT_SITE_BACKGROUND_OPACITY;
       setSiteBackground(nextBackground);
       setSiteBackgroundImage(nextBackgroundImage);
       setSiteBackgroundAdmin(nextBackgroundAdmin);
-      applySiteBackground(nextBackground, true, nextBackgroundImage, nextBackgroundAdmin);
+      setSiteBackgroundOpacity(nextBackgroundOpacity);
+      applySiteBackground(nextBackground, true, nextBackgroundImage, nextBackgroundAdmin, nextBackgroundOpacity);
       const options = getSiteThemeOptions(nextCustomThemes);
       const activeOpt = options.find((o) => o.value === nextTheme) || options[0];
       if (activeOpt) {
@@ -565,7 +569,7 @@ function AdminThemeSettings() {
       }
       setSiteBackgroundImage(publicUrl);
       setSiteBackground("sky");
-      applySiteBackground("sky", false, publicUrl, siteBackgroundAdmin);
+      applySiteBackground("sky", false, publicUrl, siteBackgroundAdmin, siteBackgroundOpacity);
       setThemeMessage("Background picture uploaded. Click Save Theme to show it to visitors.");
     } catch (err) {
       setThemeMessage(err?.message || "Could not upload the background picture.");
@@ -582,7 +586,7 @@ function AdminThemeSettings() {
     try {
       const res = await axios.put(
         "/api/settings",
-        { siteTheme, customThemes, siteBackground, siteBackgroundImage, siteBackgroundAdmin },
+        { siteTheme, customThemes, siteBackground, siteBackgroundImage, siteBackgroundAdmin, siteBackgroundOpacity },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -594,10 +598,12 @@ function AdminThemeSettings() {
       const savedBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
       const savedBackgroundImage = String(res.data?.siteBackgroundImage || "");
       const savedBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
+      const savedBackgroundOpacity = Number(res.data?.siteBackgroundOpacity) || DEFAULT_SITE_BACKGROUND_OPACITY;
       setSiteBackground(savedBackground);
       setSiteBackgroundImage(savedBackgroundImage);
       setSiteBackgroundAdmin(savedBackgroundAdmin);
-      applySiteBackground(savedBackground, true, savedBackgroundImage, savedBackgroundAdmin);
+      setSiteBackgroundOpacity(savedBackgroundOpacity);
+      applySiteBackground(savedBackground, true, savedBackgroundImage, savedBackgroundAdmin, savedBackgroundOpacity);
       setThemeMessage("Store theme updated.");
       window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
     } catch (err) {
@@ -1742,7 +1748,7 @@ function AdminThemeSettings() {
                   onClick={() => {
                     setSiteBackground(opt.value);
                     // Preview straight away; visitors see it after Save Theme
-                    applySiteBackground(opt.value, false, siteBackgroundImage, siteBackgroundAdmin);
+                    applySiteBackground(opt.value, false, siteBackgroundImage, siteBackgroundAdmin, siteBackgroundOpacity);
                   }}
                 >
                   <span className="theme-background-swatch" aria-hidden="true" />
@@ -1783,7 +1789,7 @@ function AdminThemeSettings() {
                         className="pricing-link-btn"
                         onClick={() => {
                           setSiteBackgroundImage("");
-                          applySiteBackground("sky", false, "", siteBackgroundAdmin);
+                          applySiteBackground("sky", false, "", siteBackgroundAdmin, siteBackgroundOpacity);
                           setThemeMessage("Back to the built-in sky. Click Save Theme to show it to visitors.");
                         }}
                       >
@@ -1791,6 +1797,35 @@ function AdminThemeSettings() {
                       </button>
                     ) : null}
                   </div>
+                  <label className="theme-background-opacity">
+                    <span>
+                      Sections: <strong>{siteBackgroundOpacity}% solid</strong>
+                      <small>
+                        {siteBackgroundOpacity >= 95
+                          ? " (almost no sky through them)"
+                          : siteBackgroundOpacity <= 65
+                            ? " (lots of sky through them)"
+                            : ""}
+                      </small>
+                    </span>
+                    <input
+                      type="range"
+                      min="50"
+                      max="100"
+                      step="1"
+                      value={siteBackgroundOpacity}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        setSiteBackgroundOpacity(value);
+                        applySiteBackground("sky", false, siteBackgroundImage, siteBackgroundAdmin, value);
+                      }}
+                      aria-label="How solid sections are over the sky"
+                    />
+                    <span className="theme-background-opacity-scale" aria-hidden="true">
+                      <span>See-through</span>
+                      <span>Solid</span>
+                    </span>
+                  </label>
                   <label className="theme-background-admin-toggle">
                     <input
                       type="checkbox"
@@ -1798,7 +1833,7 @@ function AdminThemeSettings() {
                       onChange={(e) => {
                         const on = e.target.checked;
                         setSiteBackgroundAdmin(on);
-                        applySiteBackground("sky", false, siteBackgroundImage, on);
+                        applySiteBackground("sky", false, siteBackgroundImage, on, siteBackgroundOpacity);
                       }}
                     />
                     <span>Also show it in the admin console</span>

@@ -352,6 +352,7 @@ function normalizeSettings(settings) {
     siteBackground: settings?.siteBackground === "sky" ? "sky" : "plain",
     siteBackgroundImage: normalizeSiteBackgroundImage(settings?.siteBackgroundImage),
     siteBackgroundAdmin: settings?.siteBackgroundAdmin === true,
+    siteBackgroundOpacity: normalizeSiteBackgroundOpacity(settings?.siteBackgroundOpacity),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
@@ -492,6 +493,7 @@ function buildPublicSettingsPayload(settings) {
     siteBackground: normalized.siteBackground,
     siteBackgroundImage: normalized.siteBackgroundImage,
     siteBackgroundAdmin: normalized.siteBackgroundAdmin,
+    siteBackgroundOpacity: normalized.siteBackgroundOpacity,
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
@@ -528,6 +530,7 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (String(previousSettings?.siteBackground || "plain") !== String(nextSettings?.siteBackground || "plain")) changes.push("site background");
   if (String(previousSettings?.siteBackgroundImage || "") !== String(nextSettings?.siteBackgroundImage || "")) changes.push("site background picture");
   if (Boolean(previousSettings?.siteBackgroundAdmin) !== Boolean(nextSettings?.siteBackgroundAdmin)) changes.push("admin background");
+  if (Number(previousSettings?.siteBackgroundOpacity ?? 82) !== Number(nextSettings?.siteBackgroundOpacity ?? 82)) changes.push("section see-through");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
@@ -552,6 +555,13 @@ async function getOrCreateSettings() {
 
 // A site background picture: a web address only (uploads go to S3), never inline image data,
 // which would make every page's settings download large
+// Sections over the sky: 50-100 % solid (default 82)
+function normalizeSiteBackgroundOpacity(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 82;
+  return Math.min(100, Math.max(50, n));
+}
+
 function normalizeSiteBackgroundImage(value) {
   const url = String(value || "").trim();
   if (!url || url.length > 2048) return "";
@@ -563,6 +573,7 @@ const THEME_KEYS = new Set([
   "siteBackground",
   "siteBackgroundImage",
   "siteBackgroundAdmin",
+  "siteBackgroundOpacity",
   "customThemes",
   "heroBanners",
   "heroBannerImage",
@@ -949,6 +960,9 @@ router.put("/", protect, admin, (req, res, next) => {
       : DEFAULT_THEME;
   if (req.body?.siteBackground !== undefined) {
     settings.siteBackground = req.body.siteBackground === "sky" ? "sky" : "plain";
+  }
+  if (req.body?.siteBackgroundOpacity !== undefined) {
+    settings.siteBackgroundOpacity = normalizeSiteBackgroundOpacity(req.body.siteBackgroundOpacity);
   }
   if (req.body?.siteBackgroundAdmin !== undefined) {
     settings.siteBackgroundAdmin = req.body.siteBackgroundAdmin === true;

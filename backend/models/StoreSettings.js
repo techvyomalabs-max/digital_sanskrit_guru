@@ -487,6 +487,13 @@ const storeSettingsSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // How solid sections are over the sky, in percent (50: see-through, 100: solid)
+    siteBackgroundOpacity: {
+      type: Number,
+      min: 50,
+      max: 100,
+      default: 82
+    },
     customThemes: {
       type: [customThemeSchema],
       default: []
