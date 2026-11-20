@@ -935,7 +935,7 @@ function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               </div>
-              <strong className="home-stat-number">5 Lakhs+</strong>
+              <strong className="home-stat-number">135,236</strong>
               <span className="home-stat-title">Learners Served</span>
               <span className="home-stat-desc">Sanskrit enthusiasts and students worldwide studying courses and using digital tools.</span>
             </div>
