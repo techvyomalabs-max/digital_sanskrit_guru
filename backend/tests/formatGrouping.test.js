@@ -61,3 +61,30 @@ test("real names: brackets kept, devices are not audio books, all type words rem
   assert.deepEqual(splitTypeFromName({ name: "Sanskrit Vocabulary Builder (Kindle Edition) eBook" }), { typeKey: "kindle", baseName: "Sanskrit Vocabulary Builder" });
   assert.equal(splitTypeFromName({ name: "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ)" }).baseName, "Saptaha Stotra Sangraha (Saptāhastotrasaṅgrahaḥ)");
 });
+
+test("titles match with or without the Sanskrit name in brackets and offer notes", () => {
+  const { suggestFormatGroups } = require("../utils/formatGrouping");
+  const id = (n) => String(n).padStart(24, "0");
+  const groups = suggestFormatGroups([
+    { _id: id(1), name: "Dhaturupa Paricaya (Dhāturūpaparicayaḥ) – Paperback", productType: "single" },
+    { _id: id(2), name: "Dhaturupa Paricaya – Web Version", productType: "single", isDigital: true },
+    { _id: id(3), name: "Srimad Bhagavadgita (Śrīmadbhagavadgītā) – Audio Device - Festival Offer", productType: "single" },
+    { _id: id(4), name: "Srimad Bhagavadgita - Pendrive", productType: "single" }
+  ]);
+  assert.deepEqual(
+    groups.map((g) => [g.name, g.members.length]),
+    [
+      ["Dhaturupa Paricaya (Dhāturūpaparicayaḥ)", 2],
+      ["Srimad Bhagavadgita (Śrīmadbhagavadgītā)", 2]
+    ]
+  );
+});
+
+test("different parts never match", () => {
+  const { suggestFormatGroups } = require("../utils/formatGrouping");
+  const groups = suggestFormatGroups([
+    { _id: "1".padStart(24, "0"), name: "Vocabulary Builder Part 1", productType: "single" },
+    { _id: "2".padStart(24, "0"), name: "Vocabulary Builder Part 2 - Web Version", productType: "single", isDigital: true }
+  ]);
+  assert.equal(groups.length, 0);
+});

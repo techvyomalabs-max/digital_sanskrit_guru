@@ -91,7 +91,9 @@ function FormatGroupingPanel({ getAuthHeaders, productTypes = [], onGrouped }) {
             Finds products that are one title in several types, like &quot;Gita Dhyanam&quot; and &quot;Gita Dhyanam - Web
             Version&quot;. Check each suggestion, untick anything that doesn&apos;t belong, then press Group. Each product keeps
             its orders, reviews, stock, My Library access and old link (it opens the main product with that type chosen).
-            To undo, move the new main product to the Recycle Bin: the products come back to the shop.
+            Names match even when one has its Sanskrit name in brackets or an offer note like &quot;Festival
+            Offer&quot;. Products already in a group, hidden products and combos are not listed. To undo, use Revert
+            grouping: the products come back to the shop.
           </p>
         </div>
         <button type="button" onClick={loadPreview} disabled={isLoading}>

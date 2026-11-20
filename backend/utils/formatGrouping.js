@@ -68,6 +68,24 @@ function splitTypeFromName(product) {
   return { typeKey: guessedKey, baseName: tidyTitle(original), guessed: true };
 }
 
+// Words that mark an offer or edition note rather than a different title ("– Festival Offer")
+const NOISE_PATTERN = /\b(?:festival|festive|diwali|deepavali|navaratri|special|limited|launch|introductory|sale|discount(?:ed)?|offer|new|latest)\b/gi;
+
+/** A title without offer words, for the main product's name. */
+function cleanBaseName(baseName) {
+  return tidyTitle(String(baseName || "").replace(NOISE_PATTERN, " ")) || String(baseName || "").trim();
+}
+
+/**
+ * The key products are grouped by: the title without offer words and without text in brackets,
+ * so "Dhaturupa Paricaya (Dhāturūpaparicayaḥ) – Paperback" and "Dhaturupa Paricaya – Web Version"
+ * match. Numbers stay, so "Part 1" and "Part 2" never match.
+ */
+function groupKey(baseName) {
+  const withoutBrackets = String(baseName || "").replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
+  return nameKey(withoutBrackets.replace(NOISE_PATTERN, " "));
+}
+
 function isGroupable(product) {
   if (!product || product.isDeleted === true) return false;
   if (String(product.productType || "single") !== "single") return false;
@@ -90,12 +108,20 @@ function suggestFormatGroups(products, types = []) {
   for (const product of Array.isArray(products) ? products : []) {
     if (!isGroupable(product)) continue;
     const { typeKey, baseName, guessed } = splitTypeFromName(product);
-    const key = nameKey(baseName);
+    const key = groupKey(baseName);
     if (!key) continue;
-    if (!byKey.has(key)) byKey.set(key, { key, name: baseName, members: [] });
+    const title = cleanBaseName(baseName);
+    if (!byKey.has(key)) byKey.set(key, { key, name: title, members: [] });
     const group = byKey.get(key);
-    // Prefer the shortest, most "plain" title as the main product's name
-    if (baseName.length < group.name.length) group.name = baseName;
+    // The main product's name: a title with its Sanskrit name in brackets if one has it,
+    // otherwise the shortest
+    const hasBracket = (t) => /\(.+\)/.test(t);
+    if (
+      (hasBracket(title) && !hasBracket(group.name)) ||
+      (hasBracket(title) === hasBracket(group.name) && title.length < group.name.length)
+    ) {
+      group.name = title;
+    }
     group.members.push({
       _id: String(product._id),
       name: String(product.name || ""),
@@ -146,4 +172,4 @@ function normalizeGroupApproval(body = {}) {
   return { name, members };
 }
 
-module.exports = { nameKey, splitTypeFromName, isGroupable, suggestFormatGroups, normalizeGroupApproval };
+module.exports = { nameKey, groupKey, cleanBaseName, splitTypeFromName, isGroupable, suggestFormatGroups, normalizeGroupApproval };
