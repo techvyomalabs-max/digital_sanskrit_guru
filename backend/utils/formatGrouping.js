@@ -10,6 +10,7 @@
 
 // Most specific first: "audio device" before "audio book", "web version" before "version"
 const TYPE_PATTERNS = [
+  { typeKey: "bulk", pattern: /\b(?:bulk(?:\s+(?:order|purchase|pack|copies|edition))?|wholesale|institution(?:al)?\s+(?:pack|order|copies))\b/gi },
   { typeKey: "kindle", pattern: /\bkindle(?:\s+edition)?\b/gi },
   { typeKey: "audio-device", pattern: /\b(?:audio\s+(?:device|player)|mp3\s+player|speaker|device)\b/gi },
   { typeKey: "audio-book", pattern: /\baudio[\s-]?books?\b|\baudio\s+(?:version|edition)\b|\b(?:web|digital|online)[\s-]?audio\b/gi },
@@ -59,6 +60,8 @@ function splitTypeFromName(product) {
       rest = rest.replace(pattern, " ");
     }
   }
+  // A Bulk product is always the bulk type, whatever else its name says ("Gita Paperback - Bulk")
+  if (String(product?.productType || "").toLowerCase() === "bulk") typeKey = "bulk";
   if (typeKey) {
     const baseName = tidyTitle(rest);
     if (baseName.length >= 3) return { typeKey, baseName };
@@ -86,9 +89,13 @@ function groupKey(baseName) {
   return nameKey(withoutBrackets.replace(NOISE_PATTERN, " "));
 }
 
+// The type name a grouped Bulk product gets (it keeps being a Bulk product: copies of 10+)
+const BULK_LABEL = "Bulk (10+ copies)";
+
 function isGroupable(product) {
   if (!product || product.isDeleted === true) return false;
-  if (String(product.productType || "single") !== "single") return false;
+  // Single products and Bulk products (sold in copies of 10+); combos are not types of a title
+  if (!["single", "bulk"].includes(String(product.productType || "single"))) return false;
   if (product.hasOptions === true || product.optionParent || product.bundleFormatKey) return false;
   return true;
 }
@@ -103,6 +110,7 @@ function suggestFormatGroups(products, types = []) {
   const labelFor = (typeKey) =>
     (Array.isArray(types) ? types : []).find((t) => t.key === typeKey)?.label ||
     DEFAULT_PRODUCT_FORMAT_TYPES.find((t) => t.key === typeKey)?.label ||
+    (typeKey === "bulk" ? BULK_LABEL : "") ||
     typeKey;
   const byKey = new Map();
   for (const product of Array.isArray(products) ? products : []) {
@@ -132,7 +140,8 @@ function suggestFormatGroups(products, types = []) {
       price: Number(product.price || 0),
       isDigital: product.isDigital === true,
       stock: Number(product.stock || 0),
-      category: String(product.category || "")
+      category: String(product.category || ""),
+      productType: String(product.productType || "single")
     });
   }
   return [...byKey.values()]
@@ -172,4 +181,4 @@ function normalizeGroupApproval(body = {}) {
   return { name, members };
 }
 
-module.exports = { nameKey, groupKey, cleanBaseName, splitTypeFromName, isGroupable, suggestFormatGroups, normalizeGroupApproval };
+module.exports = { BULK_LABEL, nameKey, groupKey, cleanBaseName, splitTypeFromName, isGroupable, suggestFormatGroups, normalizeGroupApproval };
