@@ -1675,6 +1675,33 @@ body.admin-dark .pf-badge--hidden {
   }
 }
 
+/* ── Product types on a single product's formats ─────────────────────────── */
+.pf-type-picker {
+  margin: 12px 0 4px;
+}
+
+.pf-formats-pack .pf-field-wide {
+  grid-column: span 2;
+}
+
+.pf-formats-pack .pf-check-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  grid-column: span 2;
+}
+
+.pf-formats-pack .pf-check-field input {
+  width: auto;
+}
+
+@media (max-width: 720px) {
+  .pf-formats-pack .pf-field-wide,
+  .pf-formats-pack .pf-check-field {
+    grid-column: 1 / -1;
+  }
+}
+
 /* "The product as it is now was added as a format" note */
 .pf-hint.pf-hint-current {
   padding: 8px 10px;
@@ -1682,4 +1709,38 @@ body.admin-dark .pf-badge--hidden {
   border-radius: 8px;
   background: #fffbeb;
   color: #92400e;
+}
+
+/* A type of another product: whether a content field follows the main product or is its own */
+.pf-own-content-note {
+  display: block;
+  margin-top: 4px;
+}
+
+.pf-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #9a5b00;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Add Products: link to the Group Products page */
+.agp-link-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.agp-link-card h3 {
+  margin: 0 0 4px;
+}
+
+.agp-link-card .pf-hint {
+  margin: 0;
 }
