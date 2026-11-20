@@ -10,7 +10,6 @@ import {
   Trash2,
   Warehouse,
   PackagePlus,
-  Layers,
   Ticket,
   Megaphone,
   HandHeart,
@@ -51,8 +50,7 @@ const adminNavSections = [
     title: "CATALOG",
     items: [
       { to: "/admin/products", label: "Warehouse", icon: <Warehouse size={17} />, pageKey: "products" },
-      { to: "/admin/add-products", label: "Add Products", icon: <PackagePlus size={17} />, pageKey: "add-products", end: true },
-      { to: "/admin/add-products/group", label: "Group Products", icon: <Layers size={17} />, pageKey: "add-products" },
+      { to: "/admin/add-products", label: "Add Products", icon: <PackagePlus size={17} />, pageKey: "add-products" },
       { to: "/admin/reviews", label: "Reviews", icon: <MessageSquareText size={17} />, pageKey: "products" }
     ]
   },
@@ -153,7 +151,7 @@ function AdminSidebar() {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    end={item.to === "/admin" || item.end === true}
+                    end={item.to === "/admin"}
                     className={({ isActive }) => (isActive ? "sidebar-link active" : "sidebar-link")}
                     onClick={() => setIsMobileNavOpen(false)}
                   >

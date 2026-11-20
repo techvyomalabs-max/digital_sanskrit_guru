@@ -78,8 +78,8 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
         ? festiveOriginalPrice
         : displayPrice;
 
-  // A real saving only (printed M.R.P., market sale, festive offer, bundle)
-  const hasRealDiscount = shownMrp > 0 || hasActiveMarketSale || (isBundle && bundleOriginalTotal > displayPrice) || festiveOriginalPrice > displayPrice;
+  // A real saving only (market sale, festive offer, bundle), not the default list price
+  const hasRealDiscount = hasActiveMarketSale || (isBundle && bundleOriginalTotal > displayPrice) || festiveOriginalPrice > displayPrice;
   const discountPercent = hasRealDiscount && listPrice > displayPrice
     ? Math.round(((listPrice - displayPrice) / listPrice) * 100)
     : 0;
@@ -180,10 +180,7 @@ function ProductCard({ product, showDescription = true, variant = "default" }) {
       <div className="product-info">
         <p className="product-card-meta">
           <span className="product-category">{product.category || "General"}</span>
-          {/* Skip the format when it only repeats the category ("Combo · Combo") */}
-          {getProductFormat(product).toLowerCase() !== String(product.category || "General").trim().toLowerCase() ? (
-            <span className="product-format-pill">{getProductFormat(product)}</span>
-          ) : null}
+          <span className="product-format-pill">{getProductFormat(product)}</span>
         </p>
 
         <Link to={productPath(product)} className="product-title-link" title={product.name}>

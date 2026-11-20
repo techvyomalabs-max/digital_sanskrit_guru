@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { uploadImageDataUrl, isUploadedImageUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
-import { applySiteTheme, applySiteBackground, DEFAULT_SITE_BACKGROUND_OPACITY, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
+import { applySiteTheme, DEFAULT_SITE_THEME, getSiteThemeOptions, BUILT_IN_THEME_DEFINITIONS } from "../utils/siteTheme";
 import "./AdminShared.css";
 import "./AdminThemeSettings.css";
 
@@ -191,15 +191,6 @@ function AdminThemeSettings() {
   const { token } = useAuth();
   const { confirm, prompt } = useDialog();
   const [siteTheme, setSiteTheme] = useState(DEFAULT_SITE_THEME);
-  // "plain" (theme colour) or "sky" (sky picture behind see-through sections)
-  const [siteBackground, setSiteBackground] = useState("plain");
-  // Uploaded picture used instead of the built-in sky ("" = the built-in sky)
-  const [siteBackgroundImage, setSiteBackgroundImage] = useState("");
-  const [isUploadingBackground, setIsUploadingBackground] = useState(false);
-  // Also show the sky in the admin console
-  const [siteBackgroundAdmin, setSiteBackgroundAdmin] = useState(false);
-  // How solid sections are over the sky (50-100 %)
-  const [siteBackgroundOpacity, setSiteBackgroundOpacity] = useState(DEFAULT_SITE_BACKGROUND_OPACITY);
   const [customThemes, setCustomThemes] = useState([]);
   const [themeForm, setThemeForm] = useState(EMPTY_THEME_FORM);
   const [editingThemeId, setEditingThemeId] = useState(null);
@@ -289,15 +280,6 @@ function AdminThemeSettings() {
       setCustomThemes(nextCustomThemes);
       setSiteTheme(nextTheme);
       applySiteTheme(nextTheme, nextCustomThemes);
-      const nextBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
-      const nextBackgroundImage = String(res.data?.siteBackgroundImage || "");
-      const nextBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
-      const nextBackgroundOpacity = Number(res.data?.siteBackgroundOpacity) || DEFAULT_SITE_BACKGROUND_OPACITY;
-      setSiteBackground(nextBackground);
-      setSiteBackgroundImage(nextBackgroundImage);
-      setSiteBackgroundAdmin(nextBackgroundAdmin);
-      setSiteBackgroundOpacity(nextBackgroundOpacity);
-      applySiteBackground(nextBackground, true, nextBackgroundImage, nextBackgroundAdmin, nextBackgroundOpacity);
       const options = getSiteThemeOptions(nextCustomThemes);
       const activeOpt = options.find((o) => o.value === nextTheme) || options[0];
       if (activeOpt) {
@@ -549,36 +531,6 @@ function AdminThemeSettings() {
     }
   };
 
-  // Background picture: resized like hero banners, stored in S3; shown at once, published on Save Theme
-  const handleBackgroundImageUpload = async (event) => {
-    const [file] = Array.from(event.target.files || []);
-    if (!file) return;
-    setIsUploadingBackground(true);
-    setThemeMessage("");
-    try {
-      if (!String(file.type || "").startsWith("image/")) {
-        setThemeMessage("Please choose an image file for the background.");
-        return;
-      }
-      const optimized = await optimizeImageFile(file, { maxWidth: 2560, maxHeight: 1600, quality: 0.85 });
-      const publicUrl = await uploadImageDataUrl(optimized, { kind: "site", token });
-      if (!/^https?:\/\//i.test(String(publicUrl || ""))) {
-        // Without image storage the picture would have to live inside the settings themselves
-        setThemeMessage("Could not upload the background picture: image storage (S3) is not set up here.");
-        return;
-      }
-      setSiteBackgroundImage(publicUrl);
-      setSiteBackground("sky");
-      applySiteBackground("sky", false, publicUrl, siteBackgroundAdmin, siteBackgroundOpacity);
-      setThemeMessage("Background picture uploaded. Click Save Theme to show it to visitors.");
-    } catch (err) {
-      setThemeMessage(err?.message || "Could not upload the background picture.");
-    } finally {
-      setIsUploadingBackground(false);
-      event.target.value = "";
-    }
-  };
-
   const saveActiveTheme = async () => {
     setIsSavingTheme(true);
     setThemeMessage("");
@@ -586,7 +538,7 @@ function AdminThemeSettings() {
     try {
       const res = await axios.put(
         "/api/settings",
-        { siteTheme, customThemes, siteBackground, siteBackgroundImage, siteBackgroundAdmin, siteBackgroundOpacity },
+        { siteTheme, customThemes },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -595,15 +547,6 @@ function AdminThemeSettings() {
       setCustomThemes(nextCustomThemes);
       setSiteTheme(nextTheme);
       applySiteTheme(nextTheme, nextCustomThemes);
-      const savedBackground = res.data?.siteBackground === "sky" ? "sky" : "plain";
-      const savedBackgroundImage = String(res.data?.siteBackgroundImage || "");
-      const savedBackgroundAdmin = res.data?.siteBackgroundAdmin === true;
-      const savedBackgroundOpacity = Number(res.data?.siteBackgroundOpacity) || DEFAULT_SITE_BACKGROUND_OPACITY;
-      setSiteBackground(savedBackground);
-      setSiteBackgroundImage(savedBackgroundImage);
-      setSiteBackgroundAdmin(savedBackgroundAdmin);
-      setSiteBackgroundOpacity(savedBackgroundOpacity);
-      applySiteBackground(savedBackground, true, savedBackgroundImage, savedBackgroundAdmin, savedBackgroundOpacity);
       setThemeMessage("Store theme updated.");
       window.dispatchEvent(new CustomEvent("siteSettingsUpdated"));
     } catch (err) {
@@ -1731,120 +1674,6 @@ function AdminThemeSettings() {
               })}
             </div>
           )}
-
-          <div className="theme-background-choice" role="radiogroup" aria-labelledby="theme-background-label">
-            <span id="theme-background-label" className="theme-background-label">Site background</span>
-            <div className="theme-background-options">
-              {[
-                { value: "plain", title: "Plain", desc: "The theme's own page colour" },
-                { value: "sky", title: "Sky", desc: "A sky picture behind see-through sections (a night sky with dark themes)" }
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={siteBackground === opt.value}
-                  className={`theme-background-option theme-background-option--${opt.value}${siteBackground === opt.value ? " is-active" : ""}`}
-                  onClick={() => {
-                    setSiteBackground(opt.value);
-                    // Preview straight away; visitors see it after Save Theme
-                    applySiteBackground(opt.value, false, siteBackgroundImage, siteBackgroundAdmin, siteBackgroundOpacity);
-                  }}
-                >
-                  <span className="theme-background-swatch" aria-hidden="true" />
-                  <strong>{opt.title}</strong>
-                  <small>{opt.desc}</small>
-                </button>
-              ))}
-            </div>
-
-            {siteBackground === "sky" ? (
-              <div className="theme-background-picture">
-                <div
-                  className={`theme-background-picture-preview${siteBackgroundImage ? " has-image" : ""}`}
-                  style={siteBackgroundImage ? { backgroundImage: `url("${siteBackgroundImage}")` } : undefined}
-                  aria-hidden="true"
-                />
-                <div className="theme-background-picture-text">
-                  <strong>{siteBackgroundImage ? "Your picture" : "Built-in sky"}</strong>
-                  <small>
-                    {siteBackgroundImage
-                      ? "Shown behind the store for every theme. Sections stay frosted, so text stays readable."
-                      : "Clouds over a sky in the header colour (a night sky with dark themes). Upload a picture to use your own, e.g. for a festival."}
-                  </small>
-                  <div className="theme-background-picture-actions">
-                    <label className={`pricing-link-btn theme-background-upload${isUploadingBackground ? " is-busy" : ""}`}>
-                      {isUploadingBackground ? "Uploading..." : siteBackgroundImage ? "Change picture" : "Upload background picture"}
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={handleBackgroundImageUpload}
-                        disabled={isUploadingBackground}
-                        hidden
-                      />
-                    </label>
-                    {siteBackgroundImage ? (
-                      <button
-                        type="button"
-                        className="pricing-link-btn"
-                        onClick={() => {
-                          setSiteBackgroundImage("");
-                          applySiteBackground("sky", false, "", siteBackgroundAdmin, siteBackgroundOpacity);
-                          setThemeMessage("Back to the built-in sky. Click Save Theme to show it to visitors.");
-                        }}
-                      >
-                        Use the built-in sky
-                      </button>
-                    ) : null}
-                  </div>
-                  <label className="theme-background-opacity">
-                    <span>
-                      Sections: <strong>{siteBackgroundOpacity}% solid</strong>
-                      <small>
-                        {siteBackgroundOpacity >= 95
-                          ? " (almost no sky through them)"
-                          : siteBackgroundOpacity <= 65
-                            ? " (lots of sky through them)"
-                            : ""}
-                      </small>
-                    </span>
-                    <input
-                      type="range"
-                      min="50"
-                      max="100"
-                      step="1"
-                      value={siteBackgroundOpacity}
-                      onChange={(e) => {
-                        const value = Number(e.target.value);
-                        setSiteBackgroundOpacity(value);
-                        applySiteBackground("sky", false, siteBackgroundImage, siteBackgroundAdmin, value);
-                      }}
-                      aria-label="How solid sections are over the sky"
-                    />
-                    <span className="theme-background-opacity-scale" aria-hidden="true">
-                      <span>See-through</span>
-                      <span>Solid</span>
-                    </span>
-                  </label>
-                  <label className="theme-background-admin-toggle">
-                    <input
-                      type="checkbox"
-                      checked={siteBackgroundAdmin}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setSiteBackgroundAdmin(on);
-                        applySiteBackground("sky", false, siteBackgroundImage, on, siteBackgroundOpacity);
-                      }}
-                    />
-                    <span>Also show it in the admin console</span>
-                  </label>
-                  <small className="theme-background-picture-tip">
-                    Tip: a wide picture (at least 1920 × 1080) with calm areas in the middle works best.
-                  </small>
-                </div>
-              </div>
-            ) : null}
-          </div>
 
           <div className="pricing-actions-row">
             <button className="pricing-save-btn" onClick={saveActiveTheme} disabled={isSavingTheme}>

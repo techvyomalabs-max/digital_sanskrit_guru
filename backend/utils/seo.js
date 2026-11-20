@@ -86,7 +86,6 @@ const APP_ROUTES = [
   "/account",
   "/admin",
   "/admin/add-products",
-  "/admin/add-products/group",
   "/admin/admin-access",
   "/admin/coupons",
   "/admin/financial-dashboard",

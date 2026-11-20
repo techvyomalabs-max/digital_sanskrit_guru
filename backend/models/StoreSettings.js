@@ -471,29 +471,6 @@ const storeSettingsSchema = new mongoose.Schema(
       type: String,
       default: "sunrise"
     },
-    // What is behind the site: the theme's plain colour, or a sky picture with see-through sections
-    siteBackground: {
-      type: String,
-      enum: ["plain", "sky"],
-      default: "plain"
-    },
-    // An uploaded picture to use instead of the built-in sky (empty: the built-in sky)
-    siteBackgroundImage: {
-      type: String,
-      default: ""
-    },
-    // Show the Sky background in the admin console too (off: admin pages stay plain)
-    siteBackgroundAdmin: {
-      type: Boolean,
-      default: false
-    },
-    // How solid sections are over the sky, in percent (50: see-through, 100: solid)
-    siteBackgroundOpacity: {
-      type: Number,
-      min: 50,
-      max: 100,
-      default: 82
-    },
     customThemes: {
       type: [customThemeSchema],
       default: []
@@ -505,24 +482,6 @@ const storeSettingsSchema = new mongoose.Schema(
     digitalFormatTypes: {
       type: [String],
       default: () => [...DEFAULT_DIGITAL_FORMAT_TYPES]
-    },
-    // Types a product can come in (Paper, Pendrive, Web Version...): see utils/productFormatTypes.js.
-    // Empty = the built-in defaults.
-    productFormatTypes: {
-      type: [
-        new mongoose.Schema(
-          {
-            key: { type: String, trim: true },
-            label: { type: String, trim: true },
-            kind: { type: String, enum: ["physical", "digital", "kindle"] },
-            hsnSac: { type: String, default: "" },
-            gstRate: { type: Number, default: null },
-            note: { type: String, default: "" }
-          },
-          { _id: false }
-        )
-      ],
-      default: []
     },
     heroBannerImage: {
       type: String,
