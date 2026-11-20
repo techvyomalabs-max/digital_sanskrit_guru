@@ -173,6 +173,12 @@ export default function Breadcrumb() {
         return items;
       }
 
+      if (subSegment === "add-products" && segments[2] === "group") {
+        items.push({ label: ROUTE_MAP["add-products"].label, path: "/admin/add-products" });
+        items.push({ label: "Group Products", path: location.pathname });
+        return items;
+      }
+
       const mappedSub = ROUTE_MAP[subSegment];
       if (mappedSub) {
         items.push({ label: mappedSub.label, path: mappedSub.path });

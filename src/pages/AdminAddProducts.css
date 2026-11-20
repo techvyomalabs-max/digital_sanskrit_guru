@@ -1727,3 +1727,20 @@ body.admin-dark .pf-badge--hidden {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Add Products: link to the Group Products page */
+.agp-link-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.agp-link-card h3 {
+  margin: 0 0 4px;
+}
+
+.agp-link-card .pf-hint {
+  margin: 0;
+}
