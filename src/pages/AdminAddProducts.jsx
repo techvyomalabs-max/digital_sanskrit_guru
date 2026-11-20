@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, FileText, Link2, Eye, EyeOff } from "lucide-react";
+import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, Download, FileText, Link2, Eye, EyeOff } from "lucide-react";
 import axios from "axios";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
@@ -10,7 +10,8 @@ import ProductTypesManager from "../components/admin/ProductTypesManager";
 import ProductTypesTable from "../components/admin/ProductTypesTable";
 import FormatGroupingPanel from "../components/admin/FormatGroupingPanel";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
-import { formatDate, formatTime } from "../utils/date";
+import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
+import { buildProductsCsv, buildProductsJson, parseCsvText } from "../utils/productsCsv";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
@@ -410,6 +411,7 @@ function AdminAddProducts() {
   const formSectionRef = useRef(null);
   const nameInputRef = useRef(null);
   const [products, setProducts] = useState([]);
+  const [exportingProducts, setExportingProducts] = useState("");
   const [copiedProductId, setCopiedProductId] = useState("");
 
   const copyBuyLink = (productId) => {
@@ -2433,52 +2435,6 @@ function AdminAddProducts() {
     loadFormatSales();
   };
 
-  const parseCsvLine = (line) => {
-    const values = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === "\"") {
-        const escapedQuote = inQuotes && line[i + 1] === "\"";
-        if (escapedQuote) {
-          current += "\"";
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += ch;
-      }
-    }
-
-    values.push(current.trim());
-    return values;
-  };
-
-  const parseCsv = (text) => {
-    const lines = String(text || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (lines.length < 2) return [];
-
-    const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
-    return lines.slice(1).map((line) => {
-      const cols = parseCsvLine(line);
-      const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = cols[idx] ?? "";
-      });
-      return row;
-    });
-  };
-
   const normalizeUploadProduct = (item) => {
     const productName = String(item?.name || "").trim();
     const productPrice = Number(item?.price);
@@ -2542,12 +2498,53 @@ function AdminAddProducts() {
         }))
         .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice)),
       image: String(item?.image || "").trim(),
-      images: String(item?.images || item?.image || "").trim(),
+      // A JSON export has images as a list; the form and the server take one image per line.
+      images: (Array.isArray(item?.images) ? item.images.join("\n") : String(item?.images || item?.image || "")).trim(),
       description: String(item?.description || "").trim(),
-      aboutProduct: String(item?.aboutproduct || item?.about_product || "").trim(),
+      aboutProduct: String(item?.aboutProduct || item?.aboutproduct || item?.about_product || "").trim(),
       category: String(item?.category || "General").trim() || "General",
       stock: Math.max(0, Number(item?.stock) || 0)
     };
+  };
+
+  const downloadTextFile = (text, fileName, type) => {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Exports every product, formats included, fresh from the server.
+  const handleExportProducts = async (fileType) => {
+    if (exportingProducts) return;
+    setExportingProducts(fileType);
+    setUploadMessage("");
+    try {
+      const res = await axios.get("/api/products/admin/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const list = Array.isArray(res.data) ? res.data : (res.data?.products || []);
+      if (list.length === 0) {
+        setUploadMessage("No products to export.");
+        return;
+      }
+      const day = formatDateForFileName(new Date());
+      if (fileType === "json") {
+        downloadTextFile(buildProductsJson(list), `products-${day}.json`, "application/json;charset=utf-8;");
+      } else {
+        downloadTextFile(buildProductsCsv(list), `products-${day}.csv`, "text/csv;charset=utf-8;");
+      }
+      setUploadMessage(`Exported ${list.length} products.`);
+    } catch (err) {
+      setUploadMessage(err.response?.data?.message || "Export failed. Please try again.");
+    } finally {
+      setExportingProducts("");
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -2567,7 +2564,7 @@ function AdminAddProducts() {
         if (Array.isArray(parsed)) rows = parsed;
         else if (Array.isArray(parsed?.products)) rows = parsed.products;
       } else {
-        rows = parseCsv(text);
+        rows = parseCsvText(text);
       }
 
       const payloads = rows.map(normalizeUploadProduct).filter(Boolean);
@@ -4990,14 +4987,34 @@ function AdminAddProducts() {
                 <Upload size={20} aria-hidden="true" />
               </div>
               <div>
-                <h4 className="admin-upload-text-title">Bulk Import Products</h4>
+                <h4 className="admin-upload-text-title">Bulk Import / Export Products</h4>
                 <p className="admin-upload-text-desc">
-                  Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>)
+                  Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>).
+                  Export downloads every product, formats included; an exported file can be imported again (as new products).
                 </p>
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="admin-upload-template-btn"
+                onClick={() => handleExportProducts("csv")}
+                disabled={Boolean(exportingProducts) || uploading}
+              >
+                <Download size={14} className="ui-inline-icon" aria-hidden="true" />
+                {exportingProducts === "csv" ? "Exporting..." : "Export CSV"}
+              </button>
+              <button
+                type="button"
+                className="admin-upload-template-btn"
+                onClick={() => handleExportProducts("json")}
+                disabled={Boolean(exportingProducts) || uploading}
+                title="Every field as stored, for a full backup"
+              >
+                <Download size={14} className="ui-inline-icon" aria-hidden="true" />
+                {exportingProducts === "json" ? "Exporting..." : "Export JSON"}
+              </button>
               <label className="admin-upload-template-btn">
                 <span>{uploading ? "Uploading..." : <><FileText size={14} className="ui-inline-icon" aria-hidden="true" />Choose CSV / JSON File</>}</span>
                 <input
@@ -5011,7 +5028,7 @@ function AdminAddProducts() {
             </div>
           </div>
           {uploadMessage && (
-            <p className={`upload-message ${uploadMessage.includes("failed") ? "error" : "success"} admin-upload-message-pad`}>
+            <p className={`upload-message ${/fail|^no /i.test(uploadMessage) ? "error" : "success"} admin-upload-message-pad`}>
               {uploadMessage}
             </p>
           )}
