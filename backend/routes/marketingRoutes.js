@@ -10,44 +10,40 @@ const protect = require("../middleware/authMiddleware");
 const admin = require("../middleware/adminMiddleware");
 const { requireAdminPage } = require("../middleware/adminMiddleware");
 const { lowStockFilter, lowStockThreshold, alertChannels } = require("../utils/lowStock");
-const { sendBroadcastEmail, sendTestEmail, sendLowStockAdminAlert } = require("../utils/email");
+const { sendBroadcastEmail, sendTestEmail, sendCampaignTestEmail, sendLowStockAdminAlert } = require("../utils/email");
 const { broadcastPush, sendPushToUser, broadcastPayload, lowStockPayload, wishlistLowStockPayload, getPushStatus } = require("../utils/webPush");
 const { getMailmodoStatus, runMailmodoSync } = require("../services/mailmodoSync");
 const { logAdminAction } = require("../utils/adminAudit");
 const { isMarketingSmtpConfigured } = require("../utils/emailStream");
+const MarketingCampaign = require("../models/MarketingCampaign");
+const { getTotalSpentExpression, resolveRecipientsList } = require("../services/marketingAudience");
+const { campaignStatus, sendCampaignTest, runMailmodoCampaign, refreshCampaignStats } = require("../services/mailmodoCampaign");
+const {
+  PAID_ORDER_MATCH,
+  parseAudience,
+  describeAudience,
+  validateCampaignContent,
+  confirmCountMatches
+} = require("../utils/marketingCampaign");
+const { getMailmodoConfig } = require("../utils/mailmodo");
 
 const router = express.Router();
 
 // All routes require admin with marketing permission
 router.use(protect, admin, requireAdminPage("marketing"));
 
-async function getTotalSpentExpression() {
-  const settings = await StoreSettings.findOne().select("currencyConversionRates").lean();
-  const rates = settings?.currencyConversionRates || {};
+async function audienceLabel(audience) {
+  if (audience.filterType !== "product") return describeAudience(audience);
+  const product = await Product.findById(audience.filterValue).select("name").lean();
+  return describeAudience(audience, product?.name || "");
+}
 
-  const branches = Object.entries(rates)
-    .filter(([currency, rate]) => currency !== "INR" && Number(rate) > 0)
-    .map(([currency, rate]) => ({
-      case: { $eq: ["$currencyDisplay.currency", currency.toUpperCase()] },
-      then: Number(rate)
-    }));
-
-  const paidAmountExpression = { $ifNull: ["$currencyDisplay.amount", "$total"] };
-
-  if (branches.length === 0) {
-    return paidAmountExpression;
-  }
-
+async function adminSnapshot(userId) {
+  const adminUser = await User.findById(userId).select("name email").lean();
   return {
-    $divide: [
-      paidAmountExpression,
-      {
-        $switch: {
-          branches,
-          default: 1
-        }
-      }
-    ]
+    user: userId || null,
+    name: String(adminUser?.name || "").trim(),
+    email: String(adminUser?.email || "").trim().toLowerCase()
   };
 }
 
@@ -80,43 +76,6 @@ router.get("/subscribers", async (_req, res) => {
     res.status(500).json({ message: "Failed to load subscriber stats." });
   }
 });
-
-// Helper to resolve recipients list based on category/product/spend filter
-async function resolveRecipientsList(filterType, filterValue) {
-  let userIds = null;
-
-  if (filterType === "category") {
-    const orders = await Order.find({
-      status: { $ne: "Cancelled" },
-      "items.category": filterValue
-    }).select("user").lean();
-    userIds = orders.map((o) => String(o.user)).filter(Boolean);
-  } else if (filterType === "product") {
-    const orders = await Order.find({
-      status: { $ne: "Cancelled" },
-      $or: [
-        { "items._id": filterValue },
-        { "items.product": filterValue }
-      ]
-    }).select("user").lean();
-    userIds = orders.map((o) => String(o.user)).filter(Boolean);
-  } else if (filterType === "minSpend") {
-    const totalSpentExpression = await getTotalSpentExpression();
-    const spendAgg = await Order.aggregate([
-      { $match: { status: { $ne: "Cancelled" } } },
-      { $group: { _id: "$user", totalSpent: { $sum: totalSpentExpression } } },
-      { $match: { totalSpent: { $gte: Number(filterValue || 0) } } }
-    ]);
-    userIds = spendAgg.map((s) => String(s._id)).filter(Boolean);
-  }
-
-    const query = { isDeleted: { $ne: true }, marketingOptOut: { $ne: true } };
-    if (userIds !== null) {
-      query._id = { $in: userIds };
-    }
-
-    return await User.find(query).select("_id email name marketingOptOut").lean();
-  }
 
   // ── GET /api/marketing/targeting-options ─────────────────────────────────────
   // Retrieve all unique product categories and active products list
@@ -162,7 +121,7 @@ router.post("/segmented-customers", async (req, res) => {
     const totalSpentExpression = await getTotalSpentExpression();
     // Aggregate spend and order count for these users
     const ordersAgg = await Order.aggregate([
-      { $match: { user: { $in: userIds }, status: { $ne: "Cancelled" } } },
+      { $match: { ...PAID_ORDER_MATCH, user: { $in: userIds } } },
       { $group: { _id: "$user", totalSpent: { $sum: totalSpentExpression }, orderCount: { $sum: 1 } } }
     ]);
 
@@ -312,10 +271,11 @@ router.post("/alert/low-stock", async (_req, res) => {
 // Send a bulk email campaign to registered users (supporting targeting filters)
 router.post("/broadcast/email", async (req, res) => {
   try {
-    const subject = String(req.body?.subject || "").trim();
+    const subject = String(req.body?.subject || "").replace(/[\r\n]+/g, " ").trim();
     const html = String(req.body?.html || "").trim();
-    const filterType = String(req.body?.filterType || "all").trim();
-    const filterValue = String(req.body?.filterValue || "").trim();
+    const parsed = parseAudience(req.body);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+    const { filterType, filterValue } = parsed.audience;
 
     if (!subject || !html) {
       return res.status(400).json({ message: "Subject and HTML body are required." });
@@ -327,14 +287,51 @@ router.post("/broadcast/email", async (req, res) => {
     if (recipients.length === 0) {
       return res.status(400).json({ message: "No recipients match the selected criteria." });
     }
+    if (!confirmCountMatches(req.body?.confirmCount, recipients.length)) {
+      return res.status(409).json({
+        message: `The number of customers changed to ${recipients.length}. Check it and confirm again.`,
+        count: recipients.length
+      });
+    }
+
+    const teamOnly = getMailmodoConfig().teamOnly;
+    const label = await audienceLabel(parsed.audience);
+    const campaign = await MarketingCampaign.create({
+      channel: "smtp",
+      status: "sending",
+      subject,
+      audience: { filterType, filterValue, label },
+      recipientCount: recipients.length,
+      teamOnly,
+      createdBy: await adminSnapshot(req.user)
+    });
+    await logAdminAction({
+      req,
+      action: "marketing.email.broadcast",
+      entityType: "marketing",
+      entityId: String(campaign._id),
+      entityLabel: subject,
+      summary: `Sent a promotional email through the site's email server to ${recipients.length} customer(s) (${label})${teamOnly ? " in team-only mode" : ""}`,
+      details: { filterType, filterValue, recipientCount: recipients.length, teamOnly }
+    });
 
     // Fire-and-forget — respond immediately
-    res.json({ message: `Sending to ${recipients.length} users...`, total: recipients.length });
+    res.json({ message: `Sending to ${recipients.length} customer(s)...`, total: recipients.length });
 
     // Send in background (don't await in handler)
-    sendBroadcastEmail({ subject, html, recipients }).catch((err) => {
-      console.error("[Marketing] Broadcast email error:", err.message);
-    });
+    sendBroadcastEmail({ subject, html, recipients })
+      .then((results) => {
+        // "skipped" means email sending is switched off (EMAIL_ENABLED), so nothing went out
+        const failed = results.filter((r) => r?.error || r?.skipped).length;
+        return MarketingCampaign.updateOne(
+          { _id: campaign._id },
+          { $set: { status: "sent", sentAt: new Date(), addedToList: results.length - failed, error: failed ? `${failed} email(s) failed; see the Email Log.` : "" } }
+        );
+      })
+      .catch((err) => {
+        console.error("[Marketing] Broadcast email error:", err.message);
+        return MarketingCampaign.updateOne({ _id: campaign._id }, { $set: { status: "failed", error: String(err.message).slice(0, 300) } });
+      });
   } catch (err) {
     res.status(500).json({ message: err.message || "Failed to start broadcast." });
   }
@@ -363,6 +360,15 @@ router.post("/broadcast/push", async (req, res) => {
 
     // Wait for the result (a few seconds at most for a small list) so the admin sees what happened
     const summary = await broadcastPush(broadcastPayload(title, body, url));
+    await logAdminAction({
+      req,
+      action: "marketing.push.broadcast",
+      entityType: "marketing",
+      entityId: "push",
+      entityLabel: title,
+      summary: `Sent a push notification to ${summary.sent} of ${summary.devices} device(s)`,
+      details: { title, url, sent: summary.sent, devices: summary.devices }
+    });
     const parts = [`Sent to ${summary.sent} of ${summary.devices} device(s).`];
     if (summary.removed) parts.push(`${summary.removed} expired device(s) were removed.`);
     if (summary.failed - summary.removed > 0) parts.push(`${summary.failed - summary.removed} failed: ${summary.reason}`);
@@ -382,7 +388,12 @@ router.post("/test-email", async (req, res) => {
     if (stream === "marketing" && !isMarketingSmtpConfigured()) {
       return res.status(400).json({ message: "The promotional email server isn't set up yet, so promotions use the main server." });
     }
-    const result = await sendTestEmail(to, stream);
+    const subject = String(req.body?.subject || "").trim();
+    const html = String(req.body?.html || "").trim();
+    // With the campaign's own subject and content, test exactly that; otherwise a server check
+    const result = subject && html
+      ? await sendCampaignTestEmail({ to, subject, html, stream })
+      : await sendTestEmail(to, stream);
     if (result?.error) {
       return res.status(502).json({ message: `Test email failed: ${result.error}` });
     }
@@ -425,7 +436,13 @@ router.post("/trigger-wishlist-nudges", async (_req, res) => {
 // Mailmodo connection state, list counts and the last sync result
 router.get("/mailmodo/status", async (_req, res) => {
   try {
-    res.json({ ...(await getMailmodoStatus()), marketingSmtpConfigured: isMarketingSmtpConfigured() });
+    const campaigns = campaignStatus();
+    res.json({
+      ...(await getMailmodoStatus()),
+      marketingSmtpConfigured: isMarketingSmtpConfigured(),
+      campaignReady: campaigns.ready,
+      campaignIdConfigured: campaigns.hasCampaignId
+    });
   } catch {
     res.status(500).json({ message: "Failed to load Mailmodo status." });
   }
@@ -460,6 +477,132 @@ router.post("/mailmodo/sync", async (req, res) => {
     });
   } catch {
     res.status(500).json({ message: "Failed to start Mailmodo sync." });
+  }
+});
+
+// ── Mailmodo campaigns (written and sent from this dashboard) ─────────────────
+
+function campaignForAdmin(doc) {
+  const c = doc?.toObject ? doc.toObject() : doc;
+  return {
+    _id: String(c._id),
+    channel: c.channel,
+    status: c.status,
+    subject: c.subject,
+    heading: c.heading,
+    audience: c.audience,
+    recipientCount: c.recipientCount,
+    addedToList: c.addedToList,
+    teamOnly: c.teamOnly,
+    listName: c.listName,
+    error: c.error,
+    sentAt: c.sentAt,
+    createdAt: c.createdAt,
+    createdBy: { name: c.createdBy?.name || "", email: c.createdBy?.email || "" },
+    stats: c.stats || {}
+  };
+}
+
+// GET /api/marketing/mailmodo/campaigns — campaign history (both channels), newest first
+router.get("/mailmodo/campaigns", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 30)));
+    const campaigns = await MarketingCampaign.find().sort({ createdAt: -1 }).limit(limit).lean();
+    res.json({ campaigns: campaigns.map(campaignForAdmin), ...campaignStatus() });
+  } catch {
+    res.status(500).json({ message: "Failed to load campaigns." });
+  }
+});
+
+// POST /api/marketing/mailmodo/campaigns/test — send the campaign to the team only
+router.post("/mailmodo/campaigns/test", async (req, res) => {
+  try {
+    const status = campaignStatus();
+    if (!status.ready) {
+      return res.status(400).json({ message: "Mailmodo campaigns aren't set up. Add MAILMODO_API_KEY and MAILMODO_CAMPAIGN_ID to the server settings." });
+    }
+    const { content, error } = validateCampaignContent(req.body);
+    if (error) return res.status(400).json({ message: error });
+
+    const admin = await adminSnapshot(req.user);
+    const result = await sendCampaignTest(content, { adminEmail: admin.email });
+    if (result.sentTo.length === 0) {
+      return res.status(502).json({ message: `Test failed: ${result.failed[0]?.error || "Mailmodo didn't accept it."}` });
+    }
+    const failedNote = result.failed.length ? ` Failed for ${result.failed.map((f) => f.email).join(", ")}.` : "";
+    res.json({ message: `Test sent through Mailmodo to ${result.sentTo.join(", ")}.${failedNote}`, ...result });
+  } catch (err) {
+    res.status(err?.status === 401 || err?.status === 403 ? 502 : 500).json({ message: err.message || "Failed to send the test." });
+  }
+});
+
+// POST /api/marketing/mailmodo/campaigns — send to the chosen customers.
+// The admin must confirm the exact count (confirmCount) shown before sending.
+router.post("/mailmodo/campaigns", async (req, res) => {
+  try {
+    const status = campaignStatus();
+    if (!status.ready) {
+      return res.status(400).json({ message: "Mailmodo campaigns aren't set up. Add MAILMODO_API_KEY and MAILMODO_CAMPAIGN_ID to the server settings." });
+    }
+    const { content, error } = validateCampaignContent(req.body);
+    if (error) return res.status(400).json({ message: error });
+    const parsed = parseAudience(req.body);
+    if (parsed.error) return res.status(400).json({ message: parsed.error });
+
+    const busy = await MarketingCampaign.exists({ channel: "mailmodo", status: "preparing" });
+    if (busy) return res.status(409).json({ message: "Another campaign is still being prepared. Wait for it to finish." });
+
+    const recipients = (await resolveRecipientsList(parsed.audience.filterType, parsed.audience.filterValue)).filter((u) => u.email);
+    if (recipients.length === 0) return res.status(400).json({ message: "No customers match this group." });
+    if (!confirmCountMatches(req.body?.confirmCount, recipients.length)) {
+      return res.status(409).json({
+        message: `The number of customers changed to ${recipients.length}. Check it and confirm again.`,
+        count: recipients.length
+      });
+    }
+
+    const label = await audienceLabel(parsed.audience);
+    const campaign = await MarketingCampaign.create({
+      channel: "mailmodo",
+      status: "preparing",
+      ...content,
+      audience: { ...parsed.audience, label },
+      recipientCount: recipients.length,
+      teamOnly: status.teamOnly,
+      createdBy: await adminSnapshot(req.user)
+    });
+
+    await logAdminAction({
+      req,
+      action: "marketing.mailmodo.campaign",
+      entityType: "marketing",
+      entityId: String(campaign._id),
+      entityLabel: content.subject,
+      summary: `Sent a Mailmodo campaign to ${recipients.length} customer(s) (${label})${status.teamOnly ? " in team-only mode" : ""}`,
+      details: { ...parsed.audience, recipientCount: recipients.length, teamOnly: status.teamOnly }
+    });
+
+    res.status(202).json({
+      message: `Sending to ${recipients.length} customer(s) through Mailmodo. The status below updates when it's done.`,
+      campaign: campaignForAdmin(campaign)
+    });
+    runMailmodoCampaign(campaign._id, recipients).catch((err) => {
+      console.error("[Marketing] Mailmodo campaign error:", err.message);
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || "Failed to start the campaign." });
+  }
+});
+
+// POST /api/marketing/mailmodo/campaigns/:id/stats — fetch the latest results from Mailmodo
+router.post("/mailmodo/campaigns/:id/stats", async (req, res) => {
+  try {
+    if (!/^[0-9a-f]{24}$/i.test(String(req.params.id))) return res.status(400).json({ message: "Invalid campaign." });
+    const campaign = await refreshCampaignStats(req.params.id);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found." });
+    res.json({ campaign: campaignForAdmin(campaign) });
+  } catch {
+    res.status(500).json({ message: "Failed to load results." });
   }
 });
 

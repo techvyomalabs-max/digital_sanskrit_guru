@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, FileText, Link2, Eye, EyeOff } from "lucide-react";
+import { Search, X, ChevronUp, ChevronDown, Check, CheckCircle2, Trash2, Laptop, Lock, GraduationCap, Package, PenLine, Upload, Download, FileText, Link2, Eye, EyeOff, Layers } from "lucide-react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { useAuth } from "../hooks/useAuth";
 import { useDialog } from "../hooks/useDialog";
 import { uploadImageDataUrl } from "../utils/mediaUpload";
 import AdminSidebar from "../components/admin/AdminSidebar";
+import ProductTypesManager from "../components/admin/ProductTypesManager";
+import ProductTypesTable from "../components/admin/ProductTypesTable";
+import { DEFAULT_PRODUCT_TYPES } from "../utils/productTypeDefaults";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
-import { formatDate, formatTime } from "../utils/date";
+import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
+import { buildProductsCsv, buildProductsJson, parseCsvText } from "../utils/productsCsv";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
@@ -34,6 +39,7 @@ const DEFAULT_DIGITAL_FORMAT_TYPES = [
   "Other"
 ];
 const BUILT_IN_DIGITAL_FORMAT_TYPES = ["Web Version", "Flipbook", "Kindle"];
+const formatTypeForKind = (kind) => (kind === "physical" ? "physical" : kind === "digital" || kind === "kindle" ? "digital" : "");
 
 const getDigitalFormatTypeLabel = (type) => {
   switch (type) {
@@ -102,13 +108,26 @@ function createEmptyBundleFormat() {
 
 // A format of a single product: either a new one (the server keeps a hidden product for it)
 // or an existing product linked to this listing.
-function createEmptySingleFormat(kind = "new") {
+function createEmptySingleFormat(kind = "new", productType = null) {
   return {
     rowKey: `sf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     kind,
     key: "",
-    label: "",
-    type: "",
+    label: productType?.label || "",
+    // The product type (Paper, Web Version...) this format is; "" = a custom format
+    typeKey: productType?.key || "",
+    type: productType ? formatTypeForKind(productType.kind) : "",
+    image: "",
+    internationalPrice: "",
+    // Online access of a digital format (each digital format has its own)
+    digitalType: productType ? (productType.kind === "kindle" ? "Kindle" : productType.label) : "",
+    webReaderLink: "",
+    digitalDelivery: "onsite",
+    externalAccessLink: "",
+    externalAccessLabel: "",
+    externalAccessManual: false,
+    kindleLink: "",
+    digitalInstructions: "",
     price: "",
     stock: "",
     weight: "",
@@ -383,6 +402,7 @@ function AdminAddProducts() {
   const formSectionRef = useRef(null);
   const nameInputRef = useRef(null);
   const [products, setProducts] = useState([]);
+  const [exportingProducts, setExportingProducts] = useState("");
   const [copiedProductId, setCopiedProductId] = useState("");
 
   const copyBuyLink = (productId) => {
@@ -403,6 +423,8 @@ function AdminAddProducts() {
   const [trailerVideoUrl, setTrailerVideoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [aboutProduct, setAboutProduct] = useState("");
+  // A type of another product: its own content fields to put back to the main product's on save
+  const [resetContentFields, setResetContentFields] = useState([]);
   const [discountType, setDiscountType] = useState("none");
   const [festiveOffer, setFestiveOffer] = useState(false);
   const [festiveDiscountPercent, setFestiveDiscountPercent] = useState("0");
@@ -429,6 +451,11 @@ function AdminAddProducts() {
   const [bundleItems, setBundleItems] = useState([createEmptyBundleItem()]);
   const [bundleFormats, setBundleFormats] = useState([]);
   const [singleFormats, setSingleFormats] = useState([]);
+  // Settings → Product types (Paper, Pendrive, Web Version, Audio Book, Kindle...)
+  const [productTypes, setProductTypes] = useState(DEFAULT_PRODUCT_TYPES);
+  const [showProductTypes, setShowProductTypes] = useState(false);
+  // Units sold per product id: { all, last30 } (paid, not cancelled orders)
+  const [formatSales, setFormatSales] = useState({});
   // One-line description per format, keyed by lower-case format name (shown under "Choose format")
   const [formatNotes, setFormatNotes] = useState({});
   // Shown in the shop, or hidden (page still opens by link). Formats follow their main listing.
@@ -495,6 +522,9 @@ function AdminAddProducts() {
           : DEFAULT_DIGITAL_FORMAT_TYPES;
         setDigitalFormatTypeOptions(nextDigitalTypes);
         setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
+        if (Array.isArray(res.data?.productFormatTypes) && res.data.productFormatTypes.length > 0) {
+          setProductTypes(res.data.productFormatTypes);
+        }
         const nextHeroBanners =
           Array.isArray(res.data?.heroBanners) && res.data.heroBanners.length > 0
             ? res.data.heroBanners.map((item) => ({
@@ -524,6 +554,9 @@ function AdminAddProducts() {
             : DEFAULT_DIGITAL_FORMAT_TYPES;
           setDigitalFormatTypeOptions(nextDigitalTypes);
           setPricingMarkets(Array.isArray(res.data?.pricingMarkets) ? res.data.pricingMarkets : []);
+          if (Array.isArray(res.data?.productFormatTypes) && res.data.productFormatTypes.length > 0) {
+            setProductTypes(res.data.productFormatTypes);
+          }
         }).catch(() => {});
         if (!active) return;
         setCategoryOptions(DEFAULT_CATEGORY_OPTIONS);
@@ -581,6 +614,34 @@ function AdminAddProducts() {
     setDigitalFormatTypeOptions(normalized);
     return normalized;
   };
+
+  const saveProductTypes = async (nextTypes) => {
+    const { data } = await axios.put(
+      "/api/settings",
+      { productFormatTypes: nextTypes },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const saved = Array.isArray(data?.productFormatTypes) && data.productFormatTypes.length > 0 ? data.productFormatTypes : nextTypes;
+    setProductTypes(saved);
+    return saved;
+  };
+
+  const productTypeOf = (row) => productTypes.find((t) => t.key === row?.typeKey) || null;
+  // "physical" | "digital" | "kindle" for a format row
+  const rowKindOf = (row) => productTypeOf(row)?.kind || (row?.type === "digital" ? "digital" : row?.type === "physical" ? "physical" : "");
+
+  const loadFormatSales = useCallback(async () => {
+    try {
+      const res = await axios.get("/api/products/admin/format-sales", { headers: { Authorization: `Bearer ${token}` } });
+      setFormatSales(res.data?.sales || {});
+    } catch {
+      setFormatSales({});
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadFormatSales();
+  }, [loadFormatSales]);
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
@@ -718,25 +779,36 @@ function AdminAddProducts() {
     return products.find((product) => product?._id === activeHeroBanner.productId) || null;
   }, [products, activeHeroBanner]);
 
+  const productsById = useMemo(() => new Map(products.map((p) => [String(p?._id || ""), p])), [products]);
+
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    // A combo's format products are managed from the combo itself (stock is in the Warehouse).
+    // Formats (generated or linked) are shown inside their main product's row, not as products
+    // of their own. A combo's format products are managed from the combo itself.
+    const isMainListed = (product) => {
+      if (product?.bundleFormatKey) return false;
+      if (!product?.optionParent) return true;
+      const parentId = String(product.optionParent?._id || product.optionParent);
+      return !productsById.has(parentId);
+    };
     const base = products
-      .filter((product) => !product?.bundleFormatKey)
+      .filter(isMainListed)
       .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
     if (!query) return base;
 
-    return base.filter((product) => {
-      const values = [
-        String(product?.name || ""),
-        String(product?.category || ""),
-        String(product?.description || "")
-      ]
+    const matches = (product) =>
+      [String(product?.name || ""), String(product?.category || ""), String(product?.description || "")]
         .join(" ")
-        .toLowerCase();
-      return values.includes(query);
+        .toLowerCase()
+        .includes(query);
+    return base.filter((product) => {
+      if (matches(product)) return true;
+      // Searching for a format's name ("Gita Web Version") finds its main product
+      return (Array.isArray(product?.options) ? product.options : []).some((o) =>
+        matches(productsById.get(String(o?.product?._id || o?.product || "")))
+      );
     });
-  }, [products, searchQuery]);
+  }, [products, productsById, searchQuery]);
 
   const formSummary = useMemo(() => {
     const normalizedName = name.trim();
@@ -823,6 +895,7 @@ function AdminAddProducts() {
     setTrailerVideoUrl("");
     setDescription("");
     setAboutProduct("");
+    setResetContentFields([]);
     setDiscountType("none");
     setFestiveOffer(false);
     setFestiveDiscountPercent("0");
@@ -1756,6 +1829,28 @@ function AdminAddProducts() {
           setFormMessage(`Format "${label}": M.R.P. can't be lower than its price.`);
           return;
         }
+        const rowKind = rowKindOf(row);
+        const isHttps = (value) => /^https:\/\//i.test(String(value || "").trim());
+        if (String(row.image || "").trim() && !isHttps(row.image)) {
+          setFormMessage(`Format "${label}": the image must be an https:// address (or upload one).`);
+          return;
+        }
+        if (String(row.internationalPrice ?? "").trim() !== "" && (Number.isNaN(Number(row.internationalPrice)) || Number(row.internationalPrice) < 0)) {
+          setFormMessage(`Format "${label}": the international price must be 0 or more (or left blank).`);
+          return;
+        }
+        if (row.typeKey && rowKind === "kindle" && !isHttps(row.kindleLink)) {
+          setFormMessage(`Format "${label}": add the Amazon Kindle link (https://...).`);
+          return;
+        }
+        if (row.typeKey && rowKind === "digital" && row.digitalDelivery === "external" && !/^https?:\/\//i.test(String(row.externalAccessLink || "").trim())) {
+          setFormMessage(`Format "${label}": add the link to the other website.`);
+          return;
+        }
+        if (row.typeKey && rowKind === "digital" && String(row.webReaderLink || "").trim() && !isHttps(row.webReaderLink)) {
+          setFormMessage(`Format "${label}": the access link must start with https://.`);
+          return;
+        }
         for (const field of ["price", "stock", "weight", "length", "width", "height", "mrp"]) {
           const raw = String(row[field] ?? "").trim();
           if (raw !== "" && (Number.isNaN(Number(raw)) || Number(raw) < 0)) {
@@ -1928,6 +2023,7 @@ function AdminAddProducts() {
       trailerVideoUrl: trailerVideoUrl.trim(),
       description: description.trim(),
       aboutProduct,
+      ...(editingProduct?.bundleFormatKey && resetContentFields.length > 0 ? { resetContentFields } : {}),
       discountType,
       festiveOffer: discountType !== "none",
       festiveDiscountPercent: discountType !== "none" ? Math.min(95, Math.max(0, Number(festiveDiscountPercent || 0))) : 0,
@@ -1986,6 +2082,27 @@ function AdminAddProducts() {
                   hsnSac: String(row.hsnSac || "").replace(/\s+/g, ""),
                   gstRate: String(row.gstRate ?? "") === "" ? null : Number(row.gstRate),
                   mrp: String(row.mrp ?? "").trim() === "" ? null : Number(row.mrp),
+                  typeKey: row.typeKey || "",
+                  image: String(row.image || "").trim(),
+                  internationalPrice: String(row.internationalPrice ?? "").trim() === "" ? null : Number(row.internationalPrice),
+                  ...(row.type === "digital" && row.typeKey
+                    ? {
+                        // Each typed digital format's own access (Web Version and Audio Book can differ).
+                        // Formats without a type keep using this product's Digital Content settings.
+                        digital: {
+                          digitalType:
+                            String(row.digitalType || "").trim() ||
+                            (rowKindOf(row) === "kindle" ? "Kindle" : String(row.label || "").trim() || "Web Version"),
+                          webReaderLink: String(row.webReaderLink || "").trim(),
+                          kindleLink: String(row.kindleLink || "").trim(),
+                          digitalInstructions: String(row.digitalInstructions || "").trim(),
+                          digitalDelivery: rowKindOf(row) === "kindle" ? "onsite" : row.digitalDelivery === "external" ? "external" : "onsite",
+                          externalAccessLink: String(row.externalAccessLink || "").trim(),
+                          externalAccessLabel: String(row.externalAccessLabel || "").trim(),
+                          externalAccessManual: row.externalAccessManual === true
+                        }
+                      }
+                    : {}),
                   category: String(row.category || "").trim(),
                   position
                 }))
@@ -2091,6 +2208,7 @@ function AdminAddProducts() {
     setTrailerVideoUrl(String(product.trailerVideoUrl || ""));
     setDescription(product.description || "");
     setAboutProduct(Array.isArray(product.aboutProduct) ? product.aboutProduct.join("\n") : "");
+    setResetContentFields([]);
     const resolvedDiscountType = product.discountType || (product.festiveOffer === true ? "festive" : "none");
     setDiscountType(resolvedDiscountType);
     setFestiveOffer(resolvedDiscountType !== "none");
@@ -2149,10 +2267,27 @@ function AdminAddProducts() {
             length: Number(format.length) > 0 ? String(format.length) : "",
             width: Number(format.width) > 0 ? String(format.width) : "",
             height: Number(format.height) > 0 ? String(format.height) : "",
-            hsnSac: String(optionProduct?.hsnSac || ""),
-            gstRate:
-              optionProduct?.gstRate === null || optionProduct?.gstRate === undefined ? "" : String(optionProduct.gstRate),
+            // With a product type, the tax shown is the format's own (blank = follows the type)
+            hsnSac: String((format.typeKey ? format.hsnSac : optionProduct?.hsnSac) || ""),
+            gstRate: (() => {
+              const rate = format.typeKey ? format.gstRate : optionProduct?.gstRate;
+              return rate === null || rate === undefined ? "" : String(rate);
+            })(),
             mrp: optionProduct?.mrp === null || optionProduct?.mrp === undefined ? "" : String(optionProduct.mrp),
+            typeKey: String(format.typeKey || ""),
+            image: optionProduct?.image && optionProduct.image !== product.image ? String(optionProduct.image) : "",
+            internationalPrice:
+              optionProduct?.internationalPrice === null || optionProduct?.internationalPrice === undefined
+                ? ""
+                : String(optionProduct.internationalPrice),
+            digitalType: String(optionProduct?.digitalType || ""),
+            webReaderLink: String(optionProduct?.webReaderLink || ""),
+            digitalDelivery: optionProduct?.digitalDelivery === "external" ? "external" : "onsite",
+            externalAccessLink: String(optionProduct?.externalAccessLink || ""),
+            externalAccessLabel: String(optionProduct?.externalAccessLabel || ""),
+            externalAccessManual: optionProduct?.externalAccessManual === true,
+            kindleLink: String(optionProduct?.kindleLink || ""),
+            digitalInstructions: String(optionProduct?.digitalInstructions || ""),
             // Show its own category only when it differs from the product's
             category:
               optionProduct?.category &&
@@ -2273,50 +2408,28 @@ function AdminAddProducts() {
     loadProducts();
   };
 
-  const parseCsvLine = (line) => {
-    const values = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === "\"") {
-        const escapedQuote = inQuotes && line[i + 1] === "\"";
-        if (escapedQuote) {
-          current += "\"";
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += ch;
-      }
-    }
-
-    values.push(current.trim());
-    return values;
-  };
-
-  const parseCsv = (text) => {
-    const lines = String(text || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (lines.length < 2) return [];
-
-    const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
-    return lines.slice(1).map((line) => {
-      const cols = parseCsvLine(line);
-      const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = cols[idx] ?? "";
-      });
-      return row;
+  // Undo a grouping: the grouped (linked) products return to the shop on their own. The main
+  // product and the types created inside it stay; a main product left empty goes to the Recycle Bin.
+  const revertGrouping = async (parent, linkedCount) => {
+    const createdCount = (parent.options || []).length - linkedCount;
+    const ok = await confirm({
+      title: "Revert grouping?",
+      message:
+        `The ${linkedCount} grouped product${linkedCount === 1 ? "" : "s"} in "${parent.name}" will show in the shop again on ${linkedCount === 1 ? "its" : "their"} own.` +
+        (createdCount > 0
+          ? ` "${parent.name}" and the ${createdCount} type${createdCount === 1 ? "" : "s"} created inside it stay as they are.`
+          : ` "${parent.name}" has nothing else in it, so it goes to the Recycle Bin.`),
+      confirmText: "Revert"
     });
+    if (!ok) return;
+    try {
+      const res = await axios.post(`/api/products/admin/format-groups/${parent._id}/revert`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setVisibilityMessage(res.data?.message || `Reverted "${parent.name}".`);
+    } catch (err) {
+      setVisibilityMessage(err.response?.data?.message || "Could not revert the grouping.");
+    }
+    loadProducts();
+    loadFormatSales();
   };
 
   const normalizeUploadProduct = (item) => {
@@ -2382,12 +2495,83 @@ function AdminAddProducts() {
         }))
         .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice)),
       image: String(item?.image || "").trim(),
-      images: String(item?.images || item?.image || "").trim(),
+      // A JSON export has images as a list; the form and the server take one image per line.
+      images: (Array.isArray(item?.images) ? item.images.join("\n") : String(item?.images || item?.image || "")).trim(),
       description: String(item?.description || "").trim(),
-      aboutProduct: String(item?.aboutproduct || item?.about_product || "").trim(),
+      aboutProduct: String(item?.aboutProduct || item?.aboutproduct || item?.about_product || "").trim(),
       category: String(item?.category || "General").trim() || "General",
       stock: Math.max(0, Number(item?.stock) || 0)
     };
+  };
+
+  const downloadTextFile = (text, fileName, type) => {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Exports every product, formats included, fresh from the server.
+  // Under description, About, images and trailer video of a type of another product: whether the
+  // field follows the main product or is the type's own (kept when the main product is saved).
+  const renderOwnContentNote = (field, label) => {
+    if (!editingProduct?.bundleFormatKey) return null;
+    const own = Array.isArray(editingProduct.ownContentFields) && editingProduct.ownContentFields.includes(field);
+    const resetting = resetContentFields.includes(field);
+    if (resetting) {
+      return (
+        <small className="pf-hint pf-own-content-note">
+          Will use the main product&apos;s {label} when you save.{" "}
+          <button type="button" className="pf-link-btn" onClick={() => setResetContentFields((list) => list.filter((f) => f !== field))}>
+            Undo
+          </button>
+        </small>
+      );
+    }
+    return own ? (
+      <small className="pf-hint pf-own-content-note">
+        This type&apos;s own {label}: saving the main product won&apos;t change it.{" "}
+        <button type="button" className="pf-link-btn" onClick={() => setResetContentFields((list) => [...list, field])}>
+          Use main product&apos;s
+        </button>
+      </small>
+    ) : (
+      <small className="pf-hint pf-own-content-note">
+        From the main product. Change it here to give this type its own {label}.
+      </small>
+    );
+  };
+
+  const handleExportProducts = async (fileType) => {
+    if (exportingProducts) return;
+    setExportingProducts(fileType);
+    setUploadMessage("");
+    try {
+      const res = await axios.get("/api/products/admin/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const list = Array.isArray(res.data) ? res.data : (res.data?.products || []);
+      if (list.length === 0) {
+        setUploadMessage("No products to export.");
+        return;
+      }
+      const day = formatDateForFileName(new Date());
+      if (fileType === "json") {
+        downloadTextFile(buildProductsJson(list), `products-${day}.json`, "application/json;charset=utf-8;");
+      } else {
+        downloadTextFile(buildProductsCsv(list), `products-${day}.csv`, "text/csv;charset=utf-8;");
+      }
+      setUploadMessage(`Exported ${list.length} products.`);
+    } catch (err) {
+      setUploadMessage(err.response?.data?.message || "Export failed. Please try again.");
+    } finally {
+      setExportingProducts("");
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -2407,7 +2591,7 @@ function AdminAddProducts() {
         if (Array.isArray(parsed)) rows = parsed;
         else if (Array.isArray(parsed?.products)) rows = parsed.products;
       } else {
-        rows = parseCsv(text);
+        rows = parseCsvText(text);
       }
 
       const payloads = rows.map(normalizeUploadProduct).filter(Boolean);
@@ -2455,13 +2639,15 @@ function AdminAddProducts() {
 
   // Once a product has formats, customers can buy only those formats. So the first time a
   // format is added, the product as it is now is added as a format too (pre-filled, editable),
-  // and stays buyable next to the new one.
+  // and stays buyable next to the new one. It gets the matching product type (Paper / Web
+  // Version) but keeps this product's own tax and online access, so nothing changes for it.
   const currentVersionAsSingleFormat = () => {
     const digital = isDigital === true;
     const positive = (value) => (Number(value) > 0 ? String(value) : "");
+    const type = productTypes.find((t) => t.key === (digital ? "web-version" : "paper")) || null;
     return {
-      ...createEmptySingleFormat("new"),
-      label: digital ? "Web Version" : "Print",
+      ...createEmptySingleFormat("new", type),
+      label: type?.label || (digital ? "Web Version" : "Print"),
       type: digital ? "digital" : "physical",
       price: String(price ?? ""),
       mrp: String(mrp ?? ""),
@@ -2472,18 +2658,33 @@ function AdminAddProducts() {
       height: digital ? "" : positive(height),
       hsnSac: String(hsnSac || ""),
       gstRate: String(gstRate ?? ""),
+      internationalPrice: String(internationalPrice ?? ""),
+      ...(digital
+        ? {
+            digitalType: String(digitalType || ""),
+            webReaderLink: String(webReaderLink || ""),
+            kindleLink: String(kindleLink || ""),
+            digitalInstructions: String(digitalInstructions || ""),
+            digitalDelivery: digitalDelivery === "external" ? "external" : "onsite",
+            externalAccessLink: String(externalAccessLink || ""),
+            externalAccessLabel: String(externalAccessLabel || ""),
+            externalAccessManual: externalAccessManual === true
+          }
+        : {}),
       isCurrentVersion: true
     };
   };
 
-  const addSingleFormat = (kind) => {
+  const addSingleFormat = (kind, productType = null) => {
     setSingleFormats((current) => {
       if (current.length >= 8) return current;
       const isFirst = current.length === 0 && editingProduct?.hasOptions !== true;
       const hasCurrentVersion = isFirst && String(price ?? "").trim() !== "";
-      return hasCurrentVersion
-        ? [currentVersionAsSingleFormat(), createEmptySingleFormat(kind)]
-        : [...current, createEmptySingleFormat(kind)];
+      if (!hasCurrentVersion) return [...current, createEmptySingleFormat(kind, productType)];
+      const currentVersion = currentVersionAsSingleFormat();
+      // Adding the same type the product already is: just keep the product as that type
+      if (productType && productType.key === currentVersion.typeKey) return [currentVersion];
+      return [currentVersion, createEmptySingleFormat(kind, productType)];
     });
   };
 
@@ -3343,6 +3544,7 @@ function AdminAddProducts() {
                       onChange={(e) => setDescription(e.target.value)}
                       rows={2}
                     />
+                    {renderOwnContentNote("description", "description")}
                   </label>
                   <label className="admin-field admin-field-wide">
                     <span>Trailer Video URL</span>
@@ -3351,6 +3553,7 @@ function AdminAddProducts() {
                       value={trailerVideoUrl}
                       onChange={(e) => setTrailerVideoUrl(e.target.value)}
                     />
+                    {renderOwnContentNote("trailerVideoUrl", "trailer video")}
                   </label>
                   <label className="admin-field admin-field-wide">
                     <span>About This Product</span>
@@ -3360,6 +3563,7 @@ function AdminAddProducts() {
                       onChange={(e) => setAboutProduct(e.target.value)}
                       rows={3}
                     />
+                    {renderOwnContentNote("aboutProduct", "About points")}
                   </label>
                 </div>
               </section>
@@ -4156,28 +4360,60 @@ function AdminAddProducts() {
                       </div>
                     </div>
                   ) : null}
-                  {productType === "single" ? (
+                  {productType === "single" && (editingProduct?.optionParent || editingProduct?.bundleFormatKey) ? (
+                    <div className="admin-field admin-field-wide">
+                      <span>Formats</span>
+                      <p className="pf-hint">
+                        This product is one of the types of{" "}
+                        <strong>
+                          {products.find((p) => String(p._id) === String(editingProduct.optionParent?._id || editingProduct.optionParent))?.name ||
+                            "another product"}
+                        </strong>
+                        . Its types are managed in that main product.
+                      </p>
+                    </div>
+                  ) : productType === "single" ? (
                     <div className="admin-field admin-field-wide">
                       <span>Formats (optional)</span>
                       <div className="pf-formats-box pf-single-formats">
                         <div className="pf-formats-head">
                           <div>
-                            <strong>Sell this product in formats, such as Print and Web Version</strong>
+                            <strong>Types this product comes in (Paper, Pendrive, Web Version, Audio Book...)</strong>
                             <p>
-                              Customers see one listing and choose a format. Add a <strong>new format</strong> with its own
-                              price and stock, or <strong>link a product you already have</strong>: it keeps its own orders and
-                              stock, and is hidden from the shop while it is linked here.
+                              Customers see one product and choose a type. Add only the types this product has. Each type
+                              fills in its HSN/SAC and GST and asks only for what it needs. You can also{" "}
+                              <strong>link a product you already have</strong>: it keeps its own orders and stock, and is
+                              hidden from the shop while it is linked here.
                             </p>
                           </div>
-                          {singleFormats.length < 8 ? (
-                            <div className="pf-single-formats-add">
-                              <button type="button" onClick={() => addSingleFormat("new")}>＋ New format</button>
-                              <button type="button" className="secondary" onClick={() => addSingleFormat("linked")}>
-                                <Link2 size={14} className="ui-inline-icon" aria-hidden="true" />Link existing product
-                              </button>
-                            </div>
-                          ) : null}
+                          <button type="button" className="secondary" onClick={() => setShowProductTypes((v) => !v)}>
+                            {showProductTypes ? "Hide product types" : "Manage product types"}
+                          </button>
                         </div>
+
+                        {showProductTypes ? (
+                          <ProductTypesManager
+                            types={productTypes}
+                            onSave={saveProductTypes}
+                            onClose={() => setShowProductTypes(false)}
+                          />
+                        ) : null}
+
+                        {singleFormats.length < 8 ? (
+                          <div className="pf-single-formats-add pf-type-picker">
+                            {productTypes
+                              .filter((t) => !singleFormats.some((row) => row.typeKey === t.key))
+                              .map((t) => (
+                                <button key={t.key} type="button" onClick={() => addSingleFormat("new", t)}>
+                                  ＋ {t.label}
+                                </button>
+                              ))}
+                            <button type="button" className="secondary" onClick={() => addSingleFormat("new")}>＋ Other format</button>
+                            <button type="button" className="secondary" onClick={() => addSingleFormat("linked")}>
+                              <Link2 size={14} className="ui-inline-icon" aria-hidden="true" />Link existing product
+                            </button>
+                          </div>
+                        ) : null}
 
                         {singleFormats.some((row) => row.isCurrentVersion) ? (
                           <p className="pf-hint pf-hint-current">
@@ -4194,7 +4430,15 @@ function AdminAddProducts() {
                                 <div key={row.rowKey} className="pf-single-format-card">
                                   <div className="pf-single-format-top">
                                     <span className={`pf-single-format-kind ${row.kind}`}>
-                                      {row.kind === "linked" ? "Linked product" : row.isCurrentVersion ? "This product as it is now" : "New format"}
+                                      {row.kind === "linked"
+                                        ? "Linked product"
+                                        : `${row.isCurrentVersion ? "This product as it is now · " : ""}${
+                                            productTypeOf(row)
+                                              ? `${productTypeOf(row).label} · ${
+                                                  rowKindOf(row) === "kindle" ? "sold on Amazon" : rowKindOf(row) === "digital" ? "digital" : "shipped"
+                                                }`
+                                              : "Other format"
+                                          }`}
                                     </span>
                                     <div className="pf-single-format-tools">
                                       <button
@@ -4267,17 +4511,19 @@ function AdminAddProducts() {
                                             onChange={(e) => updateSingleFormat(row.rowKey, "label", e.target.value)}
                                           />
                                         </label>
-                                        <label className="pf-formats-pack-field">
-                                          <span>Type</span>
-                                          <select
-                                            value={row.type || ""}
-                                            onChange={(e) => updateSingleFormat(row.rowKey, "type", e.target.value)}
-                                          >
-                                            <option value="" disabled>Choose…</option>
-                                            <option value="physical">Physical</option>
-                                            <option value="digital">Digital</option>
-                                          </select>
-                                        </label>
+                                        {productTypeOf(row) ? null : (
+                                          <label className="pf-formats-pack-field">
+                                            <span>Type</span>
+                                            <select
+                                              value={row.type || ""}
+                                              onChange={(e) => updateSingleFormat(row.rowKey, "type", e.target.value)}
+                                            >
+                                              <option value="" disabled>Choose…</option>
+                                              <option value="physical">Physical</option>
+                                              <option value="digital">Digital</option>
+                                            </select>
+                                          </label>
+                                        )}
                                         <label className="pf-formats-pack-field pf-format-category-field">
                                           <span>Category</span>
                                           <select
@@ -4363,10 +4609,124 @@ function AdminAddProducts() {
                                         </div>
                                       ) : null}
 
+                                      {rowKindOf(row) === "kindle" ? (
+                                        <div className="pf-formats-pack">
+                                          <span className="pf-formats-pack-title">
+                                            <Link2 size={14} className="ui-inline-icon" aria-hidden="true" />
+                                            Amazon Kindle link (customers buy it on Amazon)
+                                          </span>
+                                          <label className="pf-formats-pack-field pf-field-wide">
+                                            <span>Amazon link</span>
+                                            <input
+                                              type="url"
+                                              placeholder="https://www.amazon.in/dp/..."
+                                              value={row.kindleLink}
+                                              onChange={(e) => updateSingleFormat(row.rowKey, "kindleLink", e.target.value)}
+                                            />
+                                          </label>
+                                        </div>
+                                      ) : row.type === "digital" && !row.typeKey ? (
+                                        <p className="pf-hint">
+                                          This format uses this product&apos;s Digital Content settings for online access.
+                                        </p>
+                                      ) : row.type === "digital" ? (
+                                        <div className="pf-formats-pack">
+                                          <span className="pf-formats-pack-title">
+                                            <Laptop size={14} className="ui-inline-icon" aria-hidden="true" />
+                                            {row.label || "This format"}: online access
+                                          </span>
+                                          <label className="pf-formats-pack-field">
+                                            <span>Access</span>
+                                            <select
+                                              value={row.digitalDelivery}
+                                              onChange={(e) => updateSingleFormat(row.rowKey, "digitalDelivery", e.target.value)}
+                                            >
+                                              <option value="onsite">On our site (Digital Library)</option>
+                                              <option value="external">On another website</option>
+                                            </select>
+                                          </label>
+                                          {row.digitalDelivery === "external" ? (
+                                            <>
+                                              <label className="pf-formats-pack-field pf-field-wide">
+                                                <span>Link on the other website</span>
+                                                <input
+                                                  type="url"
+                                                  placeholder="https://..."
+                                                  value={row.externalAccessLink}
+                                                  onChange={(e) => updateSingleFormat(row.rowKey, "externalAccessLink", e.target.value)}
+                                                />
+                                              </label>
+                                              <label className="pf-formats-pack-field">
+                                                <span>Button text (optional)</span>
+                                                <input
+                                                  type="text"
+                                                  maxLength={40}
+                                                  placeholder="e.g. Open course"
+                                                  value={row.externalAccessLabel}
+                                                  onChange={(e) => updateSingleFormat(row.rowKey, "externalAccessLabel", e.target.value)}
+                                                />
+                                              </label>
+                                              <label className="pf-formats-pack-field pf-check-field">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={row.externalAccessManual === true}
+                                                  onChange={(e) => updateSingleFormat(row.rowKey, "externalAccessManual", e.target.checked)}
+                                                />
+                                                <span>Our team sets up access by hand (24-48h)</span>
+                                              </label>
+                                            </>
+                                          ) : (
+                                            <label className="pf-formats-pack-field pf-field-wide">
+                                              <span>Access link (web reader, flipbook or audio file)</span>
+                                              <input
+                                                type="url"
+                                                placeholder="https://... (an .mp3 link plays as audio in the Digital Library)"
+                                                value={row.webReaderLink}
+                                                onChange={(e) => updateSingleFormat(row.rowKey, "webReaderLink", e.target.value)}
+                                              />
+                                            </label>
+                                          )}
+                                        </div>
+                                      ) : null}
+
+                                      <div className="pf-formats-pack">
+                                        <span className="pf-formats-pack-title">
+                                          <Package size={14} className="ui-inline-icon" aria-hidden="true" />
+                                          {row.label || "This format"}: picture and overseas price (optional)
+                                        </span>
+                                        <label className="pf-formats-pack-field pf-field-wide">
+                                          <span>Image (blank = the product&apos;s main image)</span>
+                                          <input
+                                            type="url"
+                                            placeholder="https://..."
+                                            value={row.image}
+                                            onChange={(e) => updateSingleFormat(row.rowKey, "image", e.target.value)}
+                                          />
+                                        </label>
+                                        <label className="pf-formats-pack-field">
+                                          <span>International price (Rs, blank = same as India)</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="e.g. 999"
+                                            value={row.internationalPrice}
+                                            onChange={(e) => updateSingleFormat(row.rowKey, "internationalPrice", e.target.value)}
+                                          />
+                                        </label>
+                                      </div>
+
                                       <div className="pf-formats-pack pf-single-format-tax">
                                         <span className="pf-formats-pack-title">
                                           <FileText size={14} className="ui-inline-icon" aria-hidden="true" />
-                                          Tax for this format (optional)
+                                          {productTypeOf(row)
+                                            ? `Tax: follows ${productTypeOf(row).label}${
+                                                productTypeOf(row).hsnSac ? ` (${productTypeOf(row).hsnSac}` : " ("
+                                              }${
+                                                productTypeOf(row).gstRate !== null && productTypeOf(row).gstRate !== undefined
+                                                  ? `${productTypeOf(row).hsnSac ? ", " : ""}${productTypeOf(row).gstRate}%)`
+                                                  : productTypeOf(row).hsnSac ? ")" : "automatic)"
+                                              }. Change only if this product is different.`
+                                            : "Tax for this format (optional)"}
                                         </span>
                                         <label className="pf-formats-pack-field">
                                           <span>HSN/SAC</span>
@@ -4511,6 +4871,7 @@ function AdminAddProducts() {
                       onChange={(e) => setImagesInput(e.target.value)}
                       rows={4}
                     />
+                    {renderOwnContentNote("images", "images")}
                   </label>
                   <div className="admin-field admin-field-wide">
                     <span>Upload Gallery Images</span>
@@ -4669,14 +5030,34 @@ function AdminAddProducts() {
                 <Upload size={20} aria-hidden="true" />
               </div>
               <div>
-                <h4 className="admin-upload-text-title">Bulk Import Products</h4>
+                <h4 className="admin-upload-text-title">Bulk Import / Export Products</h4>
                 <p className="admin-upload-text-desc">
-                  Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>)
+                  Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>).
+                  Export downloads every product, formats included; an exported file can be imported again (as new products).
                 </p>
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="admin-upload-template-btn"
+                onClick={() => handleExportProducts("csv")}
+                disabled={Boolean(exportingProducts) || uploading}
+              >
+                <Download size={14} className="ui-inline-icon" aria-hidden="true" />
+                {exportingProducts === "csv" ? "Exporting..." : "Export CSV"}
+              </button>
+              <button
+                type="button"
+                className="admin-upload-template-btn"
+                onClick={() => handleExportProducts("json")}
+                disabled={Boolean(exportingProducts) || uploading}
+                title="Every field as stored, for a full backup"
+              >
+                <Download size={14} className="ui-inline-icon" aria-hidden="true" />
+                {exportingProducts === "json" ? "Exporting..." : "Export JSON"}
+              </button>
               <label className="admin-upload-template-btn">
                 <span>{uploading ? "Uploading..." : <><FileText size={14} className="ui-inline-icon" aria-hidden="true" />Choose CSV / JSON File</>}</span>
                 <input
@@ -4690,10 +5071,22 @@ function AdminAddProducts() {
             </div>
           </div>
           {uploadMessage && (
-            <p className={`upload-message ${uploadMessage.includes("failed") ? "error" : "success"} admin-upload-message-pad`}>
+            <p className={`upload-message ${/fail|^no /i.test(uploadMessage) ? "error" : "success"} admin-upload-message-pad`}>
               {uploadMessage}
             </p>
           )}
+        </section>
+
+        <section className="card agp-link-card">
+          <div>
+            <h3><Layers size={17} className="ui-inline-icon" aria-hidden="true" />Group existing products into types</h3>
+            <p className="pf-hint">
+              Find products that are one title in several types (Paperback, Web Version, Bulk...) and group them under one main product.
+            </p>
+          </div>
+          <Link to="/admin/add-products/group" className="admin-upload-template-btn">
+            Open Group Products
+          </Link>
         </section>
 
         <section className="card">
@@ -4737,7 +5130,7 @@ function AdminAddProducts() {
                         <strong>
                           {product.name}
                           {product.hasOptions === true && Array.isArray(product.options) && product.options.length > 0 ? (
-                            <span className="pf-badge pf-badge--options">Formats ({product.options.length})</span>
+                            <span className="pf-badge pf-badge--options">Types ({product.options.length})</span>
                           ) : null}
                           {product.optionParent && !product.bundleFormatKey ? (
                             <span className="pf-badge pf-badge--options" title="Sold as a format of another product">Linked format</span>
@@ -4821,6 +5214,16 @@ function AdminAddProducts() {
                         Delete
                       </button>
                     </div>
+                    {product.hasOptions === true && Array.isArray(product.options) && product.options.length > 0 ? (
+                      <ProductTypesTable
+                        parent={product}
+                        productsById={productsById}
+                        sales={formatSales}
+                        productTypes={productTypes}
+                        onEdit={startEdit}
+                        onRevert={revertGrouping}
+                      />
+                    ) : null}
                   </div>
                 ))}
           </div>

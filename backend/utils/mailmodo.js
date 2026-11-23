@@ -10,6 +10,7 @@
  *   MAILMODO_LIST_NAME       the contact list customers are synced to
  *   MAILMODO_WEBHOOK_SECRET  shared secret for /api/mailmodo/webhook (unsubscribe sync)
  *   MAILMODO_AUTO_SYNC       "false" turns off the scheduled sync (manual sync still works)
+ *   MAILMODO_CAMPAIGN_ID     the triggered campaign (template) admin campaigns are sent with
  *   MAILMODO_TEST_EMAILS     team-only mode: comma-separated emails. When set, syncs, removals,
  *                            unsubscribes and status counts cover only these accounts, so
  *                            real customers are never added, removed or marked.
@@ -32,12 +33,14 @@ function getMailmodoConfig(env = process.env) {
   const listName = String(env.MAILMODO_LIST_NAME || "").trim();
   const webhookSecret = String(env.MAILMODO_WEBHOOK_SECRET || "").trim();
   const testEmails = parseTestEmails(env.MAILMODO_TEST_EMAILS);
+  const campaignId = String(env.MAILMODO_CAMPAIGN_ID || "").trim();
   return {
     configured: Boolean(apiKey && listName),
     apiKey,
     listName,
     webhookSecret,
     autoSync: String(env.MAILMODO_AUTO_SYNC || "true").trim().toLowerCase() !== "false",
+    campaignId: /^[A-Za-z0-9_-]{6,100}$/.test(campaignId) ? campaignId : "",
     testEmails,
     teamOnly: testEmails.length > 0
   };
@@ -199,19 +202,17 @@ function describeFailure(status, body) {
   return `Mailmodo request failed (${status || "network"})${detail ? `: ${detail.slice(0, 200)}` : ""}`;
 }
 
-async function mailmodoRequest(path, payload, config = getMailmodoConfig(), { retryOnRateLimit = true } = {}) {
+async function mailmodoRequest(path, payload, config = getMailmodoConfig(), { retryOnRateLimit = true, method = "POST" } = {}) {
   if (!config.apiKey) throw new MailmodoError("Mailmodo is not configured.");
 
   let response;
   try {
+    const headers = { Accept: "application/json", mmApiKey: config.apiKey };
+    if (method !== "GET") headers["Content-Type"] = "application/json";
     response = await fetch(`${MAILMODO_BASE_URL}${path}`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        mmApiKey: config.apiKey
-      },
-      body: JSON.stringify(payload),
+      method,
+      headers,
+      body: method === "GET" ? undefined : JSON.stringify(payload),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     });
   } catch (err) {
@@ -221,7 +222,7 @@ async function mailmodoRequest(path, payload, config = getMailmodoConfig(), { re
   if (response.status === 429 && retryOnRateLimit) {
     const retryAfter = Math.min(30, Math.max(1, Number(response.headers.get("retry-after")) || 5));
     await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-    return mailmodoRequest(path, payload, config, { retryOnRateLimit: false });
+    return mailmodoRequest(path, payload, config, { retryOnRateLimit: false, method });
   }
 
   let body = null;
@@ -253,6 +254,63 @@ function resubscribeContact(email, config = getMailmodoConfig()) {
   return mailmodoRequest("/contacts/resubscribe", { email }, config);
 }
 
+// ── Campaign sending (admin dashboard) ───────────────────────────────────────
+
+function addContactsBatchToList(listName, contacts, config = getMailmodoConfig()) {
+  return mailmodoRequest("/addToList/batch", { listName, values: contacts }, config);
+}
+
+/** Reads the contact lists reply into [{id, name, count}] whatever wrapper Mailmodo uses. */
+function parseContactLists(body) {
+  const raw = Array.isArray(body) ? body : body?.listDetails || body?.lists || body?.data || [];
+  return (Array.isArray(raw) ? raw : [])
+    .map((list) => ({
+      id: String(list?.id || list?.listId || list?._id || ""),
+      name: String(list?.name || list?.listName || ""),
+      count: Number(list?.contacts_count ?? list?.contactsCount ?? list?.count ?? 0) || 0
+    }))
+    .filter((list) => list.id && list.name);
+}
+
+async function getContactLists(config = getMailmodoConfig()) {
+  return parseContactLists(await mailmodoRequest("/getAllContactLists", null, config, { method: "GET" }));
+}
+
+async function findListByName(listName, config = getMailmodoConfig()) {
+  const lists = await getContactLists(config);
+  return lists.find((list) => list.name === listName) || null;
+}
+
+function requireCampaignId(config) {
+  if (!config.campaignId) {
+    throw new MailmodoError("Add MAILMODO_CAMPAIGN_ID (the Mailmodo triggered campaign used as the template) to the server settings.");
+  }
+  return encodeURIComponent(config.campaignId);
+}
+
+/** One email through the template (used for team tests). */
+function triggerCampaignEmail({ email, subject, data }, config = getMailmodoConfig()) {
+  return mailmodoRequest(`/triggerCampaign/${requireCampaignId(config)}`, { email, subject, data }, config);
+}
+
+/** Sends the template to every contact on a list. */
+function bulkTriggerCampaign({ listId, subject, idempotencyKey, campaignData }, config = getMailmodoConfig()) {
+  return mailmodoRequest(
+    `/bulktriggerCampaign/${requireCampaignId(config)}`,
+    { listId, subject, idempotencyKey, campaign_data: campaignData },
+    config,
+    { retryOnRateLimit: false }
+  );
+}
+
+/** The template campaign's report, optionally for a date range (YYYY-MM-DD). */
+function getCampaignReport({ fromDate, toDate } = {}, config = getMailmodoConfig()) {
+  const payload = {};
+  if (fromDate) payload.fromDate = fromDate;
+  if (toDate) payload.toDate = toDate;
+  return mailmodoRequest(`/campaignReports/${requireCampaignId(config)}`, payload, config);
+}
+
 module.exports = {
   BATCH_SIZE,
   RECENT_SIGNUP_DAYS,
@@ -274,5 +332,12 @@ module.exports = {
   addContact,
   addContactsBatch,
   unsubscribeContact,
-  resubscribeContact
+  resubscribeContact,
+  addContactsBatchToList,
+  parseContactLists,
+  getContactLists,
+  findListByName,
+  triggerCampaignEmail,
+  bulkTriggerCampaign,
+  getCampaignReport
 };
