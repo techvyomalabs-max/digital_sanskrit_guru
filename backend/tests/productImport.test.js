@@ -83,16 +83,16 @@ test("an id that matches nothing is reported, never added", async () => {
   assert.equal(plan.creates.length, 0);
 });
 
-test("format price is updated; its name is not; a main product's own price is skipped", async () => {
+test("format price and international price are updated; its name is not; a main product's own price is skipped", async () => {
   const plan = await roundTrip(all, (rows) =>
     rows.map((r) => {
-      if (r.id === format._id) return { ...r, price: "149", name: "Renamed" };
+      if (r.id === format._id) return { ...r, price: "149", internationalprice: "583.33", name: "Renamed" };
       if (r.id === main._id) return { ...r, price: "99" };
       return r;
     })
   );
   const f = plan.updates.find((u) => u.productId === format._id);
-  assert.deepEqual(f.payload, { price: 149 });
+  assert.deepEqual(f.payload, { price: 149, internationalPrice: 583.33 });
   assert.deepEqual(f.skipped.map((s) => s.field), ["name"]);
   assert.equal(f.mainName, "Amarakosha");
   const m = plan.updates.find((u) => u.productId === main._id);

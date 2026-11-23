@@ -30,11 +30,12 @@ const MAIN_FROM_FORMATS = "worked out from its formats; change the format rows i
 
 // Fields the import does not change for some kinds of product, and why.
 const BLOCKED = {
+  // A format keeps its own price, MRP, international price and stock (the product form reads them
+  // back from the format). Its name and category are rebuilt from the main product, and it has no
+  // country or market prices of its own.
   format: {
     name: FORMAT_FROM_MAIN,
     category: FORMAT_FROM_MAIN,
-    mrp: FORMAT_FROM_MAIN,
-    internationalPrice: FORMAT_FROM_MAIN,
     internationalCountryPrices: FORMAT_FROM_MAIN,
     marketPrices: FORMAT_FROM_MAIN
   },
