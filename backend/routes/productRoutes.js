@@ -1245,6 +1245,17 @@ router.post("/", protect, admin, (req, res, next) => {
   }
 });
 
+// Fields that decide how a digital product is delivered (checked together on update)
+const DELIVERY_FIELDS = [
+  "digitalDelivery",
+  "externalAccessLink",
+  "externalAccessLabel",
+  "externalAccessManual",
+  "isDigital",
+  "productType",
+  "bundleFormats"
+];
+
 // UPDATE product (ADMIN) — 25mb for image URLs
 router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, async (req, res) => {
   try {
@@ -1366,14 +1377,21 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
         ),
       productType: product.productType
     };
-    const deliveryValidation = validateExternalDelivery(deliveryCandidate);
-    if (!deliveryValidation.isValid) {
-      return res.status(400).json({ message: deliveryValidation.error });
+    // Check the delivery settings only when this save changes them. A save that only changes
+    // other fields (e.g. a price from Bulk Import) must not be refused because of delivery
+    // settings saved earlier (e.g. external delivery with no link yet). The product form always
+    // sends these fields, so saving from the form still checks them.
+    const changesDelivery = DELIVERY_FIELDS.some((field) => req.body[field] !== undefined);
+    if (changesDelivery) {
+      const deliveryValidation = validateExternalDelivery(deliveryCandidate);
+      if (!deliveryValidation.isValid) {
+        return res.status(400).json({ message: deliveryValidation.error });
+      }
+      product.digitalDelivery = deliveryValidation.digitalDelivery;
+      product.externalAccessLink = deliveryValidation.externalAccessLink;
+      product.externalAccessLabel = deliveryValidation.externalAccessLabel;
+      product.externalAccessManual = deliveryValidation.externalAccessManual;
     }
-    product.digitalDelivery = deliveryValidation.digitalDelivery;
-    product.externalAccessLink = deliveryValidation.externalAccessLink;
-    product.externalAccessLabel = deliveryValidation.externalAccessLabel;
-    product.externalAccessManual = deliveryValidation.externalAccessManual;
     if (product.productType === "bundle" && product.bundleItems.length === 0) {
       return res.status(400).json({ message: "Select at least one product for the bundle." });
     }
