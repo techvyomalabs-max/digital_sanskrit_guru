@@ -226,3 +226,127 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Several formats added at once, and "Also get" (other formats of the same title) */
+.cart-popup-modal {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.cart-popup-product-list.is-multi .cart-popup-product-card {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.cart-popup-product-list.is-multi .cart-popup-product-img,
+.cart-popup-product-list.is-multi .cart-popup-product-img-placeholder {
+  width: 48px;
+  height: 48px;
+}
+
+.cart-popup-product-format {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--site-link, #b45309);
+}
+
+.cart-popup-also {
+  margin: 4px 0 16px;
+  padding: 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 12px;
+}
+
+.cart-popup-also-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cart-popup-also-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cart-popup-also-option {
+  display: grid;
+  grid-template-columns: auto 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cart-popup-also-option:hover {
+  border-color: #cbd5e1;
+}
+
+.cart-popup-also-option.is-picked {
+  border-color: var(--site-link, #b45309);
+  background: color-mix(in srgb, var(--site-link, #b45309) 6%, #ffffff);
+}
+
+.cart-popup-also-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--site-link, #b45309);
+}
+
+.cart-popup-also-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f1f5f9;
+  border: 1px solid #f1f5f9;
+}
+
+.cart-popup-also-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cart-popup-also-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cart-popup-also-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--site-link, #b45309);
+}
+
+.cart-popup-also-price {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.cart-popup-also-add {
+  width: 100%;
+}
+
+.cart-popup-also-add:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
