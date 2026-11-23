@@ -63,7 +63,8 @@ import {
   MonitorSmartphone,
   Minus,
   Plus,
-  Camera
+  Camera,
+  Receipt
 } from "lucide-react";
 import { validatePhoneNumber } from "../utils/phoneValidation";
 import {
@@ -1231,10 +1232,11 @@ function Product() {
     }
   };
 
+  // Buy Now: straight to checkout (no pop-up)
   const handleBuyNow = async () => {
     if (!memoBuyProduct || (memoBuyProduct.isDigital !== true && memoBuyProduct.stock === 0)) return;
-    await addToCart(memoBuyProduct, qty);
-    navigate("/checkout");
+    const added = await addToCart(memoBuyProduct, qty, { silent: true });
+    if (added) navigate("/checkout");
   };
 
   // ── Fix #12: Styled skeleton loader instead of raw <p> ──────────────────────
@@ -1244,6 +1246,19 @@ function Product() {
   if (!product) return <ProductNotFound />;
 
   const buyProduct = memoBuyProduct;
+  // The title's other formats, offered in the cart pop-up ("Also get"). Bulk (10+ copies) and
+  // Kindle (sold on Amazon) are left out: they are bought on their own.
+  const isSoloFormat = (p) => String(p?.productType || "").toLowerCase() === "bulk" || isKindleProduct(p);
+  const formatOptionList = isOptionsParent(product) && Array.isArray(product.publicOptions)
+    ? orderFormatOptions(product.publicOptions, formatContext)
+    : [];
+  const popupFormatSuggestions = formatOptionList
+    .filter((o) => o.status === "available" && !isSoloFormat(o.product) && String(o.product?._id || "") !== selectedOptionId)
+    .map((o) => ({ product: o.product, label: o.label }));
+  const handleAddSelectedToCart = async () => {
+    const label = formatOptionList.find((o) => String(o?.product?._id || "") === selectedOptionId)?.label || "";
+    await addToCart(buyProduct, qty, { formatLabel: label, suggestions: popupFormatSuggestions });
+  };
   // With formats, the category is the chosen format's own (e.g. Kindle), else the listing's
   const shownCategory = String(
     (isOptionsParent(product) && String(buyProduct?.category || "").trim()) || product?.category || ""
@@ -1343,6 +1358,22 @@ function Product() {
   const displayCurrency = pricing.currency || "INR";
   const currentQty = Math.max(1, Number(qty || 1));
   const calculatedTotalPrice = Math.round(displayPrice * currentQty * 100) / 100;
+  // Bulk products: sold per copy in packs of 10 to 100 copies
+  const isBulkBuy = String(buyProduct?.productType || "").toLowerCase() === "bulk";
+  const BULK_QTY_CHOICES = [10, 20, 30, 40, 50, 100];
+  const bulkStock = isBulkBuy ? Math.max(0, Number(buyProduct?.stock) || 0) : 0;
+  // The single-copy price of the same title (when it is a type of this product), to show the saving
+  const bulkRetailPrice = (() => {
+    if (!isBulkBuy || !isOptionsParent(product) || !Array.isArray(product.publicOptions)) return 0;
+    const retail = product.publicOptions
+      .map((o) => o?.product)
+      .filter((p) => p && String(p.productType || "single").toLowerCase() !== "bulk" && p.isDigital !== true)
+      .map((p) => getProductPriceDetails(p, selectedAddress?.country))
+      .filter((d) => (d.currency || "INR") === displayCurrency && Number(d.price) > 0)
+      .map((d) => Number(d.price));
+    return retail.length > 0 ? Math.min(...retail) : 0;
+  })();
+  const bulkSavingPerCopy = bulkRetailPrice > displayPrice ? Math.round((bulkRetailPrice - displayPrice) * 100) / 100 : 0;
   const bundleOriginalTotal = bundleItems.reduce((sum, item) => {
     const bundledProduct = item?.product;
     const itemPrice = bundledProduct
@@ -1731,7 +1762,7 @@ function Product() {
                       </span>
                       <span className="product-format-option-price">
                         {available
-                          ? formatResolvedPrice(optPricing)
+                          ? `${formatResolvedPrice(optPricing)}${String(optProduct?.productType || "").toLowerCase() === "bulk" ? " / copy" : ""}`
                           : option.status === "not-in-country"
                             ? "Not available in your country"
                             : "Out of stock"}
@@ -1791,6 +1822,7 @@ function Product() {
               <div className="price-block">
                 <p className="price">
                   <strong>{formatCurrencyExact(displayPrice, displayCurrency)}</strong>
+                  {isBulkBuy ? <small className="product-bulk-unit">per copy</small> : null}
                   {pricing.priceType === "international-country"
                     ? <small>{pricing.matchedCountry} price</small>
                     : pricing.isInternational
@@ -1807,6 +1839,17 @@ function Product() {
                   <p className="price-meta">
                     {shownMrp ? "M.R.P." : "Regular price"}: <span>{formatCurrencyExact(listPrice, displayCurrency)}</span> ({discountPercent}% off)
                   </p>
+                ) : null}
+                {isBulkBuy ? (
+                  <ul className="product-bulk-facts">
+                    <li>Minimum order: {BULK_QTY_CHOICES[0]} copies</li>
+                    {bulkSavingPerCopy > 0 ? (
+                      <li className="product-bulk-saving">
+                        {formatCurrencyExact(bulkSavingPerCopy, displayCurrency)} less per copy than buying single copies (
+                        {formatCurrencyExact(bulkRetailPrice, displayCurrency)})
+                      </li>
+                    ) : null}
+                  </ul>
                 ) : null}
                 <p className="tax-note">Inclusive of all taxes</p>
               </div>
@@ -1850,7 +1893,11 @@ function Product() {
                         : "Instant digital access"}
                   </span>
                 ) : buyProduct.stock > 0 ? (
-                  <span className="in-stock">In Stock</span>
+                  <span className="in-stock">
+                    {isBulkBuy && bulkStock < BULK_QTY_CHOICES[BULK_QTY_CHOICES.length - 1]
+                      ? `In stock: ${bulkStock} copies`
+                      : "In Stock"}
+                  </span>
                 ) : (
                   <span className="out-stock">Out of Stock</span>
                 )}
@@ -1878,6 +1925,7 @@ function Product() {
               </>
             ) : (
               <>
+                {isBulkBuy ? null : (
                 <p className="buy-price">
                   {formatCurrencyExact(calculatedTotalPrice, displayCurrency)}
                   {currentQty > 1 ? (
@@ -1886,6 +1934,7 @@ function Product() {
                     </span>
                   ) : null}
                 </p>
+                )}
                 {/* <p className="delivery">Fast Delivery</p> */}
                 <p className="buy-box-note">
                   {isManualAccessProduct(buyProduct)
@@ -1991,23 +2040,57 @@ function Product() {
                       </div>
                     ) : null}
 
-                    {buyProduct.productType === "bulk" ? (
-                      <div className="product-bulk-select-wrap">
-                        <label className="product-bulk-select-label" htmlFor="product-bulk-qty">Quantity</label>
-                        <div className="product-bulk-select-field">
-                        <select
-                          id="product-bulk-qty"
-                          value={qty}
-                          onChange={(e) => setQty(Number(e.target.value))}
-                          className="product-bulk-select-input"
-                        >
-                          {[10, 20, 30, 40, 50, 100].map((num) => (
-                            <option key={num} value={num} disabled={buyProduct.stock > 0 && num > buyProduct.stock}>
-                              {num} copies
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={18} className="product-bulk-select-chevron" aria-hidden="true" />
+                    {isBulkBuy ? (
+                      <div className="product-bulk-buy">
+                        <span className="product-bulk-buy-label" id="product-bulk-qty-label">How many copies?</span>
+                        <div className="product-bulk-qty-chips" role="radiogroup" aria-labelledby="product-bulk-qty-label">
+                          {BULK_QTY_CHOICES.map((num) => {
+                            const tooMany = bulkStock > 0 && num > bulkStock;
+                            const selected = Number(qty) === num;
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                className={`product-bulk-qty-chip${selected ? " is-selected" : ""}`}
+                                disabled={tooMany}
+                                title={tooMany ? `Only ${bulkStock} copies in stock` : undefined}
+                                onClick={() => setQty(num)}
+                              >
+                                <span className="product-bulk-qty-chip-num">{num}</span>
+                                <span className="product-bulk-qty-chip-total">
+                                  {formatCurrencyExact(Math.round(displayPrice * num * 100) / 100, displayCurrency).replace(/\.00$/, "")}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="product-bulk-summary" aria-live="polite">
+                          <span className="product-bulk-summary-line">
+                            {currentQty} copies × {formatCurrencyExact(displayPrice, displayCurrency)}
+                          </span>
+                          <span className="product-bulk-summary-total">
+                            <span>Total</span>
+                            <strong>{formatCurrencyExact(calculatedTotalPrice, displayCurrency)}</strong>
+                          </span>
+                          {(() => {
+                            // The next amount up, when it is in stock: a gentle "for a bigger class" hint
+                            const next = BULK_QTY_CHOICES.find((n) => n > currentQty && (bulkStock === 0 || n <= bulkStock));
+                            if (!next) return null;
+                            return (
+                              <button type="button" className="product-bulk-summary-next" onClick={() => setQty(next)}>
+                                For a bigger group: {next} copies for{" "}
+                                {formatCurrencyExact(Math.round(displayPrice * next * 100) / 100, displayCurrency)}
+                              </button>
+                            );
+                          })()}
+                          {bulkSavingPerCopy > 0 ? (
+                            <span className="product-bulk-summary-saving">
+                              You save {formatCurrencyExact(Math.round(bulkSavingPerCopy * currentQty * 100) / 100, displayCurrency)} compared with single copies
+                            </span>
+                          ) : null}
+                          <span className="product-bulk-summary-note">Delivery is charged by weight at checkout.</span>
                         </div>
                       </div>
                     ) : isDigitalItem(buyProduct) ? (
@@ -2083,7 +2166,7 @@ function Product() {
                     <button
                       className="add-cart-btn"
                       disabled={(buyProduct.isDigital !== true && buyProduct.stock === 0) || digitalOwnership.blocked || isIntlPhysicalRestricted}
-                      onClick={() => addToCart(buyProduct, qty)}
+                      onClick={handleAddSelectedToCart}
                       style={isIntlPhysicalRestricted ? { backgroundColor: "#94a3b8", cursor: "not-allowed" } : {}}
                     >
                       {(buyProduct.isDigital !== true && buyProduct.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Add to Cart"}
@@ -2097,15 +2180,34 @@ function Product() {
                       {(buyProduct.isDigital !== true && buyProduct.stock === 0) ? "Out of Stock" : isIntlPhysicalRestricted ? "Not Available Internationally" : "Buy Now"}
                     </button>
 
-                    {(buyProduct.isDigital === true || buyProduct.stock > 0) && buyProduct.productType !== "bulk" && (
+                    {isBulkBuy ? (
+                      <ul className="product-bulk-facts-row">
+                        <li>
+                          <Truck size={18} aria-hidden="true" />
+                          <span><strong>Ships together</strong>All copies to one address</span>
+                        </li>
+                        <li>
+                          <Receipt size={18} aria-hidden="true" />
+                          <span><strong>GST invoice</strong>Add your GSTIN at checkout</span>
+                        </li>
+                        <li>
+                          <ShieldCheck size={18} aria-hidden="true" />
+                          <span><strong>Secure payment</strong>UPI, cards or net banking</span>
+                        </li>
+                      </ul>
+                    ) : null}
+
+                    {(buyProduct.isDigital === true || buyProduct.stock > 0 || isBulkBuy) && (
                       <div className="product-bulk-quote-section">
                         <p className="product-bulk-quote-hint">
-                          Planning to purchase in bulk for a school, class, or institution?
+                          {isBulkBuy
+                            ? "Need more than 100 copies, or a quote for your school or institution?"
+                            : "Planning to purchase in bulk for a school, class, or institution?"}
                         </p>
                         <button
                           type="button"
                           onClick={() => {
-                            setBulkQty(qty || 20);
+                            setBulkQty(isBulkBuy ? Math.max(Number(qty) || 0, 150) : qty || 20);
                             setShowBulkModal(true);
                           }}
                           className="bulk-quote-btn product-bulk-quote-btn"
@@ -2884,7 +2986,7 @@ function Product() {
                   className="add-cart-btn"
                   tabIndex={showBuyBar ? 0 : -1}
                   disabled={cannotBuy}
-                  onClick={() => addToCart(buyProduct, qty)}
+                  onClick={handleAddSelectedToCart}
                 >
                   {cannotBuy ? "Unavailable" : "Add to Cart"}
                 </button>

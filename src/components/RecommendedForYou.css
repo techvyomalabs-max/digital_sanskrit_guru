@@ -29,6 +29,14 @@
   flex-direction: column;
 }
 
+/* The card normally fills its column (min-height: 100%). Here the reason label sits above it,
+   so that pushed the card past the bottom and the row scrolled, cutting the labels off.
+   The card takes the space left under the label instead. */
+.recommended-ai-item > .product-card {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .recommended-ai-reason {
   align-items: center;
   gap: 4px;

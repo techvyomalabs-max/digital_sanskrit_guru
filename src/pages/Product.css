@@ -2605,59 +2605,220 @@
   cursor: pointer;
 }
 
-/* Bulk products: a labelled dropdown (was a label squeezed inside a pill outline) */
-.product-bulk-select-wrap {
+/* Bulk products: pick the number of copies, then see the total (colours follow Theme & Site) */
+.product-bulk-buy {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  margin: 14px 0;
+  gap: 10px;
+  margin: 4px 0 14px;
 }
 
-.product-bulk-select-label {
+.product-bulk-buy-label {
   font-size: 13px;
   font-weight: 700;
   color: var(--site-text-soft, #64748b);
 }
 
-.product-bulk-select-field {
-  position: relative;
+.product-bulk-qty-chips {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.product-bulk-select-input {
-  width: 100%;
-  height: 46px;
-  padding: 0 44px 0 14px;
+.product-bulk-qty-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 6px 4px;
   border: 1.5px solid var(--site-border, #cbd5e1);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--site-surface, #ffffff);
   color: var(--site-text, #0f172a);
   font: inherit;
-  font-size: 16px; /* 16px stops iPhones zooming in when the list opens */
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.product-bulk-select-input:hover {
-  border-color: var(--site-text-soft, #94a3b8);
-}
-
-.product-bulk-select-input:focus-visible {
-  outline: none;
+.product-bulk-qty-chip:hover:not(:disabled) {
   border-color: var(--site-link, #0f62b3);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--site-link, #0f62b3) 22%, transparent);
 }
 
-.product-bulk-select-chevron {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
+.product-bulk-qty-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--site-link, #0f62b3) 25%, transparent);
+}
+
+.product-bulk-qty-chip.is-selected {
+  border-color: var(--site-link, #0f62b3);
+  background: color-mix(in srgb, var(--site-link, #0f62b3) 10%, var(--site-surface, #ffffff));
+  color: var(--site-link, #0f62b3);
+  box-shadow: inset 0 0 0 1px var(--site-link, #0f62b3);
+}
+
+.product-bulk-qty-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.product-bulk-qty-chip-num {
+  font-size: 17px;
+  line-height: 1.1;
+}
+
+.product-bulk-qty-chip-total {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.1;
   color: var(--site-text-soft, #64748b);
-  pointer-events: none;
+  white-space: nowrap;
+}
+
+.product-bulk-qty-chip.is-selected .product-bulk-qty-chip-total {
+  color: inherit;
+}
+
+.product-bulk-qty-chip:disabled .product-bulk-qty-chip-total {
+  text-decoration: none;
+}
+
+.product-bulk-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--site-surface-muted, #f8fafc);
+}
+
+.product-bulk-summary-line,
+.product-bulk-summary-note {
+  font-size: 13px;
+  color: var(--site-text-soft, #64748b);
+}
+
+.product-bulk-summary-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--site-text, #0f172a);
+  font-weight: 600;
+}
+
+.product-bulk-summary-total strong {
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.product-bulk-summary-saving {
+  font-size: 13px;
+  font-weight: 600;
+  color: #15803d;
+}
+
+.product-bulk-summary-next {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--site-link, #0f62b3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.product-bulk-summary-next:hover {
+  color: var(--site-link-hover, #0b4f91);
+}
+
+/* Under the buy buttons: what schools usually ask before ordering */
+.product-bulk-facts-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.product-bulk-facts-row li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--site-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--site-surface, #ffffff);
+  color: var(--site-link, #0f62b3);
+}
+
+.product-bulk-facts-row li svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.product-bulk-facts-row li span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--site-text-soft, #64748b);
+}
+
+.product-bulk-facts-row li strong {
+  font-size: 13.5px;
+  color: var(--site-text, #0f172a);
+}
+
+@media (max-width: 560px) {
+  .product-bulk-facts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Left column: "per copy" after the price, and the bulk facts under it */
+.price-block .price .product-bulk-unit {
+  margin-left: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  align-self: flex-end;
+  margin-bottom: 4px;
+  color: var(--site-text-soft, #64748b);
+}
+
+.price-block .product-bulk-facts {
+  flex-basis: 100%;
+  margin: 2px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--site-text, #0f172a);
+}
+
+.product-bulk-facts li + li {
+  margin-top: 2px;
+}
+
+.product-bulk-saving {
+  color: #15803d;
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .product-bulk-qty-chips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .product-digital-badge-wrap {

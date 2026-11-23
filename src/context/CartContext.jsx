@@ -161,6 +161,10 @@ export function CartProvider({ children }) {
   });
   const [isLoadingCart, setIsLoadingCart] = useState(() => Boolean(token));
   const [addedItem, setAddedItem] = useState(null);
+  // Everything added in the last add (several formats at once show together in the pop-up)
+  const [addedItems, setAddedItems] = useState([]);
+  // Other formats of the same title the pop-up can offer ("Also get")
+  const [popupSuggestions, setPopupSuggestions] = useState([]);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const pendingDeletions = useRef(new Set());
 
@@ -280,9 +284,26 @@ export function CartProvider({ children }) {
     };
   }, [token, loadCart, showToast]);
 
-  const addToCart = async (product, qty = 1) => {
+  // Shows the pop-up for what was just added. formatLabel: the format's name to show with it.
+  const openAddedPopup = (entries, suggestions) => {
+    const list = (Array.isArray(entries) ? entries : []).filter(Boolean);
+    if (list.length === 0) return;
+    setAddedItem(list[0]);
+    setAddedItems(list);
+    if (suggestions !== undefined) setPopupSuggestions(Array.isArray(suggestions) ? suggestions : []);
+    setIsPopupOpen(true);
+  };
+
+  /**
+   * options.silent: add without the pop-up and toast (addManyToCart shows one pop-up for all).
+   * options.formatLabel: the format's name for the pop-up (e.g. "Audio Device").
+   * options.suggestions: other formats the pop-up offers under "Also get".
+   * Returns the added entry (truthy) or false.
+   */
+  const addToCart = async (product, qty = 1, options = {}) => {
+    const silent = options?.silent === true;
     if (isOptionsParent(product)) {
-      showToast("Please choose a format first.", "error");
+      if (!silent) showToast("Please choose a format first.", "error");
       return false;
     }
     if (isKindleProduct(product)) {
@@ -358,7 +379,7 @@ export function CartProvider({ children }) {
           }
         ];
       });
-      setAddedItem({
+      const entry = {
         ...product,
         id: productId,
         _id: productId,
@@ -367,11 +388,14 @@ export function CartProvider({ children }) {
         image: String(product?.image || "").trim(),
         quantity: clampCartQuantity(nextQty, { isDigital, isBulk }),
         digitalDelivery: String(product?.digitalDelivery || "onsite"),
-        externalAccessManual: Boolean(product?.externalAccessManual)
-      });
-      setIsPopupOpen(true);
-      showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
-      return true;
+        externalAccessManual: Boolean(product?.externalAccessManual),
+        formatLabel: String(options?.formatLabel || "")
+      };
+      if (!silent) {
+        openAddedPopup([entry], options?.suggestions ?? []);
+        showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
+      }
+      return entry;
     }
 
     try {
@@ -382,18 +406,21 @@ export function CartProvider({ children }) {
       );
 
       setCartItems(withQuantityLimits(res.data?.items));
-      setAddedItem({
+      const entry = {
         ...product,
         id: productId,
         _id: productId,
         name: String(product?.name || "").trim(),
         price: Number(product?.price || 0),
         image: String(product?.image || "").trim(),
-        quantity: nextQty
-      });
-      setIsPopupOpen(true);
-      showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
-      return true;
+        quantity: nextQty,
+        formatLabel: String(options?.formatLabel || "")
+      };
+      if (!silent) {
+        openAddedPopup([entry], options?.suggestions ?? []);
+        showToast(isDigital ? "Digital item added to cart (Max quantity: 1)" : "Added to cart");
+      }
+      return entry;
     } catch (err) {
       const status = Number(err?.response?.status || 0);
       const message =
@@ -402,6 +429,35 @@ export function CartProvider({ children }) {
       showToast(message, "error");
       return false;
     }
+  };
+
+  /**
+   * Adds several products (e.g. formats of one title) one after another and shows one pop-up.
+   * items: [{ product, qty, formatLabel }]. options.suggestions: what the pop-up offers next;
+   * options.appendToPopup: add to the pop-up already open (its "Also get" list) instead of
+   * replacing it. Returns how many were added.
+   */
+  const addManyToCart = async (items, options = {}) => {
+    const added = [];
+    for (const item of Array.isArray(items) ? items : []) {
+      // One at a time: the signed-in cart is saved on the server after each
+      const entry = await addToCart(item?.product, item?.qty ?? 1, { silent: true, formatLabel: item?.formatLabel });
+      if (entry) added.push(entry);
+    }
+    if (added.length > 0 && options?.silentPopup !== true) {
+      const addedIds = new Set(added.map((entry) => String(entry._id)));
+      if (options?.appendToPopup === true && isPopupOpen) {
+        setAddedItems((current) => [...current, ...added]);
+        setPopupSuggestions((current) => current.filter((s) => !addedIds.has(String(s?.product?._id || ""))));
+      } else {
+        openAddedPopup(
+          added,
+          (options?.suggestions || []).filter((s) => !addedIds.has(String(s?.product?._id || "")))
+        );
+      }
+      showToast(added.length === 1 ? "Added to cart" : `${added.length} formats added to cart`);
+    }
+    return added.length;
   };
 
   const removeFromCart = async (id) => {
@@ -544,6 +600,7 @@ export function CartProvider({ children }) {
         savedForLaterItems,
         isLoadingCart,
         addToCart,
+        addManyToCart,
         removeFromCart,
         updateQty,
         clearCart,
@@ -554,6 +611,8 @@ export function CartProvider({ children }) {
         loadCart,
         addedItem,
         setAddedItem,
+        addedItems,
+        popupSuggestions,
         isPopupOpen,
         setIsPopupOpen
       }}
