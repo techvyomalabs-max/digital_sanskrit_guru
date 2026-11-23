@@ -73,15 +73,19 @@ function pickPricingFromOptions(targetDocs = []) {
     (doc) => doc && doc.isDeleted !== true
   );
   if (active.length === 0) return null;
+  // A Bulk type's price is per copy for 10+ copies, so the "from" price comes from the other
+  // types when there are any
+  const retail = active.filter((doc) => String(doc.productType || "").toLowerCase() !== "bulk");
+  const priced = retail.length > 0 ? retail : active;
 
-  let chosen = active[0];
+  let chosen = priced[0];
   let bestPrice = Math.max(0, Number(chosen.price) || 0);
 
-  for (let i = 1; i < active.length; i++) {
-    const p = Math.max(0, Number(active[i].price) || 0);
+  for (let i = 1; i < priced.length; i++) {
+    const p = Math.max(0, Number(priced[i].price) || 0);
     if (p < bestPrice) {
       bestPrice = p;
-      chosen = active[i];
+      chosen = priced[i];
     }
   }
 

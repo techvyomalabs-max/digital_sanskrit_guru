@@ -149,4 +149,43 @@ describe("productPricing utility (pure)", () => {
       assert.equal(details.basePrice, 499 * 0.8);
     });
   });
+
+  describe("two-letter country codes (from detect-country)", () => {
+    const product = {
+      price: 1000,
+      internationalPrice: 2000,
+      internationalCountryPrices: [{ country: "Germany", price: 2500 }],
+      marketPrices: [{ market: "Europe", regularPrice: 2200 }]
+    };
+    const config = {
+      pricingMarkets: [
+        { name: "Europe", currency: "EUR", countries: ["Germany", "France"] },
+        { name: "Western countries", currency: "USD", countries: ["New Zealand"] }
+      ],
+      internationalPricingDefaults: { currency: "USD" },
+      currencyConversionRates: {}
+    };
+
+    it("gives a code the same price as the full country name", () => {
+      for (const [code, name] of [["DE", "Germany"], ["FR", "France"], ["NZ", "New Zealand"], ["SG", "Singapore"]]) {
+        const byCode = getProductPriceDetails(product, code, config);
+        const byName = getProductPriceDetails(product, name, config);
+        assert.equal(byCode.price, byName.price, code);
+        assert.equal(byCode.currency, byName.currency, code);
+        assert.equal(byCode.priceType, byName.priceType, code);
+      }
+    });
+
+    it("uses the country override and market for codes", () => {
+      assert.equal(getProductPriceDetails(product, "DE", config).priceType, "international-country");
+      assert.equal(getProductPriceDetails(product, "fr", config).matchedMarket, "Europe");
+      assert.equal(findMatchedMarket("NZ", config.pricingMarkets)?.name, "Western countries");
+    });
+
+    it("still treats IN as India and keeps existing short forms", () => {
+      assert.equal(isInternationalCountry("IN"), false);
+      assert.equal(getProductPriceDetails(product, "UK", config).currency, "USD");
+      assert.equal(isInternationalCountry("ZZ"), true);
+    });
+  });
 });

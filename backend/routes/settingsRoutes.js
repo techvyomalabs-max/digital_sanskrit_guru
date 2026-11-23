@@ -9,12 +9,18 @@ const { cacheAside, invalidateProductCache, TTL } = require("../utils/cache");
 const { normalizeCountryName } = require("../utils/deliveryPricing");
 const { validateBusinessDetails, normalizeGstin } = require("../utils/gstin");
 const { categoryKey } = require("../utils/categoryKey");
+const { detectVisitorCountry } = require("../utils/visitorCountry");
 const {
   normalizeDigitalFormatTypes,
   canSaveProductSettings,
   DEFAULT_DIGITAL_FORMAT_TYPES,
   PRODUCT_SETTINGS_KEYS
 } = require("../utils/digitalFormatTypes");
+const {
+  normalizeProductFormatTypes,
+  resolveProductFormatTypes,
+  publicProductFormatTypes
+} = require("../utils/productFormatTypes");
 
 const router = express.Router();
 const DEFAULT_THEME = "sunrise";
@@ -343,9 +349,16 @@ function normalizeSettings(settings) {
       lastError: String(settings?.currencyRatesMeta?.lastError || "")
     },
     siteTheme: String(settings?.siteTheme || DEFAULT_THEME),
+    siteBackground: settings?.siteBackground === "sky" ? "sky" : "plain",
+    siteBackgroundImage: normalizeSiteBackgroundImage(settings?.siteBackgroundImage),
+    siteBackgroundAdmin: settings?.siteBackgroundAdmin === true,
+    siteBackgroundOpacity: normalizeSiteBackgroundOpacity(settings?.siteBackgroundOpacity),
     customThemes: normalizeCustomThemes(settings?.customThemes || []),
     productCategories: normalizeProductCategories(settings?.productCategories || []),
     digitalFormatTypes,
+    productFormatTypes: resolveProductFormatTypes(
+      (settings?.productFormatTypes || []).map((t) => (t?.toObject ? t.toObject() : t))
+    ),
     heroBannerImage: heroBanners[0]?.image || "",
     heroBannerProductId: heroBanners[0]?.productId || "",
     heroBanners,
@@ -477,6 +490,10 @@ function buildPublicSettingsPayload(settings) {
     internationalPricingDefaults: normalized.internationalPricingDefaults,
     currencyConversionRates: normalized.currencyConversionRates,
     siteTheme: normalized.siteTheme,
+    siteBackground: normalized.siteBackground,
+    siteBackgroundImage: normalized.siteBackgroundImage,
+    siteBackgroundAdmin: normalized.siteBackgroundAdmin,
+    siteBackgroundOpacity: normalized.siteBackgroundOpacity,
     customThemes: normalized.customThemes,
     festiveAnimation: normalized.festiveAnimation,
     festiveBanner:    normalized.festiveBanner,
@@ -489,7 +506,8 @@ function buildPublicSettingsPayload(settings) {
       enableOtpVerification: normalized.whatsappSettings.mode === "api" && normalized.whatsappSettings.enableOtpVerification !== false
     },
     sponsors:         normalized.sponsors,
-    storeIcons:       normalized.storeIcons
+    storeIcons:       normalized.storeIcons,
+    productFormatTypes: publicProductFormatTypes(normalized.productFormatTypes)
   };
 }
 
@@ -509,9 +527,14 @@ function summarizeSettingsChanges(previousSettings = {}, nextSettings = {}) {
   if (JSON.stringify(previousSettings?.internationalPricingDefaults || {}) !== JSON.stringify(nextSettings?.internationalPricingDefaults || {})) changes.push("fallback currency");
   if (JSON.stringify(previousSettings?.currencyConversionRates || {}) !== JSON.stringify(nextSettings?.currencyConversionRates || {})) changes.push("conversion rates");
   if (String(previousSettings?.siteTheme || "") !== String(nextSettings?.siteTheme || "")) changes.push("site theme");
+  if (String(previousSettings?.siteBackground || "plain") !== String(nextSettings?.siteBackground || "plain")) changes.push("site background");
+  if (String(previousSettings?.siteBackgroundImage || "") !== String(nextSettings?.siteBackgroundImage || "")) changes.push("site background picture");
+  if (Boolean(previousSettings?.siteBackgroundAdmin) !== Boolean(nextSettings?.siteBackgroundAdmin)) changes.push("admin background");
+  if (Number(previousSettings?.siteBackgroundOpacity ?? 82) !== Number(nextSettings?.siteBackgroundOpacity ?? 82)) changes.push("section see-through");
   if (JSON.stringify(previousSettings?.customThemes || []) !== JSON.stringify(nextSettings?.customThemes || [])) changes.push("custom themes");
   if (JSON.stringify(previousSettings?.productCategories || []) !== JSON.stringify(nextSettings?.productCategories || [])) changes.push("product categories");
   if (JSON.stringify(previousSettings?.digitalFormatTypes || []) !== JSON.stringify(nextSettings?.digitalFormatTypes || [])) changes.push("digital format types");
+  if (JSON.stringify(previousSettings?.productFormatTypes || []) !== JSON.stringify(nextSettings?.productFormatTypes || [])) changes.push("product types");
   if (JSON.stringify(previousSettings?.heroBanners || []) !== JSON.stringify(nextSettings?.heroBanners || [])) changes.push("hero banners");
   if (JSON.stringify(previousSettings?.homeSectionVisibility || {}) !== JSON.stringify(nextSettings?.homeSectionVisibility || {})) changes.push("home sections");
   if (JSON.stringify(previousSettings?.collectionFilterVisibility || {}) !== JSON.stringify(nextSettings?.collectionFilterVisibility || {})) changes.push("collection filters");
@@ -530,8 +553,27 @@ async function getOrCreateSettings() {
   return settings;
 }
 
+// A site background picture: a web address only (uploads go to S3), never inline image data,
+// which would make every page's settings download large
+// Sections over the sky: 50-100 % solid (default 82)
+function normalizeSiteBackgroundOpacity(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 82;
+  return Math.min(100, Math.max(50, n));
+}
+
+function normalizeSiteBackgroundImage(value) {
+  const url = String(value || "").trim();
+  if (!url || url.length > 2048) return "";
+  return /^https?:\/\/[^\s"'()<>]+$/i.test(url) ? url : "";
+}
+
 const THEME_KEYS = new Set([
   "siteTheme",
+  "siteBackground",
+  "siteBackgroundImage",
+  "siteBackgroundAdmin",
+  "siteBackgroundOpacity",
   "customThemes",
   "heroBanners",
   "heroBannerImage",
@@ -579,12 +621,7 @@ router.get("/public", async (req, res) => {
 // Public: Detect user country from CDN/Edge headers silently (no browser popup needed)
 router.get(["/detect-country", "/detect_country"], (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  const country = req.headers["cf-ipcountry"] || 
-                  req.headers["x-vercel-ip-country"] || 
-                  req.headers["x-country"] ||
-                  req.headers["cloudfront-viewer-country"] || 
-                  "IN";
-  res.json({ country: String(country).toUpperCase() });
+  res.json({ country: detectVisitorCountry(req) });
 });
 
 router.put("/", protect, admin, (req, res, next) => {
@@ -696,6 +733,13 @@ router.put("/", protect, admin, (req, res, next) => {
     } catch {
       digitalFormatTypes = [...DEFAULT_DIGITAL_FORMAT_TYPES];
     }
+  }
+  const hasProductFormatTypes = Array.isArray(req.body?.productFormatTypes);
+  let productFormatTypes = null;
+  if (hasProductFormatTypes) {
+    const typesRes = normalizeProductFormatTypes(req.body.productFormatTypes);
+    if (typesRes.error) return res.status(400).json({ message: typesRes.error });
+    productFormatTypes = typesRes.types;
   }
   const hasSponsors = Array.isArray(req.body?.sponsors);
   const sponsors = hasSponsors
@@ -818,6 +862,7 @@ router.put("/", protect, admin, (req, res, next) => {
   settings.customThemes = customThemes;
   settings.productCategories = productCategories;
   settings.digitalFormatTypes = digitalFormatTypes;
+  if (productFormatTypes) settings.productFormatTypes = productFormatTypes;
   settings.sponsors = sponsors;
   const nextHeroBanners = hasHeroBanners
     ? normalizeHeroBanners(req.body?.heroBanners || [])
@@ -913,6 +958,23 @@ router.put("/", protect, admin, (req, res, next) => {
     : allowedThemeIds.has(settings.siteTheme)
       ? settings.siteTheme
       : DEFAULT_THEME;
+  if (req.body?.siteBackground !== undefined) {
+    settings.siteBackground = req.body.siteBackground === "sky" ? "sky" : "plain";
+  }
+  if (req.body?.siteBackgroundOpacity !== undefined) {
+    settings.siteBackgroundOpacity = normalizeSiteBackgroundOpacity(req.body.siteBackgroundOpacity);
+  }
+  if (req.body?.siteBackgroundAdmin !== undefined) {
+    settings.siteBackgroundAdmin = req.body.siteBackgroundAdmin === true;
+  }
+  if (req.body?.siteBackgroundImage !== undefined) {
+    const raw = String(req.body.siteBackgroundImage || "").trim();
+    const url = normalizeSiteBackgroundImage(raw);
+    if (raw && !url) {
+      return res.status(400).json({ message: "The background picture must be a web address (https://...). Upload it again." });
+    }
+    settings.siteBackgroundImage = url;
+  }
   settings.lastUpdatedByName = actor.name;
   settings.lastUpdatedByEmail = actor.email;
   settings.lastUpdatedAt = new Date();
@@ -934,6 +996,15 @@ router.put("/", protect, admin, (req, res, next) => {
       changedSections
     }
   });
+
+  if (productFormatTypes && changedSections.includes("product types")) {
+    try {
+      const { syncFormatTypeTax } = require("../services/formatTypeSync");
+      await syncFormatTypeTax(normalizedSettings.productFormatTypes);
+    } catch (err) {
+      console.error("[Settings] Product type tax sync failed:", err.message);
+    }
+  }
 
   res.json(sanitizeSettingsForResponse(normalizedSettings, req.adminLevel));
   // Settings change may affect pricing/home data — flush all relevant caches
