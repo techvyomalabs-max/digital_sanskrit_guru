@@ -26,6 +26,7 @@ export const IMPORT_FIELD_LABELS = {
 };
 
 const FORMAT_FROM_MAIN = "set from its main product; change it on the main product";
+const COMBO_FORMAT_NO_INTL = "a combo's formats don't keep their own international price yet (it is cleared when the combo is saved)";
 const MAIN_FROM_FORMATS = "worked out from its formats; change the format rows instead";
 
 // Fields the import does not change for some kinds of product, and why.
@@ -38,6 +39,14 @@ const BLOCKED = {
     category: FORMAT_FROM_MAIN,
     internationalCountryPrices: FORMAT_FROM_MAIN,
     marketPrices: FORMAT_FROM_MAIN
+  },
+  // A combo's format is rebuilt with no international or country/market prices whenever the combo is saved
+  comboFormat: {
+    name: FORMAT_FROM_MAIN,
+    category: FORMAT_FROM_MAIN,
+    internationalPrice: COMBO_FORMAT_NO_INTL,
+    internationalCountryPrices: COMBO_FORMAT_NO_INTL,
+    marketPrices: COMBO_FORMAT_NO_INTL
   },
   main: {
     price: MAIN_FROM_FORMATS,
@@ -57,8 +66,10 @@ const text = (value) => String(value ?? "").replace(/\r\n?/g, "\n").trim();
 const lines = (value) =>
   (Array.isArray(value) ? value : String(value ?? "").split(/\r?\n/)).map((x) => String(x ?? "").trim()).filter(Boolean);
 
-export const productKind = (product) =>
-  product?.bundleFormatKey && product?.optionParent ? "format" : product?.hasOptions === true ? "main" : "product";
+export const productKind = (product) => {
+  if (product?.bundleFormatKey && product?.optionParent) return product?.productType === "bundle" ? "comboFormat" : "format";
+  return product?.hasOptions === true ? "main" : "product";
+};
 
 /** Reads an uploaded file into rows with lower-cased keys. */
 export function readImportFile(fileName, fileText) {
@@ -331,7 +342,7 @@ export function planProductImport(rows, columns, products = []) {
       rowNo,
       productId,
       name: product.name,
-      mainName: kind === "format" ? nameById(product.optionParent) : "",
+      mainName: kind === "format" || kind === "comboFormat" ? nameById(product.optionParent) : "",
       kind,
       changes,
       skipped,
