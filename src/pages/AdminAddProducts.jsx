@@ -12,7 +12,8 @@ import ProductTypesTable from "../components/admin/ProductTypesTable";
 import { DEFAULT_PRODUCT_TYPES } from "../utils/productTypeDefaults";
 import { COUNTRY_OPTIONS } from "../utils/countryOptions";
 import { formatDate, formatDateForFileName, formatTime } from "../utils/date";
-import { buildProductsCsv, buildProductsJson, parseCsvText } from "../utils/productsCsv";
+import { buildProductsCsv, buildProductsJson } from "../utils/productsCsv";
+import { planProductImport, readImportFile, showValue } from "../utils/productImport";
 import "./AdminShared.css";
 import "./AdminAddProducts.css";
 import { categoryKey } from "../utils/categoryKey";
@@ -483,6 +484,10 @@ function AdminAddProducts() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
+  // Bulk Import: what the chosen file would change, shown before anything is saved
+  const [importPlan, setImportPlan] = useState(null);
+  const [applyingImport, setApplyingImport] = useState(false);
+  const [importFailures, setImportFailures] = useState([]);
   const [formMessage, setFormMessage] = useState("");
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2432,78 +2437,6 @@ function AdminAddProducts() {
     loadFormatSales();
   };
 
-  const normalizeUploadProduct = (item) => {
-    const productName = String(item?.name || "").trim();
-    const productPrice = Number(item?.price);
-    const rawInternationalPrice = item?.internationalPrice ?? item?.internationalprice;
-    const parsedInternationalPrice = Number(rawInternationalPrice);
-    const rawCountryPrices = item?.internationalCountryPrices ?? item?.internationalcountryprices;
-    const rawMarketPrices = item?.marketPrices ?? item?.marketprices;
-    if (!productName || Number.isNaN(productPrice)) return null;
-
-    let parsedCountryPrices = [];
-    if (Array.isArray(rawCountryPrices)) {
-      parsedCountryPrices = rawCountryPrices;
-    } else if (typeof rawCountryPrices === "string" && rawCountryPrices.trim()) {
-      try {
-        const parsed = JSON.parse(rawCountryPrices);
-        if (Array.isArray(parsed)) {
-          parsedCountryPrices = parsed;
-        }
-      } catch {
-        parsedCountryPrices = [];
-      }
-    }
-
-    let parsedMarketPrices = [];
-    if (Array.isArray(rawMarketPrices)) {
-      parsedMarketPrices = rawMarketPrices;
-    } else if (typeof rawMarketPrices === "string" && rawMarketPrices.trim()) {
-      try {
-        const parsed = JSON.parse(rawMarketPrices);
-        if (Array.isArray(parsed)) {
-          parsedMarketPrices = parsed;
-        }
-      } catch {
-        parsedMarketPrices = [];
-      }
-    }
-
-    return {
-      name: productName,
-      price: productPrice,
-      internationalPrice:
-        rawInternationalPrice === null || rawInternationalPrice === undefined || rawInternationalPrice === ""
-          ? null
-          : (Number.isNaN(parsedInternationalPrice) ? null : Math.max(0, parsedInternationalPrice)),
-      internationalCountryPrices: parsedCountryPrices
-        .map((entry) => ({
-          country: String(entry?.country || "").trim(),
-          price: Math.max(0, Number(entry?.price || 0))
-        }))
-        .filter((entry) => entry.country && !Number.isNaN(entry.price)),
-      marketPrices: parsedMarketPrices
-        .map((entry) => ({
-          market: String(entry?.market || "").trim(),
-          regularPrice: Math.max(0, Number(entry?.regularPrice || 0)),
-          salePrice:
-            entry?.salePrice === null || entry?.salePrice === undefined || String(entry?.salePrice).trim() === ""
-              ? null
-              : Math.max(0, Number(entry?.salePrice || 0)),
-          startDate: String(entry?.startDate || "").trim() || null,
-          endDate: String(entry?.endDate || "").trim() || null
-        }))
-        .filter((entry) => entry.market && !Number.isNaN(entry.regularPrice)),
-      image: String(item?.image || "").trim(),
-      // A JSON export has images as a list; the form and the server take one image per line.
-      images: (Array.isArray(item?.images) ? item.images.join("\n") : String(item?.images || item?.image || "")).trim(),
-      description: String(item?.description || "").trim(),
-      aboutProduct: String(item?.aboutProduct || item?.aboutproduct || item?.about_product || "").trim(),
-      category: String(item?.category || "General").trim() || "General",
-      stock: Math.max(0, Number(item?.stock) || 0)
-    };
-  };
-
   const downloadTextFile = (text, fileName, type) => {
     const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
@@ -2574,50 +2507,91 @@ function AdminAddProducts() {
     }
   };
 
+  // Bulk Import step 1: read the file and work out what it would change. Nothing is saved yet.
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
     setUploadMessage("");
+    setImportPlan(null);
+    setImportFailures([]);
 
     try {
-      const text = await file.text();
-      const isJson = file.name.toLowerCase().endsWith(".json");
-      let rows = [];
-
-      if (isJson) {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) rows = parsed;
-        else if (Array.isArray(parsed?.products)) rows = parsed.products;
-      } else {
-        rows = parseCsvText(text);
-      }
-
-      const payloads = rows.map(normalizeUploadProduct).filter(Boolean);
-      if (payloads.length === 0) {
-        setUploadMessage("No valid products found in file.");
+      const { rows, columns, error } = readImportFile(file.name, await file.text());
+      if (error) {
+        setUploadMessage(`Upload failed. ${error}`);
         return;
       }
-
-      const results = await Promise.allSettled(
-        payloads.map((payload) =>
-          axios.post("/api/products", payload, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-        )
-      );
-
-      const successCount = results.filter((r) => r.status === "fulfilled").length;
-      const failedCount = results.length - successCount;
-      setUploadMessage(`Upload complete. Added: ${successCount}, Failed: ${failedCount}`);
-      await loadProducts();
+      if (rows.length === 0) {
+        setUploadMessage("No products found in file.");
+        return;
+      }
+      // Compare against what is saved right now, not the list loaded when the page opened
+      const res = await axios.get("/api/products/admin/all", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const current = Array.isArray(res.data) ? res.data : (res.data?.products || []);
+      const plan = planProductImport(rows, columns, current);
+      if (plan.updates.length === 0 && plan.creates.length === 0 && plan.notFound.length === 0 && plan.problems.length === 0) {
+        setUploadMessage(`No changes found. All ${plan.unchanged} products in the file match what is saved.`);
+        return;
+      }
+      setImportPlan({ ...plan, fileName: file.name });
     } catch {
       setUploadMessage("Upload failed. Please use valid CSV/JSON format.");
     } finally {
       setUploading(false);
       event.target.value = "";
     }
+  };
+
+  // Bulk Import step 2: save the changes shown in the preview
+  const applyImportPlan = async () => {
+    if (!importPlan || applyingImport) return;
+    const tasks = [
+      ...importPlan.updates
+        .filter((update) => update.changes.length > 0)
+        .map((update) => ({
+          name: update.name,
+          run: () => axios.put(`/api/products/${update.productId}`, update.payload, { headers: { Authorization: `Bearer ${token}` } })
+        })),
+      ...importPlan.creates.map((create) => ({
+        name: create.payload.name,
+        isNew: true,
+        run: () => axios.post("/api/products", create.payload, { headers: { Authorization: `Bearer ${token}` } })
+      }))
+    ];
+    if (tasks.length === 0) {
+      setImportPlan(null);
+      return;
+    }
+
+    setApplyingImport(true);
+    const failures = [];
+    let updated = 0;
+    let added = 0;
+    // A few at a time, so a big file doesn't flood the server
+    for (let i = 0; i < tasks.length; i += 4) {
+      const batch = tasks.slice(i, i + 4);
+      const results = await Promise.allSettled(batch.map((task) => task.run()));
+      results.forEach((result, idx) => {
+        const task = batch[idx];
+        if (result.status === "fulfilled") {
+          if (task.isNew) added += 1;
+          else updated += 1;
+        } else {
+          failures.push({ name: task.name, message: result.reason?.response?.data?.message || "Could not be saved." });
+        }
+      });
+    }
+    setApplyingImport(false);
+    setImportPlan(null);
+    setImportFailures(failures);
+    setUploadMessage(
+      `Import complete. Updated: ${updated}, Added: ${added}${failures.length ? `, Failed: ${failures.length}` : ""}`
+    );
+    await loadProducts();
   };
 
   const updateBundleItem = (index, field, value) => {
@@ -5032,8 +5006,9 @@ function AdminAddProducts() {
               <div>
                 <h4 className="admin-upload-text-title">Bulk Import / Export Products</h4>
                 <p className="admin-upload-text-desc">
-                  Upload CSV/JSON file (fields: <code>name, price, image, description, category, stock</code>).
-                  Export downloads every product, formats included; an exported file can be imported again (as new products).
+                  Export, edit the file, and upload it back: rows with an <code>id</code> update that product, rows
+                  without one are added as new products. You see every change before it is saved.
+                  In Excel, save as <strong>CSV UTF-8</strong>.
                 </p>
               </div>
             </div>
@@ -5059,12 +5034,12 @@ function AdminAddProducts() {
                 {exportingProducts === "json" ? "Exporting..." : "Export JSON"}
               </button>
               <label className="admin-upload-template-btn">
-                <span>{uploading ? "Uploading..." : <><FileText size={14} className="ui-inline-icon" aria-hidden="true" />Choose CSV / JSON File</>}</span>
+                <span>{uploading ? "Reading..." : <><FileText size={14} className="ui-inline-icon" aria-hidden="true" />Choose CSV / JSON File</>}</span>
                 <input
                   type="file"
                   accept=".csv,.json,application/json,text/csv"
                   onChange={handleFileUpload}
-                  disabled={uploading}
+                  disabled={uploading || applyingImport}
                   className="admin-file-hidden-input"
                 />
               </label>
@@ -5075,6 +5050,111 @@ function AdminAddProducts() {
               {uploadMessage}
             </p>
           )}
+          {importFailures.length > 0 && (
+            <ul className="pimport-list pimport-failures">
+              {importFailures.map((f, idx) => (
+                <li key={`${f.name}-${idx}`}><strong>{f.name}</strong>: {f.message}</li>
+              ))}
+            </ul>
+          )}
+          {importPlan && (() => {
+            const toUpdate = importPlan.updates.filter((u) => u.changes.length > 0);
+            const saveCount = toUpdate.length + importPlan.creates.length;
+            return (
+              <div className="pimport" role="region" aria-label="Import preview">
+                <div className="pimport-head">
+                  <h4>Check the changes in {importPlan.fileName}</h4>
+                  <p className="pimport-summary">
+                    <span className="pimport-chip update">{toUpdate.length} to update</span>
+                    <span className="pimport-chip add">{importPlan.creates.length} to add</span>
+                    <span className="pimport-chip">{importPlan.unchanged} unchanged</span>
+                    {importPlan.notFound.length > 0 && <span className="pimport-chip warn">{importPlan.notFound.length} not found</span>}
+                  </p>
+                </div>
+
+                {importPlan.garbled && (
+                  <p className="pimport-warn">
+                    Some Sanskrit or ₹ characters in this file turned into "?" (Excel's plain CSV save does this). Those cells
+                    are skipped. Save the file as <strong>CSV UTF-8 (Comma delimited)</strong> and upload it again.
+                  </p>
+                )}
+
+                {importPlan.updates.length > 0 && (
+                  <div className="pimport-block">
+                    <h5>Updates</h5>
+                    {importPlan.updates.map((u) => (
+                      <details key={u.productId} className="pimport-product" open={importPlan.updates.length <= 5}>
+                        <summary>
+                          <strong>{u.name}</strong>
+                          {u.mainName ? <span className="pimport-muted"> (format of {u.mainName})</span> : null}
+                          <span className="pimport-muted"> · row {u.rowNo} · {u.changes.length} change{u.changes.length === 1 ? "" : "s"}</span>
+                          {u.skipped.length > 0 && <span className="pimport-chip warn">{u.skipped.length} skipped</span>}
+                        </summary>
+                        {u.changes.length > 0 && (
+                          <table className="pimport-table">
+                            <tbody>
+                              {u.changes.map((c) => (
+                                <tr key={c.field}>
+                                  <th scope="row">{c.label}</th>
+                                  <td className="pimport-from">{showValue(c.from)}</td>
+                                  <td aria-hidden="true">→</td>
+                                  <td className="pimport-to">{showValue(c.to)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        {u.skipped.map((sk) => (
+                          <p key={sk.field} className="pimport-skip">{sk.label} not changed: {sk.reason}.</p>
+                        ))}
+                      </details>
+                    ))}
+                  </div>
+                )}
+
+                {importPlan.creates.length > 0 && (
+                  <div className="pimport-block">
+                    <h5>New products</h5>
+                    <ul className="pimport-list">
+                      {importPlan.creates.map((c) => (
+                        <li key={`new-${c.rowNo}`}>{c.payload.name} <span className="pimport-muted">· ₹{c.payload.price} · row {c.rowNo}</span></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(importPlan.notFound.length > 0 || importPlan.problems.length > 0) && (
+                  <div className="pimport-block">
+                    <h5>Not used</h5>
+                    <ul className="pimport-list">
+                      {importPlan.notFound.map((n) => (
+                        <li key={`nf-${n.rowNo}`}>
+                          Row {n.rowNo}, {n.name}: no product with this id (it may have been deleted). Clear the id to add it as new.
+                        </li>
+                      ))}
+                      {importPlan.problems.map((pr) => (
+                        <li key={`pr-${pr.rowNo}`}>Row {pr.rowNo}, {pr.name}: {pr.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="pimport-actions">
+                  <button type="button" className="admin-upload-template-btn" onClick={() => setImportPlan(null)} disabled={applyingImport}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="pimport-apply"
+                    onClick={applyImportPlan}
+                    disabled={applyingImport || saveCount === 0}
+                  >
+                    {applyingImport ? "Saving..." : saveCount === 0 ? "Nothing to save" : `Save ${saveCount} change${saveCount === 1 ? "" : "s"}`}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         <section className="card agp-link-card">

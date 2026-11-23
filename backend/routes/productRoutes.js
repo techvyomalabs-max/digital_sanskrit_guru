@@ -1261,6 +1261,7 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     }
 
     const previousFields = getProductAuditFields(product.toObject ? product.toObject() : product);
+    const previousPrice = Number(product.price);
 
     product.name = req.body.name ?? product.name;
     if (req.body.slug !== undefined && String(req.body.slug || "").trim()) {
@@ -1445,6 +1446,20 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
     // Remember the links before saving, so reconcileSingleFormats can unlink what was removed
     const optionsBeforeSave = clearsSingleFormats ? optionsRes.options : null;
     let updatedProduct = await product.save();
+    // A format's price is also kept in its main product's format list, and that copy is what the
+    // format is rebuilt from when the main product is saved. When the price of the format itself
+    // is changed here (e.g. by Bulk Import), change that copy too, so the new price stays.
+    if (
+      updatedProduct.bundleFormatKey &&
+      updatedProduct.optionParent &&
+      req.body.price !== undefined &&
+      Number(updatedProduct.price) !== previousPrice
+    ) {
+      await Product.updateOne(
+        { _id: updatedProduct.optionParent, "bundleFormats.key": updatedProduct.bundleFormatKey },
+        { $set: { "bundleFormats.$.price": Number(updatedProduct.price) } }
+      );
+    }
     if (changesSingleFormats) {
       const parentForReconcile = optionsBeforeSave
         ? { ...updatedProduct.toObject(), options: optionsBeforeSave, hasOptions: true }
