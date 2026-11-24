@@ -22,12 +22,17 @@ export const IMPORT_FIELD_LABELS = {
   images: "Images",
   description: "Description",
   aboutProduct: "About this product",
-  category: "Category"
+  category: "Category",
+  isDigital: "Digital",
+  digitalType: "Digital type",
+  hsnSac: "HSN/SAC",
+  gstRate: "GST %"
 };
 
 const FORMAT_FROM_MAIN = "set from its main product; change it on the main product";
 const COMBO_FORMAT_NO_MARKET = "a combo's formats don't keep their own country or market prices yet (they are cleared when the combo is saved)";
 const MAIN_FROM_FORMATS = "worked out from its formats; change the format rows instead";
+const FORMAT_TAX_FROM_MAIN = "set in its main product's formats table; change it there";
 
 // Fields the import does not change for some kinds of product, and why.
 const BLOCKED = {
@@ -38,7 +43,11 @@ const BLOCKED = {
     name: FORMAT_FROM_MAIN,
     category: FORMAT_FROM_MAIN,
     internationalCountryPrices: FORMAT_FROM_MAIN,
-    marketPrices: FORMAT_FROM_MAIN
+    marketPrices: FORMAT_FROM_MAIN,
+    isDigital: FORMAT_TAX_FROM_MAIN,
+    digitalType: FORMAT_TAX_FROM_MAIN,
+    hsnSac: FORMAT_TAX_FROM_MAIN,
+    gstRate: FORMAT_TAX_FROM_MAIN
   },
   // A combo's format keeps its own price and international price; it is rebuilt with no
   // country/market prices whenever the combo is saved
@@ -46,9 +55,14 @@ const BLOCKED = {
     name: FORMAT_FROM_MAIN,
     category: FORMAT_FROM_MAIN,
     internationalCountryPrices: COMBO_FORMAT_NO_MARKET,
-    marketPrices: COMBO_FORMAT_NO_MARKET
+    marketPrices: COMBO_FORMAT_NO_MARKET,
+    isDigital: FORMAT_TAX_FROM_MAIN,
+    digitalType: FORMAT_TAX_FROM_MAIN,
+    hsnSac: FORMAT_TAX_FROM_MAIN,
+    gstRate: FORMAT_TAX_FROM_MAIN
   },
   main: {
+    isDigital: MAIN_FROM_FORMATS,
     price: MAIN_FROM_FORMATS,
     stock: MAIN_FROM_FORMATS,
     internationalPrice: MAIN_FROM_FORMATS,
@@ -109,6 +123,30 @@ const readNumber = (cell, { blank = "keep", integer = false } = {}) => {
   return { value: n };
 };
 
+// HSN/SAC: 4 to 8 digits. Blank = leave as it is (clear it in the product form).
+const readHsnSac = (cell) => {
+  if (isBlank(cell)) return { keep: true };
+  const code = String(cell).replace(/\s+/g, "");
+  return /^\d{4,8}$/.test(code) ? { value: code } : { error: `"${cell}" is not an HSN/SAC code (4 to 8 digits)` };
+};
+
+// GST %: a number such as 0, 5, 18 ("18%" is fine). Blank = leave as it is. The server checks the slab.
+const readGstRate = (cell) => {
+  if (isBlank(cell)) return { keep: true };
+  const n = Number(String(cell).replace(/[%\s]/g, ""));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? { value: n } : { error: `"${cell}" is not a GST rate` };
+};
+
+// Digital: yes / no (true / false). Blank = leave as it is.
+const readYesNo = (cell) => {
+  if (isBlank(cell)) return { keep: true };
+  if (typeof cell === "boolean") return { value: cell };
+  const v = String(cell).trim().toLowerCase();
+  if (["yes", "y", "true", "1"].includes(v)) return { value: true };
+  if (["no", "n", "false", "0"].includes(v)) return { value: false };
+  return { error: `"${cell}" should be yes or no` };
+};
+
 const readJsonList = (cell) => {
   if (Array.isArray(cell)) return { value: cell };
   if (isBlank(cell)) return { value: [] };
@@ -160,7 +198,11 @@ const CURRENT = {
   images: (p) => productImages(p),
   description: (p) => text(p?.description),
   aboutProduct: (p) => lines(p?.aboutProduct),
-  category: (p) => text(p?.category)
+  category: (p) => text(p?.category),
+  isDigital: (p) => p?.isDigital === true,
+  digitalType: (p) => text(p?.digitalType),
+  hsnSac: (p) => String(p?.hsnSac || "").replace(/\s+/g, ""),
+  gstRate: (p) => (isBlank(p?.gstRate) ? null : Number(p.gstRate))
 };
 
 // The row's value for each field, given the columns the file has. Absent column = not changed.
@@ -189,6 +231,10 @@ function readRowFields(row, columns, product) {
     put("aboutProduct", { value: lines(has("aboutproduct") ? row.aboutproduct : row.about_product) });
   }
   if (has("category")) put("category", isBlank(row.category) ? { keep: true } : { value: text(row.category) });
+  if (has("isdigital")) put("isDigital", readYesNo(row.isdigital));
+  if (has("digitaltype")) put("digitalType", isBlank(row.digitaltype) ? { keep: true } : { value: text(row.digitaltype) });
+  if (has("hsnsac")) put("hsnSac", readHsnSac(row.hsnsac));
+  if (has("gstrate")) put("gstRate", readGstRate(row.gstrate));
 
   // Images: the "images" column is the whole list (one per line); "image" is the first one.
   // Editing only "image" puts that image first and keeps the rest.
@@ -223,6 +269,7 @@ const TEXT_FIELDS = new Set(["name", "category", "description", "aboutProduct"])
 /** Short text for showing a value in the preview. */
 export function showValue(value) {
   if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "yes" : "no";
   if (Array.isArray(value)) {
     if (value.length === 0) return "—";
     if (typeof value[0] === "object") {

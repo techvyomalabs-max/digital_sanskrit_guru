@@ -139,3 +139,42 @@ test("a combo's format takes price and international price changes, but not mark
   assert.deepEqual(plan.updates[0].skipped, []);
   assert.equal(plan.updates[0].mainName, "Combo");
 });
+
+test("Digital, HSN/SAC and GST %: set from the file; blank cells change nothing", async () => {
+  const { planProductImport } = await load();
+  const path = { _id: "lp1", name: "My Path - Chanting - Beginner", isDigital: false, digitalType: "", hsnSac: "", gstRate: null, price: 399 };
+  const cols = new Set(["id", "isdigital", "digitaltype", "hsnsac", "gstrate"]);
+  const plan = planProductImport([{ id: "lp1", isdigital: "yes", digitaltype: "Web Version", hsnsac: "998433", gstrate: "18%" }], cols, [path]);
+  assert.deepEqual(plan.updates[0].payload, { isDigital: true, digitalType: "Web Version", hsnSac: "998433", gstRate: 18 });
+
+  const blank = planProductImport([{ id: "lp1", isdigital: "", digitaltype: "", hsnsac: "", gstrate: "" }], cols, [path]);
+  assert.equal(blank.updates.length, 0);
+  assert.equal(blank.unchanged, 1);
+
+  const bad = planProductImport([{ id: "lp1", isdigital: "maybe", hsnsac: "99-84", gstrate: "x" }], cols, [path]);
+  assert.deepEqual(bad.updates[0].payload, {});
+  assert.deepEqual(bad.updates[0].skipped.map((s) => s.field).sort(), ["gstRate", "hsnSac", "isDigital"]);
+});
+
+test("a format's Digital / HSN / GST are refused (they come from its main product's formats table)", async () => {
+  const { planProductImport } = await load();
+  const main = { _id: "m1", name: "Gita", hasOptions: true, price: 199 };
+  const fmt = { _id: "f1", name: "Gita – Web Version", optionParent: "m1", bundleFormatKey: "web-version", isDigital: true, hsnSac: "", gstRate: null, price: 199 };
+  const plan = planProductImport([{ id: "f1", hsnsac: "998433", gstrate: "18", isdigital: "no" }], new Set(["id", "hsnsac", "gstrate", "isdigital"]), [main, fmt]);
+  assert.deepEqual(plan.updates[0].payload, {});
+  assert.deepEqual(plan.updates[0].skipped.map((s) => s.field).sort(), ["gstRate", "hsnSac", "isDigital"]);
+});
+
+test("an untouched export (CSV and JSON) still changes nothing with the new columns", async () => {
+  const { buildProductsCsv, buildProductsJson, readImportFile, planProductImport } = await load();
+  const items = [
+    { _id: "a1", name: "Book", price: 199, isDigital: false, digitalType: "Web Version", hsnSac: "4901", gstRate: 0 },
+    { _id: "a2", name: "Web", price: 199, isDigital: true, digitalType: "Web Version", hsnSac: "", gstRate: null }
+  ];
+  for (const [name, text] of [["p.csv", buildProductsCsv(items)], ["p.json", buildProductsJson(items)]]) {
+    const f = readImportFile(name, text);
+    const plan = planProductImport(f.rows, f.columns, items);
+    assert.equal(plan.updates.length, 0, name);
+    assert.equal(plan.unchanged, 2, name);
+  }
+});
