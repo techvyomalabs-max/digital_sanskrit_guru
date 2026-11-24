@@ -435,6 +435,8 @@ function AdminAddProducts() {
   const [skipOwnershipRules, setSkipOwnershipRules] = useState(false);
   // Tax for this product: blank = automatic (printed books 0%, everything else the store GST rate)
   const [hsnSac, setHsnSac] = useState("");
+  // The product's SKU code (optional)
+  const [sku, setSku] = useState("");
   // Product link name (/product/<slug>); blank = made from the product name
   const [slug, setSlug] = useState("");
   const [gstRate, setGstRate] = useState("");
@@ -803,7 +805,7 @@ function AdminAddProducts() {
     if (!query) return base;
 
     const matches = (product) =>
-      [String(product?.name || ""), String(product?.category || ""), String(product?.description || "")]
+      [String(product?.name || ""), String(product?.category || ""), String(product?.description || ""), String(product?.sku || "")]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -909,6 +911,7 @@ function AdminAddProducts() {
     setIsDigital(false);
     setSkipOwnershipRules(false);
     setHsnSac("");
+    setSku("");
     setSlug("");
     setGstRate("");
     setDigitalType("Web Version");
@@ -966,6 +969,7 @@ function AdminAddProducts() {
       skipOwnershipRules,
       hsnSac,
       gstRate,
+      sku,
       slug,
       digitalType,
       digitalDelivery,
@@ -2042,6 +2046,7 @@ function AdminAddProducts() {
       skipOwnershipRules: productType === "bundle" ? skipOwnershipRules : false,
       hsnSac: hsnSac.trim(),
       gstRate: gstRate === "" ? null : Number(gstRate),
+      sku: sku.trim(),
       slug: slug.trim(),
       digitalType,
       digitalDelivery: isEligibleForExternal ? digitalDelivery : "onsite",
@@ -2319,6 +2324,7 @@ function AdminAddProducts() {
     setIsDigital(product.isDigital === true);
     setSkipOwnershipRules(product.skipOwnershipRules === true);
     setHsnSac(String(product.hsnSac || ""));
+    setSku(String(product.sku || ""));
     setSlug(String(product.slug || ""));
     setGstRate(product.gstRate === null || product.gstRate === undefined ? "" : String(product.gstRate));
     setDigitalType(product.digitalType || "Web Version");
@@ -3446,6 +3452,17 @@ function AdminAddProducts() {
                       ))}
                     </select>
                     <small>Prices already include this GST.</small>
+                  </label>
+                  <label className="admin-field">
+                    <span>SKU code</span>
+                    <input
+                      type="text"
+                      maxLength={64}
+                      placeholder="e.g. VL-LAG-B-003"
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value.replace(/\s+/g, "").toUpperCase())}
+                    />
+                    <small>Optional. Each type (Paperback, Web Version…) has its own; set those through Bulk Import.</small>
                   </label>
 
                   <div className="admin-field admin-field-wide">
@@ -5200,7 +5217,7 @@ function AdminAddProducts() {
           <div className="products-tools">
             <input
               className="product-search"
-              placeholder="Search product by name, category, description..."
+              placeholder="Search product by name, category, description, SKU..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
