@@ -17,6 +17,7 @@ const { honeypotMiddleware, reviewRateLimiter, bulkEnquiryLimiter } = require(".
 const { PUBLIC_PRODUCT_EXCLUDE, toPublicProduct } = require("../utils/productProjection");
 const { validateExternalDelivery } = require("../utils/digitalDelivery");
 const { normalizeProductTax } = require("../utils/productTax");
+const { normalizeSku } = require("../utils/productSku");
 const { normalizeSlug } = require("../utils/productSlug");
 const { categoryKey, isComboCategory } = require("../utils/categoryKey");
 const {
@@ -452,6 +453,7 @@ const getProductAuditFields = (product = {}) => ({
   skipOwnershipRules: product?.skipOwnershipRules === true,
   hsnSac: String(product?.hsnSac || "").trim(),
   gstRate: product?.gstRate === null || product?.gstRate === undefined ? null : Number(product.gstRate),
+  sku: String(product?.sku || "").trim(),
   digitalType: String(product?.digitalType || "").trim(),
   webReaderLink: String(product?.webReaderLink || "").trim(),
   kindleLink: String(product?.kindleLink || "").trim(),
@@ -485,6 +487,7 @@ const summarizeProductChanges = (before = {}, after = {}) => {
   if (Boolean(before.skipOwnershipRules) !== Boolean(after.skipOwnershipRules)) changes.push("ownership rules exemption");
   if (String(before.hsnSac || "") !== String(after.hsnSac || "")) changes.push("HSN/SAC code");
   if ((before.gstRate ?? null) !== (after.gstRate ?? null)) changes.push("GST rate");
+  if (String(before.sku || "") !== String(after.sku || "")) changes.push("SKU");
   if (String(before.kindleLink || "") !== String(after.kindleLink || "")) changes.push("kindle link");
   if (String(before.webReaderLink || "") !== String(after.webReaderLink || "")) changes.push("web reader link");
   if (String(before.courseLink || "") !== String(after.courseLink || "")) changes.push("SFH course link");
@@ -1155,8 +1158,13 @@ router.post("/", protect, admin, (req, res, next) => {
     if (productTax.error) {
       return res.status(400).json({ message: productTax.error });
     }
+    const productSku = normalizeSku(b.sku);
+    if (productSku.error) {
+      return res.status(400).json({ message: productSku.error });
+    }
 
     const product = await Product.create({
+      sku: productSku.sku,
       hsnSac: productTax.hsnSac,
       gstRate: productTax.gstRate,
       name,
@@ -1342,6 +1350,13 @@ router.put("/:id", protect, admin, requireAdminPage("products"), largeJson, asyn
       }
       product.hsnSac = productTax.hsnSac;
       product.gstRate = productTax.gstRate;
+    }
+    if (req.body.sku !== undefined) {
+      const productSku = normalizeSku(req.body.sku);
+      if (productSku.error) {
+        return res.status(400).json({ message: productSku.error });
+      }
+      product.sku = productSku.sku;
     }
     if (req.body.digitalType !== undefined) {
       product.digitalType = String(req.body.digitalType || "Web Version").trim();

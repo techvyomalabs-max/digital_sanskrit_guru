@@ -48,7 +48,8 @@ const INFO_COLUMNS = [
   "lastUpdatedBy"
 ];
 
-export const PRODUCT_CSV_HEADERS = [...IMPORT_COLUMNS, ...INFO_COLUMNS];
+// "sku" is added at the end so the existing columns keep their places
+export const PRODUCT_CSV_HEADERS = [...IMPORT_COLUMNS, ...INFO_COLUMNS, "sku"];
 export const PRODUCT_CSV_NUMERIC = new Set([
   "price",
   "internationalPrice",
@@ -128,7 +129,8 @@ export function productToCsvRow(product, productsById = new Map()) {
     views: numberOrBlank(product?.views),
     createdAt: dateOrBlank(product?.createdAt),
     updatedAt: dateOrBlank(product?.updatedAt),
-    lastUpdatedBy: product?.lastUpdatedByName || product?.lastUpdatedByEmail || ""
+    lastUpdatedBy: product?.lastUpdatedByName || product?.lastUpdatedByEmail || "",
+    sku: product?.sku || ""
   };
 }
 

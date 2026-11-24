@@ -178,3 +178,21 @@ test("an untouched export (CSV and JSON) still changes nothing with the new colu
     assert.equal(plan.unchanged, 2, name);
   }
 });
+
+test("SKU: set from the file on products and their types; blank keeps it; NA clears it", async () => {
+  const { planProductImport } = await load();
+  const main = { _id: "m1", name: "Gita", hasOptions: true, price: 199, sku: "" };
+  const paper = { _id: "f1", name: "Gita – Paperback", optionParent: "m1", bundleFormatKey: "paperback", price: 199, sku: "" };
+  const web = { _id: "w1", name: "Gita – Web Version", optionParent: "m1", bundleFormatKey: "web-version", price: 199, sku: "OLD-1" };
+  const cols = new Set(["id", "sku"]);
+  const plan = planProductImport(
+    [{ id: "f1", sku: " VL-STC-B-007 " }, { id: "w1", sku: "" }, { id: "m1", sku: "NA" }],
+    cols,
+    [main, paper, web]
+  );
+  assert.equal(plan.updates.length, 1);
+  assert.deepEqual(plan.updates[0].payload, { sku: "VL-STC-B-007" });
+  assert.equal(plan.unchanged, 2);
+  const cleared = planProductImport([{ id: "w1", sku: "NA" }], cols, [main, paper, web]);
+  assert.deepEqual(cleared.updates[0].payload, { sku: "" });
+});

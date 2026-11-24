@@ -26,7 +26,8 @@ export const IMPORT_FIELD_LABELS = {
   isDigital: "Digital",
   digitalType: "Digital type",
   hsnSac: "HSN/SAC",
-  gstRate: "GST %"
+  gstRate: "GST %",
+  sku: "SKU"
 };
 
 const FORMAT_FROM_MAIN = "set from its main product; change it on the main product";
@@ -130,6 +131,15 @@ const readHsnSac = (cell) => {
   return /^\d{4,8}$/.test(code) ? { value: code } : { error: `"${cell}" is not an HSN/SAC code (4 to 8 digits)` };
 };
 
+// SKU: letters, numbers and - _ . / (spaces dropped). Blank = leave as it is; "NA" or "-" clears it.
+const readSku = (cell) => {
+  if (isBlank(cell)) return { keep: true };
+  const sku = String(cell).replace(/\s+/g, "");
+  if (/^(na|n\/a|-+)$/i.test(sku)) return { value: "" };
+  if (sku.length > 64) return { error: "is longer than 64 characters" };
+  return /^[A-Za-z0-9._/-]+$/.test(sku) ? { value: sku } : { error: `"${cell}" may only use letters, numbers and - _ . /` };
+};
+
 // GST %: a number such as 0, 5, 18 ("18%" is fine). Blank = leave as it is. The server checks the slab.
 const readGstRate = (cell) => {
   if (isBlank(cell)) return { keep: true };
@@ -202,7 +212,8 @@ const CURRENT = {
   isDigital: (p) => p?.isDigital === true,
   digitalType: (p) => text(p?.digitalType),
   hsnSac: (p) => String(p?.hsnSac || "").replace(/\s+/g, ""),
-  gstRate: (p) => (isBlank(p?.gstRate) ? null : Number(p.gstRate))
+  gstRate: (p) => (isBlank(p?.gstRate) ? null : Number(p.gstRate)),
+  sku: (p) => String(p?.sku || "").trim()
 };
 
 // The row's value for each field, given the columns the file has. Absent column = not changed.
@@ -235,6 +246,7 @@ function readRowFields(row, columns, product) {
   if (has("digitaltype")) put("digitalType", isBlank(row.digitaltype) ? { keep: true } : { value: text(row.digitaltype) });
   if (has("hsnsac")) put("hsnSac", readHsnSac(row.hsnsac));
   if (has("gstrate")) put("gstRate", readGstRate(row.gstrate));
+  if (has("sku")) put("sku", readSku(row.sku));
 
   // Images: the "images" column is the whole list (one per line); "image" is the first one.
   // Editing only "image" puts that image first and keeps the rest.
