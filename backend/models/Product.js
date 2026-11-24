@@ -306,6 +306,12 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // The product's SKU code (e.g. "VL-LAG-B-003"); each type of a product can have its own. Optional.
+    sku: {
+      type: String,
+      default: "",
+      trim: true
+    },
     // Tax for this product, set by the admin. Blank = automatic (printed books 0%, else the store rate).
     hsnSac: {
       type: String,
