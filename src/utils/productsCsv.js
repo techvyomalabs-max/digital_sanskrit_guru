@@ -103,7 +103,8 @@ export function productToCsvRow(product, productsById = new Map()) {
     // One image per line, the same as the Images box in the product form.
     images: productImages(product).join("\n"),
     description: product?.description || "",
-    aboutProduct: product?.aboutProduct || "",
+    // Saved as a list of points; one per line, the same as the About box in the product form.
+    aboutProduct: Array.isArray(product?.aboutProduct) ? product.aboutProduct.join("\n") : product?.aboutProduct || "",
     category: product?.category || "",
     stock: numberOrBlank(product?.stock),
     id: idOf(product),

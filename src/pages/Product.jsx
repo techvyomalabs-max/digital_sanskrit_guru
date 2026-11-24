@@ -652,22 +652,12 @@ function Product() {
     [product, selectedOptionId, formatParam, formatContext]
   );
 
+  // Choosing another format starts the gallery at its first picture. The format's own pictures
+  // are part of the gallery itself (see galleryImages below), so the arrows and thumbnails can
+  // always come back to them.
   useEffect(() => {
     if (!isOptionsParent(product) || !memoBuyProduct) return;
-    const optionImage = String(memoBuyProduct.image || "").trim();
-    const parentImage = String(product.image || "").trim();
-    if (optionImage && optionImage !== parentImage) {
-      setSelectedMedia({
-        key: "image-0",
-        kind: "image",
-        src: optionImage,
-        alt: `${memoBuyProduct.name || product.name || "Product"} image 1`,
-        thumbnail: optionImage
-      });
-    } else {
-      // Option without its own picture: go back to the product's own first image/video.
-      setSelectedMedia(null);
-    }
+    setSelectedMedia(null);
   }, [product, memoBuyProduct]);
 
   const [purchaseAsGift, setPurchaseAsGift] = useState(false);
@@ -1303,12 +1293,15 @@ function Product() {
     setSearchParams({ format: nextId }, { replace: true });
     setQty(optionProduct?.productType === "bulk" ? 10 : 1);
   };
-  const galleryImages = getGalleryImages(product);
   const extraProductDetails = getExtraProductDetails(product.name);
   // With formats, the details shown are the chosen format's own (e.g. the Kindle edition's
   // description and points), falling back to the listing's where the format has none. The
   // page title, reviews, share text and search-engine tags stay the listing's.
   const formatInfo = isOptionsParent(product) && buyProduct ? buyProduct : null;
+  // Gallery: the chosen format's own pictures first, then the main product's (no repeats)
+  const galleryImages = Array.from(
+    new Set([...(formatInfo ? getGalleryImages(formatInfo) : []), ...getGalleryImages(product)])
+  );
   const hasText = (value) => htmlToPlainText(String(value || "")).trim() !== "";
   const formatAbout = Array.isArray(formatInfo?.aboutProduct)
     ? formatInfo.aboutProduct.filter((point) => String(point || "").trim())

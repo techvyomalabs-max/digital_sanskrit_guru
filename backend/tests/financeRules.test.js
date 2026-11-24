@@ -4,7 +4,7 @@ const { describe, it, mock, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const Product = require("../models/Product");
 const { computeOrderTotals } = require("../utils/orderTotals");
-const { getItemHsnSac, lineGstRate, comboParts, comboTax, deliveryTax, splitByWeights } = require("../utils/tax");
+const { getItemHsnSac, legacyLineCode, lineGstRate, comboParts, comboTax, deliveryTax, splitByWeights } = require("../utils/tax");
 const { normalizeOrderItem } = require("../utils/orderItems");
 const { buildInvoice, buildCreditNote } = require("../utils/invoiceData");
 const { buildFinanceReport, LINE_HEADERS, GST_HEADERS, SALES_HEADERS } = require("../utils/financeReports");
@@ -77,6 +77,57 @@ function asOrder(t, state = "Karnataka", id = "6730f1a2b3c4d5e6f7a8b9c0") {
     shipping: { name: "A", address: "1 Road", city: "City", state, pincode: "560001", country: "India" }
   };
 }
+
+describe("guessing the code from the product (no code set on it)", () => {
+  it("matches whole words: a printed 'Guidebook' is a book, not an e-book", () => {
+    const guide = { name: "Sanatana Dharma – A Guidebook for Our Life Journey – English – Paperback", category: "Book - Paperback" };
+    assert.equal(getItemHsnSac(guide), "4901");
+    assert.equal(lineGstRate(guide, {}), 0);
+    assert.equal(getItemHsnSac({ name: "Shabdarupa Sangrahah (Kindle Edition) eBook" }), "998433");
+    assert.equal(getItemHsnSac({ name: "Bhagavad Gita – Digital-Flipbook" }), "998433");
+    // Plurals still count: a "Three Books Combo" is books
+    assert.equal(getItemHsnSac({ name: "Three Books Combo" }), "4901");
+    assert.equal(getItemHsnSac({ name: "Two Flipbooks" }), "998433");
+  });
+
+  it("courses and books sent on a USB stick (a combo's USB format) are taxed as the USB device", () => {
+    const onUsb = [
+      { itemType: "custom", name: "Learn Sanskrit – Level 1 (Sanskrit-English Version)", isDigital: false, digitalType: "usb" },
+      { itemType: "custom", name: "Learn Sanskrit Sandhi -Web Version", isDigital: false, digitalType: "USB" },
+      { itemType: "custom", name: "Ramayana Ratnamala – Digital Flipbook", isDigital: false, digitalType: "Pendrive" }
+    ];
+    for (const item of onUsb) {
+      assert.equal(getItemHsnSac(item), "8523", item.name);
+      assert.equal(lineGstRate(item, {}), 18, item.name);
+    }
+    // A digital item keeps its own code whatever its type label says
+    assert.equal(getItemHsnSac({ name: "Gita Web Version", isDigital: true, digitalType: "usb" }), "998433");
+    // A printed book whose type label is a web version is still a book
+    assert.equal(getItemHsnSac({ name: "Ramayana Ratnamala – Paperback", category: "Book - Paperback", digitalType: "Web Version" }), "4901");
+  });
+
+  it("orders saved before each line carried its own tax keep the old guess", () => {
+    const guide = { name: "Sanatana Dharma – A Guidebook – Paperback", category: "Book - Paperback" };
+    assert.equal(legacyLineCode(guide), "998433");
+    assert.equal(lineGstRate(guide, { codeRates: false, storeRate: 18 }), 18);
+    const usbCourse = { itemType: "custom", name: "Learn Sanskrit – Level 1", isDigital: false, digitalType: "usb" };
+    assert.equal(legacyLineCode(usbCourse), "4901");
+    assert.equal(lineGstRate(usbCourse, { codeRates: false, storeRate: 18 }), 0);
+  });
+
+  it("a combo's USB format: every component at 8523 / 18%", () => {
+    const usbFormat = {
+      productType: "bundle",
+      bundleItems: [
+        { itemType: "custom", name: "Learn Sanskrit – Level 1", isDigital: false, digitalType: "usb", unitValue: 1501 },
+        { itemType: "custom", name: "Sanskrit Vocabulary Builder - Part 1", isDigital: false, digitalType: "usb", unitValue: 199 },
+        { itemType: "custom", name: "Learn Sanskrit Sandhi -Web Version", isDigital: false, digitalType: "usb", unitValue: 296 }
+      ]
+    };
+    const parts = comboParts(usbFormat);
+    assert.deepEqual(parts.map((p) => [p.hsnSac, p.rate]), [["8523", 18], ["8523", 18], ["8523", 18]]);
+  });
+});
 
 describe("combos are taxed by their components", () => {
   afterEach(() => mock.restoreAll());
