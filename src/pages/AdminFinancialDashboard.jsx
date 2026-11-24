@@ -780,6 +780,7 @@ function AdminFinancialDashboard() {
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Delivery (₹)</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Total ₹</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Original</th>
+                      <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }} title="Rupees per 1 unit of the order currency, saved when the order was placed">FX Rate</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "right" }}>Refunded ₹</th>
                       <th style={{ borderColor: "var(--admin-border)", textAlign: "center" }}>Payment Ref</th>
                     </tr>
@@ -855,6 +856,17 @@ function AdminFinancialDashboard() {
                                 <span style={{ color: "var(--admin-muted)" }}>—</span>
                               )}
                             </td>
+                            <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                              {inv.currency && inv.currency !== "INR" ? (
+                                Number(inv.fxRate) > 0 ? (
+                                  <span title={`₹${Number(inv.fxRate).toFixed(4)} per 1 ${inv.currency}`}>₹{Number(inv.fxRate).toFixed(4)}</span>
+                                ) : (
+                                  <span className="text-red" title="No exchange rate saved on this order">Missing</span>
+                                )
+                              ) : (
+                                <span style={{ color: "var(--admin-muted)" }}>—</span>
+                              )}
+                            </td>
                             <td style={{ borderColor: "var(--admin-border-soft)", textAlign: "right", fontFamily: "monospace" }}>
                               {inv.refundedInr > 0 ? (
                                 <span className="text-red">
@@ -874,7 +886,7 @@ function AdminFinancialDashboard() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan="13" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
+                        <td colSpan="14" style={{ textAlign: "center", padding: "40px 20px", borderColor: "var(--admin-border-soft)" }}>
                           <div style={{ marginBottom: "8px", color: "var(--admin-muted)" }}><Files size={28} aria-hidden="true" /></div>
                           <p style={{ margin: 0, fontWeight: 600, color: "var(--admin-text)" }}>No matching invoices found</p>
                           <small style={{ color: "var(--admin-muted)" }}>Try clearing search terms or adjusting the period.</small>

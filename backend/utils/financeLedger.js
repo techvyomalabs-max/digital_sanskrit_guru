@@ -149,6 +149,7 @@ function buildInvoiceRow(order, settings) {
     isExport,
     currency,
     originalTotal,
+    fxRate,
     taxableValueInr,
     cgst: taxSplit.cgst,
     sgst: taxSplit.sgst,
