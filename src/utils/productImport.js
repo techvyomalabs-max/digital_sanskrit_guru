@@ -26,7 +26,7 @@ export const IMPORT_FIELD_LABELS = {
 };
 
 const FORMAT_FROM_MAIN = "set from its main product; change it on the main product";
-const COMBO_FORMAT_NO_INTL = "a combo's formats don't keep their own international price yet (it is cleared when the combo is saved)";
+const COMBO_FORMAT_NO_MARKET = "a combo's formats don't keep their own country or market prices yet (they are cleared when the combo is saved)";
 const MAIN_FROM_FORMATS = "worked out from its formats; change the format rows instead";
 
 // Fields the import does not change for some kinds of product, and why.
@@ -40,13 +40,13 @@ const BLOCKED = {
     internationalCountryPrices: FORMAT_FROM_MAIN,
     marketPrices: FORMAT_FROM_MAIN
   },
-  // A combo's format is rebuilt with no international or country/market prices whenever the combo is saved
+  // A combo's format keeps its own price and international price; it is rebuilt with no
+  // country/market prices whenever the combo is saved
   comboFormat: {
     name: FORMAT_FROM_MAIN,
     category: FORMAT_FROM_MAIN,
-    internationalPrice: COMBO_FORMAT_NO_INTL,
-    internationalCountryPrices: COMBO_FORMAT_NO_INTL,
-    marketPrices: COMBO_FORMAT_NO_INTL
+    internationalCountryPrices: COMBO_FORMAT_NO_MARKET,
+    marketPrices: COMBO_FORMAT_NO_MARKET
   },
   main: {
     price: MAIN_FROM_FORMATS,

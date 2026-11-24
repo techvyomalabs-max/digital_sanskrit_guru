@@ -130,12 +130,12 @@ test("a file Excel saved with broken characters is refused", async () => {
   assert.match(readImportFile("p.csv", "name,price\n�,1").error, /CSV UTF-8/);
 });
 
-test("a combo's format keeps its price change but not an international price", async () => {
+test("a combo's format takes price and international price changes, but not market prices", async () => {
   const { planProductImport } = await load();
   const combo = { _id: "c0", name: "Combo", productType: "bundle", hasOptions: true, price: 3399 };
   const comboWeb = { _id: "c9", name: "Combo – Web version", productType: "bundle", optionParent: "c0", bundleFormatKey: "web-version", price: 3399 };
   const plan = planProductImport([{ id: "c9", price: "3299", internationalprice: "7000" }], new Set(["id", "price", "internationalprice"]), [combo, comboWeb]);
-  assert.deepEqual(plan.updates[0].payload, { price: 3299 });
-  assert.deepEqual(plan.updates[0].skipped.map((s) => s.field), ["internationalPrice"]);
+  assert.deepEqual(plan.updates[0].payload, { price: 3299, internationalPrice: 7000 });
+  assert.deepEqual(plan.updates[0].skipped, []);
   assert.equal(plan.updates[0].mainName, "Combo");
 });

@@ -100,6 +100,7 @@ function createEmptyBundleFormat() {
     type: "",
     price: "",
     stock: "",
+    internationalPrice: "",
     weight: "",
     length: "",
     width: "",
@@ -1757,6 +1758,7 @@ function AdminAddProducts() {
         for (const [field, text] of [
           ["price", "price"],
           ["stock", "stock"],
+          ["internationalPrice", "international price"],
           ["weight", "weight"],
           ["length", "length"],
           ["width", "width"],
@@ -2061,6 +2063,8 @@ function AdminAddProducts() {
               price: String(format.price ?? "").trim() === "" ? null : Number(format.price),
               stock:
                 format.type === "digital" || String(format.stock ?? "").trim() === "" ? null : Number(format.stock),
+              internationalPrice:
+                String(format.internationalPrice ?? "").trim() === "" ? null : Number(format.internationalPrice),
               ...Object.fromEntries(
                 ["weight", "length", "width", "height"].map((field) => [
                   field,
@@ -2238,6 +2242,11 @@ function AdminAddProducts() {
           type: format?.type === "physical" || format?.type === "digital" ? format.type : "",
           price: format?.price === null || format?.price === undefined ? "" : String(format.price),
           stock: formatProduct && formatProduct.isDigital !== true ? String(Number(formatProduct.stock || 0)) : "",
+          // Kept on the format's product (like stock)
+          internationalPrice:
+            formatProduct?.internationalPrice === null || formatProduct?.internationalPrice === undefined
+              ? ""
+              : String(formatProduct.internationalPrice),
           weight: Number(format?.weight) > 0 ? String(format.weight) : "",
           length: Number(format?.length) > 0 ? String(format.length) : "",
           width: Number(format?.width) > 0 ? String(format.width) : "",
@@ -2699,6 +2708,8 @@ function AdminAddProducts() {
         ...createEmptyBundleFormat(),
         label: allDigital ? "Web Version" : anyDigital ? "Complete" : "Print",
         type: allDigital ? "digital" : anyDigital ? "" : "physical",
+        // The combo's own international price moves to this format, so it isn't lost
+        internationalPrice: String(internationalPrice ?? ""),
         isCurrentVersion: true
       };
       setBundleFormats([current, createEmptyBundleFormat()]);
@@ -4114,6 +4125,18 @@ function AdminAddProducts() {
                                     <button type="button" className="danger" onClick={() => removeBundleFormat(format.rowKey)}>
                                       Remove
                                     </button>
+                                    <label className="pf-formats-intl">
+                                      <span>International price (₹, for customers outside India; blank = India price)</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="e.g. 7885"
+                                        value={format.internationalPrice ?? ""}
+                                        onChange={(e) => updateBundleFormat(format.rowKey, "internationalPrice", e.target.value)}
+                                        aria-label={`${format.label || "Format"} international price`}
+                                      />
+                                    </label>
                                     {format.type === "physical" ? (
                                       <div className="pf-formats-pack">
                                         <span className="pf-formats-pack-title"><Package size={14} className="ui-inline-icon" aria-hidden="true" />{format.label || "This format"} package (for delivery charges)</span>

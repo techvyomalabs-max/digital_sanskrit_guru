@@ -1353,6 +1353,22 @@ body.admin-dark .pf-badge--hidden {
   align-items: center;
 }
 
+/* A combo format's international price (one line under the format's row) */
+.pf-formats-intl {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--admin-muted, #64748b);
+}
+.pf-formats-intl input {
+  width: 160px;
+  max-width: 100%;
+}
+
 .pf-formats-pack {
   grid-column: 1 / -1;
   display: grid;
