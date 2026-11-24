@@ -36,13 +36,46 @@ const USB_WORDS = ["usb", "pen drive", "pendrive", "flash drive"];
 const AUDIO_DEVICE_WORDS = ["speaker", "headphone", "earphone", "earbud", "audio device", "audio player", "mp3 player", "microphone"];
 
 const has = (text, words) => words.some((w) => text.includes(w));
+const escapeRegExp = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const WORD_PATTERNS = new Map();
+/** Whole words (or their plural) only, so "Guidebook" is not an "ebook" but "Books" is a "book". */
+const hasWord = (text, words) =>
+  words.some((w) => {
+    if (!WORD_PATTERNS.has(w)) WORD_PATTERNS.set(w, new RegExp(`(^|[^a-z0-9])${escapeRegExp(w)}s?($|[^a-z0-9])`));
+    return WORD_PATTERNS.get(w).test(text);
+  });
+// The medium a non-digital item comes on (e.g. a combo's USB format sends each course on the stick)
+const USB_MEDIUM_WORDS = [...USB_WORDS, "otg"];
 
 /**
  * The HSN/SAC code for an item: the admin's own code, else a best guess from the product.
- * Guesses: digital → 998433, USB → 8523, audio device → 8518, book → 4901, else 8523.
- * Set the code on the product wherever the guess could be wrong.
+ * Guesses: content shipped on a USB stick → 8523, digital → 998433, USB → 8523, audio device → 8518,
+ * book → 4901, else 8523. Words are matched whole. Set the code on the product wherever the guess
+ * could be wrong.
  */
 function getItemHsnSac(item) {
+  if (item?.hsnSac) return String(item.hsnSac).trim();
+  const name = String(item?.name || "").trim().toLowerCase();
+  const category = String(item?.category || "").trim().toLowerCase();
+  const text = `${category} ${name}`;
+
+  // A course or book sent on a USB stick (a combo's USB format) is taxed as the USB device,
+  // whatever its title says (e.g. "Learn Sanskrit – Level 1" or "… – Web Version")
+  const medium = String(item?.digitalType || "").trim().toLowerCase();
+  if (item?.isDigital !== true && medium && hasWord(medium, USB_MEDIUM_WORDS)) return "8523";
+
+  if (item?.isDigital === true || hasWord(text, DIGITAL_WORDS)) return "998433";
+  if (hasWord(text, USB_WORDS)) return "8523";
+  if (hasWord(text, AUDIO_DEVICE_WORDS)) return "8518";
+  if (hasWord(text, BOOK_WORDS)) return "4901";
+  return "8523";
+}
+
+/**
+ * The guess used before 24 November 2026, kept for orders saved without their own tax (their
+ * invoices are worked out again when downloaded, and must not change).
+ */
+function legacyItemHsnSac(item) {
   if (item?.hsnSac) return String(item.hsnSac).trim();
   const name = String(item?.name || "").trim().toLowerCase();
   const category = String(item?.category || "").trim().toLowerCase();
@@ -58,6 +91,11 @@ function getItemHsnSac(item) {
 /** The code to print for a line: the product's own HSN/SAC if the admin set one, else the rule above. */
 function lineCode(item) {
   return getItemHsnSac(item);
+}
+
+/** The code for a line of an order saved before each line carried its own tax. */
+function legacyLineCode(item) {
+  return legacyItemHsnSac(item);
 }
 
 const ownRate = (item) => {
@@ -79,7 +117,7 @@ function lineGstRate(item, { isInternational = false, storeRate = 0, codeRates =
   if (isInternational) return 0;
   const own = ownRate(item);
   if (own !== null) return own;
-  const code = lineCode(item);
+  const code = codeRates ? lineCode(item) : legacyLineCode(item);
   if (code === "4901") return 0;
   if (codeRates && Object.prototype.hasOwnProperty.call(CODE_RATES, code)) return CODE_RATES[code];
   return Math.min(50, Math.max(0, Number(storeRate) || 0));
@@ -228,6 +266,7 @@ module.exports = {
   CODE_RATES,
   getItemHsnSac,
   lineCode,
+  legacyLineCode,
   lineGstRate,
   lineTax,
   splitByWeights,
