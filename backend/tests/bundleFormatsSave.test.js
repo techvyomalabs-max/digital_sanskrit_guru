@@ -277,6 +277,41 @@ describe("combo formats: saving creates one hidden combo per format", () => {
   });
 });
 
+describe("combo formats: each format keeps its own international price", () => {
+  it("is saved on the format, kept when a later save doesn't send it, and cleared when sent blank", async () => {
+    const { items } = await setup();
+    const { combo } = await saveCombo(items, [
+      { label: "USB", stock: 7, internationalPrice: 9000 },
+      { label: "Web Version", internationalPrice: 7885.18 }
+    ]);
+    const kid = (key) => children().find((k) => k.bundleFormatKey === key);
+    assert.equal(kid("usb").internationalPrice, 9000);
+    assert.equal(kid("web-version").internationalPrice, 7885.18);
+
+    // Combo's "from" price is its cheapest format (Web Version ₹2299), with that format's overseas price
+    const parent = store.get(String(combo._id));
+    assert.equal(parent.price, 2299);
+    assert.equal(parent.internationalPrice, 7885.18);
+
+    // A later save that doesn't send it (older form, or another change) keeps it
+    await saveCombo(items, [{ label: "USB", stock: 7 }, { label: "Web Version" }], Product.hydrate(JSON.parse(JSON.stringify(parent))));
+    assert.equal(kid("usb").internationalPrice, 9000);
+    assert.equal(kid("web-version").internationalPrice, 7885.18);
+
+    // Sent blank: cleared (customers outside India pay the India price)
+    await saveCombo(items, [{ label: "USB", stock: 7, internationalPrice: "" }, { label: "Web Version", internationalPrice: 7885.18 }],
+      Product.hydrate(JSON.parse(JSON.stringify(store.get(String(combo._id))))));
+    assert.equal(kid("usb").internationalPrice, null);
+    assert.equal(kid("web-version").internationalPrice, 7885.18);
+  });
+
+  it("a new format with no international price starts without one", async () => {
+    const { items } = await setup();
+    await saveCombo(items, [{ label: "USB", stock: 7 }, { label: "Web Version" }]);
+    for (const k of children()) assert.ok(k.internationalPrice === null || k.internationalPrice === undefined);
+  });
+});
+
 describe("resolveBundleFormatsForSave", () => {
   const items = [{ name: "A", formats: ["USB"] }, { name: "B", formats: [] }];
   it("not sent -> formats undefined (left as they are)", () => {

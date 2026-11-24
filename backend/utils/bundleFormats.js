@@ -400,12 +400,14 @@ function buildFormatChildFields(parent, format, items, priceById = {}, digitalBy
     hasOptions: false,
     options: [],
     bundleFormats: [],
-    internationalPrice: null,
     internationalCountryPrices: [],
     marketPrices: [],
     isDeleted: false,
     deletedAt: null
   };
+  // The format's own international (overseas) price, kept on its product like on a single product's
+  // formats. Only changed when the admin sent one; otherwise the product keeps the one it has.
+  if (format.internationalPrice !== undefined) fields.internationalPrice = format.internationalPrice;
   for (const field of CHILD_COPY_FIELDS) {
     if (src[field] !== undefined) fields[field] = Array.isArray(src[field]) ? [...src[field]] : src[field];
   }
