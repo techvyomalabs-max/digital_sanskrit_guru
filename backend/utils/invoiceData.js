@@ -12,7 +12,7 @@
 
 const { pendingInvoiceNote } = require("./invoiceTiming");
 const { codeByStateName, stateByCode, gstinStateCode, determineIsIntrastate } = require("./gstin");
-const { lineCode, lineGstRate, lineTax, roundMoney } = require("./tax");
+const { lineCode, legacyLineCode, lineGstRate, lineTax, roundMoney } = require("./tax");
 const { isInternationalCountry } = require("./productPricing");
 
 const FOREIGN_STATE_CODE = "96"; // GST code for "Other country"
@@ -227,7 +227,8 @@ function buildInvoice(order, { user = null, seller: fallbackSeller = null } = {}
       ...unitFrom(t, text(it?.name || it?.product?.name) || "Item"),
       format: text(it?.format || it?.selectedFormatLabel),
       // A combo shows its components' codes on their own rows
-      hsnSac: parts ? "" : text(it?.hsnSac) || lineCode(it),
+      // Older orders keep the code they were invoiced with
+      hsnSac: parts ? "" : text(it?.hsnSac) || (allHaveTax ? lineCode(it) : legacyLineCode(it)),
       quantity,
       unitPrice: roundMoney(Number(it?.price || 0)),
       parts
